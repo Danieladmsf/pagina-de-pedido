@@ -1,5 +1,5 @@
 
-export type Category = 'Todos' | 'Burgers' | 'Pizzas' | 'Pratos' | 'Bebidas' | 'Sobremesas';
+export type Category = 'Todos' | 'Sucos' | 'Vitaminas' | 'Salgados' | 'Pratos Feitos' | 'Sobremesas';
 
 export interface MenuItem {
   id: string;

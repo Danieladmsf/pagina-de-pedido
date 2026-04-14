@@ -5,26 +5,26 @@
 
 @layer base {
   :root {
-    --background: 60 17% 98%;
-    --foreground: 20 10% 10%;
+    --background: 60 30% 98%;
+    --foreground: 142 72% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 20 10% 10%;
+    --card-foreground: 142 72% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 20 10% 10%;
-    --primary: 27 52% 42%;
-    --primary-foreground: 60 17% 98%;
-    --secondary: 30 10% 90%;
-    --secondary-foreground: 27 52% 42%;
-    --muted: 30 10% 95%;
-    --muted-foreground: 20 10% 45%;
-    --accent: 355 77% 60%;
+    --popover-foreground: 142 72% 10%;
+    --primary: 142 72% 29%; /* Verde Lima Limão */
+    --primary-foreground: 60 30% 98%;
+    --secondary: 45 93% 90%;
+    --secondary-foreground: 142 72% 29%;
+    --muted: 60 10% 95%;
+    --muted-foreground: 142 20% 40%;
+    --accent: 45 93% 47%; /* Laranja/Amarelo Vitamina */
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 30 10% 88%;
-    --input: 30 10% 88%;
-    --ring: 27 52% 42%;
-    --radius: 0.75rem;
+    --border: 142 20% 90%;
+    --input: 142 20% 90%;
+    --ring: 142 72% 29%;
+    --radius: 1rem;
   }
 }
 

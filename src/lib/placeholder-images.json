@@ -1,52 +1,34 @@
 {
   "placeholderImages": [
     {
-      "id": "burger-classic",
-      "description": "A juicy classic beef burger with cheese and lettuce",
-      "imageUrl": "https://picsum.photos/seed/burger1/600/400",
-      "imageHint": "juicy burger"
+      "id": "juice-lima-limao",
+      "description": "Fresh lime and lemon juice with ice",
+      "imageUrl": "https://picsum.photos/seed/juice1/600/400",
+      "imageHint": "fresh juice"
     },
     {
-      "id": "pizza-margherita",
-      "description": "Authentic margherita pizza with fresh basil and mozzarella",
-      "imageUrl": "https://picsum.photos/seed/pizza1/600/400",
-      "imageHint": "margherita pizza"
+      "id": "vitamin-mixed",
+      "description": "Creamy mixed fruit vitamin shake",
+      "imageUrl": "https://picsum.photos/seed/vitamin1/600/400",
+      "imageHint": "fruit vitamin"
     },
     {
-      "id": "pizza-pepperoni",
-      "description": "Spicy pepperoni pizza with melted cheese",
-      "imageUrl": "https://picsum.photos/seed/pizza2/600/400",
-      "imageHint": "pepperoni pizza"
+      "id": "salgado-coxinha",
+      "description": "Golden crispy chicken coxinha",
+      "imageUrl": "https://picsum.photos/seed/snack1/600/400",
+      "imageHint": "brazilian snack"
     },
     {
-      "id": "salad-caesar",
-      "description": "Fresh caesar salad with croutons and parmesan",
-      "imageUrl": "https://picsum.photos/seed/salad1/600/400",
-      "imageHint": "caesar salad"
+      "id": "prato-feito",
+      "description": "Traditional brazilian lunch plate with rice, beans, and meat",
+      "imageUrl": "https://picsum.photos/seed/lunch1/600/400",
+      "imageHint": "brazilian lunch"
     },
     {
-      "id": "pasta-carbonara",
-      "description": "Creamy spaghetti carbonara with pancetta",
-      "imageUrl": "https://picsum.photos/seed/pasta1/600/400",
-      "imageHint": "pasta carbonara"
-    },
-    {
-      "id": "juice-orange",
-      "description": "Freshly squeezed orange juice in a glass",
-      "imageUrl": "https://picsum.photos/seed/drink1/600/400",
+      "id": "juice-orange-fresh",
+      "description": "Freshly squeezed orange juice",
+      "imageUrl": "https://picsum.photos/seed/orange/600/400",
       "imageHint": "orange juice"
-    },
-    {
-      "id": "dessert-brownie",
-      "description": "Warm chocolate brownie with a scoop of vanilla ice cream",
-      "imageUrl": "https://picsum.photos/seed/dessert1/600/400",
-      "imageHint": "chocolate brownie"
-    },
-    {
-      "id": "fries-large",
-      "description": "Golden crispy french fries with sea salt",
-      "imageUrl": "https://picsum.photos/seed/fries1/600/400",
-      "imageHint": "french fries"
     }
   ]
 }
