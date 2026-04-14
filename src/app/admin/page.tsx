@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2 } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -145,6 +145,7 @@ export default function AdminPage() {
                   <TableHeader className="bg-muted/30">
                     <TableRow>
                       <TableHead className="pl-6">ID / Data</TableHead>
+                      <TableHead>Cliente / Endereço</TableHead>
                       <TableHead>Itens</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Status</TableHead>
@@ -154,27 +155,38 @@ export default function AdminPage() {
                   <TableBody>
                     {orders?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                           Nenhum pedido recebido ainda.
                         </TableCell>
                       </TableRow>
                     )}
                     {orders?.map((order) => (
-                      <TableRow key={order.id}>
+                      <TableRow key={order.id} className="align-top">
                         <TableCell className="pl-6">
                           <div className="font-bold">#{order.id}</div>
                           <div className="text-xs text-muted-foreground flex items-center gap-1">
                             <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
                           </div>
                         </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="flex items-center gap-1 font-bold text-sm">
+                            <User className="h-3 w-3" /> {order.customerName}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <Phone className="h-3 w-3" /> {order.customerPhone}
+                          </div>
+                          <div className="flex items-start gap-1 text-xs text-muted-foreground mt-1">
+                            <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {order.deliveryAddress}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="text-sm">
                             {order.items?.map((it: any, i: number) => (
-                              <div key={i}>{it.quantity}x {it.name}</div>
+                              <div key={i} className="whitespace-nowrap">{it.quantity}x {it.name}</div>
                             ))}
                           </div>
                         </TableCell>
-                        <TableCell className="font-bold text-primary">R$ {order.totalAmount.toFixed(2)}</TableCell>
+                        <TableCell className="font-bold text-primary whitespace-nowrap">R$ {order.totalAmount.toFixed(2)}</TableCell>
                         <TableCell>
                           <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
                             {order.status === 'pending' ? 'Pendente' : order.status === 'ready' ? 'Pronto' : order.status}
@@ -182,8 +194,8 @@ export default function AdminPage() {
                         </TableCell>
                         <TableCell className="text-right pr-6 space-x-1">
                           {order.status === 'pending' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700">
-                              <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar Pronto
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 h-8">
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
                             </Button>
                           )}
                         </TableCell>
@@ -196,6 +208,7 @@ export default function AdminPage() {
           </TabsContent>
 
           <TabsContent value="products" className="mt-6">
+            {/* ... (manter conteúdo anterior de produtos) ... */}
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>

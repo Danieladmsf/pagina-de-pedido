@@ -5,25 +5,40 @@ import React, { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Send, Loader2 } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Send, Loader2, User, MapPin, Phone, Mail } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export function CartDrawer() {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCheckoutForm, setShowCheckoutForm] = useState(false);
+  
+  // Checkout states
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+
   const db = useFirestore();
   const { user } = useUser();
 
   const handleCheckout = async () => {
     if (!user) {
       toast({ variant: "destructive", title: "Erro", description: "Usuário não identificado." });
+      return;
+    }
+
+    if (!customerName || !customerPhone || !deliveryAddress) {
+      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Por favor, preencha nome, telefone e endereço." });
       return;
     }
 
@@ -35,7 +50,10 @@ export function CartDrawer() {
       const orderData = {
         id: orderId,
         customerIdentifier: user.uid,
-        customerName: user.isAnonymous ? "Cliente Anônimo" : (user.displayName || "Cliente"),
+        customerName,
+        customerPhone,
+        customerEmail,
+        deliveryAddress,
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
@@ -56,8 +74,14 @@ export function CartDrawer() {
         title: "Pedido Enviado!",
         description: `Seu pedido #${orderId} foi recebido e já está sendo preparado.`
       });
+      
       clearCart();
       setIsOpen(false);
+      setShowCheckoutForm(false);
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerEmail('');
+      setDeliveryAddress('');
     } catch (error) {
       console.error(error);
       toast({ variant: "destructive", title: "Erro ao enviar", description: "Não foi possível processar seu pedido agora." });
@@ -67,7 +91,10 @@ export function CartDrawer() {
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet open={isOpen} onOpenChange={(open) => {
+      setIsOpen(open);
+      if (!open) setShowCheckoutForm(false);
+    }}>
       <SheetTrigger asChild>
         <Button variant="outline" size="icon" className="relative bg-white border-primary/20 text-primary hover:bg-primary/5 rounded-full h-12 w-12 shadow-md">
           <ShoppingCart className="h-6 w-6" />
@@ -81,7 +108,8 @@ export function CartDrawer() {
       <SheetContent className="w-full sm:max-w-md flex flex-col h-full bg-[#FAFAF7]">
         <SheetHeader className="pb-4">
           <SheetTitle className="text-xl font-bold flex items-center gap-2">
-            Meu Pedido <span className="text-muted-foreground font-normal">({totalItems} {totalItems === 1 ? 'item' : 'itens'})</span>
+            {showCheckoutForm ? 'Dados de Entrega' : 'Meu Pedido'} 
+            {!showCheckoutForm && <span className="text-muted-foreground font-normal">({totalItems} {totalItems === 1 ? 'item' : 'itens'})</span>}
           </SheetTitle>
         </SheetHeader>
 
@@ -95,7 +123,7 @@ export function CartDrawer() {
             <h3 className="text-lg font-semibold">Seu carrinho está vazio</h3>
             <p className="text-muted-foreground">Que tal adicionar alguns itens deliciosos?</p>
           </div>
-        ) : (
+        ) : !showCheckoutForm ? (
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="py-4 space-y-6">
               {cart.map((item) => (
@@ -131,6 +159,35 @@ export function CartDrawer() {
               ))}
             </div>
           </ScrollArea>
+        ) : (
+          <ScrollArea className="flex-1 -mx-6 px-6 py-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cust_name" className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-primary" /> Nome Completo
+                </Label>
+                <Input id="cust_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Como devemos te chamar?" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cust_phone" className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary" /> Telefone / WhatsApp
+                </Label>
+                <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(00) 00000-0000" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cust_email" className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary" /> E-mail (Opcional)
+                </Label>
+                <Input id="cust_email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Para receber o comprovante" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cust_addr" className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" /> Endereço de Entrega
+                </Label>
+                <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Rua, número, bairro e complemento" />
+              </div>
+            </div>
+          </ScrollArea>
         )}
 
         {cart.length > 0 && (
@@ -139,14 +196,29 @@ export function CartDrawer() {
               <span className="font-medium">Total</span>
               <span className="font-bold text-2xl text-primary">R$ {totalPrice.toFixed(2)}</span>
             </div>
-            <Button 
-              className="w-full h-14 bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-lg rounded-xl flex gap-2 items-center"
-              onClick={handleCheckout}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-              {isSubmitting ? 'Enviando...' : 'Finalizar e Enviar Pedido'}
-            </Button>
+            
+            {!showCheckoutForm ? (
+              <Button 
+                className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-lg rounded-xl"
+                onClick={() => setShowCheckoutForm(true)}
+              >
+                Continuar para Entrega
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 h-14 rounded-xl" onClick={() => setShowCheckoutForm(false)}>
+                  Voltar
+                </Button>
+                <Button 
+                  className="flex-[2] h-14 bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-lg rounded-xl flex gap-2 items-center"
+                  onClick={handleCheckout}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                  Finalizar Pedido
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </SheetContent>
