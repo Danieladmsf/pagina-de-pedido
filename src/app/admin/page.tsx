@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +52,31 @@ export default function AdminPage() {
   const { data: orders, isLoading: loadingOrders } = useCollection(ordersQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const uploadImage = async (): Promise<string> => {
+    if (!imageFile) return editingItem?.imageUrl || '';
+    setUploadingImage(true);
+    try {
+      const response = await fetch(`/api/upload?filename=${encodeURIComponent(imageFile.name)}`, {
+        method: 'POST',
+        body: imageFile,
+      });
+      const blob = await response.json();
+      return blob.url;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   useEffect(() => {
     if (!isUserLoading && (!user || user.isAnonymous)) {
@@ -78,14 +103,15 @@ export default function AdminPage() {
   const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user || !db) return;
-    
+
     const formData = new FormData(e.currentTarget);
+    const imageUrl = await uploadImage();
     const itemData = {
       name: formData.get('name') as string,
       description: formData.get('description') as string,
       price: parseFloat(formData.get('price') as string),
       categoryId: formData.get('categoryId') as string,
-      imageUrl: formData.get('imageUrl') as string,
+      imageUrl,
       ownerId: user.uid,
       isAvailable: true,
       isRecommended: false,
@@ -237,7 +263,7 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
-                <Dialog open={editingItem !== null} onOpenChange={(open) => !open && setEditingItem(null)}>
+                <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); } }}>
                   <DialogTrigger asChild>
                     <Button onClick={() => setEditingItem({})} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Prato
@@ -268,15 +294,32 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="imageUrl">Link da Imagem (URL)</Label>
-                        <Input id="imageUrl" name="imageUrl" defaultValue={editingItem?.imageUrl} required />
+                        <Label>Foto do Prato</Label>
+                        <div className="flex items-center gap-3">
+                          {(imagePreview || editingItem?.imageUrl) && (
+                            <div className="relative h-16 w-16 rounded-lg overflow-hidden border flex-shrink-0">
+                              <Image src={imagePreview || editingItem?.imageUrl} alt="preview" fill className="object-cover" />
+                            </div>
+                          )}
+                          <label className="flex-1 cursor-pointer">
+                            <div className="flex items-center justify-center gap-2 border-2 border-dashed border-muted-foreground/30 rounded-lg p-3 hover:border-primary transition-colors">
+                              <Upload className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">
+                                {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
+                              </span>
+                            </div>
+                            <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                          </label>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="description">Descrição</Label>
                         <Textarea id="description" name="description" defaultValue={editingItem?.description} required />
                       </div>
                       <DialogFooter>
-                        <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
+                        <Button type="submit" className="w-full h-12 font-bold" disabled={uploadingImage}>
+                          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar'}
+                        </Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
