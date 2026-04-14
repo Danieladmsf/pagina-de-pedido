@@ -1,82 +1,52 @@
-/**
- * PRONTO PEDIDO - FIRESTORE SECURITY RULES
- *
- * Core Philosophy:
- * This ruleset implements a robust, role-based and ownership-based security model. 
- * The application distinguishes between public menu content (managed by admins) and private 
- * customer transaction data (managed by users).
- */
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- HELPER FUNCTIONS ---
 
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isAdmin() {
-      // Verifica se existe um documento na coleção roles_admin com o UID do usuário logado
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // --- COLLECTION RULES ---
-
+    // Regras para a coleção roles_admin
     match /roles_admin/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      // Qualquer um pode criar seu próprio registro de admin ao se cadastrar
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow get, list, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false; // Por segurança, não permite deletar admin via app
     }
 
+    // Regras para Categorias e Itens
+    // Adicionamos a lógica de ownerId para isolar os dados
     match /categories/{categoryId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /menuItems/{menuItemId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-
-      match /optionGroups/{menuItemOptionGroupId} {
-        allow get, list: if true;
-        allow create, update, delete: if isAdmin();
-      }
-    }
-
-    match /optionGroups/{optionGroupId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    match /optionItems/{optionItemId} {
-      allow get, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /orders/{orderId} {
-      // Admins can see all orders. Owners can only see their own.
-      allow get: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
+      // Cliente vê seus pedidos
+      allow get: if (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
+      allow list: if (isSignedIn() && request.query.filters.customerIdentifier == request.auth.uid);
       
-      // Admins can list all orders. Owners must filter by their customerIdentifier.
-      allow list: if isAdmin() || (isSignedIn() && request.query.filters.customerIdentifier == request.auth.uid);
+      // Admin vê apenas pedidos da sua loja (ownerId deve ser gravado no pedido)
+      allow get, list, update: if isAdmin() && resource.data.ownerId == request.auth.uid;
       
-      allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
-      allow update: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-      allow delete: if isAdmin();
-
-      match /items/{orderItemId} {
-        allow get, list: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-        allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
-        allow update, delete: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-
-        match /options/{orderItemOptionId} {
-          allow get, list: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-          allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
-          allow update, delete: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-        }
-      }
+      allow create: if isSignedIn();
+      allow delete: if false;
     }
   }
 }

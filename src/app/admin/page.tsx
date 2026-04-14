@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -25,14 +26,22 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   
-  // Referência para o documento de role do admin
   const adminRoleRef = useMemoFirebase(() => user ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
-  // Consultas ao Firestore - só ativadas se o adminRole for carregado e existir
-  const categoriesQuery = useMemoFirebase(() => adminRole ? collection(db, 'categories') : null, [db, adminRole]);
-  const itemsQuery = useMemoFirebase(() => adminRole ? collection(db, 'menuItems') : null, [db, adminRole]);
-  const ordersQuery = useMemoFirebase(() => adminRole ? query(collection(db, 'orders'), orderBy('createdAt', 'desc')) : null, [db, adminRole]);
+  // Consultas filtradas pelo UID do dono (Multi-tenancy)
+  const categoriesQuery = useMemoFirebase(() => 
+    user ? query(collection(db, 'categories'), where('ownerId', '==', user.uid)) : null, 
+    [db, user]
+  );
+  const itemsQuery = useMemoFirebase(() => 
+    user ? query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)) : null, 
+    [db, user]
+  );
+  const ordersQuery = useMemoFirebase(() => 
+    user ? query(collection(db, 'orders'), where('ownerId', '==', user.uid), orderBy('orderDateTime', 'desc')) : null, 
+    [db, user]
+  );
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
@@ -56,12 +65,14 @@ export default function AdminPage() {
       await updateDoc(doc(db, 'orders', orderId), { status });
       toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Verifique suas permissões." });
+      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na permissão." });
     }
   };
 
   const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) return;
+    
     const formData = new FormData(e.currentTarget);
     const itemData = {
       name: formData.get('name') as string,
@@ -69,6 +80,7 @@ export default function AdminPage() {
       price: parseFloat(formData.get('price') as string),
       categoryId: formData.get('categoryId') as string,
       imageUrl: formData.get('imageUrl') as string,
+      ownerId: user.uid, // Importante: Vincular ao dono
       isAvailable: true,
       isRecommended: false,
     };
@@ -83,7 +95,7 @@ export default function AdminPage() {
       setEditingItem(null);
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Verifique suas permissões no Firestore." });
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Erro de permissão no Firestore." });
     }
   };
 
@@ -95,45 +107,39 @@ export default function AdminPage() {
     );
   }
 
-  // Se o usuário está logado mas não foi encontrado na coleção roles_admin
   if (user && !adminRole && !loadingRole) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-4">Seu UID não foi autorizado como Administrador.</p>
-        <div className="bg-white p-6 rounded-2xl border shadow-sm mb-6 max-w-md w-full">
-          <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Seu UID para copiar:</p>
-          <code className="block bg-muted p-3 rounded font-mono text-sm break-all select-all">
-            {user.uid}
-          </code>
-        </div>
-        <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-          Certifique-se de que o UID acima está exatamente igual ao ID do documento na coleção <span className="font-bold">roles_admin</span> no seu Console Firebase.
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push('/')}>Voltar ao Cardápio</Button>
-          <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
-        </div>
+        <p className="text-muted-foreground mb-4">Você não tem permissão de administrador.</p>
+        <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
       </div>
     );
   }
 
+  const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
+
   return (
     <div className="min-h-screen bg-muted/30 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex items-center justify-between bg-white p-6 rounded-2xl shadow-sm border">
+        <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-6 rounded-2xl shadow-sm border gap-4">
           <div className="flex items-center gap-4">
             <div className="bg-primary/10 p-3 rounded-full">
               <LayoutDashboard className="h-8 w-8 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Painel Administrativo</h1>
-              <p className="text-sm text-muted-foreground">{user?.email || 'Administrador'}</p>
+              <h1 className="text-2xl font-bold tracking-tight">{adminRole?.storeName || 'Meu Painel'}</h1>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => window.open('/', '_blank')}>Ver Site</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-muted px-4 py-2 rounded-lg text-xs font-mono border flex items-center gap-2">
+              <span>Link do seu cardápio:</span>
+              <a href={storeLink} target="_blank" className="text-primary font-bold hover:underline flex items-center gap-1">
+                Ver Loja <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
             <Button variant="ghost" size="sm" className="text-destructive" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" /> Sair
             </Button>
@@ -156,14 +162,14 @@ export default function AdminPage() {
           <TabsContent value="orders" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="bg-white border-b">
-                <CardTitle className="text-lg">Pedidos Recentes</CardTitle>
+                <CardTitle className="text-lg">Pedidos Recebidos</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="pl-6">ID / Data</TableHead>
-                      <TableHead>Cliente / Endereço</TableHead>
+                      <TableHead className="pl-6">Data</TableHead>
+                      <TableHead>Cliente</TableHead>
                       <TableHead>Itens</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Status</TableHead>
@@ -176,45 +182,37 @@ export default function AdminPage() {
                     ) : !orders || orders.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                          Nenhum pedido recebido ainda.
+                          Nenhum pedido ainda. Divulgue seu link!
                         </TableCell>
                       </TableRow>
                     ) : (
                       orders.map((order) => (
                         <TableRow key={order.id} className="align-top">
-                          <TableCell className="pl-6">
-                            <div className="font-bold">#{order.id}</div>
+                          <TableCell className="pl-6 whitespace-nowrap">
                             <div className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
                             </div>
                           </TableCell>
-                          <TableCell className="max-w-[200px]">
-                            <div className="flex items-center gap-1 font-bold text-sm">
-                              <User className="h-3 w-3" /> {order.customerName}
-                            </div>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                              <Phone className="h-3 w-3" /> {order.customerPhone}
-                            </div>
-                            <div className="flex items-start gap-1 text-xs text-muted-foreground mt-1">
-                              <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {order.deliveryAddress}
-                            </div>
+                          <TableCell className="max-w-[150px]">
+                            <div className="font-bold text-sm">{order.customerName}</div>
+                            <div className="text-xs text-muted-foreground">{order.customerPhone}</div>
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
                               {order.items?.map((it: any, i: number) => (
-                                <div key={i} className="whitespace-nowrap">{it.quantity}x {it.name}</div>
+                                <div key={i}>{it.quantity}x {it.name}</div>
                               ))}
                             </div>
                           </TableCell>
-                          <TableCell className="font-bold text-primary whitespace-nowrap">R$ {order.totalAmount.toFixed(2)}</TableCell>
+                          <TableCell className="font-bold text-primary">R$ {order.totalAmount.toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
-                              {order.status === 'pending' ? 'Pendente' : order.status === 'ready' ? 'Pronto' : order.status}
+                              {order.status === 'pending' ? 'Pendente' : 'Pronto'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right pr-6 space-x-1">
+                          <TableCell className="text-right pr-6">
                             {order.status === 'pending' && (
-                              <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 h-8">
+                              <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 h-8">
                                 <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
                               </Button>
                             )}
@@ -228,14 +226,13 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
-          {/* Conteúdo de Produtos e Categorias mantido similar */}
           <TabsContent value="products" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
                 <Dialog open={editingItem !== null} onOpenChange={(open) => !open && setEditingItem(null)}>
                   <DialogTrigger asChild>
-                    <Button onClick={() => setEditingItem({})} className="bg-primary rounded-lg text-white">
+                    <Button onClick={() => setEditingItem({})} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Prato
                     </Button>
                   </DialogTrigger>
@@ -265,14 +262,14 @@ export default function AdminPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="imageUrl">Link da Imagem (URL)</Label>
-                        <Input id="imageUrl" name="imageUrl" defaultValue={editingItem?.imageUrl} placeholder="https://..." required />
+                        <Input id="imageUrl" name="imageUrl" defaultValue={editingItem?.imageUrl} required />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="description">Descrição Curta</Label>
+                        <Label htmlFor="description">Descrição</Label>
                         <Textarea id="description" name="description" defaultValue={editingItem?.description} required />
                       </div>
                       <DialogFooter>
-                        <Button type="submit" className="w-full h-12 font-bold bg-primary text-white">Salvar Alterações</Button>
+                        <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
@@ -292,7 +289,7 @@ export default function AdminPage() {
                     {items?.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="pl-6">
-                          <div className="relative h-12 w-12 rounded-lg overflow-hidden border shadow-sm">
+                          <div className="relative h-12 w-12 rounded-lg overflow-hidden border">
                             <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
                           </div>
                         </TableCell>
@@ -322,9 +319,9 @@ export default function AdminPage() {
                 <CardTitle className="text-lg">Categorias</CardTitle>
                 <Button onClick={async () => {
                   const name = prompt("Nome da Categoria:");
-                  if (name) {
+                  if (name && user) {
                     const newDoc = doc(collection(db, 'categories'));
-                    await setDoc(newDoc, { id: newDoc.id, name, displayOrder: 0, description: "" });
+                    await setDoc(newDoc, { id: newDoc.id, name, ownerId: user.uid, displayOrder: 0, description: "" });
                   }
                 }} className="bg-primary text-white">
                   <Plus className="mr-2 h-4 w-4" /> Nova Categoria

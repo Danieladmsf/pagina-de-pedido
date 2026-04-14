@@ -15,14 +15,17 @@ import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export function CartDrawer() {
+interface CartDrawerProps {
+  storeOwnerId?: string | null;
+}
+
+export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCheckoutForm, setShowCheckoutForm] = useState(false);
   
-  // Checkout states
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -33,7 +36,7 @@ export function CartDrawer() {
 
   const handleCheckout = async () => {
     if (!user) {
-      toast({ variant: "destructive", title: "Erro", description: "Usuário não identificado." });
+      toast({ variant: "destructive", title: "Erro", description: "Iniciando sessão anônima..." });
       return;
     }
 
@@ -50,6 +53,7 @@ export function CartDrawer() {
       const orderData = {
         id: orderId,
         customerIdentifier: user.uid,
+        ownerId: storeOwnerId || 'main', // Vincula o pedido ao dono da loja
         customerName,
         customerPhone,
         customerEmail,
@@ -64,7 +68,6 @@ export function CartDrawer() {
           name: item.name,
           quantity: item.quantity,
           unitPrice: item.price,
-          customization: item.customization || {}
         }))
       };
 
@@ -72,7 +75,7 @@ export function CartDrawer() {
 
       toast({
         title: "Pedido Enviado!",
-        description: `Seu pedido #${orderId} foi recebido e já está sendo preparado.`
+        description: `Seu pedido #${orderId} foi recebido.`
       });
       
       clearCart();
@@ -84,7 +87,7 @@ export function CartDrawer() {
       setDeliveryAddress('');
     } catch (error) {
       console.error(error);
-      toast({ variant: "destructive", title: "Erro ao enviar", description: "Não foi possível processar seu pedido agora." });
+      toast({ variant: "destructive", title: "Erro ao enviar", description: "Erro ao processar o pedido." });
     } finally {
       setIsSubmitting(false);
     }
@@ -109,7 +112,7 @@ export function CartDrawer() {
         <SheetHeader className="pb-4">
           <SheetTitle className="text-xl font-bold flex items-center gap-2">
             {showCheckoutForm ? 'Dados de Entrega' : 'Meu Pedido'} 
-            {!showCheckoutForm && <span className="text-muted-foreground font-normal">({totalItems} {totalItems === 1 ? 'item' : 'itens'})</span>}
+            {!showCheckoutForm && <span className="text-muted-foreground font-normal">({totalItems})</span>}
           </SheetTitle>
         </SheetHeader>
 
@@ -117,11 +120,8 @@ export function CartDrawer() {
 
         {cart.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <div className="bg-muted p-6 rounded-full">
-              <ShoppingCart className="h-12 w-12 text-muted-foreground opacity-50" />
-            </div>
+            <ShoppingCart className="h-12 w-12 text-muted-foreground opacity-50" />
             <h3 className="text-lg font-semibold">Seu carrinho está vazio</h3>
-            <p className="text-muted-foreground">Que tal adicionar alguns itens deliciosos?</p>
           </div>
         ) : !showCheckoutForm ? (
           <ScrollArea className="flex-1 -mx-6 px-6">
@@ -129,29 +129,14 @@ export function CartDrawer() {
               {cart.map((item) => (
                 <div key={item.cartId} className="flex flex-col gap-2">
                   <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <h4 className="font-bold">{item.name}</h4>
-                      {item.customization?.size && (
-                        <p className="text-xs text-muted-foreground">Tamanho: {item.customization.size}</p>
-                      )}
-                      {item.customization?.extras && item.customization.extras.length > 0 && (
-                        <p className="text-xs text-muted-foreground">Extras: {item.customization.extras.join(', ')}</p>
-                      )}
-                    </div>
+                    <h4 className="font-bold">{item.name}</h4>
                     <span className="font-semibold text-primary">R$ {(item.price * item.quantity).toFixed(2)}</span>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 bg-white border rounded-md px-2 py-1 shadow-sm">
-                      <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)} className="text-primary hover:text-accent p-1">
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <span className="text-sm font-bold min-w-[15px] text-center">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)} className="text-primary hover:text-accent p-1">
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
-                    <Button variant="ghost" size="sm" className="text-destructive h-8 px-2 hover:bg-destructive/5" onClick={() => removeFromCart(item.cartId)}>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)} className="border rounded-md p-1"><Minus className="h-3 w-3" /></button>
+                    <span className="text-sm font-bold">{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
+                    <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={() => removeFromCart(item.cartId)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -163,28 +148,16 @@ export function CartDrawer() {
           <ScrollArea className="flex-1 -mx-6 px-6 py-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="cust_name" className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-primary" /> Nome Completo
-                </Label>
-                <Input id="cust_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Como devemos te chamar?" />
+                <Label htmlFor="cust_name">Nome Completo</Label>
+                <Input id="cust_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cust_phone" className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-primary" /> Telefone / WhatsApp
-                </Label>
-                <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(00) 00000-0000" />
+                <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
+                <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cust_email" className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-primary" /> E-mail (Opcional)
-                </Label>
-                <Input id="cust_email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Para receber o comprovante" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust_addr" className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-primary" /> Endereço de Entrega
-                </Label>
-                <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Rua, número, bairro e complemento" />
+                <Label htmlFor="cust_addr">Endereço de Entrega</Label>
+                <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
               </div>
             </div>
           </ScrollArea>
@@ -198,24 +171,14 @@ export function CartDrawer() {
             </div>
             
             {!showCheckoutForm ? (
-              <Button 
-                className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-lg rounded-xl"
-                onClick={() => setShowCheckoutForm(true)}
-              >
+              <Button className="w-full h-14 bg-primary text-white font-bold" onClick={() => setShowCheckoutForm(true)}>
                 Continuar para Entrega
               </Button>
             ) : (
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 h-14 rounded-xl" onClick={() => setShowCheckoutForm(false)}>
-                  Voltar
-                </Button>
-                <Button 
-                  className="flex-[2] h-14 bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-lg rounded-xl flex gap-2 items-center"
-                  onClick={handleCheckout}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                  Finalizar Pedido
+                <Button variant="outline" className="flex-1 h-14" onClick={() => setShowCheckoutForm(false)}>Voltar</Button>
+                <Button className="flex-[2] h-14 bg-accent text-white font-bold" onClick={handleCheckout} disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Finalizar Pedido'}
                 </Button>
               </div>
             )}

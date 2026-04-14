@@ -1,9 +1,9 @@
 
 "use client"
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, query, where, doc } from 'firebase/firestore';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { AIAssistant } from '@/components/ai/AIAssistant';
@@ -16,15 +16,33 @@ import Image from 'next/image';
 import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useDoc } from '@/firebase';
 
 export default function Home() {
   const db = useFirestore();
+  const searchParams = useSearchParams();
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
-  const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
-  const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
+  // Identificar qual loja exibir (padrão é Lima Limão original se não houver 's' na URL)
+  // Para testar um novo admin, use /?s=UID_DO_ADMIN
+  const storeId = searchParams.get('s');
+
+  // Carregar dados da loja (nome, etc)
+  const storeRef = useMemoFirebase(() => storeId ? doc(db, 'roles_admin', storeId) : null, [db, storeId]);
+  const { data: storeInfo } = useDoc(storeRef);
+
+  const categoriesQuery = useMemoFirebase(() => {
+    if (storeId) return query(collection(db, 'categories'), where('ownerId', '==', storeId));
+    return collection(db, 'categories');
+  }, [db, storeId]);
+
+  const itemsQuery = useMemoFirebase(() => {
+    if (storeId) return query(collection(db, 'menuItems'), where('ownerId', '==', storeId));
+    return collection(db, 'menuItems');
+  }, [db, storeId]);
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
@@ -44,7 +62,7 @@ export default function Home() {
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground font-medium">Preparando o melhor sabor...</p>
+          <p className="text-muted-foreground font-medium">Buscando sabores...</p>
         </div>
       </div>
     );
@@ -60,8 +78,12 @@ export default function Home() {
                 <Leaf className="h-8 w-8 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-black tracking-tight text-primary uppercase">Lima Limão</h1>
-                <p className="text-accent font-bold text-lg leading-none">O verdadeiro sabor da fruta!</p>
+                <h1 className="text-4xl font-black tracking-tight text-primary uppercase">
+                  {storeInfo?.storeName || 'Lima Limão'}
+                </h1>
+                <p className="text-accent font-bold text-lg leading-none">
+                  {storeId ? 'Seja bem-vindo!' : 'O verdadeiro sabor da fruta!'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -71,7 +93,7 @@ export default function Home() {
                 </Button>
               </Link>
               <AIAssistant />
-              <CartDrawer />
+              <CartDrawer storeOwnerId={storeId} />
             </div>
           </div>
 
@@ -154,18 +176,21 @@ export default function Home() {
 
         {filteredItems.length === 0 && (
           <div className="py-20 text-center space-y-4">
-            <p className="text-xl text-muted-foreground font-medium">Ops! Não encontramos esse item no momento.</p>
+            <p className="text-xl text-muted-foreground font-medium">Ops! Esta loja ainda não tem itens no cardápio.</p>
           </div>
         )}
 
         <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm space-y-4">
           <div>
-            <p className="font-bold">© 2024 Lima Limão • Sucos & Vitaminas</p>
-            <p>O verdadeiro sabor da fruta!</p>
+            <p className="font-bold">© 2024 {storeInfo?.storeName || 'Lima Limão'}</p>
+            <p>{storeId ? 'Cardápio Digital Profissional' : 'O verdadeiro sabor da fruta!'}</p>
           </div>
-          <div className="pt-4">
-            <Link href="/admin" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100 transition-opacity">
+          <div className="pt-4 flex justify-center gap-4">
+            <Link href="/admin" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">
               <Lock className="h-3 w-3" /> Área Restrita
+            </Link>
+            <Link href="/register" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">
+              Crie seu Cardápio
             </Link>
           </div>
         </footer>
