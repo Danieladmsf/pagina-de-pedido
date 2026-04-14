@@ -5,7 +5,6 @@ import React, { useState, useMemo } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
-import { AIAssistant } from '@/components/ai/AIAssistant';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { Toaster } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
@@ -93,7 +92,6 @@ export function MenuPageClient() {
                 <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
               </Button>
             </Link>
-            <AIAssistant />
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
