@@ -26,24 +26,26 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   
-  const adminRoleRef = useMemoFirebase(() => (db && user) ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
+  const isRealUser = !!(user && !user.isAnonymous);
+
+  const adminRoleRef = useMemoFirebase(() => (db && isRealUser) ? doc(db, 'roles_admin', user!.uid) : null, [db, isRealUser]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
   const categoriesQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return query(collection(db, 'categories'), where('ownerId', '==', user.uid));
-  }, [db, user]);
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'categories'), where('ownerId', '==', user!.uid));
+  }, [db, isRealUser]);
 
   const itemsQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return query(collection(db, 'menuItems'), where('ownerId', '==', user.uid));
-  }, [db, user]);
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'menuItems'), where('ownerId', '==', user!.uid));
+  }, [db, isRealUser]);
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return query(collection(db, 'orders'), where('ownerId', '==', user.uid), orderBy('orderDateTime', 'desc'));
-  }, [db, user]);
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'orders'), where('ownerId', '==', user!.uid), orderBy('orderDateTime', 'desc'));
+  }, [db, isRealUser]);
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
@@ -52,7 +54,7 @@ export default function AdminPage() {
   const [editingItem, setEditingItem] = useState<any>(null);
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    if (!isUserLoading && (!user || user.isAnonymous)) {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
