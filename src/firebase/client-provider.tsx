@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, type ReactNode } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import { FirebaseProvider } from '@/firebase/provider';
 import { initializeFirebase } from '@/firebase';
 
@@ -9,16 +9,28 @@ interface FirebaseClientProviderProps {
 }
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
-  const firebaseServices = useMemo(() => {
-    // Initialize Firebase on the client side, once per component mount.
-    return initializeFirebase();
-  }, []); // Empty dependency array ensures this runs only once on mount
+  const [services, setServices] = useState<any>(null);
+
+  useEffect(() => {
+    // Inicializa o Firebase apenas no cliente após a montagem do componente
+    setServices(initializeFirebase());
+  }, []);
+
+  // Enquanto os serviços não estão prontos, renderizamos apenas o layout básico
+  // para evitar erros de "useContext" nos componentes filhos.
+  if (!services) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF7]">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <FirebaseProvider
-      firebaseApp={firebaseServices.firebaseApp}
-      auth={firebaseServices.auth}
-      firestore={firebaseServices.firestore}
+      firebaseApp={services.firebaseApp}
+      auth={services.auth}
+      firestore={services.firestore}
     >
       {children}
     </FirebaseProvider>
