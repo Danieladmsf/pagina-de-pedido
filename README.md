@@ -7,6 +7,7 @@ Este é um sistema de cardápio digital completo com painel administrativo, supo
 ## 🌐 Links do Projeto (Vercel)
 - **Cardápio Público:** [https://pagina-de-pedido.vercel.app/](https://pagina-de-pedido.vercel.app/)
 - **Painel Administrativo:** [https://pagina-de-pedido.vercel.app/admin](https://pagina-de-pedido.vercel.app/admin)
+- **Cadastro de Novo Lojista:** [https://pagina-de-pedido.vercel.app/register](https://pagina-de-pedido.vercel.app/register)
 
 ## 🚀 Como enviar atualizações para o GitHub
 Sempre que você fizer uma alteração e quiser que ela apareça no site do Vercel, rode estes comandos no seu terminal:
@@ -23,7 +24,7 @@ git push origin main
 
 ## 🏢 Sistema Multi-Lojista
 1. **Cadastro:** O lojista se cadastra em `/register`.
-2. **Link da Loja:** O link que ele divulga para os clientes é `https://pagina-de-pedido.vercel.app/?s=ID_DA_LOJA`.
+2. **Link da Loja:** O link que ele divulga para os clientes é `https://pagina-de-pedido.vercel.app/?s=ID_DA_LOJA` (o ID é gerado automaticamente após o cadastro).
 3. **Isolamento:** Cada lojista gerencia apenas seus produtos e vê apenas seus pedidos.
 
 ## 📂 Estrutura do Banco
