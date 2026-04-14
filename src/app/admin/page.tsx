@@ -105,19 +105,20 @@ export default function AdminPage() {
     if (!user || !db) return;
 
     const formData = new FormData(e.currentTarget);
-    const imageUrl = await uploadImage();
-    const itemData = {
-      name: formData.get('name') as string,
-      description: formData.get('description') as string,
-      price: parseFloat(formData.get('price') as string),
-      categoryId: formData.get('categoryId') as string,
-      imageUrl,
-      ownerId: user.uid,
-      isAvailable: true,
-      isRecommended: false,
-    };
 
     try {
+      const imageUrl = await uploadImage();
+      const itemData = {
+        name: formData.get('name') as string,
+        description: formData.get('description') as string,
+        price: parseFloat(formData.get('price') as string),
+        categoryId: formData.get('categoryId') as string,
+        imageUrl,
+        ownerId: user.uid,
+        isAvailable: true,
+        isRecommended: false,
+      };
+
       if (editingItem?.id) {
         await updateDoc(doc(db, 'menuItems', editingItem.id), itemData);
       } else {
@@ -125,9 +126,12 @@ export default function AdminPage() {
         await setDoc(newDoc, { ...itemData, id: newDoc.id });
       }
       setEditingItem(null);
+      setImageFile(null);
+      setImagePreview('');
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
-    } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Erro de permissão no Firestore." });
+    } catch (err: any) {
+      console.error('Erro ao salvar produto:', err);
+      toast({ variant: "destructive", title: "Erro ao salvar", description: err?.message || "Verifique sua conexão e tente novamente." });
     }
   };
 
@@ -265,7 +269,7 @@ export default function AdminPage() {
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
                 <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); } }}>
                   <DialogTrigger asChild>
-                    <Button onClick={() => setEditingItem({})} className="bg-primary text-white">
+                    <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); }} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Prato
                     </Button>
                   </DialogTrigger>
