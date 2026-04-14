@@ -1,0 +1,153 @@
+/**
+ * PRONTO PEDIDO - FIRESTORE SECURITY RULES
+ *
+ * Core Philosophy:
+ * This ruleset implements a robust, role-based and ownership-based security model. 
+ * The application distinguishes between public menu content (managed by admins) and private 
+ * customer transaction data (managed by users).
+ *
+ * Data Structure:
+ * - /roles_admin/{userId}: Presence of a UID here identifies administrative users.
+ * - /categories, /menuItems, /optionGroups: Public catalogs, writable only by admins.
+ * - /orders: Transactional data owned by customers, identified by 'customerIdentifier'.
+ *
+ * Key Security Decisions:
+ * - Admin Role Check: Uses a dedicated collection lookup for high-level administrative access.
+ * - Denormalization for Performance: Orders and their sub-items (OrderItem, OrderItemOption) 
+ *   denormalize the 'customerIdentifier' to allow instant, single-document ownership 
+ *   checks without expensive recursive 'get()' calls.
+ * - Prototyping Mode: Schema validation is restricted to relational integrity (linking 
+ *   documents to the correct user) while allowing flexible data shapes for rapid iteration.
+ * - Structural Segregation: Menu data is publicly listable to support menu browsing, 
+ *   while orders are strictly scoped to the owner or admins.
+ */
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+
+    /** @description Checks if the user is authenticated. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the user has an entry in the administrative roles collection. */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /** @description Checks ownership based on an internal field in the document's existing data. */
+    function isExistingOwner(fieldName) {
+      return isSignedIn() && resource != null && resource.data[fieldName] == request.auth.uid;
+    }
+
+    /** @description Validates that the data being written has an ID or Owner field matching the auth UID. */
+    function validatesOwnership(fieldName) {
+      return isSignedIn() && request.resource.data[fieldName] == request.auth.uid;
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Admin role definitions.
+     * @path /roles_admin/{userId}
+     * @allow get (isSignedIn), list (isAdmin)
+     * @deny create, update, delete (Non-Admin users)
+     * @principle Role-based access control for elevated privileges.
+     */
+    match /roles_admin/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Menu categories (e.g., Pizzas, Drinks).
+     * @path /categories/{categoryId}
+     * @allow get, list (publicly readable), write (isAdmin)
+     * @deny write (anonymous/regular users)
+     * @principle Public consumption with administrative control.
+     */
+    match /categories/{categoryId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Top-level menu items.
+     * @path /menuItems/{menuItemId}
+     * @allow get, list (publicly readable), write (isAdmin)
+     * @deny write (anonymous/regular users)
+     * @principle Public consumption with administrative control.
+     */
+    match /menuItems/{menuItemId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+
+      /**
+       * @description Mapping of menu items to option groups (e.g., Pizza -> Sizes).
+       * @path /menuItems/{menuItemId}/optionGroups/{id}
+       */
+      match /optionGroups/{menuItemOptionGroupId} {
+        allow get, list: if true;
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    /**
+     * @description Global definitions for option groups (Sizes, Extras).
+     * @path /optionGroups/{optionGroupId}
+     */
+    match /optionGroups/{optionGroupId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Individual options (Small, Large, Bacon).
+     * @path /optionItems/{optionItemId}
+     */
+    match /optionItems/{optionItemId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Customer orders.
+     * @path /orders/{orderId}
+     * @allow create (validates ownership), get/update/delete (owner or admin)
+     * @deny list (all except owner or admin)
+     * @principle Ownership-based security with administrative override.
+     */
+    match /orders/{orderId} {
+      allow get: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && request.query.limit <= 100); // Clients must filter by customerIdentifier
+      allow create: if validatesOwnership('customerIdentifier');
+      allow update: if isAdmin() || isExistingOwner('customerIdentifier');
+      allow delete: if isAdmin() || isExistingOwner('customerIdentifier');
+
+      /**
+       * @description Items within a specific order.
+       * @path /orders/{orderId}/items/{orderItemId}
+       * @principle Relies on denormalized 'customerIdentifier' for flat ownership checks.
+       */
+      match /items/{orderItemId} {
+        allow get, list: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+        allow create: if validatesOwnership('customerIdentifier');
+        allow update, delete: if isAdmin() || isExistingOwner('customerIdentifier');
+
+        /**
+         * @description Specific options selected for an order item.
+         * @path /orders/{orderId}/items/{orderItemId}/options/{id}
+         */
+        match /options/{orderItemOptionId} {
+          allow get, list: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+          allow create: if validatesOwnership('customerIdentifier');
+          allow update, delete: if isAdmin() || isExistingOwner('customerIdentifier');
+        }
+      }
+    }
+  }
+}

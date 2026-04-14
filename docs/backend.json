@@ -1,0 +1,508 @@
+{
+  "entities": {
+    "Category": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Category",
+      "type": "object",
+      "description": "Represents a category for organizing menu items, allowing for logical grouping and easier navigation.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Category entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the category (e.g., 'Pizzas', 'Bebidas')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the category."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL of an image representing the category.",
+          "format": "uri"
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "The order in which the category should be displayed in the menu."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "displayOrder"
+      ]
+    },
+    "MenuItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MenuItem",
+      "type": "object",
+      "description": "Represents a single item available on the digital menu, such as a dish, drink, or dessert.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the MenuItem entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the menu item."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the menu item, including ingredients and characteristics."
+        },
+        "price": {
+          "type": "number",
+          "description": "The base price of the menu item."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL of an image showcasing the menu item.",
+          "format": "uri"
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the Category this menu item belongs to. (Relationship: Category 1:N MenuItem)"
+        },
+        "isAvailable": {
+          "type": "boolean",
+          "description": "Indicates if the menu item is currently available for ordering."
+        },
+        "isRecommended": {
+          "type": "boolean",
+          "description": "Flag indicating if the item is recommended, potentially for AI suggestions or staff picks."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "price",
+        "categoryId",
+        "isAvailable",
+        "isRecommended"
+      ]
+    },
+    "OptionGroup": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OptionGroup",
+      "type": "object",
+      "description": "Defines a group of customizable options for menu items (e.g., 'Sizes', 'Add-ons').",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OptionGroup entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the option group (e.g., 'Choose your size', 'Select extra toppings')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief explanation of what this option group offers."
+        },
+        "selectionType": {
+          "type": "string",
+          "description": "Specifies how options in this group can be selected (e.g., 'single' for radio buttons, 'multiple' for checkboxes)."
+        },
+        "isRequired": {
+          "type": "boolean",
+          "description": "Indicates if a selection from this group is mandatory for the menu item."
+        },
+        "minSelections": {
+          "type": "number",
+          "description": "The minimum number of options that must be selected from this group (relevant for 'multiple' selectionType)."
+        },
+        "maxSelections": {
+          "type": "number",
+          "description": "The maximum number of options that can be selected from this group (relevant for 'multiple' selectionType)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "selectionType",
+        "isRequired"
+      ]
+    },
+    "OptionItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OptionItem",
+      "type": "object",
+      "description": "Represents a single choice within an OptionGroup (e.g., 'Small', 'Extra Cheese', 'Coke').",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OptionItem entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the option item (e.g., 'Pequeno', 'Bacon extra')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the option item, if necessary."
+        },
+        "priceAdjustment": {
+          "type": "number",
+          "description": "The monetary adjustment (can be positive or negative) applied to the base item price when this option is selected."
+        },
+        "optionGroupId": {
+          "type": "string",
+          "description": "Reference to the OptionGroup this option item belongs to. (Relationship: OptionGroup 1:N OptionItem)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "priceAdjustment",
+        "optionGroupId"
+      ]
+    },
+    "MenuItemOptionGroup": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MenuItemOptionGroup",
+      "type": "object",
+      "description": "A join entity to link MenuItems with OptionGroups, defining which option groups are available for a specific menu item and their display order.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the MenuItemOptionGroup entity."
+        },
+        "menuItemId": {
+          "type": "string",
+          "description": "Reference to the MenuItem. (Relationship: MenuItem N:N OptionGroup via MenuItemOptionGroup)"
+        },
+        "optionGroupId": {
+          "type": "string",
+          "description": "Reference to the OptionGroup. (Relationship: MenuItem N:N OptionGroup via MenuItemOptionGroup)"
+        },
+        "displayOrder": {
+          "type": "number",
+          "description": "The order in which this option group should be displayed for the specific menu item."
+        }
+      },
+      "required": [
+        "id",
+        "menuItemId",
+        "optionGroupId",
+        "displayOrder"
+      ]
+    },
+    "Order": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Order",
+      "type": "object",
+      "description": "Represents a customer's submitted order, containing overall details about the transaction.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Order entity."
+        },
+        "customerIdentifier": {
+          "type": "string",
+          "description": "An identifier for the customer who placed the order, from an external authentication or session system."
+        },
+        "orderDateTime": {
+          "type": "string",
+          "description": "The date and time when the order was placed.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the order (e.g., 'pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled')."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "The total monetary amount of the order, including all items and options."
+        },
+        "specialInstructions": {
+          "type": "string",
+          "description": "General notes or special instructions for the entire order."
+        },
+        "customerName": {
+          "type": "string",
+          "description": "The name of the customer who placed the order."
+        },
+        "customerEmail": {
+          "type": "string",
+          "description": "The email address of the customer for notifications.",
+          "format": "email"
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "The phone number of the customer for contact regarding the order."
+        },
+        "deliveryAddress": {
+          "type": "string",
+          "description": "The full delivery address for the order, if applicable."
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "The status of the payment for the order (e.g., 'pending', 'paid', 'failed')."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method used for payment (e.g., 'credit_card', 'cash_on_delivery', 'pix')."
+        },
+        "orderType": {
+          "type": "string",
+          "description": "The type of order (e.g., 'delivery', 'pickup', 'dine_in')."
+        }
+      },
+      "required": [
+        "id",
+        "customerIdentifier",
+        "orderDateTime",
+        "status",
+        "totalAmount",
+        "customerName",
+        "paymentStatus",
+        "orderType"
+      ]
+    },
+    "OrderItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OrderItem",
+      "type": "object",
+      "description": "Represents a single item included in a customer's order, linking to a specific menu item.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OrderItem entity."
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Reference to the Order this item belongs to. (Relationship: Order 1:N OrderItem)"
+        },
+        "menuItemId": {
+          "type": "string",
+          "description": "Reference to the MenuItem that was ordered. (Relationship: MenuItem 1:N OrderItem)"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of this specific menu item ordered."
+        },
+        "unitPrice": {
+          "type": "number",
+          "description": "The price of a single unit of this item at the time of order, including any selected option adjustments."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Specific notes or special requests for this individual menu item."
+        }
+      },
+      "required": [
+        "id",
+        "orderId",
+        "menuItemId",
+        "quantity",
+        "unitPrice"
+      ]
+    },
+    "OrderItemOption": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OrderItemOption",
+      "type": "object",
+      "description": "Captures a specific option selected for an OrderItem, preserving its state at the time of order.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OrderItemOption entity."
+        },
+        "orderItemId": {
+          "type": "string",
+          "description": "Reference to the OrderItem this option belongs to. (Relationship: OrderItem 1:N OrderItemOption)"
+        },
+        "optionItemId": {
+          "type": "string",
+          "description": "Reference to the OptionItem that was selected. (Relationship: OptionItem 1:N OrderItemOption)"
+        },
+        "priceAdjustment": {
+          "type": "number",
+          "description": "The price adjustment of this specific option at the time the order was placed."
+        }
+      },
+      "required": [
+        "id",
+        "orderItemId",
+        "optionItemId",
+        "priceAdjustment"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "adminRole",
+          "schema": {
+            "$ref": "#/backend/entities/AdminRole"
+          },
+          "description": "Collection storing documents representing administrative roles. The existence of a document at `/roles_admin/{uid}` grants admin privileges to that user. Used for DBAC (Database Access Control).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID (UID) of the user granted administrative privileges."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/categories/{categoryId}",
+        "definition": {
+          "entityName": "Category",
+          "schema": {
+            "$ref": "#/backend/entities/Category"
+          },
+          "description": "Top-level collection for organizing menu item categories. Documents in this collection are publicly readable and writable only by administrators.",
+          "params": [
+            {
+              "name": "categoryId",
+              "description": "Unique identifier for a menu category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/menuItems/{menuItemId}",
+        "definition": {
+          "entityName": "MenuItem",
+          "schema": {
+            "$ref": "#/backend/entities/MenuItem"
+          },
+          "description": "Top-level collection for all menu items. Documents are publicly readable and writable only by administrators. Contains references to categories and supports 'isAvailable' and 'isRecommended' flags for public display filtering.",
+          "params": [
+            {
+              "name": "menuItemId",
+              "description": "Unique identifier for a specific menu item."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/menuItems/{menuItemId}/optionGroups/{menuItemOptionGroupId}",
+        "definition": {
+          "entityName": "MenuItemOptionGroup",
+          "schema": {
+            "$ref": "#/backend/entities/MenuItemOptionGroup"
+          },
+          "description": "Subcollection linking a specific MenuItem to its available OptionGroups, specifying their display order. Documents in this collection are publicly readable and writable only by administrators. The 'menuItemId' is implied by the path, and 'optionGroupId' is a field within the document.",
+          "params": [
+            {
+              "name": "menuItemId",
+              "description": "The unique ID of the parent menu item."
+            },
+            {
+              "name": "menuItemOptionGroupId",
+              "description": "Unique identifier for the join entity linking a menu item to an option group."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/optionGroups/{optionGroupId}",
+        "definition": {
+          "entityName": "OptionGroup",
+          "schema": {
+            "$ref": "#/backend/entities/OptionGroup"
+          },
+          "description": "Top-level collection for defining groups of customizable options (e.g., sizes, add-ons). Documents are publicly readable and writable only by administrators.",
+          "params": [
+            {
+              "name": "optionGroupId",
+              "description": "Unique identifier for an option group."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/optionItems/{optionItemId}",
+        "definition": {
+          "entityName": "OptionItem",
+          "schema": {
+            "$ref": "#/backend/entities/OptionItem"
+          },
+          "description": "Top-level collection for individual choices within an OptionGroup. Documents are publicly readable and writable only by administrators.",
+          "params": [
+            {
+              "name": "optionItemId",
+              "description": "Unique identifier for an individual option item."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/orders/{orderId}",
+        "definition": {
+          "entityName": "Order",
+          "schema": {
+            "$ref": "#/backend/entities/Order"
+          },
+          "description": "Top-level collection for all customer orders. Documents are readable/writable by the customer who placed the order (identified by 'customerIdentifier' matching 'request.auth.uid') and readable/updatable by administrators.",
+          "params": [
+            {
+              "name": "orderId",
+              "description": "Unique identifier for a customer order."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/orders/{orderId}/items/{orderItemId}",
+        "definition": {
+          "entityName": "OrderItem",
+          "schema": {
+            "$ref": "#/backend/entities/OrderItem"
+          },
+          "description": "Subcollection of individual items within a specific order. Documents include denormalized 'orderId' and 'customerIdentifier' from the parent Order for authorization independence, allowing direct ownership checks without `get()` calls. Readable/writable by the order owner and readable/updatable by administrators.",
+          "params": [
+            {
+              "name": "orderId",
+              "description": "The unique ID of the parent order."
+            },
+            {
+              "name": "orderItemId",
+              "description": "Unique identifier for an item within an order."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/orders/{orderId}/items/{orderItemId}/options/{orderItemOptionId}",
+        "definition": {
+          "entityName": "OrderItemOption",
+          "schema": {
+            "$ref": "#/backend/entities/OrderItemOption"
+          },
+          "description": "Subcollection of selected options for a specific OrderItem. Documents include denormalized 'orderId', 'orderItemId', and 'customerIdentifier' from parent Order/OrderItem for authorization independence, enabling direct ownership checks. Readable/writable by the order owner and readable/updatable by administrators.",
+          "params": [
+            {
+              "name": "orderId",
+              "description": "The unique ID of the grandparent order."
+            },
+            {
+              "name": "orderItemId",
+              "description": "The unique ID of the parent order item."
+            },
+            {
+              "name": "orderItemOptionId",
+              "description": "Unique identifier for an option selected for an order item."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure for Pronto Pedido is designed to achieve robust security, scalability, and debuggability by adhering to the core design principles and strategy mandates. The structure clearly segregates data based on its security posture (publicly readable menu vs. customer-owned orders vs. admin roles) and prioritizes authorization independence through strategic denormalization.\n\n**Authorization Independence (CRITICAL):**\n1.  **Menu Data (Categories, MenuItems, OptionGroups, OptionItems, MenuItemOptionGroups):** These collections are designed for public read access and admin-only write access. No hierarchical authorization dependencies exist between these entities; all are globally readable. Thus, no denormalization within these entities is needed for authorization rules. Admin access is determined by checking for the existence of the user's UID in the `/roles_admin` collection, avoiding any `get()` operations on parent documents.\n2.  **Order Data (Orders, OrderItems, OrderItemOptions):** This is where denormalization is crucial. To ensure atomic operations and eliminate `get()` calls in security rules:\n    *   **`/orders/{orderId}`:** Each `Order` document explicitly stores the `customerIdentifier` (which corresponds to `request.auth.uid`). Rules can directly compare `request.auth.uid` with `resource.data.customerIdentifier` for ownership checks.\n    *   **`/orders/{orderId}/items/{orderItemId}`:** Each `OrderItem` document will denormalize `customerIdentifier` (and `orderId`) from its parent `Order`. This allows security rules to evaluate `OrderItem` access based on `resource.data.customerIdentifier` without fetching the parent `Order` document.\n    *   **`/orders/{orderId}/items/{orderItemId}/options/{orderItemOptionId}`:** Similarly, each `OrderItemOption` document will denormalize `customerIdentifier` (and `orderId`, `orderItemId`) from its parent `OrderItem` and `Order`. This enables direct ownership checks at the `OrderItemOption` level without any `get()` operations on its ancestors. This denormalization makes security rules simple, robust, and performs well in transactions and batched writes.\n\n**QAPs (Rules are not Filters):**\n1.  **Menu Data:** All menu-related collections (`/categories`, `/menuItems`, `/menuItems/{menuItemId}/optionGroups`, `/optionGroups`, `/optionItems`) are readable by all users. This supports QAPs for public browsing, allowing clients to `list` documents without requiring `where` clauses for authorization. The `isAvailable` flag on `MenuItem` documents acts as a data filter for display logic, not a security constraint.\n2.  **Order Data:**\n    *   **For Customers:** Customers can securely `list` their own orders by querying the `/orders` collection with a `where('customerIdentifier', '==', request.auth.uid)` clause. This is a valid and efficient QAP, as `customerIdentifier` will be indexed.\n    *   **For Administrators:** Administrators can `list` all orders from the top-level `/orders` collection without any authorization-based `where` clauses, providing an efficient way to manage all incoming orders.\n\n**Structural Segregation (Homogeneous Security Posture):**\n*   Menu collections are segregated for public read/admin write access.\n*   Order collections are segregated for owner-based read/write and admin read/update access.\n*   The `/roles_admin` collection explicitly separates admin role assignments.\n\nThis structure ensures clear, maintainable security rules by embedding authorization context directly into documents and segmenting data based on access patterns."
+  }
+}
