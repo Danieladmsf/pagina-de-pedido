@@ -26,22 +26,24 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   
-  const adminRoleRef = useMemoFirebase(() => user ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
+  const adminRoleRef = useMemoFirebase(() => (db && user) ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
-  // Consultas filtradas pelo UID do dono (Multi-tenancy)
-  const categoriesQuery = useMemoFirebase(() => 
-    user ? query(collection(db, 'categories'), where('ownerId', '==', user.uid)) : null, 
-    [db, user]
-  );
-  const itemsQuery = useMemoFirebase(() => 
-    user ? query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)) : null, 
-    [db, user]
-  );
-  const ordersQuery = useMemoFirebase(() => 
-    user ? query(collection(db, 'orders'), where('ownerId', '==', user.uid), orderBy('orderDateTime', 'desc')) : null, 
-    [db, user]
-  );
+  // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
+  const categoriesQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(collection(db, 'categories'), where('ownerId', '==', user.uid));
+  }, [db, user]);
+
+  const itemsQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(collection(db, 'menuItems'), where('ownerId', '==', user.uid));
+  }, [db, user]);
+
+  const ordersQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(collection(db, 'orders'), where('ownerId', '==', user.uid), orderBy('orderDateTime', 'desc'));
+  }, [db, user]);
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
@@ -56,11 +58,13 @@ export default function AdminPage() {
   }, [user, isUserLoading, router]);
 
   const handleLogout = async () => {
+    if (!auth) return;
     await signOut(auth);
     router.push('/login');
   };
 
   const updateOrderStatus = async (orderId: string, status: string) => {
+    if (!db) return;
     try {
       await updateDoc(doc(db, 'orders', orderId), { status });
       toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
@@ -71,7 +75,7 @@ export default function AdminPage() {
 
   const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !db) return;
     
     const formData = new FormData(e.currentTarget);
     const itemData = {
@@ -80,7 +84,7 @@ export default function AdminPage() {
       price: parseFloat(formData.get('price') as string),
       categoryId: formData.get('categoryId') as string,
       imageUrl: formData.get('imageUrl') as string,
-      ownerId: user.uid, // Importante: Vincular ao dono
+      ownerId: user.uid,
       isAvailable: true,
       isRecommended: false,
     };
@@ -99,7 +103,7 @@ export default function AdminPage() {
     }
   };
 
-  if (isUserLoading || loadingRole) {
+  if (isUserLoading || loadingRole || !db) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -112,7 +116,8 @@ export default function AdminPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-4">Você não tem permissão de administrador.</p>
+        <p className="text-muted-foreground mb-1">Você não tem permissão de administrador.</p>
+        <p className="text-xs font-mono bg-muted p-2 rounded mb-4">Seu UID: {user.uid}</p>
         <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
       </div>
     );
@@ -300,6 +305,7 @@ export default function AdminPage() {
                             <Pencil className="h-4 w-4 text-blue-500" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={async () => {
+                            if (!db) return;
                             if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
                           }}>
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -318,8 +324,9 @@ export default function AdminPage() {
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Categorias</CardTitle>
                 <Button onClick={async () => {
+                  if (!db || !user) return;
                   const name = prompt("Nome da Categoria:");
-                  if (name && user) {
+                  if (name) {
                     const newDoc = doc(collection(db, 'categories'));
                     await setDoc(newDoc, { id: newDoc.id, name, ownerId: user.uid, displayOrder: 0, description: "" });
                   }
@@ -341,6 +348,7 @@ export default function AdminPage() {
                         <TableCell className="font-bold pl-6">{cat.name}</TableCell>
                         <TableCell className="text-right pr-6">
                           <Button variant="ghost" size="icon" onClick={async () => {
+                            if (!db) return;
                             if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
                           }}>
                             <Trash2 className="h-4 w-4 text-destructive" />

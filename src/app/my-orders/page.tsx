@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -15,18 +16,18 @@ export default function MyOrdersPage() {
   const db = useFirestore();
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!db || !user) return null;
     return query(
       collection(db, 'orders'),
       where('customerIdentifier', '==', user.uid),
-      orderBy('createdAt', 'desc'),
+      orderBy('orderDateTime', 'desc'),
       limit(20)
     );
   }, [db, user]);
 
   const { data: orders, isLoading: loadingOrders } = useCollection(ordersQuery);
 
-  if (isUserLoading || loadingOrders) {
+  if (isUserLoading || loadingOrders || !db) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
