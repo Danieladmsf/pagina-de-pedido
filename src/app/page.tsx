@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 
@@ -158,9 +158,16 @@ export default function Home() {
           </div>
         )}
 
-        <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm">
-          <p className="font-bold">© 2024 Lima Limão • Sucos & Vitaminas</p>
-          <p>O verdadeiro sabor da fruta!</p>
+        <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm space-y-4">
+          <div>
+            <p className="font-bold">© 2024 Lima Limão • Sucos & Vitaminas</p>
+            <p>O verdadeiro sabor da fruta!</p>
+          </div>
+          <div className="pt-4">
+            <Link href="/admin" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100 transition-opacity">
+              <Lock className="h-3 w-3" /> Área Restrita
+            </Link>
+          </div>
         </footer>
 
         <MenuItemDialog 
