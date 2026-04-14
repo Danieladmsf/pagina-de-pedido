@@ -26,15 +26,22 @@ export function MenuPageClient() {
 
   const storeId = searchParams.get('s');
 
-  const storeRef = useMemoFirebase(() => storeId ? doc(db, 'roles_admin', storeId) : null, [db, storeId]);
+  // Proteção: Só tenta criar a referência se o 'db' for válido
+  const storeRef = useMemoFirebase(() => {
+    if (!db || !storeId) return null;
+    return doc(db, 'roles_admin', storeId);
+  }, [db, storeId]);
+  
   const { data: storeInfo } = useDoc(storeRef);
 
   const categoriesQuery = useMemoFirebase(() => {
+    if (!db) return null;
     if (storeId) return query(collection(db, 'categories'), where('ownerId', '==', storeId));
     return collection(db, 'categories');
   }, [db, storeId]);
 
   const itemsQuery = useMemoFirebase(() => {
+    if (!db) return null;
     if (storeId) return query(collection(db, 'menuItems'), where('ownerId', '==', storeId));
     return collection(db, 'menuItems');
   }, [db, storeId]);
@@ -52,7 +59,7 @@ export function MenuPageClient() {
     });
   }, [activeCategoryId, searchQuery, items]);
 
-  if (loadingCats || loadingItems) {
+  if (!db || loadingCats || loadingItems) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <div className="text-center space-y-4">
