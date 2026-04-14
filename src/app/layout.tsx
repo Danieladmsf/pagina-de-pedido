@@ -1,6 +1,7 @@
 
 import type {Metadata} from 'next';
 import './globals.css';
+import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
   title: 'Pronto Pedido - Cardápio Digital',
@@ -19,7 +20,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body className="font-body antialiased bg-[#FAFAF7]">{children}</body>
+      <body className="font-body antialiased bg-[#FAFAF7]">
+        <FirebaseClientProvider>
+          {children}
+        </FirebaseClientProvider>
+      </body>
     </html>
   );
 }

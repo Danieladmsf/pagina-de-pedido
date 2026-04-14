@@ -1,9 +1,9 @@
 
 "use client"
 
-import React, { useState, useMemo } from 'react';
-import { CATEGORIES, MENU_ITEMS } from '@/lib/data';
-import { Category, MenuItem } from '@/lib/types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { AIAssistant } from '@/components/ai/AIAssistant';
@@ -13,22 +13,42 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, ChevronRight } from 'lucide-react';
+import { Plus, Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export default function Home() {
-  const [activeCategory, setActiveCategory] = useState<Category>('Todos');
+  const db = useFirestore();
+  const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+
+  // Consultas ao Firestore
+  const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
+  const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
+  
+  const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
+  const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
 
   const filteredItems = useMemo(() => {
-    return MENU_ITEMS.filter(item => {
-      const matchesCategory = activeCategory === 'Todos' || item.category === activeCategory;
+    if (!items) return [];
+    return items.filter(item => {
+      const matchesCategory = activeCategoryId === 'all' || item.categoryId === activeCategoryId;
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategoryId, searchQuery, items]);
+
+  if (loadingCats || loadingItems) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground font-medium">Carregando cardápio delicioso...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <CartProvider>
@@ -43,6 +63,7 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <AIAssistant />
               <CartDrawer />
+              <Button variant="ghost" className="text-xs text-muted-foreground" onClick={() => window.location.href = '/admin'}>Admin</Button>
             </div>
           </div>
 
@@ -60,18 +81,29 @@ export default function Home() {
 
         {/* Categories Horizontal Scroll */}
         <div className="flex gap-2 overflow-x-auto pb-6 hide-scrollbar">
-          {CATEGORIES.map((cat) => (
+          <Button
+            variant={activeCategoryId === 'all' ? 'default' : 'outline'}
+            className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-semibold transition-all shadow-sm ${
+              activeCategoryId === 'all' 
+              ? 'bg-primary text-primary-foreground' 
+              : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+            }`}
+            onClick={() => setActiveCategoryId('all')}
+          >
+            Todos
+          </Button>
+          {categories?.map((cat) => (
             <Button
-              key={cat}
-              variant={activeCategory === cat ? 'default' : 'outline'}
+              key={cat.id}
+              variant={activeCategoryId === cat.id ? 'default' : 'outline'}
               className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-semibold transition-all shadow-sm ${
-                activeCategory === cat 
+                activeCategoryId === cat.id 
                 ? 'bg-primary text-primary-foreground' 
                 : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
               }`}
-              onClick={() => setActiveCategory(cat)}
+              onClick={() => setActiveCategoryId(cat.id)}
             >
-              {cat}
+              {cat.name}
             </Button>
           ))}
         </div>
@@ -90,7 +122,6 @@ export default function Home() {
                   alt={item.name} 
                   fill 
                   className="object-cover group-hover:scale-105 transition-transform duration-500"
-                  data-ai-hint={item.imageHint}
                 />
                 <Badge className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-primary font-bold border-none shadow-sm">
                   R$ {item.price.toFixed(2)}
@@ -106,7 +137,9 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="flex items-center justify-between pt-2">
-                  <span className="text-xs font-medium text-primary/60 uppercase tracking-wider">{item.category}</span>
+                  <span className="text-xs font-medium text-primary/60 uppercase tracking-wider">
+                    {categories?.find(c => c.id === item.categoryId)?.name}
+                  </span>
                   <Button size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground h-9 w-9 p-0 rounded-lg shadow-sm">
                     <Plus className="h-5 w-5" />
                   </Button>
@@ -119,18 +152,16 @@ export default function Home() {
         {filteredItems.length === 0 && (
           <div className="py-20 text-center space-y-4">
             <p className="text-xl text-muted-foreground">Nenhum prato encontrado com esses critérios.</p>
-            <Button variant="link" onClick={() => {setSearchQuery(''); setActiveCategory('Todos')}} className="text-primary font-bold">
+            <Button variant="link" onClick={() => {setSearchQuery(''); setActiveCategoryId('all')}} className="text-primary font-bold">
               Limpar filtros
             </Button>
           </div>
         )}
 
-        {/* Footer/Mobile Nav Placeholder (Experience only) */}
         <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm">
           <p>&copy; 2024 Pronto Pedido • Sabores que chegam até você</p>
         </footer>
 
-        {/* Item Selection Dialog */}
         <MenuItemDialog 
           item={selectedItem} 
           isOpen={!!selectedItem} 
