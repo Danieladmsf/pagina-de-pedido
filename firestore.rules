@@ -18,6 +18,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      // Verifica se existe um documento na coleção roles_admin com o UID do usuário logado
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
@@ -55,23 +56,23 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      // Allow get if admin or the owner
-      allow get: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+      // Admins can see all orders. Owners can only see their own.
+      allow get: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
       
-      // Allow list if admin (all) OR if filtered by customerIdentifier (owner)
+      // Admins can list all orders. Owners must filter by their customerIdentifier.
       allow list: if isAdmin() || (isSignedIn() && request.query.filters.customerIdentifier == request.auth.uid);
       
       allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
       allow update: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
+      allow delete: if isAdmin();
 
       match /items/{orderItemId} {
-        allow get, list: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+        allow get, list: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
         allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
         allow update, delete: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
 
         match /options/{orderItemOptionId} {
-          allow get, list: if isAdmin() || (resource != null && resource.data.customerIdentifier == request.auth.uid);
+          allow get, list: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
           allow create: if isSignedIn() && request.resource.data.customerIdentifier == request.auth.uid;
           allow update, delete: if isAdmin() || (isSignedIn() && resource.data.customerIdentifier == request.auth.uid);
         }

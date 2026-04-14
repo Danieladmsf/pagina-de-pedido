@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -26,10 +25,11 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   
+  // Referência para o documento de role do admin
   const adminRoleRef = useMemoFirebase(() => user ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
-  // Só tentamos buscar os dados se o adminRole já foi carregado e existe
+  // Consultas ao Firestore - só ativadas se o adminRole for carregado e existir
   const categoriesQuery = useMemoFirebase(() => adminRole ? collection(db, 'categories') : null, [db, adminRole]);
   const itemsQuery = useMemoFirebase(() => adminRole ? collection(db, 'menuItems') : null, [db, adminRole]);
   const ordersQuery = useMemoFirebase(() => adminRole ? query(collection(db, 'orders'), orderBy('createdAt', 'desc')) : null, [db, adminRole]);
@@ -52,8 +52,12 @@ export default function AdminPage() {
   };
 
   const updateOrderStatus = async (orderId: string, status: string) => {
-    await updateDoc(doc(db, 'orders', orderId), { status });
-    toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { status });
+      toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Verifique suas permissões." });
+    }
   };
 
   const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -79,7 +83,7 @@ export default function AdminPage() {
       setEditingItem(null);
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Ocorreu um erro." });
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Verifique suas permissões no Firestore." });
     }
   };
 
@@ -91,18 +95,25 @@ export default function AdminPage() {
     );
   }
 
-  if (!user || !adminRole) {
+  // Se o usuário está logado mas não foi encontrado na coleção roles_admin
+  if (user && !adminRole && !loadingRole) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-2">Você não tem permissões administrativas.</p>
-        <p className="text-xs text-muted-foreground bg-white p-2 rounded border mb-6 font-mono">
-          Seu UID: {user?.uid}
+        <p className="text-muted-foreground mb-4">Seu UID não foi autorizado como Administrador.</p>
+        <div className="bg-white p-6 rounded-2xl border shadow-sm mb-6 max-w-md w-full">
+          <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Seu UID para copiar:</p>
+          <code className="block bg-muted p-3 rounded font-mono text-sm break-all select-all">
+            {user.uid}
+          </code>
+        </div>
+        <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+          Certifique-se de que o UID acima está exatamente igual ao ID do documento na coleção <span className="font-bold">roles_admin</span> no seu Console Firebase.
         </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => router.push('/')}>Voltar ao Cardápio</Button>
-          <Button onClick={() => router.push('/login')}>Trocar de Conta</Button>
+          <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
         </div>
       </div>
     );
@@ -118,7 +129,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Painel Administrativo</h1>
-              <p className="text-sm text-muted-foreground">{user.email}</p>
+              <p className="text-sm text-muted-foreground">{user?.email || 'Administrador'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -162,14 +173,14 @@ export default function AdminPage() {
                   <TableBody>
                     {loadingOrders ? (
                        <TableRow><TableCell colSpan={6} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                    ) : orders?.length === 0 ? (
+                    ) : !orders || orders.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                           Nenhum pedido recebido ainda.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      orders?.map((order) => (
+                      orders.map((order) => (
                         <TableRow key={order.id} className="align-top">
                           <TableCell className="pl-6">
                             <div className="font-bold">#{order.id}</div>
@@ -217,13 +228,14 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
+          {/* Conteúdo de Produtos e Categorias mantido similar */}
           <TabsContent value="products" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
                 <Dialog open={editingItem !== null} onOpenChange={(open) => !open && setEditingItem(null)}>
                   <DialogTrigger asChild>
-                    <Button onClick={() => setEditingItem({})} className="bg-primary rounded-lg">
+                    <Button onClick={() => setEditingItem({})} className="bg-primary rounded-lg text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Prato
                     </Button>
                   </DialogTrigger>
@@ -260,7 +272,7 @@ export default function AdminPage() {
                         <Textarea id="description" name="description" defaultValue={editingItem?.description} required />
                       </div>
                       <DialogFooter>
-                        <Button type="submit" className="w-full h-12 font-bold">Salvar Alterações</Button>
+                        <Button type="submit" className="w-full h-12 font-bold bg-primary text-white">Salvar Alterações</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
@@ -314,7 +326,7 @@ export default function AdminPage() {
                     const newDoc = doc(collection(db, 'categories'));
                     await setDoc(newDoc, { id: newDoc.id, name, displayOrder: 0, description: "" });
                   }
-                }}>
+                }} className="bg-primary text-white">
                   <Plus className="mr-2 h-4 w-4" /> Nova Categoria
                 </Button>
               </CardHeader>
