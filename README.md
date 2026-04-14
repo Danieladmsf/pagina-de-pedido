@@ -1,21 +1,35 @@
+
 # Pronto Pedido - Cardápio Digital (Multi-Lojista)
 
 Este é um sistema de cardápio digital completo com painel administrativo, suporte a múltiplas lojas (multi-tenancy) e pedidos em tempo real.
 
-## 🚀 Como enviar para o GitHub
+## 🚀 Como enviar para o GitHub (Passo a Passo)
 
-Se você baixou este código e deseja versioná-lo no GitHub:
+Siga estes passos no seu terminal dentro da pasta do projeto:
 
-1. **Crie um repositório vazio** no seu [GitHub](https://github.com/new).
-2. **Abra o terminal** na pasta do projeto e execute:
-   ```bash
-   git init
-   git add .
-   git commit -m "Primeiro commit: Sistema Multi-loja Pronto Pedido"
-   git branch -M main
-   git remote add origin https://github.com/SEU_USUARIO/NOME_DO_REPOSITORIO.git
-   git push -u origin main
-   ```
+1. **Crie um repositório vazio** no seu [GitHub](https://github.com/new). Não adicione README ou licença lá (deixe-o vazio).
+2. **Copie o link do repositório** (ex: `https://github.com/SEU_USUARIO/NOME_DO_REPOSITORIO.git`).
+3. **Abra o terminal** na pasta deste projeto e cole estes comandos:
+
+```bash
+# Inicializa o git localmente
+git init
+
+# Adiciona todos os arquivos (o .gitignore vai filtrar o lixo)
+git add .
+
+# Cria o primeiro registro das suas mudanças
+git commit -m "Primeiro commit: Sistema Multi-loja Pronto Pedido"
+
+# Define o nome da sua branch principal
+git branch -M main
+
+# CONECTA AO SEU LINK (Substitua o link abaixo pelo SEU link do GitHub)
+git remote add origin https://github.com/SEU_USUARIO/NOME_DO_REPOSITORIO.git
+
+# ENVIA OS ARQUIVOS
+git push -u origin main
+```
 
 ## 🛠️ Configurações do Firebase
 - **Project ID:** studio-2243391254-75492
@@ -34,9 +48,9 @@ Agora o sistema permite que você tenha vários clientes (donos de lojas) usando
 - `/roles_admin/{userId}`: Define quem é administrador e o nome da loja.
 - `/categories`: Categorias filtradas por `ownerId`.
 - `/menuItems`: Produtos filtrados por `ownerId`.
-- `/orders`: Pedidos filtrados por `ownerId` (para o admin) e `customerIdentifier` (para o cliente).
+- `/orders`: Pedidos filtrados por `ownerId`.
 
-## 🔐 Segurança (Importante)
+## 🔐 Segurança
 As regras do Firestore já estão configuradas para que:
 - Lojistas só vejam seus próprios dados.
 - Clientes só vejam seus próprios pedidos.
