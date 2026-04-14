@@ -1,14 +1,14 @@
-
 'use client';
 
 import React from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ShoppingBag, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, Clock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 export default function MyOrdersPage() {
   const { user, isUserLoading } = useUser();
@@ -19,7 +19,8 @@ export default function MyOrdersPage() {
     return query(
       collection(db, 'orders'),
       where('customerIdentifier', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      limit(20)
     );
   }, [db, user]);
 
@@ -45,7 +46,11 @@ export default function MyOrdersPage() {
           <h1 className="text-2xl font-bold">Meus Pedidos</h1>
         </header>
 
-        {orders?.length === 0 ? (
+        {!user ? (
+          <div className="text-center py-20">
+            <p className="text-muted-foreground">Você precisa estar logado para ver seus pedidos.</p>
+          </div>
+        ) : orders?.length === 0 ? (
           <div className="text-center py-20 space-y-4">
             <ShoppingBag className="h-16 w-16 text-muted-foreground mx-auto opacity-20" />
             <p className="text-muted-foreground">Você ainda não fez nenhum pedido.</p>
