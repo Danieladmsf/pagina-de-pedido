@@ -1,3 +1,52 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "burger-classic",
+      "description": "A juicy classic beef burger with cheese and lettuce",
+      "imageUrl": "https://picsum.photos/seed/burger1/600/400",
+      "imageHint": "juicy burger"
+    },
+    {
+      "id": "pizza-margherita",
+      "description": "Authentic margherita pizza with fresh basil and mozzarella",
+      "imageUrl": "https://picsum.photos/seed/pizza1/600/400",
+      "imageHint": "margherita pizza"
+    },
+    {
+      "id": "pizza-pepperoni",
+      "description": "Spicy pepperoni pizza with melted cheese",
+      "imageUrl": "https://picsum.photos/seed/pizza2/600/400",
+      "imageHint": "pepperoni pizza"
+    },
+    {
+      "id": "salad-caesar",
+      "description": "Fresh caesar salad with croutons and parmesan",
+      "imageUrl": "https://picsum.photos/seed/salad1/600/400",
+      "imageHint": "caesar salad"
+    },
+    {
+      "id": "pasta-carbonara",
+      "description": "Creamy spaghetti carbonara with pancetta",
+      "imageUrl": "https://picsum.photos/seed/pasta1/600/400",
+      "imageHint": "pasta carbonara"
+    },
+    {
+      "id": "juice-orange",
+      "description": "Freshly squeezed orange juice in a glass",
+      "imageUrl": "https://picsum.photos/seed/drink1/600/400",
+      "imageHint": "orange juice"
+    },
+    {
+      "id": "dessert-brownie",
+      "description": "Warm chocolate brownie with a scoop of vanilla ice cream",
+      "imageUrl": "https://picsum.photos/seed/dessert1/600/400",
+      "imageHint": "chocolate brownie"
+    },
+    {
+      "id": "fries-large",
+      "description": "Golden crispy french fries with sea salt",
+      "imageUrl": "https://picsum.photos/seed/fries1/600/400",
+      "imageHint": "french fries"
+    }
+  ]
 }
