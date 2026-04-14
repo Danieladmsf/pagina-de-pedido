@@ -1,4 +1,5 @@
 
+
 # Pronto Pedido - Cardápio Digital (Multi-Lojista)
 
 Este é um sistema de cardápio digital completo com painel administrativo, suporte a múltiplas lojas (multi-tenancy) e pedidos em tempo real.
