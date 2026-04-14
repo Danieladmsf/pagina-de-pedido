@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -29,9 +29,10 @@ export default function AdminPage() {
   const adminRoleRef = useMemoFirebase(() => user ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
-  const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
-  const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
-  const ordersQuery = useMemoFirebase(() => query(collection(db, 'orders'), orderBy('createdAt', 'desc')), [db]);
+  // Só tentamos buscar os dados se o adminRole já foi carregado e existe
+  const categoriesQuery = useMemoFirebase(() => adminRole ? collection(db, 'categories') : null, [db, adminRole]);
+  const itemsQuery = useMemoFirebase(() => adminRole ? collection(db, 'menuItems') : null, [db, adminRole]);
+  const ordersQuery = useMemoFirebase(() => adminRole ? query(collection(db, 'orders'), orderBy('createdAt', 'desc')) : null, [db, adminRole]);
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
@@ -95,8 +96,14 @@ export default function AdminPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-6">Você não tem permissões administrativas.</p>
-        <Button onClick={() => router.push('/login')}>Ir para Login</Button>
+        <p className="text-muted-foreground mb-2">Você não tem permissões administrativas.</p>
+        <p className="text-xs text-muted-foreground bg-white p-2 rounded border mb-6 font-mono">
+          Seu UID: {user?.uid}
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push('/')}>Voltar ao Cardápio</Button>
+          <Button onClick={() => router.push('/login')}>Trocar de Conta</Button>
+        </div>
       </div>
     );
   }
@@ -153,54 +160,57 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders?.length === 0 && (
+                    {loadingOrders ? (
+                       <TableRow><TableCell colSpan={6} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                    ) : orders?.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                           Nenhum pedido recebido ainda.
                         </TableCell>
                       </TableRow>
+                    ) : (
+                      orders?.map((order) => (
+                        <TableRow key={order.id} className="align-top">
+                          <TableCell className="pl-6">
+                            <div className="font-bold">#{order.id}</div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-[200px]">
+                            <div className="flex items-center gap-1 font-bold text-sm">
+                              <User className="h-3 w-3" /> {order.customerName}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                              <Phone className="h-3 w-3" /> {order.customerPhone}
+                            </div>
+                            <div className="flex items-start gap-1 text-xs text-muted-foreground mt-1">
+                              <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {order.deliveryAddress}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {order.items?.map((it: any, i: number) => (
+                                <div key={i} className="whitespace-nowrap">{it.quantity}x {it.name}</div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-bold text-primary whitespace-nowrap">R$ {order.totalAmount.toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
+                              {order.status === 'pending' ? 'Pendente' : order.status === 'ready' ? 'Pronto' : order.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right pr-6 space-x-1">
+                            {order.status === 'pending' && (
+                              <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 h-8">
+                                <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
                     )}
-                    {orders?.map((order) => (
-                      <TableRow key={order.id} className="align-top">
-                        <TableCell className="pl-6">
-                          <div className="font-bold">#{order.id}</div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-[200px]">
-                          <div className="flex items-center gap-1 font-bold text-sm">
-                            <User className="h-3 w-3" /> {order.customerName}
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                            <Phone className="h-3 w-3" /> {order.customerPhone}
-                          </div>
-                          <div className="flex items-start gap-1 text-xs text-muted-foreground mt-1">
-                            <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {order.deliveryAddress}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {order.items?.map((it: any, i: number) => (
-                              <div key={i} className="whitespace-nowrap">{it.quantity}x {it.name}</div>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-bold text-primary whitespace-nowrap">R$ {order.totalAmount.toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
-                            {order.status === 'pending' ? 'Pendente' : order.status === 'ready' ? 'Pronto' : order.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right pr-6 space-x-1">
-                          {order.status === 'pending' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 h-8">
-                              <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -208,7 +218,6 @@ export default function AdminPage() {
           </TabsContent>
 
           <TabsContent value="products" className="mt-6">
-            {/* ... (manter conteúdo anterior de produtos) ... */}
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
