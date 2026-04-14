@@ -71,7 +71,14 @@ export default function AdminPage() {
         method: 'POST',
         body: imageFile,
       });
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Falha no upload da imagem';
+        try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+        throw new Error(errorMsg);
+      }
       const blob = await response.json();
+      if (!blob.url) throw new Error('Upload não retornou URL válida');
       return blob.url;
     } finally {
       setUploadingImage(false);
