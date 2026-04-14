@@ -14,7 +14,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 });
     }
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const token = process.env.BLOB_PUBLIC_READ_WRITE_TOKEN || process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) {
       return NextResponse.json({
         error: 'Vercel Blob não configurado. Conecte o Blob Store ao projeto em Vercel > Storage.'
       }, { status: 500 });
@@ -23,6 +24,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const blob = await put(filename, request.body, {
       access: 'public',
       addRandomSuffix: true,
+      token,
     });
 
     return NextResponse.json(blob);
