@@ -1,9 +1,9 @@
 
 "use client"
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { collection } from 'firebase/firestore';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { AIAssistant } from '@/components/ai/AIAssistant';
@@ -22,7 +22,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
-  // Consultas ao Firestore
+  // Consultas ao Firestore para buscar dados reais cadastrados no Admin
   const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
   const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
   
@@ -53,7 +53,7 @@ export default function Home() {
   return (
     <CartProvider>
       <div className="min-h-screen pb-24 max-w-7xl mx-auto px-4 md:px-8">
-        {/* Header Section */}
+        {/* Header Section - Botão Admin Removido */}
         <header className="py-8 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -63,7 +63,6 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <AIAssistant />
               <CartDrawer />
-              <Button variant="ghost" className="text-xs text-muted-foreground" onClick={() => window.location.href = '/admin'}>Admin</Button>
             </div>
           </div>
 
@@ -92,7 +91,7 @@ export default function Home() {
           >
             Todos
           </Button>
-          {categories?.map((cat) => (
+          {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
             <Button
               key={cat.id}
               variant={activeCategoryId === cat.id ? 'default' : 'outline'}
@@ -118,7 +117,7 @@ export default function Home() {
             >
               <div className="relative h-48 w-full">
                 <Image 
-                  src={item.imageUrl} 
+                  src={item.imageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
                   alt={item.name} 
                   fill 
                   className="object-cover group-hover:scale-105 transition-transform duration-500"
