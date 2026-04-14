@@ -13,8 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2 } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import Link from 'next/link';
 
 export default function Home() {
   const db = useFirestore();
@@ -22,7 +23,6 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
-  // Consultas ao Firestore para buscar dados reais cadastrados no Admin
   const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
   const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
   
@@ -53,7 +53,6 @@ export default function Home() {
   return (
     <CartProvider>
       <div className="min-h-screen pb-24 max-w-7xl mx-auto px-4 md:px-8">
-        {/* Header Section - Botão Admin Removido */}
         <header className="py-8 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -61,12 +60,16 @@ export default function Home() {
               <p className="text-muted-foreground text-lg">Seu cardápio digital rápido e saboroso.</p>
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/my-orders">
+                <Button variant="ghost" size="sm" className="text-primary font-bold">
+                  <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
+                </Button>
+              </Link>
               <AIAssistant />
               <CartDrawer />
             </div>
           </div>
 
-          {/* Search Bar */}
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input 
@@ -78,7 +81,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Categories Horizontal Scroll */}
         <div className="flex gap-2 overflow-x-auto pb-6 hide-scrollbar">
           <Button
             variant={activeCategoryId === 'all' ? 'default' : 'outline'}
@@ -107,7 +109,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Menu Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredItems.map((item) => (
             <Card 
@@ -128,9 +129,7 @@ export default function Home() {
               </div>
               <CardContent className="p-5 flex flex-col flex-1">
                 <div className="flex-1 space-y-2 mb-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">{item.name}</h3>
-                  </div>
+                  <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">{item.name}</h3>
                   <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
                     {item.description}
                   </p>
@@ -150,10 +149,7 @@ export default function Home() {
 
         {filteredItems.length === 0 && (
           <div className="py-20 text-center space-y-4">
-            <p className="text-xl text-muted-foreground">Nenhum prato encontrado com esses critérios.</p>
-            <Button variant="link" onClick={() => {setSearchQuery(''); setActiveCategoryId('all')}} className="text-primary font-bold">
-              Limpar filtros
-            </Button>
+            <p className="text-xl text-muted-foreground">Nenhum prato encontrado.</p>
           </div>
         )}
 

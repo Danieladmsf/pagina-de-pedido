@@ -1,12 +1,26 @@
 
-import type {Metadata} from 'next';
+'use client';
+
+import React, { useEffect } from 'react';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { useAuth } from '@/firebase';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 
-export const metadata: Metadata = {
-  title: 'Pronto Pedido - Cardápio Digital',
-  description: 'Peça os melhores pratos com apenas alguns cliques. Delivery e cardápio digital intuitivo.',
-};
+function AuthInit({ children }: { children: React.ReactNode }) {
+  const auth = useAuth();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        signInAnonymously(auth).catch(console.error);
+      }
+    });
+    return () => unsubscribe();
+  }, [auth]);
+
+  return <>{children}</>;
+}
 
 export default function RootLayout({
   children,
@@ -22,7 +36,9 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-[#FAFAF7]">
         <FirebaseClientProvider>
-          {children}
+          <AuthInit>
+            {children}
+          </AuthInit>
         </FirebaseClientProvider>
       </body>
     </html>

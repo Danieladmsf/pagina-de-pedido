@@ -2,27 +2,68 @@
 "use client"
 
 import React, { useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Send } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Send, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useUser } from '@/firebase';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export function CartDrawer() {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const db = useFirestore();
+  const { user } = useUser();
 
-  const handleCheckout = () => {
-    toast({
-      title: "Pedido Enviado!",
-      description: "Seu pedido foi recebido pelo restaurante e já está sendo preparado."
-    });
-    clearCart();
-    setIsOpen(false);
+  const handleCheckout = async () => {
+    if (!user) {
+      toast({ variant: "destructive", title: "Erro", description: "Usuário não identificado." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const orderRef = doc(collection(db, 'orders'), orderId);
+
+      const orderData = {
+        id: orderId,
+        customerIdentifier: user.uid,
+        customerName: user.isAnonymous ? "Cliente Anônimo" : (user.displayName || "Cliente"),
+        orderDateTime: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        status: 'pending',
+        totalAmount: totalPrice,
+        paymentStatus: 'pending',
+        orderType: 'delivery',
+        items: cart.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          customization: item.customization || {}
+        }))
+      };
+
+      await setDoc(orderRef, orderData);
+
+      toast({
+        title: "Pedido Enviado!",
+        description: `Seu pedido #${orderId} foi recebido e já está sendo preparado.`
+      });
+      clearCart();
+      setIsOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: "destructive", title: "Erro ao enviar", description: "Não foi possível processar seu pedido agora." });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -101,8 +142,10 @@ export function CartDrawer() {
             <Button 
               className="w-full h-14 bg-accent hover:bg-accent/90 text-accent-foreground font-bold text-lg rounded-xl flex gap-2 items-center"
               onClick={handleCheckout}
+              disabled={isSubmitting}
             >
-              <Send className="h-5 w-5" /> Finalizar e Enviar Pedido
+              {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              {isSubmitting ? 'Enviando...' : 'Finalizar e Enviar Pedido'}
             </Button>
           </div>
         )}

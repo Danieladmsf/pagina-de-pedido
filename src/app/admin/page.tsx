@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
+import { Badge } from '@/components/ui/badge';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -25,15 +26,16 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   
-  // Verifica se o usuário logado tem permissão de admin no banco
   const adminRoleRef = useMemoFirebase(() => user ? doc(db, 'roles_admin', user.uid) : null, [db, user]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
   const categoriesQuery = useMemoFirebase(() => collection(db, 'categories'), [db]);
   const itemsQuery = useMemoFirebase(() => collection(db, 'menuItems'), [db]);
+  const ordersQuery = useMemoFirebase(() => query(collection(db, 'orders'), orderBy('createdAt', 'desc')), [db]);
   
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
+  const { data: orders, isLoading: loadingOrders } = useCollection(ordersQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
 
@@ -48,11 +50,9 @@ export default function AdminPage() {
     router.push('/login');
   };
 
-  const handleDeleteItem = async (id: string) => {
-    if (confirm("Deseja excluir este item?")) {
-      await deleteDoc(doc(db, 'menuItems', id));
-      toast({ title: "Removido", description: "Produto excluído com sucesso." });
-    }
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    await updateDoc(doc(db, 'orders', orderId), { status });
+    toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
   };
 
   const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -78,7 +78,7 @@ export default function AdminPage() {
       setEditingItem(null);
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Você não tem permissão para esta ação." });
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Ocorreu um erro." });
     }
   };
 
@@ -110,22 +110,23 @@ export default function AdminPage() {
               <LayoutDashboard className="h-8 w-8 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Painel Admin
-              </h1>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Painel Administrativo</h1>
               <p className="text-sm text-muted-foreground">{user.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => window.location.href = '/'}>Ver Site</Button>
+            <Button variant="outline" size="sm" onClick={() => window.open('/', '_blank')}>Ver Site</Button>
             <Button variant="ghost" size="sm" className="text-destructive" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" /> Sair
             </Button>
           </div>
         </div>
 
-        <Tabs defaultValue="products" className="w-full">
+        <Tabs defaultValue="orders" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
+            <TabsTrigger value="orders" className="rounded-lg px-6 flex gap-2">
+              <ShoppingBag className="h-4 w-4" /> Pedidos
+            </TabsTrigger>
             <TabsTrigger value="products" className="rounded-lg px-6 flex gap-2">
               <Utensils className="h-4 w-4" /> Produtos
             </TabsTrigger>
@@ -133,6 +134,66 @@ export default function AdminPage() {
               <Tag className="h-4 w-4" /> Categorias
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="orders" className="mt-6">
+            <Card className="border shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="bg-white border-b">
+                <CardTitle className="text-lg">Pedidos Recentes</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="pl-6">ID / Data</TableHead>
+                      <TableHead>Itens</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right pr-6">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders?.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                          Nenhum pedido recebido ainda.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {orders?.map((order) => (
+                      <TableRow key={order.id}>
+                        <TableCell className="pl-6">
+                          <div className="font-bold">#{order.id}</div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {order.items?.map((it: any, i: number) => (
+                              <div key={i}>{it.quantity}x {it.name}</div>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-bold text-primary">R$ {order.totalAmount.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
+                            {order.status === 'pending' ? 'Pendente' : order.status === 'ready' ? 'Pronto' : order.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right pr-6 space-x-1">
+                          {order.status === 'pending' && (
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700">
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar Pronto
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="products" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
@@ -160,7 +221,7 @@ export default function AdminPage() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="categoryId">Categoria</Label>
-                          <select name="categoryId" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary" defaultValue={editingItem?.categoryId}>
+                          <select name="categoryId" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" defaultValue={editingItem?.categoryId}>
                             <option value="">Selecione...</option>
                             {categories?.map(cat => (
                               <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -187,40 +248,29 @@ export default function AdminPage() {
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="w-[100px] pl-6">Foto</TableHead>
+                      <TableHead className="w-[80px] pl-6">Foto</TableHead>
                       <TableHead>Nome</TableHead>
-                      <TableHead>Categoria</TableHead>
                       <TableHead>Preço</TableHead>
                       <TableHead className="text-right pr-6">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items?.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                          Nenhum produto cadastrado ainda.
-                        </TableCell>
-                      </TableRow>
-                    )}
                     {items?.map((item) => (
-                      <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
+                      <TableRow key={item.id}>
                         <TableCell className="pl-6">
-                          <div className="relative h-14 w-14 rounded-xl overflow-hidden shadow-sm border">
+                          <div className="relative h-12 w-12 rounded-lg overflow-hidden border shadow-sm">
                             <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
                           </div>
                         </TableCell>
                         <TableCell className="font-bold">{item.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="font-medium">
-                            {categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria'}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="font-semibold text-primary">R$ {item.price.toFixed(2)}</TableCell>
                         <TableCell className="text-right pr-6 space-x-1">
-                          <Button variant="ghost" size="icon" className="hover:bg-blue-50" onClick={() => setEditingItem(item)}>
+                          <Button variant="ghost" size="icon" onClick={() => setEditingItem(item)}>
                             <Pencil className="h-4 w-4 text-blue-500" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="hover:bg-destructive/5" onClick={() => handleDeleteItem(item.id)}>
+                          <Button variant="ghost" size="icon" onClick={async () => {
+                            if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
+                          }}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>
@@ -236,12 +286,11 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Categorias</CardTitle>
-                <Button className="bg-primary rounded-lg" onClick={async () => {
+                <Button onClick={async () => {
                   const name = prompt("Nome da Categoria:");
                   if (name) {
                     const newDoc = doc(collection(db, 'categories'));
-                    await setDoc(newDoc, { id: newDoc.id, name, description: "", displayOrder: 0 });
-                    toast({ title: "Sucesso", description: "Categoria criada." });
+                    await setDoc(newDoc, { id: newDoc.id, name, displayOrder: 0, description: "" });
                   }
                 }}>
                   <Plus className="mr-2 h-4 w-4" /> Nova Categoria
@@ -257,23 +306,11 @@ export default function AdminPage() {
                   </TableHeader>
                   <TableBody>
                     {categories?.map((cat) => (
-                      <TableRow key={cat.id} className="hover:bg-muted/10">
+                      <TableRow key={cat.id}>
                         <TableCell className="font-bold pl-6">{cat.name}</TableCell>
-                        <TableCell className="text-right pr-6 space-x-1">
+                        <TableCell className="text-right pr-6">
                           <Button variant="ghost" size="icon" onClick={async () => {
-                             const name = prompt("Novo Nome:", cat.name);
-                             if (name && name !== cat.name) {
-                               await updateDoc(doc(db, 'categories', cat.id), { name });
-                               toast({ title: "Sucesso", description: "Categoria atualizada." });
-                             }
-                          }}>
-                            <Pencil className="h-4 w-4 text-blue-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={async () => {
-                            if (confirm("Deseja excluir esta categoria?")) {
-                              await deleteDoc(doc(db, 'categories', cat.id));
-                              toast({ title: "Removido", description: "Categoria excluída." });
-                            }
+                            if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
                           }}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
