@@ -211,11 +211,14 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] relative">
-      <section
-        className="relative w-full bg-no-repeat bg-center bg-cover"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '240px' }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/40 to-[#FAFAF7]" />
+      <section className="relative w-full overflow-hidden">
+        <img
+          src="/lima-limao-bg.png"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-fill"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/30 to-[#FAFAF7]" />
         <div className="relative max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="flex items-center gap-4 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-md border border-white">

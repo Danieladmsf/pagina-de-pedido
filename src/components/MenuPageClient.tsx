@@ -78,10 +78,13 @@ export function MenuPageClient() {
 
   return (
     <div className="min-h-screen pb-24 relative">
-      <section
-        className="relative w-full bg-no-repeat bg-center bg-cover"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '420px' }}
-      >
+      <section className="relative w-full overflow-hidden">
+        <img
+          src="/lima-limao-bg.png"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-fill"
+        />
         <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/30 to-white" />
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
