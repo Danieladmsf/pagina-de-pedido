@@ -18,7 +18,17 @@ git commit -m "Minha atualização"
 git push origin main
 ```
 
-## 🛠️ Configurações do Firebase
+## 🛠️ Utilidades de Desenvolvedor
+Para rodar o assistente Claude com troca automática de portas:
+```bash
+npm run claude:auto
+```
+Ou manualmente no terminal:
+```bash
+bash claude-auto.txt
+```
+
+## ⚙️ Configurações do Firebase
 - **Project ID:** studio-2243391254-75492
 - **Serviços:** Authentication e Firestore.
 

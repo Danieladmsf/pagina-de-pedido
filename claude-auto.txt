@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# ============================================================================
+# Claude Auto - Inicia Claude com Auto-Switch de Portas
+# ============================================================================
+# Script único que:
+# 1. Inicia o Claude CLI interativo
+# 2. Troca a porta automaticamente a cada minuto em background
+# 3. Tudo automático!
+
+set -euo pipefail
+
+# Configuração
+SESSIONS_DIR="${HOME}/.claude/tmux-sessions"
+STATE_FILE="${SESSIONS_DIR}/sessions.json"
+BASE_PORT=62608
+SWITCH_INTERVAL=60  # Trocar a cada 60 segundos
+AUTO_SWITCHER_PID_FILE="${SESSIONS_DIR}/.auto_switcher.pid"
+
+# Cores
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+PURPLE='\033[0;35m'
+NC='\033[0m'
+
+# ============================================================================
+# Funções
+# ============================================================================
+
+get_sessions() {
+    if [[ -f "$STATE_FILE" ]]; then
+        cat "$STATE_FILE"
+    else
+        echo "[]"
+    fi
+}
+
+create_sessions_if_needed() {
+    local sessions=$(get_sessions)
+    local count=$(echo "$sessions" | jq 'length')
+
+    if [[ "$count" -eq 0 ]]; then
+        echo -e "${CYAN}Criando 3 sessões...${NC}"
+        mkdir -p "$SESSIONS_DIR"
+
+        for i in 1 2 3; do
+            local port=$((BASE_PORT + i))
+            local session_data=$(jq -n \
+                --arg id "$i" \
+                --arg port "$port" \
+                --arg tmux "claude-$i" \
+                '{id: ($id|tonumber), port: ($port|tonumber), tmux_session: $tmux}')
+
+            sessions=$(echo "$sessions" | jq ". += [$session_data]")
+        done
+
+        echo "$sessions" > "$STATE_FILE"
+        echo -e "${GREEN}✓ 3 sessões criadas!${NC}"
+    fi
+}
+
+get_random_port() {
+    local sessions=$(get_sessions)
+    local count=$(echo "$sessions" | jq 'length')
+    local random_index=$(( RANDOM % count ))
+    echo "$sessions" | jq -r ".[$random_index].port"
+}
+
+# ============================================================================
+# Auto-Switcher em Background
+# ============================================================================
+
+start_auto_switcher() {
+    # Parar switcher anterior se existir
+    if [[ -f "$AUTO_SWITCHER_PID_FILE" ]]; then
+        local old_pid=$(cat "$AUTO_SWITCHER_PID_FILE")
+        kill "$old_pid" 2>/dev/null || true
+        rm -f "$AUTO_SWITCHER_PID_FILE"
+    fi
+
+    # Iniciar novo switcher em background
+    (
+        while true; do
+            sleep "$SWITCH_INTERVAL"
+
+            # Sortear nova porta
+            new_port=$(get_random_port)
+
+            # Exportar nova porta
+            export CLAUDE_CODE_SSE_PORT="$new_port"
+
+            # Logar a troca
+            echo "$(date '+%H:%M:%S') - Auto-switch para porta $new_port" >> "${SESSIONS_DIR}/auto_switch.log"
+        done
+    ) &
+
+    echo $! > "$AUTO_SWITCHER_PID_FILE"
+}
+
+stop_auto_switcher() {
+    if [[ -f "$AUTO_SWITCHER_PID_FILE" ]]; then
+        local pid=$(cat "$AUTO_SWITCHER_PID_FILE")
+        kill "$pid" 2>/dev/null || true
+        rm -f "$AUTO_SWITCHER_PID_FILE"
+    fi
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+main() {
+    # Criar sessões se necessário
+    create_sessions_if_needed
+
+    # Sortear porta inicial
+    initial_port=$(get_random_port)
+    export CLAUDE_CODE_SSE_PORT="$initial_port"
+
+    # Banner
+    clear
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC}  ${PURPLE}🎲 Claude Auto - Randomização Ativa${NC}                   ${CYAN}║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${GREEN}🔌 Porta Inicial:${NC} ${YELLOW}${initial_port}${NC}"
+    echo -e "  ${GREEN}🔄 Auto-Switch:${NC} A cada ${YELLOW}${SWITCH_INTERVAL}${NC} segundos"
+    echo -e "  ${GREEN}📋 Sessões:${NC} 3 portas disponíveis (${BASE_PORT}+1/2/3)"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Iniciar auto-switcher em background
+    start_auto_switcher
+
+    # Trap para limpar ao sair
+    trap stop_auto_switcher EXIT
+
+    # Iniciar Claude
+    exec claude
+}
+
+main "$@"
