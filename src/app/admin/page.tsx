@@ -238,7 +238,7 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-[62px]">
             <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-yellow-200 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
