@@ -44,3 +44,9 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+@media (min-width: 768px) {
+  .admin-banner-section {
+    aspect-ratio: 1832 / 700;
+    min-height: 0;
+  }
+}
