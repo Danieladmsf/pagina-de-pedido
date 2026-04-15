@@ -211,15 +211,13 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] relative">
-      <section className="relative w-full">
-        <img
-          src="/lima-limao-bg.png"
-          alt=""
-          aria-hidden
-          className="block w-full h-auto"
-        />
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-b from-transparent to-[#FAFAF7] pointer-events-none" />
-        <div className="relative max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10 -mt-2">
+      <section
+        className="relative w-full bg-no-repeat bg-center bg-cover md:bg-[length:100%_100%] min-h-[340px] md:min-h-0 md:aspect-[1832/560]"
+        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
+      >
+        <div className="absolute inset-0 bg-white/30" />
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-[#FAFAF7] pointer-events-none" />
+        <div className="relative h-full max-w-6xl mx-auto px-4 md:px-8 flex flex-col justify-between py-4 md:py-6">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="flex items-center gap-4 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-md border border-white">
               <div className="bg-gradient-to-br from-primary to-primary/70 p-3 rounded-xl shadow-md">
