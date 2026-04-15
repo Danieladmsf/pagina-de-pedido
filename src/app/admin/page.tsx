@@ -210,35 +210,74 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
-    <div className="min-h-screen bg-muted/30 p-4 md:p-8 relative">
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10 pointer-events-none bg-no-repeat bg-center bg-cover opacity-[0.08]"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
-      />
-      <div className="max-w-6xl mx-auto space-y-8 relative">
-        <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-6 rounded-2xl shadow-sm border gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-primary/10 p-3 rounded-full">
-              <LayoutDashboard className="h-8 w-8 text-primary" />
+    <div className="min-h-screen bg-[#FAFAF7] relative">
+      <section
+        className="relative w-full bg-no-repeat bg-center bg-cover"
+        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '240px' }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/40 to-[#FAFAF7]" />
+        <div className="relative max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="flex items-center gap-4 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-md border border-white">
+              <div className="bg-gradient-to-br from-primary to-primary/70 p-3 rounded-xl shadow-md">
+                <LayoutDashboard className="h-7 w-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-black tracking-tight text-primary uppercase">{adminRole?.storeName || 'Meu Painel'}</h1>
+                <p className="text-xs text-muted-foreground">{user?.email}</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{adminRole?.storeName || 'Meu Painel'}</h1>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <a href={storeLink} target="_blank" className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-sm font-bold text-primary border border-primary/20 shadow-sm hover:bg-primary hover:text-white transition-all flex items-center gap-2">
+                <ExternalLink className="h-4 w-4" /> Ver minha Loja
+              </a>
+              <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-destructive font-bold shadow-sm h-10" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" /> Sair
+              </Button>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="bg-muted px-4 py-2 rounded-lg text-xs font-mono border flex items-center gap-2">
-              <span>Link do seu cardápio:</span>
-              <a href={storeLink} target="_blank" className="text-primary font-bold hover:underline flex items-center gap-1">
-                Ver Loja <ExternalLink className="h-3 w-3" />
-              </a>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-yellow-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-yellow-600">Pendentes</p>
+                  <p className="text-2xl font-black text-yellow-700">{orders?.filter((o: any) => o.status === 'pending').length || 0}</p>
+                </div>
+                <div className="bg-yellow-100 p-2 rounded-xl"><Clock className="h-5 w-5 text-yellow-600" /></div>
+              </div>
             </div>
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" /> Sair
-            </Button>
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-blue-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-blue-600">Recebidos</p>
+                  <p className="text-2xl font-black text-blue-700">{orders?.filter((o: any) => o.status === 'received').length || 0}</p>
+                </div>
+                <div className="bg-blue-100 p-2 rounded-xl"><ShoppingBag className="h-5 w-5 text-blue-600" /></div>
+              </div>
+            </div>
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-green-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-green-600">Prontos</p>
+                  <p className="text-2xl font-black text-green-700">{orders?.filter((o: any) => o.status === 'ready').length || 0}</p>
+                </div>
+                <div className="bg-green-100 p-2 rounded-xl"><CheckCircle2 className="h-5 w-5 text-green-600" /></div>
+              </div>
+            </div>
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-purple-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Em Entrega</p>
+                  <p className="text-2xl font-black text-purple-700">{orders?.filter((o: any) => o.status === 'out_for_delivery').length || 0}</p>
+                </div>
+                <div className="bg-purple-100 p-2 rounded-xl"><ShoppingBag className="h-5 w-5 text-purple-600" /></div>
+              </div>
+            </div>
           </div>
         </div>
+      </section>
+      <div className="max-w-6xl mx-auto px-4 md:px-8 space-y-8 relative pb-12">
 
         <Tabs defaultValue="orders" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
@@ -256,93 +295,104 @@ export default function AdminPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="orders" className="mt-6">
-            <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="bg-white border-b">
-                <CardTitle className="text-lg">Pedidos Recebidos</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="pl-6">Data</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Itens</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right pr-6">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loadingOrders ? (
-                       <TableRow><TableCell colSpan={6} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                    ) : !orders || orders.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                          Nenhum pedido ainda. Divulgue seu link!
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      orders.map((order) => (
-                        <TableRow key={order.id} className="align-top">
-                          <TableCell className="pl-6 whitespace-nowrap">
-                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <TabsContent value="orders" className="mt-6 space-y-4">
+            {loadingOrders ? (
+              <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
+            ) : !orders || orders.length === 0 ? (
+              <Card className="border-dashed border-2 rounded-2xl py-20">
+                <div className="text-center space-y-3">
+                  <ShoppingBag className="h-16 w-16 text-muted-foreground/30 mx-auto" />
+                  <p className="text-muted-foreground font-medium">Nenhum pedido ainda. Divulgue seu link!</p>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {orders.map((order: any) => {
+                  const borderColor =
+                    order.status === 'pending' ? 'border-l-yellow-500' :
+                    order.status === 'received' ? 'border-l-blue-500' :
+                    order.status === 'ready' ? 'border-l-green-500' :
+                    order.status === 'out_for_delivery' ? 'border-l-purple-500' :
+                    'border-l-gray-400';
+                  const statusLabel =
+                    order.status === 'pending' ? 'Pendente' :
+                    order.status === 'received' ? 'Recebido' :
+                    order.status === 'ready' ? 'Pronto' :
+                    order.status === 'out_for_delivery' ? 'Saiu p/ entrega' : order.status;
+                  const statusColor =
+                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                    order.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                    order.status === 'ready' ? 'bg-green-100 text-green-700 border-green-300' :
+                    order.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                    'bg-gray-100 text-gray-700 border-gray-300';
+                  return (
+                    <Card key={order.id} className={`rounded-2xl shadow-sm border-l-4 ${borderColor} bg-white hover:shadow-lg transition-shadow`}>
+                      <CardContent className="p-5 space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-muted-foreground">#{order.id}</span>
+                              <Badge className={`${statusColor} border font-bold text-[10px] uppercase`}>{statusLabel}</Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                               <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
                             </div>
-                          </TableCell>
-                          <TableCell className="max-w-[150px]">
-                            <div className="font-bold text-sm">{order.customerName}</div>
-                            <div className="text-xs text-muted-foreground">{order.customerPhone}</div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              {order.items?.map((it: any, i: number) => (
-                                <div key={i}>{it.quantity}x {it.name}</div>
-                              ))}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Total</p>
+                            <p className="text-xl font-black text-primary">R$ {order.totalAmount.toFixed(2)}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-muted/40 rounded-xl p-3 space-y-1">
+                          <div className="flex items-center gap-2 text-sm font-bold">
+                            <User className="h-3 w-3" /> {order.customerName}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" /> {order.customerPhone}
+                          </div>
+                          {order.deliveryAddress && (
+                            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> <span className="leading-snug">{order.deliveryAddress}</span>
                             </div>
-                          </TableCell>
-                          <TableCell className="font-bold text-primary">R$ {order.totalAmount.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge className={
-                              order.status === 'pending' ? 'bg-yellow-500 text-white' :
-                              order.status === 'received' ? 'bg-blue-500 text-white' :
-                              order.status === 'ready' ? 'bg-green-500 text-white' :
-                              order.status === 'out_for_delivery' ? 'bg-purple-500 text-white' :
-                              'bg-gray-500 text-white'
-                            }>
-                              {order.status === 'pending' ? 'Pendente' :
-                               order.status === 'received' ? 'Recebido' :
-                               order.status === 'ready' ? 'Pronto' :
-                               order.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
-                               order.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right pr-6">
-                            <div className="flex flex-col gap-1 items-end">
-                              {order.status === 'pending' && (
-                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'received')} className="bg-blue-600 h-8">
-                                  Confirmar Recebimento
-                                </Button>
-                              )}
-                              {order.status === 'received' && (
-                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 h-8">
-                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
-                                </Button>
-                              )}
-                              {order.status === 'ready' && order.orderType === 'delivery' && (
-                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} className="bg-purple-600 h-8">
-                                  Saiu para Entrega
-                                </Button>
-                              )}
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          {order.items?.map((it: any, i: number) => (
+                            <div key={i} className="text-sm flex justify-between gap-2">
+                              <span><span className="font-bold text-primary">{it.quantity}x</span> {it.name}</span>
+                              <span className="text-muted-foreground whitespace-nowrap">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                          ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-dashed flex flex-wrap gap-2">
+                          {order.status === 'pending' && (
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'received')} className="bg-blue-600 hover:bg-blue-700 w-full">
+                              <CheckCircle2 className="h-4 w-4 mr-2" /> Confirmar Recebimento
+                            </Button>
+                          )}
+                          {order.status === 'received' && (
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 w-full">
+                              <CheckCircle2 className="h-4 w-4 mr-2" /> Marcar como Pronto
+                            </Button>
+                          )}
+                          {order.status === 'ready' && order.orderType === 'delivery' && (
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} className="bg-purple-600 hover:bg-purple-700 w-full">
+                              Saiu para Entrega
+                            </Button>
+                          )}
+                          {order.status === 'out_for_delivery' && (
+                            <div className="w-full text-center text-xs text-muted-foreground italic py-1">Pedido em rota de entrega</div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="products" className="mt-6">
