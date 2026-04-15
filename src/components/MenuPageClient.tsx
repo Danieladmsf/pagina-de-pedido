@@ -80,9 +80,9 @@ export function MenuPageClient() {
     <div className="min-h-screen pb-24 relative">
       <section
         className="relative w-full bg-no-repeat bg-center bg-cover"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '260px' }}
+        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '420px' }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-white/40 to-white/80" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/30 to-white" />
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <Link href="/my-orders">
@@ -93,57 +93,46 @@ export function MenuPageClient() {
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pb-10 pt-16 text-center">
-          {storeInfo?.storeName && storeId && (
-            <>
-              <h2 className="text-3xl md:text-5xl font-black text-primary uppercase tracking-tight drop-shadow-sm">{storeInfo.storeName}</h2>
-              <p className="text-accent font-bold text-lg mt-1">Seja bem-vindo!</p>
-            </>
-          )}
+        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-24 pb-6 space-y-5">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              placeholder="O que você quer saborear hoje?"
+              className="pl-10 h-12 bg-white border-primary/10 rounded-2xl shadow-md focus:ring-accent"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+            <Button
+              variant={activeCategoryId === 'all' ? 'default' : 'outline'}
+              className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
+                activeCategoryId === 'all'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+              }`}
+              onClick={() => setActiveCategoryId('all')}
+            >
+              Todos
+            </Button>
+            {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
+              <Button
+                key={cat.id}
+                variant={activeCategoryId === cat.id ? 'default' : 'outline'}
+                className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
+                  activeCategoryId === cat.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+                }`}
+                onClick={() => setActiveCategoryId(cat.id)}
+              >
+                {cat.name}
+              </Button>
+            ))}
+          </div>
         </div>
       </section>
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
-      <header className="pt-4 pb-6 space-y-6">
-
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input 
-            placeholder="O que você quer saborear hoje?" 
-            className="pl-10 h-12 bg-white border-primary/10 rounded-2xl shadow-sm focus:ring-accent"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </header>
-
-      <div className="flex gap-2 overflow-x-auto pb-6 hide-scrollbar">
-        <Button
-          variant={activeCategoryId === 'all' ? 'default' : 'outline'}
-          className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
-            activeCategoryId === 'all' 
-            ? 'bg-primary text-primary-foreground' 
-            : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-          }`}
-          onClick={() => setActiveCategoryId('all')}
-        >
-          Todos
-        </Button>
-        {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
-          <Button
-            key={cat.id}
-            variant={activeCategoryId === cat.id ? 'default' : 'outline'}
-            className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
-              activeCategoryId === cat.id 
-              ? 'bg-primary text-primary-foreground' 
-              : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-            }`}
-            onClick={() => setActiveCategoryId(cat.id)}
-          >
-            {cat.name}
-          </Button>
-        ))}
-      </div>
-
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredItems.map((item) => (
           <Card 
