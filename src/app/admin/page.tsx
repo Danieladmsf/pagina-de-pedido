@@ -212,7 +212,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#FAFAF7] relative">
       <section
-        className="relative w-full bg-no-repeat bg-center bg-cover md:bg-[length:100%_100%] min-h-[340px] md:min-h-0 md:aspect-[1832/560]"
+        className="relative w-full bg-no-repeat bg-center bg-cover md:bg-[length:100%_auto] md:bg-top min-h-[340px] md:min-h-0 md:aspect-[1832/760]"
         style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
       >
         <div className="absolute inset-0 bg-white/30" />
