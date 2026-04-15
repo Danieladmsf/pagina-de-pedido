@@ -45,6 +45,11 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
       return;
     }
 
+    if (!storeOwnerId) {
+      toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja para fazer pedidos." });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -53,7 +58,7 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
       const orderData = {
         id: orderId,
         customerIdentifier: user.uid,
-        ownerId: storeOwnerId || 'main', // Vincula o pedido ao dono da loja
+        ownerId: storeOwnerId, // Vincula o pedido ao dono da loja
         customerName,
         customerPhone,
         customerEmail,
