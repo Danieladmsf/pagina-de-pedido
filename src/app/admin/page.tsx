@@ -211,15 +211,15 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] relative">
-      <section className="relative w-full overflow-hidden">
+      <section className="relative w-full">
         <img
           src="/lima-limao-bg.png"
           alt=""
           aria-hidden
-          className="absolute inset-0 w-full h-full object-fill"
+          className="block w-full h-auto"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-white/30 to-[#FAFAF7]" />
-        <div className="relative max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10">
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-b from-transparent to-[#FAFAF7] pointer-events-none" />
+        <div className="relative max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10 -mt-2">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="flex items-center gap-4 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-md border border-white">
               <div className="bg-gradient-to-br from-primary to-primary/70 p-3 rounded-xl shadow-md">
