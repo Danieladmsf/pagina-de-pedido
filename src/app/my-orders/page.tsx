@@ -1,17 +1,22 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useRef } from 'react';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useAuth, useDoc } from '@/firebase';
+import { collection, query, where, doc, setDoc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ShoppingBag, Clock, Loader2 } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, Clock, Loader2, LogOut, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
+import { useCart } from '@/components/providers/CartProvider';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendente',
@@ -29,21 +34,47 @@ const STATUS_MESSAGES: Record<string, { title: string; description: string }> = 
 export default function MyOrdersPage() {
   const { user, isUserLoading } = useUser();
   const db = useFirestore();
+  const auth = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
+  const { addToCart } = useCart();
+  const isRealUser = !!(user && !user.isAnonymous && user.email);
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return query(collection(db, 'orders'), where('customerIdentifier', '==', user.uid));
-  }, [db, user]);
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'orders'), where('customerIdentifier', '==', user!.uid));
+  }, [db, isRealUser]);
+
+  const profileRef = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return doc(db, 'customers', user!.uid);
+  }, [db, isRealUser]);
+
+  const menuItemsQuery = useMemoFirebase(() => (db ? collection(db, 'menuItems') : null), [db]);
 
   const { data: ordersRaw, isLoading: loadingOrders } = useCollection(ordersQuery);
+  const { data: profile } = useDoc(profileRef);
+  const { data: menuItems } = useCollection(menuItemsQuery);
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setName((profile as any).name || '');
+      setPhone((profile as any).phone || '');
+      setAddress((profile as any).address || '');
+    }
+  }, [profile]);
 
   const orders = useMemo(() => {
     if (!ordersRaw) return ordersRaw;
     return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
   }, [ordersRaw]);
 
-  // Detecta mudança de status para notificar
   const lastStatusRef = useRef<Record<string, string>>({});
   useEffect(() => {
     if (!orders) return;
@@ -68,10 +99,72 @@ export default function MyOrdersPage() {
     }
   }, []);
 
-  if (isUserLoading || loadingOrders || !db) {
+  const handleSaveProfile = async () => {
+    if (!db || !user) return;
+    setSavingProfile(true);
+    try {
+      await setDoc(doc(db, 'customers', user.uid), {
+        uid: user.uid,
+        email: user.email || '',
+        name, phone, address,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast({ title: 'Perfil atualizado' });
+      setEditingProfile(false);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: err?.message || 'Falha ao salvar.' });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    await signOut(auth);
+    router.push('/');
+  };
+
+  const handleRepeatOrder = (order: any) => {
+    if (!menuItems || !Array.isArray(order.items)) return;
+    let added = 0, missing = 0;
+    order.items.forEach((it: any) => {
+      const match = (menuItems as any[]).find(m => m.name === it.name);
+      if (match) {
+        addToCart(match, it.quantity || 1, {
+          addons: (it.addons || []).map((a: any) => ({ id: a.name, name: a.name, price: a.price })),
+          notes: it.notes || '',
+        });
+        added++;
+      } else {
+        missing++;
+      }
+    });
+    if (added > 0) {
+      toast({ title: 'Itens adicionados ao carrinho', description: `${added} item(ns) pronto(s) para refazer.${missing > 0 ? ` ${missing} não estão mais disponíveis.` : ''}` });
+    } else {
+      toast({ variant: 'destructive', title: 'Nada foi adicionado', description: 'Os itens desse pedido não estão mais disponíveis no cardápio.' });
+    }
+  };
+
+  if (isUserLoading || !db) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isRealUser) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF7] p-4 flex items-center justify-center">
+        <Card className="max-w-md w-full text-center p-8 space-y-4">
+          <UserIcon className="h-16 w-16 text-muted-foreground/30 mx-auto" />
+          <h1 className="text-2xl font-bold">Faça login para ver seus pedidos</h1>
+          <p className="text-sm text-muted-foreground">Entre com sua conta no cardápio para acessar o histórico.</p>
+          <Link href="/">
+            <Button className="w-full">Ir para o Cardápio</Button>
+          </Link>
+        </Card>
       </div>
     );
   }
@@ -86,19 +179,72 @@ export default function MyOrdersPage() {
   return (
     <div className="min-h-screen bg-[#FAFAF7] p-4 md:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <header className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon">
-              <ChevronLeft className="h-6 w-6" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">Meus Pedidos</h1>
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost" size="icon">
+                <ChevronLeft className="h-6 w-6" />
+              </Button>
+            </Link>
+            <h1 className="text-2xl font-bold">Minha Conta</h1>
+          </div>
+          <Button variant="ghost" size="sm" className="text-destructive" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-2" /> Sair
+          </Button>
         </header>
 
-        {!user ? (
-          <div className="text-center py-20">
-            <p className="text-muted-foreground">Você precisa estar logado para ver seus pedidos.</p>
-          </div>
+        <Card className="shadow-sm rounded-2xl overflow-hidden">
+          <CardHeader className="bg-white border-b py-4 flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <UserIcon className="h-4 w-4" /> Meus Dados
+            </CardTitle>
+            {!editingProfile ? (
+              <Button size="sm" variant="ghost" onClick={() => setEditingProfile(true)}>
+                <Pencil className="h-4 w-4 mr-1" /> Editar
+              </Button>
+            ) : (
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setEditingProfile(false)}>Cancelar</Button>
+                <Button size="sm" onClick={handleSaveProfile} disabled={savingProfile}>
+                  {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" /> Salvar</>}
+                </Button>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent className="p-4 bg-white space-y-3">
+            <div className="text-xs text-muted-foreground">{user!.email}</div>
+            {editingProfile ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="p_name">Nome</Label>
+                  <Input id="p_name" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="p_phone">Telefone</Label>
+                  <Input id="p_phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="p_addr">Endereço</Label>
+                  <Input id="p_addr" value={address} onChange={(e) => setAddress(e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center gap-2"><UserIcon className="h-3 w-3 text-muted-foreground" /> {name || <span className="italic text-muted-foreground">Sem nome</span>}</div>
+                <div className="flex items-center gap-2"><Phone className="h-3 w-3 text-muted-foreground" /> {phone || <span className="italic text-muted-foreground">Sem telefone</span>}</div>
+                <div className="flex items-center gap-2"><MapPin className="h-3 w-3 text-muted-foreground" /> {address || <span className="italic text-muted-foreground">Sem endereço</span>}</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center gap-2">
+          <ShoppingBag className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-bold">Histórico de Pedidos</h2>
+        </div>
+
+        {loadingOrders ? (
+          <div className="py-10 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
         ) : !orders || orders.length === 0 ? (
           <div className="text-center py-20 space-y-4">
             <ShoppingBag className="h-16 w-16 text-muted-foreground mx-auto opacity-20" />
@@ -127,9 +273,16 @@ export default function MyOrdersPage() {
                 <CardContent className="p-4 bg-white space-y-4">
                   <div className="space-y-2">
                     {order.items?.map((it: any, i: number) => (
-                      <div key={i} className="flex justify-between text-sm">
-                        <span>{it.quantity}x {it.name}</span>
-                        <span className="text-muted-foreground">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                      <div key={i} className="text-sm">
+                        <div className="flex justify-between">
+                          <span><span className="font-bold">{it.quantity}x</span> {it.name}</span>
+                          <span className="text-muted-foreground">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                        </div>
+                        {it.addons?.length > 0 && (
+                          <div className="text-xs text-muted-foreground pl-4">
+                            {it.addons.map((a: any, j: number) => <div key={j}>+ {a.name}</div>)}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -138,6 +291,9 @@ export default function MyOrdersPage() {
                     <span>Total</span>
                     <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
                   </div>
+                  <Button variant="outline" className="w-full" onClick={() => handleRepeatOrder(order)}>
+                    <RotateCcw className="h-4 w-4 mr-2" /> Repetir Pedido
+                  </Button>
                 </CardContent>
               </Card>
             ))}

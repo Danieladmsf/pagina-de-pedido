@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
+import { CustomerAccountButton } from '@/components/customer/CustomerAccountButton';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { Toaster } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
@@ -86,11 +87,7 @@ export function MenuPageClient() {
         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-white pointer-events-none" />
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
-            <Link href="/my-orders">
-              <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-primary font-bold shadow-md">
-                <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
-              </Button>
-            </Link>
+            <CustomerAccountButton />
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
