@@ -77,36 +77,30 @@ export function MenuPageClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24 max-w-7xl mx-auto px-4 md:px-8 relative">
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10 pointer-events-none bg-no-repeat bg-center bg-cover opacity-[0.10]"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
-      />
-      <header className="py-8 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary p-3 rounded-2xl shadow-lg">
-              <Leaf className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-black tracking-tight text-primary uppercase">
-                {storeInfo?.storeName || 'Lima Limão'}
-              </h1>
-              <p className="text-accent font-bold text-lg leading-none">
-                {storeId ? 'Seja bem-vindo!' : 'O verdadeiro sabor da fruta!'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen pb-24 relative">
+      <div className="relative w-full max-w-7xl mx-auto">
+        <div
+          className="relative w-full h-40 md:h-56 bg-no-repeat bg-center bg-contain"
+          style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
+        >
+          <div className="absolute top-3 right-3 md:top-6 md:right-6 flex items-center gap-2 z-10">
             <Link href="/my-orders">
-              <Button variant="ghost" size="sm" className="text-primary font-bold">
+              <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-primary font-bold shadow-md">
                 <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
               </Button>
             </Link>
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
+      </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-8">
+      <header className="pt-4 pb-6 space-y-6">
+        {storeInfo?.storeName && storeId && (
+          <div className="text-center">
+            <h2 className="text-2xl md:text-3xl font-black text-primary uppercase tracking-tight">{storeInfo.storeName}</h2>
+            <p className="text-accent font-bold">Seja bem-vindo!</p>
+          </div>
+        )}
 
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -214,6 +208,7 @@ export function MenuPageClient() {
       />
       
       <Toaster />
+      </div>
     </div>
   );
 }
