@@ -78,12 +78,13 @@ export function MenuPageClient() {
 
   return (
     <div className="min-h-screen pb-24 relative">
-      <div className="relative w-full max-w-7xl mx-auto">
-        <div
-          className="relative w-full h-40 md:h-56 bg-no-repeat bg-center bg-contain"
-          style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
-        >
-          <div className="absolute top-3 right-3 md:top-6 md:right-6 flex items-center gap-2 z-10">
+      <section
+        className="relative w-full bg-no-repeat bg-center bg-cover"
+        style={{ backgroundImage: "url('/lima-limao-bg.png')", minHeight: '260px' }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-white/40 to-white/80" />
+        <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
+          <div className="flex items-center gap-2">
             <Link href="/my-orders">
               <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-primary font-bold shadow-md">
                 <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
@@ -92,15 +93,17 @@ export function MenuPageClient() {
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
-      </div>
+        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pb-10 pt-16 text-center">
+          {storeInfo?.storeName && storeId && (
+            <>
+              <h2 className="text-3xl md:text-5xl font-black text-primary uppercase tracking-tight drop-shadow-sm">{storeInfo.storeName}</h2>
+              <p className="text-accent font-bold text-lg mt-1">Seja bem-vindo!</p>
+            </>
+          )}
+        </div>
+      </section>
       <div className="max-w-7xl mx-auto px-4 md:px-8">
       <header className="pt-4 pb-6 space-y-6">
-        {storeInfo?.storeName && storeId && (
-          <div className="text-center">
-            <h2 className="text-2xl md:text-3xl font-black text-primary uppercase tracking-tight">{storeInfo.storeName}</h2>
-            <p className="text-accent font-bold">Seja bem-vindo!</p>
-          </div>
-        )}
 
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
