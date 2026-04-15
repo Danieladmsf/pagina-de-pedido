@@ -3,6 +3,7 @@ import React from 'react';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { AuthInit } from '@/components/providers/AuthInit';
+import { CartProvider } from '@/components/providers/CartProvider';
 
 export const metadata = {
   title: 'Lima Limão - Cardápio Digital',
@@ -24,7 +25,9 @@ export default function RootLayout({
       <body className="font-body antialiased bg-[#FAFAF7]">
         <FirebaseClientProvider>
           <AuthInit>
-            {children}
+            <CartProvider>
+              {children}
+            </CartProvider>
           </AuthInit>
         </FirebaseClientProvider>
       </body>
