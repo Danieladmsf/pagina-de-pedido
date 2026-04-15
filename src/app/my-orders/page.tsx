@@ -19,17 +19,72 @@ import { Toaster } from '@/components/ui/toaster';
 import { useCart } from '@/components/providers/CartProvider';
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendente',
+  pending: 'Aguardando Confirmação',
   received: 'Pedido Recebido',
   ready: 'Pedido Pronto',
   out_for_delivery: 'Saiu para Entrega',
+  delivered: 'Concluído',
 };
 
-const STATUS_MESSAGES: Record<string, { title: string; description: string }> = {
-  received: { title: 'Pedido Recebido!', description: 'A loja confirmou o recebimento do seu pedido.' },
-  ready: { title: 'Pedido Pronto!', description: 'Seu pedido está pronto.' },
-  out_for_delivery: { title: 'Saiu para Entrega!', description: 'Seu pedido está a caminho.' },
+const DELIVERY_STEPS = [
+  { key: 'pending', label: 'Enviado' },
+  { key: 'received', label: 'Recebido' },
+  { key: 'ready', label: 'Preparado' },
+  { key: 'out_for_delivery', label: 'Em Entrega' },
+  { key: 'delivered', label: 'Entregue' },
+];
+const PICKUP_STEPS = [
+  { key: 'pending', label: 'Enviado' },
+  { key: 'received', label: 'Recebido' },
+  { key: 'ready', label: 'Pronto p/ Retirar' },
+  { key: 'delivered', label: 'Retirado' },
+];
+
+const statusMessage = (status: string, orderType: string) => {
+  if (status === 'received') return { title: 'Pedido Recebido!', description: 'A loja confirmou o recebimento do seu pedido.' };
+  if (status === 'ready') return orderType === 'pickup'
+    ? { title: 'Pedido Pronto para Retirar!', description: 'Você já pode buscar seu pedido na loja.' }
+    : { title: 'Pedido Pronto!', description: 'Seu pedido está sendo preparado para sair.' };
+  if (status === 'out_for_delivery') return { title: 'Saiu para Entrega!', description: 'Seu pedido está a caminho.' };
+  if (status === 'delivered') return orderType === 'pickup'
+    ? { title: 'Pedido Retirado', description: 'Obrigado pela preferência!' }
+    : { title: 'Pedido Entregue', description: 'Aproveite!' };
+  return null;
 };
+
+function OrderTimeline({ status, orderType }: { status: string; orderType: string }) {
+  const steps = orderType === 'pickup' ? PICKUP_STEPS : DELIVERY_STEPS;
+  const currentIdx = steps.findIndex(s => s.key === status);
+  return (
+    <div className="bg-muted/30 rounded-xl p-3">
+      <div className="flex items-center justify-between">
+        {steps.map((step, i) => {
+          const done = i <= currentIdx && currentIdx >= 0;
+          const current = i === currentIdx;
+          return (
+            <React.Fragment key={step.key}>
+              <div className="flex flex-col items-center flex-shrink-0 w-14">
+                <div className={`h-7 w-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                  current ? 'bg-primary border-primary text-white animate-pulse scale-110' :
+                  done ? 'bg-green-500 border-green-500 text-white' :
+                  'bg-white border-muted text-muted-foreground'
+                }`}>
+                  {done && !current ? '✓' : i + 1}
+                </div>
+                <span className={`text-[9px] font-bold mt-1 text-center leading-tight ${current ? 'text-primary' : done ? 'text-green-700' : 'text-muted-foreground'}`}>
+                  {step.label}
+                </span>
+              </div>
+              {i < steps.length - 1 && (
+                <div className={`flex-1 h-0.5 mb-4 ${i < currentIdx ? 'bg-green-500' : 'bg-muted'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function MyOrdersPage() {
   const { user, isUserLoading } = useUser();
@@ -80,14 +135,16 @@ export default function MyOrdersPage() {
     if (!orders) return;
     orders.forEach((order: any) => {
       const prev = lastStatusRef.current[order.id];
-      if (prev && prev !== order.status && STATUS_MESSAGES[order.status]) {
-        const msg = STATUS_MESSAGES[order.status];
-        toast({ title: `${msg.title} #${order.id}`, description: msg.description });
-        try {
-          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification(msg.title, { body: `Pedido #${order.id} — ${msg.description}` });
-          }
-        } catch {}
+      if (prev && prev !== order.status) {
+        const msg = statusMessage(order.status, order.orderType || 'delivery');
+        if (msg) {
+          toast({ title: `${msg.title} #${order.id}`, description: msg.description });
+          try {
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+              new Notification(msg.title, { body: `Pedido #${order.id} — ${msg.description}` });
+            }
+          } catch {}
+        }
       }
       lastStatusRef.current[order.id] = order.status;
     });
@@ -271,6 +328,7 @@ export default function MyOrdersPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-4 bg-white space-y-4">
+                  <OrderTimeline status={order.status} orderType={order.orderType || 'delivery'} />
                   <div className="space-y-2">
                     {order.items?.map((it: any, i: number) => (
                       <div key={i} className="text-sm">

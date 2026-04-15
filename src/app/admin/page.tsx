@@ -314,26 +314,32 @@ export default function AdminPage() {
                     order.status === 'received' ? 'border-l-blue-500' :
                     order.status === 'ready' ? 'border-l-green-500' :
                     order.status === 'out_for_delivery' ? 'border-l-purple-500' :
+                    order.status === 'delivered' ? 'border-l-gray-500' :
                     'border-l-gray-400';
                   const statusLabel =
                     order.status === 'pending' ? 'Pendente' :
                     order.status === 'received' ? 'Recebido' :
                     order.status === 'ready' ? 'Pronto' :
-                    order.status === 'out_for_delivery' ? 'Saiu p/ entrega' : order.status;
+                    order.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
+                    order.status === 'delivered' ? 'Concluído' : order.status;
                   const statusColor =
                     order.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
                     order.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
                     order.status === 'ready' ? 'bg-green-100 text-green-700 border-green-300' :
                     order.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                    order.status === 'delivered' ? 'bg-gray-200 text-gray-700 border-gray-400' :
                     'bg-gray-100 text-gray-700 border-gray-300';
                   return (
                     <Card key={order.id} className={`rounded-2xl shadow-sm border-l-4 ${borderColor} bg-white hover:shadow-lg transition-shadow`}>
                       <CardContent className="p-5 space-y-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-mono font-bold text-muted-foreground">#{order.id}</span>
                               <Badge className={`${statusColor} border font-bold text-[10px] uppercase`}>{statusLabel}</Badge>
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
+                                {order.orderType === 'pickup' ? '🏪 Retirada' : '🛵 Entrega'}
+                              </Badge>
                             </div>
                             <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                               <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
@@ -376,7 +382,7 @@ export default function AdminPage() {
                           )}
                           {order.status === 'received' && (
                             <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 w-full">
-                              <CheckCircle2 className="h-4 w-4 mr-2" /> Marcar como Pronto
+                              <CheckCircle2 className="h-4 w-4 mr-2" /> {order.orderType === 'pickup' ? 'Pronto p/ Retirada' : 'Marcar como Pronto'}
                             </Button>
                           )}
                           {order.status === 'ready' && order.orderType === 'delivery' && (
@@ -384,8 +390,18 @@ export default function AdminPage() {
                               Saiu para Entrega
                             </Button>
                           )}
+                          {order.status === 'ready' && order.orderType === 'pickup' && (
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'delivered')} className="bg-gray-700 hover:bg-gray-800 w-full">
+                              <CheckCircle2 className="h-4 w-4 mr-2" /> Cliente Retirou
+                            </Button>
+                          )}
                           {order.status === 'out_for_delivery' && (
-                            <div className="w-full text-center text-xs text-muted-foreground italic py-1">Pedido em rota de entrega</div>
+                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'delivered')} className="bg-gray-700 hover:bg-gray-800 w-full">
+                              <CheckCircle2 className="h-4 w-4 mr-2" /> Marcar como Entregue
+                            </Button>
+                          )}
+                          {order.status === 'delivered' && (
+                            <div className="w-full text-center text-xs text-muted-foreground italic py-1">Pedido concluído</div>
                           )}
                         </div>
                       </CardContent>

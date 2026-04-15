@@ -1,30 +1,45 @@
 
 "use client"
 
-import React, { useState } from 'react';
-import { useUser, useAuth } from '@/firebase';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useUser, useAuth, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, LogOut, UserIcon, ShoppingBag, Loader2 } from 'lucide-react';
+import { LogIn, LogOut, UserIcon, ShoppingBag, Loader2, Bell } from 'lucide-react';
 
 export function CustomerAccountButton() {
   const { user } = useUser();
   const auth = useAuth();
+  const db = useFirestore();
   const { toast } = useToast();
   const isRealUser = !!(user && !user.isAnonymous && user.email);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const myOrdersQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'orders'), where('customerIdentifier', '==', user!.uid));
+  }, [db, isRealUser]);
+  const { data: myOrders } = useCollection(myOrdersQuery);
+
+  // Badge de pedidos em andamento (não concluídos nem pendentes novos)
+  const activeCount = useMemo(() => {
+    if (!myOrders) return 0;
+    return (myOrders as any[]).filter(o => ['received', 'ready', 'out_for_delivery'].includes(o.status)).length;
+  }, [myOrders]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,8 +82,13 @@ export function CustomerAccountButton() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-primary font-bold shadow-md">
+          <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-primary font-bold shadow-md relative">
             <UserIcon className="h-4 w-4 mr-2" /> {user!.email?.split('@')[0]}
+            {activeCount > 0 && (
+              <Badge className="absolute -top-2 -right-2 bg-accent text-white h-5 min-w-[20px] px-1 flex items-center justify-center text-[10px] font-bold border-2 border-white">
+                {activeCount}
+              </Badge>
+            )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -82,6 +102,9 @@ export function CustomerAccountButton() {
           <Link href="/my-orders">
             <DropdownMenuItem className="cursor-pointer">
               <ShoppingBag className="h-4 w-4 mr-2" /> Meus Pedidos
+              {activeCount > 0 && (
+                <Badge className="ml-auto bg-accent text-white text-[10px]">{activeCount} em andamento</Badge>
+              )}
             </DropdownMenuItem>
           </Link>
           <DropdownMenuSeparator />

@@ -34,6 +34,7 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
 
   const db = useFirestore();
   const auth = useAuth();
@@ -101,8 +102,12 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
       toast({ variant: "destructive", title: "Erro", description: "Usuário não autenticado." });
       return;
     }
-    if (!customerName || !customerPhone || !deliveryAddress) {
-      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome, telefone e endereço." });
+    if (!customerName || !customerPhone) {
+      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome e telefone." });
+      return;
+    }
+    if (orderType === 'delivery' && !deliveryAddress) {
+      toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe o endereço de entrega." });
       return;
     }
     if (!storeOwnerId) {
@@ -132,13 +137,13 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
         customerName,
         customerPhone,
         customerEmail: user.email || '',
-        deliveryAddress,
+        deliveryAddress: orderType === 'delivery' ? deliveryAddress : '',
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
         totalAmount: totalPrice,
         paymentStatus: 'pending',
-        orderType: 'delivery',
+        orderType,
         items: cart.map(item => {
           const addons = item.customization?.addons || [];
           const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
@@ -256,6 +261,25 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
           <ScrollArea className="flex-1 -mx-6 px-6 py-4">
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label>Como você quer receber?</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('delivery')}
+                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                  >
+                    🛵 Entrega
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('pickup')}
+                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'pickup' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                  >
+                    🏪 Retirar no Local
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="cust_name">Nome Completo</Label>
                 <Input id="cust_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </div>
@@ -263,10 +287,12 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
                 <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
                 <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust_addr">Endereço de Entrega</Label>
-                <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
-              </div>
+              {orderType === 'delivery' && (
+                <div className="space-y-2">
+                  <Label htmlFor="cust_addr">Endereço de Entrega</Label>
+                  <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
+                </div>
+              )}
             </div>
           </ScrollArea>
         )}
