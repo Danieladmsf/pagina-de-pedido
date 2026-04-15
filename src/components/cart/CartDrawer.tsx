@@ -64,11 +64,17 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
         totalAmount: totalPrice,
         paymentStatus: 'pending',
         orderType: 'delivery',
-        items: cart.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.price,
-        }))
+        items: cart.map(item => {
+          const addons = item.customization?.addons || [];
+          const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
+          return {
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.price + addonsTotal,
+            addons: addons.map(a => ({ name: a.name, price: a.price })),
+            notes: item.customization?.notes || '',
+          };
+        })
       };
 
       await setDoc(orderRef, orderData);
@@ -126,22 +132,39 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
         ) : !showCheckoutForm ? (
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="py-4 space-y-6">
-              {cart.map((item) => (
-                <div key={item.cartId} className="flex flex-col gap-2">
-                  <div className="flex justify-between items-start">
-                    <h4 className="font-bold">{item.name}</h4>
-                    <span className="font-semibold text-primary">R$ {(item.price * item.quantity).toFixed(2)}</span>
+              {cart.map((item) => {
+                const addons = item.customization?.addons || [];
+                const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
+                const unitPrice = item.price + addonsTotal;
+                return (
+                  <div key={item.cartId} className="flex flex-col gap-2 pb-4 border-b border-muted last:border-0">
+                    <div className="flex justify-between items-start">
+                      <h4 className="font-bold">{item.name}</h4>
+                      <span className="font-semibold text-primary">R$ {(unitPrice * item.quantity).toFixed(2)}</span>
+                    </div>
+                    {addons.length > 0 && (
+                      <div className="text-xs text-muted-foreground pl-2 space-y-0.5">
+                        {addons.map(a => (
+                          <div key={a.id}>+ {a.name} (R$ {a.price.toFixed(2)})</div>
+                        ))}
+                      </div>
+                    )}
+                    {item.customization?.notes && (
+                      <div className="text-xs text-muted-foreground italic pl-2">
+                        Obs: {item.customization.notes}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)} className="border rounded-md p-1"><Minus className="h-3 w-3" /></button>
+                      <span className="text-sm font-bold">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
+                      <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={() => removeFromCart(item.cartId)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)} className="border rounded-md p-1"><Minus className="h-3 w-3" /></button>
-                    <span className="text-sm font-bold">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
-                    <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={() => removeFromCart(item.cartId)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
         ) : (

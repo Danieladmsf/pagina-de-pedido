@@ -1,12 +1,13 @@
 
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MenuItem } from '@/lib/types';
+import { MenuItem, Addon, SelectedAddon } from '@/lib/types';
 import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
 import { Minus, Plus } from 'lucide-react';
@@ -15,20 +16,45 @@ interface MenuItemDialogProps {
   item: MenuItem | null;
   isOpen: boolean;
   onClose: () => void;
+  allAddons?: Addon[];
 }
 
-export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
+export function MenuItemDialog({ item, isOpen, onClose, allAddons = [] }: MenuItemDialogProps) {
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
+  const [selectedAddons, setSelectedAddons] = useState<SelectedAddon[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setQuantity(1);
+      setNotes('');
+      setSelectedAddons([]);
+    }
+  }, [isOpen, item?.id]);
+
+  const productAddons = useMemo(() => {
+    if (!item?.addonIds || item.addonIds.length === 0) return [];
+    return allAddons.filter(a => item.addonIds!.includes(a.id));
+  }, [item, allAddons]);
 
   if (!item) return null;
 
+  const toggleAddon = (addon: Addon) => {
+    setSelectedAddons(prev => {
+      const exists = prev.find(a => a.id === addon.id);
+      if (exists) return prev.filter(a => a.id !== addon.id);
+      return [...prev, { id: addon.id, name: addon.name, price: addon.price }];
+    });
+  };
+
+  const addonsTotal = selectedAddons.reduce((acc, a) => acc + a.price, 0);
+  const unitPrice = item.price + addonsTotal;
+  const total = unitPrice * quantity;
+
   const handleAdd = () => {
-    addToCart(item, quantity, { size: '', extras: [], notes });
+    addToCart(item, quantity, { addons: selectedAddons, notes });
     onClose();
-    setQuantity(1);
-    setNotes('');
   };
 
   return (
@@ -36,12 +62,11 @@ export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="relative w-full h-48 mb-4 overflow-hidden rounded-lg">
-            <Image 
-              src={item.imageUrl} 
-              alt={item.name} 
-              fill 
+            <Image
+              src={item.imageUrl}
+              alt={item.name}
+              fill
               className="object-cover"
-              data-ai-hint={item.imageHint}
             />
           </div>
           <DialogTitle className="text-2xl font-bold">{item.name}</DialogTitle>
@@ -49,6 +74,34 @@ export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {productAddons.length > 0 && (
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Adicionais</Label>
+              <div className="space-y-2">
+                {productAddons.map((addon) => {
+                  const checked = !!selectedAddons.find(a => a.id === addon.id);
+                  return (
+                    <label
+                      key={addon.id}
+                      className="flex items-center justify-between gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleAddon(addon)}
+                        />
+                        <span className="text-sm font-medium">{addon.name}</span>
+                      </div>
+                      <span className="text-sm font-bold text-primary">
+                        + R$ {addon.price.toFixed(2)}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3">
             <Label className="text-base font-semibold">Observações</Label>
             <Textarea
@@ -70,12 +123,12 @@ export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          
-          <Button 
+
+          <Button
             className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-bold px-8"
             onClick={handleAdd}
           >
-            Adicionar • R$ {(item.price * quantity).toFixed(2)}
+            Adicionar • R$ {total.toFixed(2)}
           </Button>
         </DialogFooter>
       </DialogContent>

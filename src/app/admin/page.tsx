@@ -46,15 +46,23 @@ export default function AdminPage() {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'orders'), where('ownerId', '==', user!.uid), orderBy('orderDateTime', 'desc'));
   }, [db, isRealUser]);
-  
+
+  const addonsQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
+  }, [db, isRealUser]);
+
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: orders, isLoading: loadingOrders } = useCollection(ordersQuery);
+  const { data: addons } = useCollection(addonsQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [editingAddon, setEditingAddon] = useState<any>(null);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,6 +129,7 @@ export default function AdminPage() {
         price: parseFloat(formData.get('price') as string),
         categoryId: formData.get('categoryId') as string,
         imageUrl,
+        addonIds: selectedAddonIds,
         ownerId: user.uid,
         isAvailable: true,
         isRecommended: false,
@@ -135,10 +144,35 @@ export default function AdminPage() {
       setEditingItem(null);
       setImageFile(null);
       setImagePreview('');
+      setSelectedAddonIds([]);
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
     } catch (err: any) {
       console.error('Erro ao salvar produto:', err);
       toast({ variant: "destructive", title: "Erro ao salvar", description: err?.message || "Verifique sua conexão e tente novamente." });
+    }
+  };
+
+  const handleSaveAddon = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user || !db) return;
+    const formData = new FormData(e.currentTarget);
+    const addonData = {
+      name: formData.get('addonName') as string,
+      price: parseFloat(formData.get('addonPrice') as string),
+      ownerId: user.uid,
+    };
+    try {
+      if (editingAddon?.id) {
+        await updateDoc(doc(db, 'addons', editingAddon.id), addonData);
+      } else {
+        const newDoc = doc(collection(db, 'addons'));
+        await setDoc(newDoc, { ...addonData, id: newDoc.id });
+      }
+      setEditingAddon(null);
+      toast({ title: "Sucesso", description: "Adicional salvo." });
+    } catch (err: any) {
+      console.error('Erro ao salvar adicional:', err);
+      toast({ variant: "destructive", title: "Erro", description: err?.message || "Falha ao salvar adicional." });
     }
   };
 
@@ -200,6 +234,9 @@ export default function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="categories" className="rounded-lg px-6 flex gap-2">
               <Tag className="h-4 w-4" /> Categorias
+            </TabsTrigger>
+            <TabsTrigger value="addons" className="rounded-lg px-6 flex gap-2">
+              <Plus className="h-4 w-4" /> Adicionais
             </TabsTrigger>
           </TabsList>
 
@@ -274,9 +311,9 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
-                <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); } }}>
+                <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); } }}>
                   <DialogTrigger asChild>
-                    <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); }} className="bg-primary text-white">
+                    <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); }} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Prato
                     </Button>
                   </DialogTrigger>
@@ -327,6 +364,34 @@ export default function AdminPage() {
                         <Label htmlFor="description">Descrição</Label>
                         <Textarea id="description" name="description" defaultValue={editingItem?.description} required />
                       </div>
+                      {addons && addons.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>Adicionais Disponíveis</Label>
+                          <div className="space-y-2 border rounded-md p-3 max-h-48 overflow-y-auto">
+                            {addons.map(addon => {
+                              const checked = selectedAddonIds.includes(addon.id);
+                              return (
+                                <label key={addon.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/50 p-2 rounded">
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setSelectedAddonIds([...selectedAddonIds, addon.id]);
+                                        else setSelectedAddonIds(selectedAddonIds.filter(id => id !== addon.id));
+                                      }}
+                                      className="h-4 w-4"
+                                    />
+                                    <span className="text-sm">{addon.name}</span>
+                                  </div>
+                                  <span className="text-xs font-semibold text-primary">+ R$ {addon.price.toFixed(2)}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs text-muted-foreground">Marque os adicionais que este produto pode receber. Deixe vazio se não aplicável.</p>
+                        </div>
+                      )}
                       <DialogFooter>
                         <Button type="submit" className="w-full h-12 font-bold" disabled={uploadingImage}>
                           {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar'}
@@ -357,7 +422,7 @@ export default function AdminPage() {
                         <TableCell className="font-bold">{item.name}</TableCell>
                         <TableCell className="font-semibold text-primary">R$ {item.price.toFixed(2)}</TableCell>
                         <TableCell className="text-right pr-6 space-x-1">
-                          <Button variant="ghost" size="icon" onClick={() => setEditingItem(item)}>
+                          <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setSelectedAddonIds(item.addonIds || []); setImageFile(null); setImagePreview(''); }}>
                             <Pencil className="h-4 w-4 text-blue-500" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={async () => {
@@ -412,6 +477,77 @@ export default function AdminPage() {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="addons" className="mt-6">
+            <Card className="border shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
+                <CardTitle className="text-lg">Adicionais Disponíveis</CardTitle>
+                <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
+                  <DialogTrigger asChild>
+                    <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
+                      <Plus className="mr-2 h-4 w-4" /> Novo Adicional
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                      <DialogTitle>{editingAddon?.id ? 'Editar Adicional' : 'Novo Adicional'}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSaveAddon} className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="addonName">Nome</Label>
+                        <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="addonPrice">Preço (R$)</Label>
+                        <Input id="addonPrice" name="addonPrice" type="number" step="0.01" defaultValue={editingAddon?.price} placeholder="0.00" required />
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="pl-6">Nome</TableHead>
+                      <TableHead>Preço</TableHead>
+                      <TableHead className="text-right pr-6">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {!addons || addons.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
+                          Nenhum adicional cadastrado. Crie opções como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      addons.map((addon) => (
+                        <TableRow key={addon.id}>
+                          <TableCell className="font-bold pl-6">{addon.name}</TableCell>
+                          <TableCell className="text-primary font-semibold">R$ {addon.price.toFixed(2)}</TableCell>
+                          <TableCell className="text-right pr-6 space-x-1">
+                            <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={async () => {
+                              if (!db) return;
+                              if (confirm("Excluir adicional?")) await deleteDoc(doc(db, 'addons', addon.id));
+                            }}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>

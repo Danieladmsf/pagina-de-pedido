@@ -37,6 +37,14 @@ service cloud.firestore {
       );
     }
 
+    match /addons/{addonId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+    }
+
     match /orders/{orderId} {
       allow get: if isSignedIn() && (
         resource.data.customerIdentifier == request.auth.uid ||

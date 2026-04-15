@@ -45,8 +45,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = () => setCart([]);
 
+  const itemUnitPrice = (item: CartItem) => {
+    const addonsTotal = (item.customization?.addons || []).reduce((a, b) => a + (b.price || 0), 0);
+    return item.price + addonsTotal;
+  };
+
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const totalPrice = cart.reduce((acc, item) => acc + (itemUnitPrice(item) * item.quantity), 0);
 
   return (
     <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice }}>

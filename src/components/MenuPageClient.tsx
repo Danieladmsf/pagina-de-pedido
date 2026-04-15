@@ -44,9 +44,16 @@ export function MenuPageClient() {
     if (storeId) return query(collection(db, 'menuItems'), where('ownerId', '==', storeId));
     return collection(db, 'menuItems');
   }, [db, storeId]);
-  
+
+  const addonsQuery = useMemoFirebase(() => {
+    if (!db) return null;
+    if (storeId) return query(collection(db, 'addons'), where('ownerId', '==', storeId));
+    return collection(db, 'addons');
+  }, [db, storeId]);
+
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
+  const { data: addons } = useCollection(addonsQuery);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -194,10 +201,11 @@ export function MenuPageClient() {
         </div>
       </footer>
 
-      <MenuItemDialog 
-        item={selectedItem} 
-        isOpen={!!selectedItem} 
-        onClose={() => setSelectedItem(null)} 
+      <MenuItemDialog
+        item={selectedItem}
+        isOpen={!!selectedItem}
+        onClose={() => setSelectedItem(null)}
+        allAddons={addons || []}
       />
       
       <Toaster />
