@@ -24,6 +24,7 @@ type Step = 'cart' | 'auth' | 'info';
 
 export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
+  const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,7 +63,7 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
   }, [isOpen, isRealUser, db, user]);
 
   const goToCheckout = () => {
-    if (!storeOwnerId) {
+    if (!effectiveStoreOwnerId) {
       toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja." });
       return;
     }
@@ -110,7 +111,7 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
       toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe o endereço de entrega." });
       return;
     }
-    if (!storeOwnerId) {
+    if (!effectiveStoreOwnerId) {
       toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja." });
       return;
     }
@@ -133,7 +134,7 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
       const orderData = {
         id: orderId,
         customerIdentifier: user.uid,
-        ownerId: storeOwnerId,
+        ownerId: effectiveStoreOwnerId,
         customerName,
         customerPhone,
         customerEmail: user.email || '',
