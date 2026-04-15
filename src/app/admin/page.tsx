@@ -129,6 +129,7 @@ export default function AdminPage() {
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   const reportData = React.useMemo(() => {
     if (!orders) return null;
@@ -162,17 +163,37 @@ export default function AdminPage() {
     });
     const customers = Object.entries(byCustomer).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => b.total - a.total);
 
-    const byItem: Record<string, { name: string; qty: number; revenue: number }> = {};
+    const byItem: Record<string, { name: string; qty: number; revenue: number; occurrences: any[] }> = {};
     filtered.forEach((o: any) => {
       (o.items || []).forEach((it: any) => {
-        if (!byItem[it.name]) byItem[it.name] = { name: it.name, qty: 0, revenue: 0 };
+        if (!byItem[it.name]) byItem[it.name] = { name: it.name, qty: 0, revenue: 0, occurrences: [] };
         byItem[it.name].qty += it.quantity || 0;
         byItem[it.name].revenue += (it.unitPrice || 0) * (it.quantity || 0);
+        byItem[it.name].occurrences.push({
+          orderId: o.id,
+          customerName: o.customerName,
+          customerPhone: o.customerPhone,
+          orderDateTime: o.orderDateTime,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          addons: it.addons,
+          notes: it.notes,
+        });
       });
     });
     const topItems = Object.values(byItem).sort((a, b) => b.qty - a.qty).slice(0, 10);
 
-    return { revenue, count: filtered.length, avgTicket, customers, topItems };
+    const byDay: Record<string, { date: string; revenue: number; count: number }> = {};
+    filtered.forEach((o: any) => {
+      const d = new Date(o.orderDateTime);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (!byDay[key]) byDay[key] = { date: key, revenue: 0, count: 0 };
+      byDay[key].revenue += o.totalAmount || 0;
+      byDay[key].count++;
+    });
+    const dailyBreakdown = Object.values(byDay).sort((a, b) => b.date.localeCompare(a.date));
+
+    return { revenue, count: filtered.length, avgTicket, customers, topItems, dailyBreakdown };
   }, [orders, reportPeriod, customFrom, customTo]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -832,24 +853,89 @@ export default function AdminPage() {
                 </div>
 
                 <Card className="rounded-2xl">
+                  <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5 text-primary" /> Vendas por dia</CardTitle></CardHeader>
+                  <CardContent>
+                    {reportData.dailyBreakdown.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {(() => {
+                          const maxRev = Math.max(...reportData.dailyBreakdown.map(d => d.revenue));
+                          return reportData.dailyBreakdown.map((d) => {
+                            const pct = maxRev > 0 ? (d.revenue / maxRev) * 100 : 0;
+                            const [y, m, day] = d.date.split('-');
+                            const label = `${day}/${m}/${y}`;
+                            return (
+                              <div key={d.date} className="space-y-1">
+                                <div className="flex items-center justify-between gap-2 text-sm">
+                                  <span className="font-bold">{label}</span>
+                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} · <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
+                                </div>
+                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingUp className="h-5 w-5 text-primary" /> Itens mais vendidos</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.topItems.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
                     ) : (
                       <div className="space-y-2">
-                        {reportData.topItems.map((it, idx) => (
-                          <div key={it.name} className="flex items-center justify-between gap-3 p-3 bg-muted/30 rounded-xl">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-lg font-black text-primary w-6">#{idx + 1}</span>
-                              <span className="font-bold truncate">{it.name}</span>
+                        {reportData.topItems.map((it, idx) => {
+                          const isOpen = expandedItem === it.name;
+                          return (
+                            <div key={it.name} className="border rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => setExpandedItem(isOpen ? null : it.name)}
+                                className="w-full flex items-center justify-between gap-3 p-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {isOpen ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                                  <span className="text-lg font-black text-primary w-6">#{idx + 1}</span>
+                                  <span className="font-bold truncate">{it.name}</span>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-sm font-black">{it.qty} un.</p>
+                                  <p className="text-xs text-muted-foreground">R$ {it.revenue.toFixed(2)}</p>
+                                </div>
+                              </button>
+                              {isOpen && (
+                                <div className="p-3 space-y-2 bg-white border-t">
+                                  {it.occurrences.map((oc: any, i: number) => (
+                                    <div key={i} className="text-xs border-l-2 border-primary/30 pl-3 py-1">
+                                      <div className="flex justify-between gap-2 flex-wrap">
+                                        <span className="font-bold">{oc.customerName || '-'}</span>
+                                        <span className="text-muted-foreground">{new Date(oc.orderDateTime).toLocaleString('pt-BR')}</span>
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        <span className="font-mono">#{oc.orderId}</span> · {oc.customerPhone || '-'} · <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
+                                      </div>
+                                      {oc.addons?.length > 0 && (
+                                        <div className="pl-2 text-[11px] text-muted-foreground mt-0.5">
+                                          {oc.addons.map((a: any, j: number) => (
+                                            <div key={j}>+ {a.name}{typeof a.price === 'number' && a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {oc.notes && (
+                                        <div className="pl-2 text-[11px] italic text-muted-foreground">Obs: {oc.notes}</div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className="text-sm font-black">{it.qty} un.</p>
-                              <p className="text-xs text-muted-foreground">R$ {it.revenue.toFixed(2)}</p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>
