@@ -457,11 +457,23 @@ export default function AdminPage() {
                           )}
                         </div>
 
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           {order.items?.map((it: any, i: number) => (
-                            <div key={i} className="text-sm flex justify-between gap-2">
-                              <span><span className="font-bold text-primary">{it.quantity}x</span> {it.name}</span>
-                              <span className="text-muted-foreground whitespace-nowrap">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                            <div key={i} className="text-sm">
+                              <div className="flex justify-between gap-2">
+                                <span><span className="font-bold text-primary">{it.quantity}x</span> {it.name}</span>
+                                <span className="text-muted-foreground whitespace-nowrap">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                              </div>
+                              {it.addons?.length > 0 && (
+                                <div className="text-xs text-muted-foreground pl-4 mt-0.5 space-y-0.5">
+                                  {it.addons.map((a: any, j: number) => (
+                                    <div key={j}>+ {a.name}{typeof a.price === 'number' && a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                                  ))}
+                                </div>
+                              )}
+                              {it.notes && (
+                                <div className="text-xs italic text-muted-foreground pl-4 mt-0.5">Obs: {it.notes}</div>
+                              )}
                             </div>
                           ))}
                         </div>
