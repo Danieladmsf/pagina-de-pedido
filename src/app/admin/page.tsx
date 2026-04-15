@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
 import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -66,6 +66,57 @@ export default function AdminPage() {
     console.log('[admin] orders loading:', loadingOrders, 'count:', ordersRaw?.length, 'error:', ordersError);
     if (ordersRaw) console.log('[admin] orders data:', ordersRaw);
   }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
+
+  const seenOrderIdsRef = useRef<Set<string> | null>(null);
+  const playNewOrderBeep = React.useCallback(() => {
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const play = (freq: number, start: number, dur: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0, ctx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + start + 0.02);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur + 0.05);
+      };
+      play(880, 0, 0.18);
+      play(1175, 0.22, 0.25);
+      setTimeout(() => ctx.close(), 800);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!ordersRaw) return;
+    const currentIds = new Set((ordersRaw as any[]).map(o => o.id));
+    if (seenOrderIdsRef.current === null) {
+      seenOrderIdsRef.current = currentIds;
+      return;
+    }
+    const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending');
+    if (newOnes.length > 0) {
+      playNewOrderBeep();
+      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmação.` });
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmação.` });
+        }
+      } catch {}
+    }
+    seenOrderIdsRef.current = currentIds;
+  }, [ordersRaw, playNewOrderBeep, toast]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
