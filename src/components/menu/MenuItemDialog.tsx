@@ -7,11 +7,9 @@ import { Button } from '@/components/ui/button';
 import { MenuItem } from '@/lib/types';
 import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
-import { Minus, Plus, ShoppingCart } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 
 interface MenuItemDialogProps {
   item: MenuItem | null;
@@ -22,18 +20,14 @@ interface MenuItemDialogProps {
 export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
-  const [size, setSize] = useState('Padrão');
-  const [extras, setExtras] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
 
   if (!item) return null;
 
   const handleAdd = () => {
-    addToCart(item, quantity, { size, extras, notes });
+    addToCart(item, quantity, { size: '', extras: [], notes });
     onClose();
     setQuantity(1);
-    setSize('Padrão');
-    setExtras([]);
     setNotes('');
   };
 
@@ -56,46 +50,9 @@ export function MenuItemDialog({ item, isOpen, onClose }: MenuItemDialogProps) {
 
         <div className="space-y-6 py-4">
           <div className="space-y-3">
-            <Label className="text-base font-semibold">Tamanho</Label>
-            <RadioGroup value={size} onValueChange={setSize} className="flex gap-4">
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="Pequeno" id="s" />
-                <Label htmlFor="s">Pequeno</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="Padrão" id="m" />
-                <Label htmlFor="m">Padrão</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="Grande" id="l" />
-                <Label htmlFor="l">Grande</Label>
-              </div>
-            </RadioGroup>
-          </div>
-
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Adicionais</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {['Bacon', 'Queijo Extra', 'Cebola Caramelizada', 'Molho Picante'].map((extra) => (
-                <div key={extra} className="flex items-center space-x-2">
-                  <Checkbox 
-                    id={extra} 
-                    checked={extras.includes(extra)}
-                    onCheckedChange={(checked) => {
-                      if (checked) setExtras([...extras, extra]);
-                      else setExtras(extras.filter(e => e !== extra));
-                    }}
-                  />
-                  <Label htmlFor={extra} className="text-sm cursor-pointer">{extra}</Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Observações Especiais</Label>
-            <Textarea 
-              placeholder="Ex: Sem cebola, ponto da carne, etc." 
+            <Label className="text-base font-semibold">Observações</Label>
+            <Textarea
+              placeholder="Ex: sem gelo, bem gelado, etc."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="resize-none"
