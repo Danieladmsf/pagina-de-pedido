@@ -210,8 +210,13 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
-    <div className="min-h-screen bg-muted/30 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-muted/30 p-4 md:p-8 relative">
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10 pointer-events-none bg-no-repeat bg-center bg-cover opacity-[0.08]"
+        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
+      />
+      <div className="max-w-6xl mx-auto space-y-8 relative">
         <div className="flex flex-col md:flex-row md:items-center justify-between bg-white p-6 rounded-2xl shadow-sm border gap-4">
           <div className="flex items-center gap-4">
             <div className="bg-primary/10 p-3 rounded-full">

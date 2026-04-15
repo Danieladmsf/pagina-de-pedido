@@ -77,7 +77,12 @@ export function MenuPageClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24 max-w-7xl mx-auto px-4 md:px-8">
+    <div className="min-h-screen pb-24 max-w-7xl mx-auto px-4 md:px-8 relative">
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10 pointer-events-none bg-no-repeat bg-center bg-cover opacity-[0.10]"
+        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
+      />
       <header className="py-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
