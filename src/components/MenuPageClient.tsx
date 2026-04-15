@@ -80,8 +80,7 @@ export function MenuPageClient() {
   return (
     <div className="min-h-screen pb-24 relative">
       <section
-        className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] md:aspect-[1832/560]"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
+        className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] md:aspect-[1832/560] bg-[image:url('/lima-limao-bg-mobile.png')] md:bg-[image:url('/lima-limao-bg.png')]"
       >
         <div className="absolute inset-0 bg-white/25" />
         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-white pointer-events-none" />
