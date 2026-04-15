@@ -4,10 +4,18 @@ import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { AuthInit } from '@/components/providers/AuthInit';
 import { CartProvider } from '@/components/providers/CartProvider';
+import { PWARegister } from '@/components/providers/PWARegister';
 
 export const metadata = {
   title: 'Lima Limão - Cardápio Digital',
   description: 'O verdadeiro sabor da fruta!',
+  manifest: '/manifest.json',
+  themeColor: '#16803c',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Lima Limão',
+  },
 };
 
 export default function RootLayout({
@@ -30,6 +38,7 @@ export default function RootLayout({
             </CartProvider>
           </AuthInit>
         </FirebaseClientProvider>
+        <PWARegister />
       </body>
     </html>
   );
