@@ -91,7 +91,7 @@ export function MenuPageClient() {
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-40 md:pt-56 pb-6 space-y-5">
+        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-[122px] md:pt-[186px] pb-6 space-y-5">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
