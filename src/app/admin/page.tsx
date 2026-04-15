@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -74,6 +74,44 @@ export default function AdminPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [editingAddon, setEditingAddon] = useState<any>(null);
+  const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all'>('30d');
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+
+  const reportData = React.useMemo(() => {
+    if (!orders) return null;
+    const now = new Date();
+    const cutoff = new Date(now);
+    if (reportPeriod === 'today') cutoff.setHours(0, 0, 0, 0);
+    else if (reportPeriod === '7d') cutoff.setDate(now.getDate() - 7);
+    else if (reportPeriod === '30d') cutoff.setDate(now.getDate() - 30);
+    else cutoff.setTime(0);
+
+    const filtered = orders.filter((o: any) => new Date(o.orderDateTime) >= cutoff);
+    const revenue = filtered.reduce((s: number, o: any) => s + (o.totalAmount || 0), 0);
+    const avgTicket = filtered.length ? revenue / filtered.length : 0;
+
+    const byCustomer: Record<string, { name: string; phone: string; count: number; total: number; orders: any[] }> = {};
+    filtered.forEach((o: any) => {
+      const key = o.customerPhone || o.customerName || o.id;
+      if (!byCustomer[key]) byCustomer[key] = { name: o.customerName || '-', phone: o.customerPhone || '-', count: 0, total: 0, orders: [] };
+      byCustomer[key].count++;
+      byCustomer[key].total += o.totalAmount || 0;
+      byCustomer[key].orders.push(o);
+    });
+    const customers = Object.entries(byCustomer).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => b.total - a.total);
+
+    const byItem: Record<string, { name: string; qty: number; revenue: number }> = {};
+    filtered.forEach((o: any) => {
+      (o.items || []).forEach((it: any) => {
+        if (!byItem[it.name]) byItem[it.name] = { name: it.name, qty: 0, revenue: 0 };
+        byItem[it.name].qty += it.quantity || 0;
+        byItem[it.name].revenue += (it.unitPrice || 0) * (it.quantity || 0);
+      });
+    });
+    const topItems = Object.values(byItem).sort((a, b) => b.qty - a.qty).slice(0, 10);
+
+    return { revenue, count: filtered.length, avgTicket, customers, topItems };
+  }, [orders, reportPeriod]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -293,6 +331,9 @@ export default function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="addons" className="rounded-lg px-6 flex gap-2">
               <Plus className="h-4 w-4" /> Adicionais
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="rounded-lg px-6 flex gap-2">
+              <BarChart3 className="h-4 w-4" /> Relatórios
             </TabsTrigger>
           </TabsList>
 
@@ -657,6 +698,124 @@ export default function AdminPage() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="reports" className="mt-6 space-y-6">
+            <div className="flex flex-wrap gap-2">
+              {([['today', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias'], ['all', 'Tudo']] as const).map(([val, label]) => (
+                <Button
+                  key={val}
+                  variant={reportPeriod === val ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setReportPeriod(val)}
+                  className="rounded-full"
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+
+            {!reportData ? (
+              <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="rounded-2xl border-green-200 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-green-600">Faturamento</p>
+                      <p className="text-3xl font-black text-green-700">R$ {reportData.revenue.toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="rounded-2xl border-blue-200 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-blue-600">Pedidos</p>
+                      <p className="text-3xl font-black text-blue-700">{reportData.count}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="rounded-2xl border-purple-200 shadow-sm">
+                    <CardContent className="p-5">
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Ticket Médio</p>
+                      <p className="text-3xl font-black text-purple-700">R$ {reportData.avgTicket.toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card className="rounded-2xl">
+                  <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingUp className="h-5 w-5 text-primary" /> Itens mais vendidos</CardTitle></CardHeader>
+                  <CardContent>
+                    {reportData.topItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {reportData.topItems.map((it, idx) => (
+                          <div key={it.name} className="flex items-center justify-between gap-3 p-3 bg-muted/30 rounded-xl">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-lg font-black text-primary w-6">#{idx + 1}</span>
+                              <span className="font-bold truncate">{it.name}</span>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-sm font-black">{it.qty} un.</p>
+                              <p className="text-xs text-muted-foreground">R$ {it.revenue.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl">
+                  <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-primary" /> Clientes ({reportData.customers.length})</CardTitle></CardHeader>
+                  <CardContent>
+                    {reportData.customers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem clientes no período.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {reportData.customers.map((c) => {
+                          const isOpen = expandedCustomer === c.key;
+                          return (
+                            <div key={c.key} className="border rounded-xl overflow-hidden">
+                              <button
+                                onClick={() => setExpandedCustomer(isOpen ? null : c.key)}
+                                className="w-full flex items-center justify-between gap-3 p-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {isOpen ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                                  <div className="min-w-0">
+                                    <p className="font-bold truncate">{c.name}</p>
+                                    <p className="text-xs text-muted-foreground truncate">{c.phone}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-sm font-black text-primary">R$ {c.total.toFixed(2)}</p>
+                                  <p className="text-xs text-muted-foreground">{c.count} pedido{c.count > 1 ? 's' : ''}</p>
+                                </div>
+                              </button>
+                              {isOpen && (
+                                <div className="p-3 space-y-2 bg-white border-t">
+                                  {c.orders.map((o: any) => (
+                                    <div key={o.id} className="text-xs border-l-2 border-primary/30 pl-3 py-1">
+                                      <div className="flex justify-between gap-2">
+                                        <span className="font-mono font-bold">#{o.id}</span>
+                                        <span className="text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
+                                      </div>
+                                      <div className="flex justify-between gap-2 mt-1">
+                                        <span className="text-muted-foreground truncate">{(o.items || []).map((it: any) => `${it.quantity}x ${it.name}`).join(', ')}</span>
+                                        <span className="font-bold text-primary whitespace-nowrap">R$ {(o.totalAmount || 0).toFixed(2)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </TabsContent>
         </Tabs>
       </div>
