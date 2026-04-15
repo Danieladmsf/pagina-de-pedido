@@ -125,19 +125,30 @@ export default function AdminPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [editingAddon, setEditingAddon] = useState<any>(null);
-  const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all'>('30d');
+  const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('30d');
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
 
   const reportData = React.useMemo(() => {
     if (!orders) return null;
     const now = new Date();
-    const cutoff = new Date(now);
-    if (reportPeriod === 'today') cutoff.setHours(0, 0, 0, 0);
-    else if (reportPeriod === '7d') cutoff.setDate(now.getDate() - 7);
-    else if (reportPeriod === '30d') cutoff.setDate(now.getDate() - 30);
-    else cutoff.setTime(0);
+    let from: Date;
+    let to: Date = new Date(now);
+    to.setHours(23, 59, 59, 999);
+    if (reportPeriod === 'today') { from = new Date(now); from.setHours(0, 0, 0, 0); }
+    else if (reportPeriod === '7d') { from = new Date(now); from.setDate(now.getDate() - 7); }
+    else if (reportPeriod === '30d') { from = new Date(now); from.setDate(now.getDate() - 30); }
+    else if (reportPeriod === 'custom') {
+      from = customFrom ? new Date(customFrom + 'T00:00:00') : new Date(0);
+      to = customTo ? new Date(customTo + 'T23:59:59') : new Date(now);
+    }
+    else { from = new Date(0); }
 
-    const filtered = orders.filter((o: any) => new Date(o.orderDateTime) >= cutoff);
+    const filtered = orders.filter((o: any) => {
+      const d = new Date(o.orderDateTime);
+      return d >= from && d <= to;
+    });
     const revenue = filtered.reduce((s: number, o: any) => s + (o.totalAmount || 0), 0);
     const avgTicket = filtered.length ? revenue / filtered.length : 0;
 
@@ -162,7 +173,7 @@ export default function AdminPage() {
     const topItems = Object.values(byItem).sort((a, b) => b.qty - a.qty).slice(0, 10);
 
     return { revenue, count: filtered.length, avgTicket, customers, topItems };
-  }, [orders, reportPeriod]);
+  }, [orders, reportPeriod, customFrom, customTo]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -764,18 +775,35 @@ export default function AdminPage() {
           </TabsContent>
 
           <TabsContent value="reports" className="mt-6 space-y-6">
-            <div className="flex flex-wrap gap-2">
-              {([['today', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias'], ['all', 'Tudo']] as const).map(([val, label]) => (
-                <Button
-                  key={val}
-                  variant={reportPeriod === val ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setReportPeriod(val)}
-                  className="rounded-full"
-                >
-                  {label}
-                </Button>
-              ))}
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {([['today', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias'], ['all', 'Tudo'], ['custom', 'Personalizado']] as const).map(([val, label]) => (
+                  <Button
+                    key={val}
+                    variant={reportPeriod === val ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setReportPeriod(val)}
+                    className="rounded-full"
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {reportPeriod === 'custom' && (
+                <div className="flex flex-wrap items-end gap-3 p-3 bg-muted/30 rounded-xl">
+                  <div className="space-y-1">
+                    <Label className="text-xs">De</Label>
+                    <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Até</Label>
+                    <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9" />
+                  </div>
+                  {(customFrom || customTo) && (
+                    <Button size="sm" variant="ghost" onClick={() => { setCustomFrom(''); setCustomTo(''); }}>Limpar</Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {!reportData ? (
@@ -855,19 +883,64 @@ export default function AdminPage() {
                                 </div>
                               </button>
                               {isOpen && (
-                                <div className="p-3 space-y-2 bg-white border-t">
-                                  {c.orders.map((o: any) => (
-                                    <div key={o.id} className="text-xs border-l-2 border-primary/30 pl-3 py-1">
-                                      <div className="flex justify-between gap-2">
-                                        <span className="font-mono font-bold">#{o.id}</span>
-                                        <span className="text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
+                                <div className="p-3 space-y-3 bg-white border-t">
+                                  {c.orders.map((o: any) => {
+                                    const sLabel =
+                                      o.status === 'pending' ? 'Pendente' :
+                                      o.status === 'received' ? 'Recebido' :
+                                      o.status === 'ready' ? 'Pronto' :
+                                      o.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
+                                      o.status === 'delivered' ? 'Concluído' : o.status;
+                                    const sColor =
+                                      o.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                                      o.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                                      o.status === 'ready' ? 'bg-green-100 text-green-700 border-green-300' :
+                                      o.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                                      'bg-gray-100 text-gray-700 border-gray-300';
+                                    return (
+                                      <div key={o.id} className="border rounded-xl p-3 bg-muted/10">
+                                        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-mono font-bold text-muted-foreground">#{o.id}</span>
+                                            <Badge className={`${sColor} border font-bold text-[10px] uppercase`}>{sLabel}</Badge>
+                                            <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
+                                              {o.orderType === 'pickup' ? '🏪 Retirada' : '🛵 Entrega'}
+                                            </Badge>
+                                          </div>
+                                          <span className="text-xs text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
+                                        </div>
+                                        {o.deliveryAddress && (
+                                          <div className="flex items-start gap-1 text-xs text-muted-foreground mb-2">
+                                            <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> <span>{o.deliveryAddress}</span>
+                                          </div>
+                                        )}
+                                        <div className="space-y-1.5">
+                                          {(o.items || []).map((it: any, i: number) => (
+                                            <div key={i} className="text-xs">
+                                              <div className="flex justify-between gap-2">
+                                                <span><span className="font-bold text-primary">{it.quantity}x</span> {it.name}</span>
+                                                <span className="text-muted-foreground whitespace-nowrap">R$ {((it.unitPrice || 0) * (it.quantity || 0)).toFixed(2)}</span>
+                                              </div>
+                                              {it.addons?.length > 0 && (
+                                                <div className="pl-3 text-[11px] text-muted-foreground">
+                                                  {it.addons.map((a: any, j: number) => (
+                                                    <div key={j}>+ {a.name}{typeof a.price === 'number' && a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                              {it.notes && (
+                                                <div className="pl-3 text-[11px] italic text-muted-foreground">Obs: {it.notes}</div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div className="mt-2 pt-2 border-t border-dashed flex justify-between items-center">
+                                          <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Total</span>
+                                          <span className="text-sm font-black text-primary">R$ {(o.totalAmount || 0).toFixed(2)}</span>
+                                        </div>
                                       </div>
-                                      <div className="flex justify-between gap-2 mt-1">
-                                        <span className="text-muted-foreground truncate">{(o.items || []).map((it: any) => `${it.quantity}x ${it.name}`).join(', ')}</span>
-                                        <span className="font-bold text-primary whitespace-nowrap">R$ {(o.totalAmount || 0).toFixed(2)}</span>
-                                      </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
