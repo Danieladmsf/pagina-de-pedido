@@ -80,7 +80,7 @@ export function MenuPageClient() {
   return (
     <div className="min-h-screen pb-24 relative">
       <section
-        className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] min-h-[380px] md:min-h-0 md:aspect-[1832/560]"
+        className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] md:aspect-[1832/560]"
         style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
       >
         <div className="absolute inset-0 bg-white/25" />
@@ -91,7 +91,7 @@ export function MenuPageClient() {
             <CartDrawer storeOwnerId={storeId} />
           </div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-[122px] md:pt-[186px] pb-6 space-y-5">
+        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-10 md:pt-[186px] pb-6 space-y-5">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
