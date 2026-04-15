@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, addDoc, orderBy, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, DollarSign, LockKeyhole, UnlockKeyhole } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -53,11 +53,6 @@ export default function AdminPage() {
     return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
   }, [db, isRealUser]);
 
-  const cashSessionsQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'cashSessions'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
-
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
@@ -72,12 +67,6 @@ export default function AdminPage() {
     if (ordersRaw) console.log('[admin] orders data:', ordersRaw);
   }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
   const { data: addons } = useCollection(addonsQuery);
-  const { data: cashSessionsRaw } = useCollection(cashSessionsQuery);
-  const cashSessions = React.useMemo(() => {
-    if (!cashSessionsRaw) return [];
-    return [...cashSessionsRaw].sort((a: any, b: any) => (b.openedAt || '').localeCompare(a.openedAt || ''));
-  }, [cashSessionsRaw]);
-  const openCashSession = React.useMemo(() => cashSessions.find((s: any) => !s.closedAt), [cashSessions]);
 
   const [editingItem, setEditingItem] = useState<any>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -87,45 +76,6 @@ export default function AdminPage() {
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all'>('30d');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
-  const [openingAmount, setOpeningAmount] = useState<string>('');
-
-  const currentShiftSummary = React.useMemo(() => {
-    if (!openCashSession || !orders) return null;
-    const openedAt = openCashSession.openedAt;
-    const shiftOrders = orders.filter((o: any) => o.orderDateTime >= openedAt && o.status !== 'cancelled');
-    const total = shiftOrders.reduce((s: number, o: any) => s + (o.totalAmount || 0), 0);
-    return { orders: shiftOrders, count: shiftOrders.length, total };
-  }, [openCashSession, orders]);
-
-  const handleOpenCash = async () => {
-    if (!db || !user) return;
-    try {
-      await addDoc(collection(db, 'cashSessions'), {
-        ownerId: user.uid,
-        openedAt: new Date().toISOString(),
-        openingAmount: parseFloat(openingAmount) || 0,
-        closedAt: null,
-      });
-      setOpeningAmount('');
-      toast({ title: 'Caixa aberto' });
-    } catch (e: any) {
-      toast({ title: 'Erro ao abrir caixa', description: e.message, variant: 'destructive' });
-    }
-  };
-
-  const handleCloseCash = async () => {
-    if (!db || !openCashSession || !currentShiftSummary) return;
-    try {
-      await updateDoc(doc(db, 'cashSessions', openCashSession.id), {
-        closedAt: new Date().toISOString(),
-        totalSales: currentShiftSummary.total,
-        totalOrders: currentShiftSummary.count,
-      });
-      toast({ title: 'Caixa fechado' });
-    } catch (e: any) {
-      toast({ title: 'Erro ao fechar caixa', description: e.message, variant: 'destructive' });
-    }
-  };
 
   const reportData = React.useMemo(() => {
     if (!orders) return null;
@@ -384,9 +334,6 @@ export default function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="reports" className="rounded-lg px-6 flex gap-2">
               <BarChart3 className="h-4 w-4" /> Relatórios
-            </TabsTrigger>
-            <TabsTrigger value="cash" className="rounded-lg px-6 flex gap-2">
-              <DollarSign className="h-4 w-4" /> Caixa
             </TabsTrigger>
           </TabsList>
 
@@ -869,88 +816,6 @@ export default function AdminPage() {
                 </Card>
               </>
             )}
-          </TabsContent>
-
-          <TabsContent value="cash" className="mt-6 space-y-6">
-            {openCashSession ? (
-              <Card className="rounded-2xl border-green-300 border-2 shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg text-green-700">
-                    <UnlockKeyhole className="h-5 w-5" /> Caixa Aberto
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-sm text-muted-foreground">
-                    Aberto em: <span className="font-bold text-foreground">{new Date(openCashSession.openedAt).toLocaleString('pt-BR')}</span>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Valor de abertura: <span className="font-bold text-foreground">R$ {(openCashSession.openingAmount || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-blue-600">Pedidos no turno</p>
-                      <p className="text-2xl font-black text-blue-700">{currentShiftSummary?.count || 0}</p>
-                    </div>
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-green-600">Vendas no turno</p>
-                      <p className="text-2xl font-black text-green-700">R$ {(currentShiftSummary?.total || 0).toFixed(2)}</p>
-                    </div>
-                  </div>
-                  <Button onClick={handleCloseCash} className="w-full bg-red-600 hover:bg-red-700 h-12">
-                    <LockKeyhole className="h-4 w-4 mr-2" /> Fechar Caixa
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="rounded-2xl border-dashed border-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg"><LockKeyhole className="h-5 w-5 text-muted-foreground" /> Caixa Fechado</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>Valor de abertura (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0,00"
-                      value={openingAmount}
-                      onChange={(e) => setOpeningAmount(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <Button onClick={handleOpenCash} className="w-full bg-green-600 hover:bg-green-700 h-12">
-                    <UnlockKeyhole className="h-4 w-4 mr-2" /> Abrir Caixa
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="rounded-2xl">
-              <CardHeader><CardTitle className="text-lg">Histórico de Fechamentos</CardTitle></CardHeader>
-              <CardContent>
-                {cashSessions.filter((s: any) => s.closedAt).length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum fechamento ainda.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {cashSessions.filter((s: any) => s.closedAt).map((s: any) => (
-                      <div key={s.id} className="border rounded-xl p-3 bg-muted/20">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="text-xs text-muted-foreground">
-                            <span className="font-bold text-foreground">{new Date(s.openedAt).toLocaleString('pt-BR')}</span>
-                            <span className="mx-2">→</span>
-                            <span className="font-bold text-foreground">{new Date(s.closedAt).toLocaleString('pt-BR')}</span>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-black text-green-700">R$ {(s.totalSales || 0).toFixed(2)}</p>
-                            <p className="text-xs text-muted-foreground">{s.totalOrders || 0} pedido{(s.totalOrders || 0) !== 1 ? 's' : ''}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>
