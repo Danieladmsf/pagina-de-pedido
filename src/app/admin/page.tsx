@@ -44,7 +44,8 @@ export default function AdminPage() {
 
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return query(collection(db, 'orders'), where('ownerId', '==', user!.uid), orderBy('orderDateTime', 'desc'));
+    console.log('[admin] building ordersQuery for uid:', user!.uid);
+    return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
   }, [db, isRealUser]);
 
   const addonsQuery = useMemoFirebase(() => {
@@ -54,7 +55,17 @@ export default function AdminPage() {
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
-  const { data: orders, isLoading: loadingOrders } = useCollection(ordersQuery);
+  const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
+  const orders = React.useMemo(() => {
+    if (!ordersRaw) return ordersRaw;
+    return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+  }, [ordersRaw]);
+
+  useEffect(() => {
+    console.log('[admin] user:', user?.uid, 'isRealUser:', isRealUser);
+    console.log('[admin] orders loading:', loadingOrders, 'count:', ordersRaw?.length, 'error:', ordersError);
+    if (ordersRaw) console.log('[admin] orders data:', ordersRaw);
+  }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
