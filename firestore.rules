@@ -45,6 +45,11 @@ service cloud.firestore {
       );
     }
 
+    match /customers/{userId} {
+      allow get, update, create: if isSignedIn() && request.auth.uid == userId;
+      allow list, delete: if false;
+    }
+
     match /orders/{orderId} {
       allow get: if isSignedIn() && (
         resource.data.customerIdentifier == request.auth.uid ||

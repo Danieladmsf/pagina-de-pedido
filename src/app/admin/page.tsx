@@ -298,16 +298,38 @@ export default function AdminPage() {
                           </TableCell>
                           <TableCell className="font-bold text-primary">R$ {order.totalAmount.toFixed(2)}</TableCell>
                           <TableCell>
-                            <Badge variant={order.status === 'pending' ? 'outline' : 'default'} className={order.status === 'ready' ? 'bg-green-500 text-white' : ''}>
-                              {order.status === 'pending' ? 'Pendente' : 'Pronto'}
+                            <Badge className={
+                              order.status === 'pending' ? 'bg-yellow-500 text-white' :
+                              order.status === 'received' ? 'bg-blue-500 text-white' :
+                              order.status === 'ready' ? 'bg-green-500 text-white' :
+                              order.status === 'out_for_delivery' ? 'bg-purple-500 text-white' :
+                              'bg-gray-500 text-white'
+                            }>
+                              {order.status === 'pending' ? 'Pendente' :
+                               order.status === 'received' ? 'Recebido' :
+                               order.status === 'ready' ? 'Pronto' :
+                               order.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
+                               order.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right pr-6">
-                            {order.status === 'pending' && (
-                              <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 h-8">
-                                <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
-                              </Button>
-                            )}
+                            <div className="flex flex-col gap-1 items-end">
+                              {order.status === 'pending' && (
+                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'received')} className="bg-blue-600 h-8">
+                                  Confirmar Recebimento
+                                </Button>
+                              )}
+                              {order.status === 'received' && (
+                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 h-8">
+                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Pronto
+                                </Button>
+                              )}
+                              {order.status === 'ready' && order.orderType === 'delivery' && (
+                                <Button size="sm" onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} className="bg-purple-600 h-8">
+                                  Saiu para Entrega
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
