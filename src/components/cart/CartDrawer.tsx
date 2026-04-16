@@ -46,9 +46,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
 
   const isRealUser = !!(user && !user.isAnonymous && user.email);
 
-  // Quando abre o drawer, se já estiver logado, carrega o perfil salvo
+  const [profileLoaded, setProfileLoaded] = useState(false);
   useEffect(() => {
-    if (!isOpen || !isRealUser || !db || !user) return;
+    if (!isRealUser || !db || !user) { setProfileLoaded(false); return; }
+    if (profileLoaded) return;
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'customers', user.uid));
@@ -59,11 +60,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
           setDeliveryAddress(d.address || '');
         }
         setEmail(user.email || '');
+        setProfileLoaded(true);
       } catch (e) {
         console.warn('load customer profile failed', e);
       }
     })();
-  }, [isOpen, isRealUser, db, user]);
+  }, [isRealUser, db, user, profileLoaded]);
 
   const goToCheckout = () => {
     if (!effectiveStoreOwnerId) {
