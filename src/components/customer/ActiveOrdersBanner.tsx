@@ -51,11 +51,12 @@ export function ActiveOrdersBanner() {
                 <span className="text-[10px] uppercase tracking-wider font-bold bg-white/25 px-2 py-0.5 rounded-full">
                   {activeOrders.length} pedido{activeOrders.length > 1 ? 's' : ''} em andamento
                 </span>
+                <span className="text-[10px] uppercase tracking-wider font-black bg-accent text-accent-foreground px-2 py-0.5 rounded-full">
+                  {statusLabel}
+                </span>
               </div>
               <p className="font-black text-base mt-1 truncate">Clique para acompanhar seu pedido</p>
-              <p className="text-xs text-white/90 truncate">
-                #{latest.id} · {statusLabel}
-              </p>
+              <p className="text-xs text-white/90 truncate">#{latest.id}</p>
             </div>
             <ChevronRight className="h-6 w-6 flex-shrink-0 text-white/90" />
           </div>
