@@ -58,8 +58,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
           setCustomerName(d.name || '');
           setCustomerPhone(d.phone || '');
           setDeliveryAddress(d.address || '');
+          setEmail(d.username || user.email || '');
+        } else {
+          setEmail(user.email || '');
         }
-        setEmail(user.email || '');
         setProfileLoaded(true);
       } catch (e) {
         console.warn('load customer profile failed', e);
@@ -75,20 +77,27 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
     setStep(isRealUser ? 'info' : 'auth');
   };
 
+  const toAuthEmail = (input: string): string => {
+    if (input.includes('@')) return input.trim().toLowerCase();
+    const sanitized = input.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    return `${sanitized}@cliente.app`;
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth) return;
     if (!email || !password || password.length < 6) {
-      toast({ variant: "destructive", title: "Dados inválidos", description: "Email e senha (6+ caracteres)." });
+      toast({ variant: "destructive", title: "Dados inválidos", description: "Usuário e senha (6+ caracteres)." });
       return;
     }
     setIsSubmitting(true);
+    const authEmail = toAuthEmail(email);
     try {
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, authEmail, password);
       } catch (err: any) {
         if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
-          await createUserWithEmailAndPassword(auth, email, password);
+          await createUserWithEmailAndPassword(auth, authEmail, password);
         } else {
           throw err;
         }
@@ -127,6 +136,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
       await setDoc(doc(db, 'customers', user.uid), {
         uid: user.uid,
         email: user.email || '',
+        username: email,
         name: customerName,
         phone: customerPhone,
         address: deliveryAddress,
@@ -254,10 +264,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
         ) : step === 'auth' ? (
           <ScrollArea className="flex-1 -mx-6 px-6 py-4">
             <form onSubmit={handleAuth} className="space-y-4" id="auth-form">
-              <p className="text-sm text-muted-foreground">Entre com seu email e senha. Criamos sua conta automaticamente se ainda não tiver uma.</p>
+              <p className="text-sm text-muted-foreground">Digite seu telefone, nome ou email e crie uma senha. Sua conta é criada automaticamente.</p>
               <div className="space-y-2">
-                <Label htmlFor="cust_email">Email</Label>
-                <Input id="cust_email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Label htmlFor="cust_email">Usuário (telefone, nome ou email)</Label>
+                <Input id="cust_email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="Ex: 16991017726" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust_pass">Senha (mínimo 6 caracteres)</Label>
