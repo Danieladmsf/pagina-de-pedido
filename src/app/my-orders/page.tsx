@@ -345,6 +345,18 @@ export default function MyOrdersPage() {
                     ))}
                   </div>
                   <Separator />
+                  {order.deliveryFee > 0 && (
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>R$ {(order.subtotal ?? (order.totalAmount - order.deliveryFee)).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Taxa de entrega</span>
+                        <span>R$ {order.deliveryFee.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center font-bold">
                     <span>Total</span>
                     <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>

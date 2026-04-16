@@ -237,6 +237,29 @@ export default function AdminPage() {
     router.push('/login');
   };
 
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('');
+  useEffect(() => {
+    if (adminRole && typeof (adminRole as any).deliveryFee === 'number') {
+      setDeliveryFeeInput(String((adminRole as any).deliveryFee));
+    } else if (adminRole) {
+      setDeliveryFeeInput('0');
+    }
+  }, [adminRole]);
+  const saveDeliveryFee = async () => {
+    if (!db || !user) return;
+    const value = parseFloat(deliveryFeeInput.replace(',', '.'));
+    if (isNaN(value) || value < 0) {
+      toast({ variant: 'destructive', title: 'Valor inválido', description: 'Informe um número válido.' });
+      return;
+    }
+    try {
+      await setDoc(doc(db, 'roles_admin', user.uid), { deliveryFee: value }, { merge: true });
+      toast({ title: 'Taxa de entrega salva', description: `R$ ${value.toFixed(2)}` });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: err?.message || 'Falha.' });
+    }
+  };
+
   const updateOrderStatus = async (orderId: string, status: string) => {
     if (!db) return;
     try {
@@ -350,6 +373,19 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-xl border border-primary/20 shadow-sm flex items-center gap-2 h-10">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Taxa entrega</span>
+                <span className="text-sm font-bold text-primary">R$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={deliveryFeeInput}
+                  onChange={(e) => setDeliveryFeeInput(e.target.value)}
+                  onBlur={saveDeliveryFee}
+                  className="h-7 w-20 text-sm font-bold"
+                />
+              </div>
               <a href={storeLink} target="_blank" className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-sm font-bold text-primary border border-primary/20 shadow-sm hover:bg-primary hover:text-white transition-all flex items-center gap-2">
                 <ExternalLink className="h-4 w-4" /> Ver minha Loja
               </a>
@@ -472,6 +508,9 @@ export default function AdminPage() {
                           <div className="text-right">
                             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Total</p>
                             <p className="text-xl font-black text-primary">R$ {order.totalAmount.toFixed(2)}</p>
+                            {order.deliveryFee > 0 && (
+                              <p className="text-[10px] text-muted-foreground">inclui taxa R$ {order.deliveryFee.toFixed(2)}</p>
+                            )}
                           </div>
                         </div>
 

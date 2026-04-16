@@ -88,7 +88,7 @@ export function MenuPageClient() {
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
-            <CartDrawer storeOwnerId={storeId} />
+            <CartDrawer storeOwnerId={storeId} deliveryFee={(storeInfo as any)?.deliveryFee || 0} />
           </div>
         </div>
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-[78px] md:pt-[186px] pb-6 space-y-5">

@@ -18,11 +18,12 @@ import { Label } from '@/components/ui/label';
 
 interface CartDrawerProps {
   storeOwnerId?: string | null;
+  deliveryFee?: number;
 }
 
 type Step = 'cart' | 'auth' | 'info';
 
-export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
@@ -36,6 +37,8 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
+  const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0;
+  const grandTotal = totalPrice + appliedDeliveryFee;
 
   const db = useFirestore();
   const auth = useAuth();
@@ -142,7 +145,9 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
-        totalAmount: totalPrice,
+        totalAmount: grandTotal,
+        subtotal: totalPrice,
+        deliveryFee: appliedDeliveryFee,
         paymentStatus: 'pending',
         orderType,
         items: cart.map(item => {
@@ -300,9 +305,21 @@ export function CartDrawer({ storeOwnerId }: CartDrawerProps) {
 
         {cart.length > 0 && (
           <div className="pt-6 border-t space-y-4">
+            {appliedDeliveryFee > 0 && step !== 'cart' && (
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>R$ {totalPrice.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Taxa de entrega</span>
+                  <span>R$ {appliedDeliveryFee.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
             <div className="flex justify-between items-center text-lg">
               <span className="font-medium">Total</span>
-              <span className="font-bold text-2xl text-primary">R$ {totalPrice.toFixed(2)}</span>
+              <span className="font-bold text-2xl text-primary">R$ {grandTotal.toFixed(2)}</span>
             </div>
 
             {step === 'cart' ? (
