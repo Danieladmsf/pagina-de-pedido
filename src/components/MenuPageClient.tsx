@@ -6,6 +6,7 @@ import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase
 import { collection, query, where, doc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { CustomerAccountButton } from '@/components/customer/CustomerAccountButton';
+import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { Toaster } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
@@ -129,6 +130,7 @@ export function MenuPageClient() {
           </div>
         </div>
       </section>
+      <ActiveOrdersBanner />
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredItems.map((item) => (
