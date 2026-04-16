@@ -18,6 +18,7 @@ import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, 
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
+import { CurrencyInput } from '@/components/ui/currency-input';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -237,24 +238,17 @@ export default function AdminPage() {
     router.push('/login');
   };
 
-  const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('');
+  const [deliveryFeeValue, setDeliveryFeeValue] = useState<number>(0);
   useEffect(() => {
     if (adminRole && typeof (adminRole as any).deliveryFee === 'number') {
-      setDeliveryFeeInput(String((adminRole as any).deliveryFee));
-    } else if (adminRole) {
-      setDeliveryFeeInput('0');
+      setDeliveryFeeValue((adminRole as any).deliveryFee);
     }
   }, [adminRole]);
   const saveDeliveryFee = async () => {
     if (!db || !user) return;
-    const value = parseFloat(deliveryFeeInput.replace(',', '.'));
-    if (isNaN(value) || value < 0) {
-      toast({ variant: 'destructive', title: 'Valor inválido', description: 'Informe um número válido.' });
-      return;
-    }
     try {
-      await setDoc(doc(db, 'roles_admin', user.uid), { deliveryFee: value }, { merge: true });
-      toast({ title: 'Taxa de entrega salva', description: `R$ ${value.toFixed(2)}` });
+      await setDoc(doc(db, 'roles_admin', user.uid), { deliveryFee: deliveryFeeValue }, { merge: true });
+      toast({ title: 'Taxa de entrega salva', description: `R$ ${deliveryFeeValue.toFixed(2)}` });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: err?.message || 'Falha.' });
     }
@@ -373,16 +367,12 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-xl border border-primary/20 shadow-sm flex items-center gap-2 h-10">
+              <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-xl border border-primary/20 shadow-sm flex items-center gap-2 h-10" onBlur={saveDeliveryFee}>
                 <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Taxa entrega</span>
                 <span className="text-sm font-bold text-primary">R$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={deliveryFeeInput}
-                  onChange={(e) => setDeliveryFeeInput(e.target.value)}
-                  onBlur={saveDeliveryFee}
+                <CurrencyInput
+                  value={deliveryFeeValue}
+                  onChange={setDeliveryFeeValue}
                   className="h-7 w-20 text-sm font-bold"
                 />
               </div>
@@ -609,7 +599,7 @@ export default function AdminPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="price">Preço (R$)</Label>
-                          <Input id="price" name="price" type="number" step="0.01" defaultValue={editingItem?.price} required />
+                          <CurrencyInput id="price" name="price" defaultValue={editingItem?.price} required />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="categoryId">Categoria</Label>
@@ -784,7 +774,7 @@ export default function AdminPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="addonPrice">Preço (R$)</Label>
-                        <Input id="addonPrice" name="addonPrice" type="number" step="0.01" defaultValue={editingAddon?.price} placeholder="0.00" required />
+                        <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                       </div>
                       <DialogFooter>
                         <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
