@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Camera, Download, Loader2 } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { Camera, Loader2 } from 'lucide-react';
 
 export default function ScreenshotButton() {
   const [isCapturing, setIsCapturing] = useState(false);
@@ -32,14 +31,16 @@ export default function ScreenshotButton() {
       // Pequeno delay para a página renderizar com a altura expandida
       await new Promise(r => setTimeout(r, 100));
       
-      const canvas = await html2canvas(elementToCapture, {
-        scale: 2, // Alta qualidade
-        useCORS: true, // Permitir imagens externas
-        allowTaint: true,
-        logging: true,
+      const { toPng } = await import('html-to-image');
+      
+      const image = await toPng(elementToCapture, {
+        quality: 1,
         backgroundColor: '#FAFAF7',
-        windowHeight: elementToCapture.scrollHeight,
-        scrollY: 0
+        pixelRatio: 2,
+        height: elementToCapture.scrollHeight,
+        style: {
+          transform: 'none', // Prevent transform issues
+        }
       });
 
       // Restaurar estilos originais
@@ -47,8 +48,6 @@ export default function ScreenshotButton() {
       if (parentContainer) {
         parentContainer.style.cssText = parentOriginalStyle;
       }
-
-      const image = canvas.toDataURL('image/png');
       
       const link = document.createElement('a');
       link.href = image;
