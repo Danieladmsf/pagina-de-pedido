@@ -1,0 +1,447 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { PrintReceipt } from './PrintReceipt';
+
+interface DeliveryTabProps {
+  orders: any[];
+  updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => void;
+  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  caixaAberto?: boolean;
+  storeProfile?: any;
+  db?: any;
+}
+
+const FORMAS_PAGAMENTO = [
+  { id: 'dinheiro', label: 'Dinheiro', icon: Banknote, color: 'bg-amber-500 hover:bg-amber-600' },
+  { id: 'pix', label: 'Pix', icon: QrCode, color: 'bg-teal-500 hover:bg-teal-600' },
+  { id: 'debito', label: 'Débito', icon: CreditCard, color: 'bg-slate-600 hover:bg-slate-700' },
+  { id: 'credito', label: 'Crédito', icon: Wallet, color: 'bg-violet-500 hover:bg-violet-600' },
+];
+
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db }: DeliveryTabProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(orders && orders.length > 0 ? orders[0].id : null);
+  const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
+  const [selectedPayment, setSelectedPayment] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [orderToPrint, setOrderToPrint] = useState<any>(null);
+  const [showMotoboyModal, setShowMotoboyModal] = useState<any>(null);
+  const [selectedMotoboyId, setSelectedMotoboyId] = useState<string>('');
+  const [valorRecebido, setValorRecebido] = useState<string>('');
+  const { toast } = useToast();
+  
+  // Clientes Online
+  const [onlineCount, setOnlineCount] = useState(0);
+
+  // Rastreia usuários ativos no cardápio
+  useEffect(() => {
+    if (!db) return;
+    
+    // Observa sessões ativas da loja
+    const q = collection(db, 'active_sessions');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Filtra localmente os que deram sinal de vida no último 1 minuto (60000 ms)
+      const activeThreshold = Date.now() - 60000;
+      let count = 0;
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const matchesStore = !storeProfile?.id || data.storeId === storeProfile.id || data.storeId === 'default' || !data.storeId;
+        
+        if (data.lastActive && data.lastActive >= activeThreshold && matchesStore) {
+          count++;
+        }
+      });
+      setOnlineCount(count);
+    });
+
+    return () => unsubscribe();
+  }, [db, storeProfile?.id]);
+
+  // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
+  const onlyDeliveryAppOrders = orders?.filter(o => 
+    !o.customerName?.toLowerCase().includes('balcão') && 
+    !o.customerName?.toLowerCase().includes('mesa')
+  ) || [];
+
+  const filteredOrders = onlyDeliveryAppOrders.filter(o => 
+    o.id.includes(searchTerm) || 
+    o.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    o.customerPhone?.includes(searchTerm)
+  );
+
+  const selectedOrder = orders?.find(o => o.id === selectedOrderId);
+
+  // Auto-selecionar o primeiro se a busca mudar e o selecionado atual não estiver na lista
+  React.useEffect(() => {
+    if (filteredOrders.length > 0 && (!selectedOrderId || !filteredOrders.find(o => o.id === selectedOrderId))) {
+      setSelectedOrderId(filteredOrders[0].id);
+    }
+  }, [filteredOrders, selectedOrderId]);
+
+  const getStatusLabel = (status: string, type?: string) => {
+    switch (status) {
+      case 'pending': return 'Pendente';
+      case 'received': return 'Em preparo';
+      case 'ready': return 'Pronto';
+      case 'out_for_delivery': 
+        if (type === 'pickup') return 'Pronto para Retirada';
+        if (type === 'dine_in') return 'Prato disponível!';
+        return 'Saiu p/ entrega';
+      case 'delivered': return 'Foi entregue';
+      case 'canceled': return 'Cancelado';
+      default: return status;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-500 text-white';
+      case 'received': return 'bg-blue-500 text-white';
+      case 'ready': return 'bg-green-500 text-white';
+      case 'out_for_delivery': return 'bg-purple-500 text-white';
+      case 'delivered': return 'bg-teal-500 text-white';
+      case 'canceled': return 'bg-red-500 text-white';
+      default: return 'bg-gray-500 text-white';
+    }
+  };
+
+  // Ao clicar "Marcar Entregue", abre o modal de pagamento
+  const handleMarkDelivered = (order: any) => {
+    setPaymentModalOrder(order);
+    setSelectedPayment('');
+    setValorRecebido('');
+  };
+
+  // Confirmar pagamento + registrar no caixa
+  const handleConfirmPayment = async () => {
+    if (!selectedPayment || !paymentModalOrder) return;
+    setIsProcessing(true);
+    try {
+      // 1. Atualizar status do pedido para 'delivered'
+      updateOrderStatus(paymentModalOrder.id, 'delivered');
+      
+      // 2. Registrar venda no caixa (se caixa estiver aberto)
+      if (registrarLancamento && caixaAberto) {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
+          valor: paymentModalOrder.totalAmount || 0,
+          formaPagamento: selectedPayment,
+        });
+        toast({ title: 'Pedido finalizado!', description: `Venda registrada no caixa (${selectedPayment}).` });
+      } else {
+        toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status atualizado.' });
+      }
+      
+      setPaymentModalOrder(null);
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao registrar.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const triggerPrint = (order: any) => {
+    setOrderToPrint(order);
+    setTimeout(() => {
+      window.print();
+    }, 500);
+  };
+
+  const assignMotoboy = (chamar: boolean) => {
+    if (!showMotoboyModal || !selectedMotoboyId) return;
+    updateOrderStatus(showMotoboyModal.id, { motoboyId: selectedMotoboyId });
+    setShowMotoboyModal(null);
+    setSelectedMotoboyId('');
+    toast({ title: 'Entregador vinculado!', description: 'O motoboy foi atribuído com sucesso.' });
+  };
+
+  return (
+    <>
+    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-140px)] overflow-hidden">
+      {/* Coluna Esquerda: Lista de Pedidos */}
+      <div className="w-full md:w-1/3 flex flex-col gap-3 bg-muted/30 p-2 rounded-xl border h-full">
+        <div className="p-2 bg-white rounded-lg shadow-sm border flex gap-2">
+          <Input 
+            placeholder="Nº do pedido, celular ou nome" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1"
+          />
+        </div>
+        
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+          {filteredOrders.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground">Nenhum pedido encontrado.</div>
+          ) : (
+            filteredOrders.map(order => (
+              <div 
+                key={order.id} 
+                onClick={() => setSelectedOrderId(order.id)}
+                className={`px-2 py-1.5 bg-white border-l-3 rounded-r cursor-pointer hover:bg-slate-50 transition-colors ${selectedOrderId === order.id ? 'ring-1 ring-primary/50 bg-blue-50' : ''} ${order.status === 'pending' ? 'border-l-yellow-500' : order.status === 'canceled' ? 'border-l-red-500' : 'border-l-teal-500'}`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">#{order.id.substring(0, 5)}</span>
+                    <span className="text-xs font-semibold text-slate-800 truncate">{order.customerName}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-black text-green-600">R$ {order.totalAmount?.toFixed(2)}</span>
+                    <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getStatusColor(order.status)}`}>
+                      {getStatusLabel(order.status, order.orderType)}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-muted-foreground">{order.customerPhone}</span>
+                  <span className="text-[10px] text-slate-400">· {new Date(order.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        
+        <div className="bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center font-bold">
+          <div className="bg-red-500 text-white px-3 py-1.5 rounded-md">
+            Total: R$ {filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toFixed(2)}
+          </div>
+          <div className="bg-green-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2">
+            {onlineCount} Cliente{onlineCount !== 1 ? 's' : ''} online <Clock className="h-4 w-4" />
+          </div>
+        </div>
+      </div>
+
+      {/* Coluna Direita: Detalhes do Pedido Selecionado */}
+      <div className="w-full md:w-2/3 bg-white rounded-xl shadow-sm border p-4 flex flex-col h-full overflow-y-auto custom-scrollbar">
+        {!selectedOrder ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
+            <Info className="h-10 w-10 text-slate-300" />
+            <p>Selecione um pedido para ver os detalhes</p>
+          </div>
+        ) : (
+          <>
+            {/* Cabeçalho do Pedido */}
+            <div className="flex justify-between items-center border-b pb-2 mb-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">
+                  Pedido #{selectedOrder.id.substring(0, 5)} <span className="text-muted-foreground font-normal text-xs">({selectedOrder.id})</span>
+                </h2>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>CPF: Não informado</span>
+                  {selectedOrder.motoboyId && (
+                    <span className="font-medium text-amber-600">
+                      🏍️ {storeProfile?.motoboys?.find((m:any) => m.id === selectedOrder.motoboyId)?.name || 'Desconhecido'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px]">{new Date(selectedOrder.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</Badge>
+                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal(selectedOrder)}>
+                  <Bike className="h-4 w-4" />
+                </Button>
+                <Button size="icon" className="bg-blue-500 hover:bg-blue-600 text-white h-8 w-8" onClick={() => triggerPrint(selectedOrder)}>
+                  <Printer className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Timeline compacta */}
+            <div className="flex items-center gap-1 mb-2 px-1 py-1.5 bg-slate-50 rounded-lg">
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-200 -z-10"></div>
+              {[
+                { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { updateOrderStatus(selectedOrder.id, 'received'); triggerPrint(selectedOrder); } },
+                { key: 'ready', label: 'Preparo', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
+                { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'out_for_delivery') },
+                { key: 'delivered', label: 'Entregue', active: selectedOrder.status === 'delivered', action: () => handleMarkDelivered(selectedOrder) },
+              ].map(step => (
+                <button key={step.key} onClick={step.action} className={`flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-bold transition-colors ${step.active ? 'bg-teal-500 text-white' : 'bg-white border text-slate-500 hover:bg-teal-50'}`}>
+                  <div className={`h-2.5 w-2.5 rounded-full ${step.active ? 'bg-white' : 'bg-slate-300'}`}></div>
+                  {step.label}
+                </button>
+              ))}
+              <button onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')} className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'}`}>
+                ✕
+              </button>
+            </div>
+
+            {/* Endereço + Resumo Financeiro - Linha compacta */}
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              <div className="border rounded px-2 py-1 text-red-500 font-medium flex items-center gap-1 flex-1 truncate">
+                {selectedOrder.orderType === 'pickup' ? '🏪 Retirar no Local' : selectedOrder.orderType === 'dine_in' ? '🍽️ Comer no Local' : `🛵 ${selectedOrder.deliveryAddress}`}
+              </div>
+              <div className="bg-[#f05a66] text-white px-3 py-1 rounded font-bold whitespace-nowrap">
+                R$ {selectedOrder.totalAmount?.toFixed(2)}
+              </div>
+              <div className="border px-3 py-1 rounded text-slate-700 font-medium whitespace-nowrap">
+                {selectedOrder.paymentMethod || 'Não definido'}
+              </div>
+              {selectedOrder.orderType === 'delivery' && (
+                <div className="border px-3 py-1 rounded text-slate-700 font-medium whitespace-nowrap">
+                  Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
+                </div>
+              )}
+            </div>
+
+            {/* Tabela de Itens */}
+            <div className="flex-1 overflow-y-auto border rounded-lg">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 w-16">Qtde</th>
+                    <th className="px-4 py-3">Título</th>
+                    <th className="px-4 py-3">Descrição</th>
+                    <th className="px-4 py-3 text-right">Valor unitário</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                    <th className="px-4 py-3">OBS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedOrder.items?.map((item: any, idx: number) => (
+                    <tr key={idx} className="border-b last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-3 text-center">{item.quantity}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {item.addons?.map((a: any) => `1x ${a.name} - R$ ${a.price.toFixed(2)}`).join('\n')}
+                      </td>
+                      <td className="px-4 py-3 text-right">R$ {item.unitPrice?.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-medium">R$ {(item.unitPrice * item.quantity).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-xs text-red-500">{item.notes || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+          </>
+        )}
+      </div>
+    </div>
+
+    {/* Modal: Forma de Pagamento para Concluir Pedido */}
+    <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle className="text-lg">💰 Forma de Pagamento</DialogTitle>
+          <DialogDescription>
+            Selecione como o pedido <span className="font-bold">#{paymentModalOrder?.id?.substring(0, 5)}</span> foi pago.
+            {!caixaAberto && <span className="text-red-500 block mt-1">⚠️ O caixa está fechado. A venda será registrada apenas como entregue.</span>}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-3 py-4">
+          {FORMAS_PAGAMENTO.map(fp => {
+            const Icon = fp.icon;
+            return (
+              <button
+                key={fp.id}
+                type="button"
+                onClick={() => setSelectedPayment(fp.id)}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-bold text-sm transition-all ${
+                  selectedPayment === fp.id 
+                    ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30 scale-105' 
+                    : 'border-muted text-muted-foreground hover:border-slate-300'
+                }`}
+              >
+                <Icon className="h-6 w-6" />
+                {fp.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {paymentModalOrder && (
+          <div className="space-y-3">
+            <div className="bg-slate-50 p-3 rounded-lg border text-center">
+              <p className="text-sm text-muted-foreground">Valor do pedido</p>
+              <p className="text-2xl font-black text-primary">R$ {paymentModalOrder.totalAmount?.toFixed(2)}</p>
+            </div>
+
+            {selectedPayment === 'dinheiro' && (
+              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-2">
+                <label className="text-sm font-medium text-amber-800">💵 Valor recebido em dinheiro (R$)</label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="R$ 0,00"
+                  value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/\D/g, '');
+                    if (!val) setValorRecebido('');
+                    else setValorRecebido((Number(val) / 100).toFixed(2));
+                  }}
+                  className="text-lg font-bold text-center bg-white"
+                  autoFocus
+                />
+                {Number(valorRecebido) > 0 && (
+                  <div className={`text-center p-2 rounded-lg font-bold text-lg ${Number(valorRecebido) >= paymentModalOrder.totalAmount ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                    {Number(valorRecebido) >= paymentModalOrder.totalAmount 
+                      ? `Troco: R$ ${(Number(valorRecebido) - paymentModalOrder.totalAmount).toFixed(2)}`
+                      : `Falta: R$ ${(paymentModalOrder.totalAmount - Number(valorRecebido)).toFixed(2)}`
+                    }
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="pt-2">
+          <Button variant="outline" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
+          <Button 
+            disabled={!selectedPayment || isProcessing} 
+            onClick={handleConfirmPayment}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {isProcessing ? '...' : '✅ Confirmar e Finalizar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+      {/* Modal Vincular Entregador */}
+      <Dialog open={!!showMotoboyModal} onOpenChange={(open) => !open && setShowMotoboyModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Informe o Entregador</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Select value={selectedMotoboyId} onValueChange={setSelectedMotoboyId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um motoboy..." />
+              </SelectTrigger>
+              <SelectContent>
+                {storeProfile?.motoboys?.map((m: any) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name} (R$ {Number(m.fee || 0).toFixed(2)})</SelectItem>
+                ))}
+                {(!storeProfile?.motoboys || storeProfile.motoboys.length === 0) && (
+                  <SelectItem value="none" disabled>Nenhum motoboy cadastrado</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowMotoboyModal(null)}>Cancelar</Button>
+            <Button variant="default" className="bg-teal-500 hover:bg-teal-600" onClick={() => assignMotoboy(false)} disabled={!selectedMotoboyId || selectedMotoboyId === 'none'}>Vincular entregador</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Componente Invisível de Impressão */}
+      {orderToPrint && (
+        <PrintReceipt order={orderToPrint} storeInfo={storeProfile} />
+      )}
+    </>
+  );
+}

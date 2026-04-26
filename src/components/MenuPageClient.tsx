@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { CustomerAccountButton } from '@/components/customer/CustomerAccountButton';
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
@@ -27,13 +27,49 @@ export function MenuPageClient() {
 
   const storeId = searchParams.get('s');
 
+  // Controle de Presença (Cliente Online)
+  React.useEffect(() => {
+    if (!db) return;
+    const sessionId = Math.random().toString(36).substring(2, 15);
+    const sessionRef = doc(db, 'active_sessions', sessionId);
+
+    const ping = async () => {
+      try {
+        await setDoc(sessionRef, {
+          storeId: storeId || 'default',
+          lastActive: Date.now()
+        });
+      } catch (e) {}
+    };
+
+    ping();
+    const interval = setInterval(ping, 30000); // 30s
+
+    const handleUnload = () => {
+      deleteDoc(sessionRef).catch(() => {});
+    };
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleUnload);
+      handleUnload();
+    };
+  }, [db, storeId]);
+
   // Proteção: Só tenta criar a referência se o 'db' for válido
   const storeRef = useMemoFirebase(() => {
     if (!db || !storeId) return null;
     return doc(db, 'roles_admin', storeId);
   }, [db, storeId]);
   
+  const storeProfileRef = useMemoFirebase(() => {
+    if (!db || !storeId) return null;
+    return doc(db, 'store_profiles', storeId);
+  }, [db, storeId]);
+  
   const { data: storeInfo } = useDoc(storeRef);
+  const { data: storeProfile } = useDoc(storeProfileRef);
 
   const categoriesQuery = useMemoFirebase(() => {
     if (!db) return null;
@@ -60,6 +96,7 @@ export function MenuPageClient() {
   const filteredItems = useMemo(() => {
     if (!items) return [];
     return items.filter(item => {
+      if (item.isAvailable === false) return false;
       const matchesCategory = activeCategoryId === 'all' || item.categoryId === activeCategoryId;
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -88,7 +125,13 @@ export function MenuPageClient() {
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
-            <CartDrawer storeOwnerId={storeId} deliveryFee={(storeInfo as any)?.deliveryFee || 0} />
+            <CartDrawer 
+              storeOwnerId={storeId} 
+              deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0} 
+              storeAddress={storeProfile?.general?.address || (storeInfo as any)?.storeAddress || ''}
+              deliveryFeeRules={storeProfile?.fees?.feeRules || storeProfile?.feeRules || (storeInfo as any)?.deliveryFeeRules || []}
+              maxDeliveryRadius={storeProfile?.fees?.maxDeliveryRadius || 0}
+            />
           </div>
         </div>
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-[78px] md:pt-[186px] pb-6 space-y-5">
@@ -101,7 +144,7 @@ export function MenuPageClient() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+          <div className="flex flex-row md:flex-wrap gap-2 overflow-x-auto md:overflow-visible pb-4 md:pb-0 hide-scrollbar snap-x">
             <Button
               variant={activeCategoryId === 'all' ? 'default' : 'outline'}
               className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
@@ -178,7 +221,7 @@ export function MenuPageClient() {
 
       <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm space-y-4">
         <div>
-          <p className="font-bold">© 2024 {storeInfo?.storeName || 'Lima Limão'}</p>
+          <p className="font-bold">© 2024 {storeProfile?.general?.name || storeInfo?.storeName || 'Lima Limão'}</p>
           <p>{storeId ? 'Cardápio Digital Profissional' : 'O verdadeiro sabor da fruta!'}</p>
         </div>
         <div className="pt-4 flex justify-center gap-4">

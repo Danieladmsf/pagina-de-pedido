@@ -1,11 +1,11 @@
 
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Loader2 } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,15 +15,20 @@ import { collection, doc, setDoc, getDoc, serverTimestamp } from 'firebase/fires
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
 interface CartDrawerProps {
   storeOwnerId?: string | null;
-  deliveryFee?: number;
+  deliveryFee?: number; // Taxa fixa (fallback)
+  storeAddress?: string; // Endereço do restaurante para cálculo de distância
+  deliveryFeeRules?: Array<{ maxKm: number; fee: number; perKmExtra?: number }>; // Regras por distância
+  maxDeliveryRadius?: number; // Limite de KM
+  freeDeliveryOver?: number; // Frete grátis acima de
 }
 
 type Step = 'cart' | 'auth' | 'info';
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0 }: CartDrawerProps) {
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
@@ -35,9 +40,29 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
   const [password, setPassword] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
-  const appliedDeliveryFee = orderType === 'delivery' ? deliveryFee : 0;
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>('delivery');
+  
+  // Pagamento
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [cashChange, setCashChange] = useState('');
+
+  // Campos de endereço
+  const [cep, setCep] = useState('');
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [complement, setComplement] = useState('');
+  const [city, setCity] = useState('');
+  const [loadingCep, setLoadingCep] = useState(false);
+
+  // Taxa de entrega dinâmica
+  const [dynamicFee, setDynamicFee] = useState<number | null>(null);
+  const [distanceInfo, setDistanceInfo] = useState<{ distanceText: string; durationText: string; distanceKm: number } | null>(null);
+  const [calculatingFee, setCalculatingFee] = useState(false);
+  const [deliveryBlocked, setDeliveryBlocked] = useState(false);
+
+  const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
+  const appliedDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
   const grandTotal = totalPrice + appliedDeliveryFee;
 
   const db = useFirestore();
@@ -57,8 +82,14 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
           const d = snap.data();
           setCustomerName(d.name || '');
           setCustomerPhone(d.phone || '');
-          setDeliveryAddress(d.address || '');
           setEmail(d.username || user.email || '');
+          // Carregar endereço salvo
+          if (d.cep) setCep(d.cep);
+          if (d.street) setStreet(d.street);
+          if (d.number) setNumber(d.number);
+          if (d.neighborhood) setNeighborhood(d.neighborhood);
+          if (d.complement) setComplement(d.complement);
+          if (d.city) setCity(d.city);
         } else {
           setEmail(user.email || '');
         }
@@ -68,6 +99,87 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
       }
     })();
   }, [isRealUser, db, user, profileLoaded]);
+
+  // Busca automática de CEP via ViaCEP
+  const searchCep = useCallback(async (rawCep: string) => {
+    const cleaned = rawCep.replace(/\D/g, '');
+    if (cleaned.length !== 8) return;
+
+    setLoadingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        toast({ variant: 'destructive', title: 'CEP não encontrado', description: 'Verifique e tente novamente.' });
+        return;
+      }
+      setStreet(data.logradouro || '');
+      setNeighborhood(data.bairro || '');
+      setCity(`${data.localidade} - ${data.uf}` || '');
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao buscar CEP.' });
+    } finally {
+      setLoadingCep(false);
+    }
+  }, [toast]);
+
+  // Calcular taxa de entrega quando endereço é selecionado do autocomplete
+  const calculateDeliveryFee = useCallback(async (customerAddress: string) => {
+    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
+    if (!customerAddress || customerAddress.length < 5) return;
+
+    setCalculatingFee(true);
+    try {
+      const res = await fetch('/api/delivery-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeAddress,
+          customerAddress,
+          feeRules: deliveryFeeRules,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (maxDeliveryRadius > 0 && data.distanceKm > maxDeliveryRadius) {
+          setDeliveryBlocked(true);
+          setDynamicFee(null);
+          setDistanceInfo(null);
+          toast({ variant: 'destructive', title: 'Fora da área de entrega', description: `O restaurante entrega apenas até ${maxDeliveryRadius}km. A distância é de ${data.distanceKm}km.` });
+        } else {
+          setDeliveryBlocked(false);
+          setDynamicFee(data.fee);
+          setDistanceInfo({
+            distanceText: data.distanceText,
+            durationText: data.durationText,
+            distanceKm: data.distanceKm,
+          });
+        }
+      } else {
+        console.error('Erro no cálculo da taxa:', data.error);
+        toast({ variant: 'destructive', title: 'Erro na taxa', description: data.error || 'Não foi possível calcular.' });
+        setDynamicFee(null);
+        setDistanceInfo(null);
+        setDeliveryBlocked(false);
+      }
+    } catch (err) {
+      console.error('Erro ao calcular taxa:', err);
+    } finally {
+      setCalculatingFee(false);
+    }
+  }, [storeAddress, deliveryFeeRules, toast]);
+
+  // Callback: quando o cliente seleciona um endereço do autocomplete
+  const handleAddressSelected = useCallback((selectedAddress: string) => {
+    // Calcular taxa imediatamente ao selecionar
+    if (orderType === 'delivery' && selectedAddress) {
+      // Adiciona o número se já preenchido
+      const fullAddr = number ? `${selectedAddress}, ${number}` : selectedAddress;
+      calculateDeliveryFee(fullAddr);
+    }
+  }, [orderType, number, calculateDeliveryFee]);
+
+  const fullDeliveryAddress = [street, number, complement, neighborhood, city, cep].filter(Boolean).join(', ');
 
   const goToCheckout = () => {
     if (!effectiveStoreOwnerId) {
@@ -121,8 +233,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
       toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome e telefone." });
       return;
     }
-    if (orderType === 'delivery' && !deliveryAddress) {
+    if (orderType === 'delivery' && !street) {
       toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe o endereço de entrega." });
+      return;
+    }
+    if (!paymentMethod) {
+      toast({ variant: "destructive", title: "Pagamento", description: "Selecione uma forma de pagamento." });
       return;
     }
     if (!effectiveStoreOwnerId) {
@@ -139,7 +255,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
         username: email,
         name: customerName,
         phone: customerPhone,
-        address: deliveryAddress,
+        address: fullDeliveryAddress,
+        cep, street, number, neighborhood, complement, city,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
@@ -153,14 +270,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
         customerName,
         customerPhone,
         customerEmail: user.email || '',
-        deliveryAddress: orderType === 'delivery' ? deliveryAddress : '',
+        deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
         totalAmount: grandTotal,
         subtotal: totalPrice,
         deliveryFee: appliedDeliveryFee,
+        distanceKm: distanceInfo?.distanceKm || null,
         paymentStatus: 'pending',
+        paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
         orderType,
         items: cart.map(item => {
           const addons = item.customization?.addons || [];
@@ -183,6 +302,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
       setIsOpen(false);
       setStep('cart');
       setPassword('');
+      setDynamicFee(null);
+      setDistanceInfo(null);
     } catch (error: any) {
       console.error(error);
       toast({ variant: "destructive", title: "Erro ao enviar", description: error?.message || "Erro ao processar o pedido." });
@@ -280,20 +401,27 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Como você quer receber?</Label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => setOrderType('delivery')}
+                    onClick={() => { setOrderType('delivery'); setDynamicFee(null); setDistanceInfo(null); }}
                     className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                   >
                     🛵 Entrega
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOrderType('pickup')}
+                    onClick={() => { setOrderType('pickup'); setDynamicFee(null); setDistanceInfo(null); }}
                     className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'pickup' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                   >
-                    🏪 Retirar no Local
+                    🏪 Retirar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setOrderType('dine_in'); setDynamicFee(null); setDistanceInfo(null); }}
+                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'dine_in' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                  >
+                    🍽️ Local
                   </button>
                 </div>
               </div>
@@ -306,26 +434,127 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
                 <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
               </div>
               {orderType === 'delivery' && (
-                <div className="space-y-2">
-                  <Label htmlFor="cust_addr">Endereço de Entrega</Label>
-                  <Input id="cust_addr" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label>Endereço de Entrega</Label>
+                    <AddressAutocomplete 
+                      value={street} 
+                      onChange={(val) => {
+                        setStreet(val);
+                        // Limpar taxa anterior se o usuário editar manualmente
+                        if (dynamicFee !== null) {
+                          setDynamicFee(null);
+                          setDistanceInfo(null);
+                        }
+                      }}
+                      onSelect={handleAddressSelected}
+                      placeholder="Digite rua, bairro ou cidade..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="cust_number">Número</Label>
+                      <Input id="cust_number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cust_comp">Complemento</Label>
+                      <Input id="cust_comp" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto, Bloco..." />
+                    </div>
+                  </div>
+                  
+                  {/* Informações de distância e taxa */}
+                  {calculatingFee && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 p-3 rounded-xl border border-blue-100 animate-pulse">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                      <span>Calculando taxa de entrega...</span>
+                    </div>
+                  )}
+                  {distanceInfo && !calculatingFee && (
+                    <div className="bg-green-50 p-3 rounded-xl border border-green-200 space-y-1.5">
+                      <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+                        <Navigation className="h-4 w-4" />
+                        <span>Distância: {distanceInfo.distanceText}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <Clock className="h-4 w-4" />
+                        <span>Tempo estimado: {distanceInfo.durationText}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm font-bold text-green-800">
+                        <MapPin className="h-4 w-4" />
+                        <span>Taxa de entrega: R$ {dynamicFee?.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
+
+              {/* Forma de Pagamento */}
+              <div className="space-y-3 pt-4 border-t mt-4">
+                <Label>Como você vai pagar?</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                    { id: 'pix', label: 'Pix', icon: '📱' },
+                    { id: 'debito', label: 'Débito', icon: '💳' },
+                    { id: 'credito', label: 'Crédito', icon: '💳' }
+                  ].map(method => (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => { setPaymentMethod(method.id); setCashChange(''); }}
+                      className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${paymentMethod === method.id ? 'border-primary bg-primary/10 text-primary scale-105' : 'border-muted text-muted-foreground'}`}
+                    >
+                      <span className="text-xl mb-1">{method.icon}</span>
+                      <span className="font-bold text-sm">{method.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {paymentMethod === 'dinheiro' && (
+                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-2 space-y-2">
+                    <Label className="text-amber-800">Precisa de troco para quanto?</Label>
+                    <Input 
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={cashChange ? `R$ ${cashChange.replace('.', ',')}` : ''}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, '');
+                        if (!val) setCashChange('');
+                        else setCashChange((Number(val) / 100).toFixed(2));
+                      }}
+                      className="bg-white border-amber-300 text-lg font-bold"
+                    />
+                    {Number(cashChange) > 0 && (
+                      <div className={`text-sm font-bold mt-1 ${Number(cashChange) >= grandTotal ? 'text-green-600' : 'text-red-500'}`}>
+                        {Number(cashChange) >= grandTotal 
+                          ? `Seu troco será: R$ ${(Number(cashChange) - grandTotal).toFixed(2)}` 
+                          : `Falta R$ ${(grandTotal - Number(cashChange)).toFixed(2)} para completar o pedido`}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
             </div>
           </ScrollArea>
         )}
 
         {cart.length > 0 && (
           <div className="pt-6 border-t space-y-4">
-            {appliedDeliveryFee > 0 && step !== 'cart' && (
+            {orderType === 'delivery' && step !== 'cart' && (
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
                   <span>R$ {totalPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Taxa de entrega</span>
-                  <span>R$ {appliedDeliveryFee.toFixed(2)}</span>
+                  <span>Taxa de entrega {distanceInfo ? `(${distanceInfo.distanceText})` : ''}</span>
+                  {isFreeDelivery ? (
+                    <span className="text-green-600 font-bold">Grátis</span>
+                  ) : (
+                    <span>R$ {appliedDeliveryFee.toFixed(2)}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -346,11 +575,22 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
                 </Button>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 h-14" onClick={() => setStep(isRealUser ? 'cart' : 'auth')}>Voltar</Button>
-                <Button className="flex-[2] h-14 bg-accent text-white font-bold" onClick={handleCheckout} disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Finalizar Pedido'}
-                </Button>
+              <div className="flex flex-col gap-2">
+                {deliveryBlocked && orderType === 'delivery' && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-200 text-center mb-2">
+                    Desculpe, este endereço está fora da nossa área de entrega (máx. {maxDeliveryRadius}km).
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 h-14" onClick={() => setStep(isRealUser ? 'cart' : 'auth')}>Voltar</Button>
+                  <Button 
+                    className="flex-[2] h-14 bg-accent text-white font-bold" 
+                    onClick={handleCheckout} 
+                    disabled={isSubmitting || calculatingFee || (orderType === 'delivery' && deliveryBlocked)}
+                  >
+                    {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Finalizar Pedido'}
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -359,3 +599,4 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0 }: CartDrawerProps) {
     </Sheet>
   );
 }
+

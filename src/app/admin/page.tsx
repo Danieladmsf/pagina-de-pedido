@@ -1,11 +1,11 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,11 +14,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical } from 'lucide-react';
+import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { DeliveryTab } from '@/components/admin/DeliveryTab';
+import { NovoPedidoTab } from '@/components/admin/NovoPedidoTab';
+import { MesasTab } from '@/components/admin/MesasTab';
+import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
+import { useCaixa } from '@/hooks/useCaixa';
+import { Switch } from '@/components/ui/switch';
+import { Settings, MessageCircle, MapPinned } from 'lucide-react';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -26,6 +34,27 @@ export default function AdminPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
+  
+  // Estados para modal de Categoria
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  
+  // Estados para filtros de Produtos
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+  
+  // Hook do Caixa ââ‚¬â€ compartilhado entre módulos
+  const { caixaAberto, registrarLancamento } = useCaixa();
   
   const isRealUser = !!(user && !user.isAnonymous);
 
@@ -54,6 +83,13 @@ export default function AdminPage() {
     return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
   }, [db, isRealUser]);
 
+  const storeProfileRef = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return doc(db, 'store_profiles', user!.uid);
+  }, [db, isRealUser]);
+
+  const { data: storeProfile } = useDoc(storeProfileRef);
+
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
@@ -62,6 +98,36 @@ export default function AdminPage() {
     return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
   }, [ordersRaw]);
 
+  const filteredItems = React.useMemo(() => {
+    if (!items) return [];
+    let result = [...items];
+    if (productCategoryFilter !== 'todas') {
+      result = result.filter(item => item.categoryId === productCategoryFilter);
+    }
+    if (productSearch.trim()) {
+      const s = productSearch.toLowerCase();
+      result = result.filter(item => item.name.toLowerCase().includes(s));
+    }
+    
+    if (sortConfig) {
+      result.sort((a, b) => {
+        let valA: any = a[sortConfig.key as keyof typeof a];
+        let valB: any = b[sortConfig.key as keyof typeof b];
+        
+        if (sortConfig.key === 'categoryName') {
+           valA = categories?.find(c => c.id === a.categoryId)?.name || '';
+           valB = categories?.find(c => c.id === b.categoryId)?.name || '';
+        }
+        
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    return result;
+  }, [items, productCategoryFilter, productSearch, sortConfig, categories]);
+
   useEffect(() => {
     console.log('[admin] user:', user?.uid, 'isRealUser:', isRealUser);
     console.log('[admin] orders loading:', loadingOrders, 'count:', ordersRaw?.length, 'error:', ordersError);
@@ -69,29 +135,45 @@ export default function AdminPage() {
   }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
-  const playNewOrderBeep = React.useCallback(() => {
+
+  const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0) => {
     try {
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const play = (freq: number, start: number, dur: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        gain.gain.setValueAtTime(0, ctx.currentTime + start);
-        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + start + 0.02);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + dur + 0.05);
-      };
-      play(880, 0, 0.18);
-      play(1175, 0.22, 0.25);
-      setTimeout(() => ctx.close(), 800);
-    } catch {}
+      if (!(window as any)._sharedAudioCtx) {
+        (window as any)._sharedAudioCtx = new AudioCtx();
+      }
+      const ctx = (window as any)._sharedAudioCtx as AudioContext;
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      if (!(window as any)._cachedAudioBuffer) {
+        const response = await fetch('/foodora.mp3');
+        const arrayBuffer = await response.arrayBuffer();
+        (window as any)._cachedAudioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      }
+
+      if ((window as any)._currentAudioSource) {
+        try {
+          (window as any)._currentAudioSource.stop();
+        } catch(e) {}
+      }
+
+      const source = ctx.createBufferSource();
+      (window as any)._currentAudioSource = source;
+      source.buffer = (window as any)._cachedAudioBuffer;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = volumeMultiplier; // Amplifica o volume
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      source.start(0);
+    } catch (e) {
+      console.error('Erro ao tocar audio:', e);
+    }
   }, []);
+
+  const playNewOrderBeep = React.useCallback(() => {
+    playLoudAudio(4.0);
+  }, [playLoudAudio]);
 
   useEffect(() => {
     if (!ordersRaw) return;
@@ -100,7 +182,7 @@ export default function AdminPage() {
       seenOrderIdsRef.current = currentIds;
       return;
     }
-    const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending');
+    const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending' && o.orderType !== 'dine_in');
     if (newOnes.length > 0) {
       playNewOrderBeep();
       toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmação.` });
@@ -118,6 +200,59 @@ export default function AdminPage() {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
+
+  const handleDragEndCategory = async (result: DropResult) => {
+    if (!result.destination || !db || !categories) return;
+    
+    const sourceIndex = result.source.index;
+    const destinationIndex = result.destination.index;
+    
+    if (sourceIndex === destinationIndex) return;
+
+    // Get sorted array
+    const sortedCategories = [...categories].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    
+    // Reorder
+    const [moved] = sortedCategories.splice(sourceIndex, 1);
+    sortedCategories.splice(destinationIndex, 0, moved);
+    
+    // Update all displayOrders
+    const batch = writeBatch(db);
+    sortedCategories.forEach((cat, index) => {
+      const catRef = doc(db, 'categories', cat.id);
+      batch.update(catRef, { displayOrder: index });
+    });
+    
+    try {
+      await batch.commit();
+      toast({ title: "Ordem atualizada com sucesso!" });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: "Erro ao atualizar ordem", description: error.message });
+    }
+  };
+
+  // Som constante enquanto houver pedidos pendentes
+  useEffect(() => {
+    if (!ordersRaw) return;
+    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending' && o.orderType !== 'dine_in');
+    if (!hasPending) return;
+
+    let isPlaying = true;
+    let timeoutId: NodeJS.Timeout;
+
+    const playLoop = () => {
+      if (!isPlaying) return;
+      playLoudAudio(4.0); // Toca 4x mais alto
+      timeoutId = setTimeout(playLoop, 4000); // Toca o MP3 a cada 4 segundos
+    };
+
+    playLoop();
+
+    return () => {
+      isPlaying = false;
+      clearTimeout(timeoutId);
+    };
+  }, [ordersRaw, playLoudAudio]);
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -254,13 +389,14 @@ export default function AdminPage() {
     }
   };
 
-  const updateOrderStatus = async (orderId: string, status: string) => {
+  const updateOrderStatus = async (orderId: string, statusOrUpdates: string | any) => {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status });
-      toast({ title: "Status Atualizado", description: `Pedido marcado como ${status}.` });
+      const updates = typeof statusOrUpdates === 'string' ? { status: statusOrUpdates } : statusOrUpdates;
+      await updateDoc(doc(db, 'orders', orderId), updates);
+      toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na permissão." });
+      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
     }
   };
 
@@ -340,7 +476,10 @@ export default function AdminPage() {
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
         <p className="text-muted-foreground mb-1">Você não tem permissão de administrador.</p>
         <p className="text-xs font-mono bg-muted p-2 rounded mb-4">Seu UID: {user.uid}</p>
-        <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => window.location.reload()}>í°Å¸â€â€ž Tentar novamente</Button>
+          <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
+        </div>
       </div>
     );
   }
@@ -348,89 +487,116 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
-    <div className="min-h-screen bg-[#FAFAF7] relative">
-      <section
-        className="relative w-full bg-no-repeat bg-center bg-cover md:bg-[length:100%_100%] min-h-[340px] admin-banner-section"
-        style={{ backgroundImage: "url('/lima-limao-bg.png')" }}
-      >
-        <div className="absolute inset-0 bg-white/30" />
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-[#FAFAF7] pointer-events-none" />
-        <div className="relative h-full max-w-6xl mx-auto px-4 md:px-8 flex flex-col justify-between py-4 md:py-6">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur rounded-2xl px-5 py-3 shadow-md border border-white">
-              <div className="bg-gradient-to-br from-primary to-primary/70 p-3 rounded-xl shadow-md">
-                <LayoutDashboard className="h-7 w-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-black tracking-tight text-primary uppercase">{adminRole?.storeName || 'Meu Painel'}</h1>
-                <p className="text-xs text-muted-foreground">{user?.email}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-xl border border-primary/20 shadow-sm flex items-center gap-2 h-10" onBlur={saveDeliveryFee}>
-                <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Taxa entrega</span>
-                <span className="text-sm font-bold text-primary">R$</span>
-                <CurrencyInput
-                  value={deliveryFeeValue}
-                  onChange={setDeliveryFeeValue}
-                  className="h-7 w-20 text-sm font-bold"
-                />
-              </div>
-              <a href={storeLink} target="_blank" className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-sm font-bold text-primary border border-primary/20 shadow-sm hover:bg-primary hover:text-white transition-all flex items-center gap-2">
-                <ExternalLink className="h-4 w-4" /> Ver minha Loja
-              </a>
-              <Button variant="secondary" size="sm" className="bg-white/90 backdrop-blur text-destructive font-bold shadow-sm h-10" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" /> Sair
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-yellow-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-yellow-600">Pendentes</p>
-                  <p className="text-2xl font-black text-yellow-700">{orders?.filter((o: any) => o.status === 'pending').length || 0}</p>
-                </div>
-                <div className="bg-yellow-100 p-2 rounded-xl"><Clock className="h-5 w-5 text-yellow-600" /></div>
-              </div>
-            </div>
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-blue-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-blue-600">Recebidos</p>
-                  <p className="text-2xl font-black text-blue-700">{orders?.filter((o: any) => o.status === 'received').length || 0}</p>
-                </div>
-                <div className="bg-blue-100 p-2 rounded-xl"><ShoppingBag className="h-5 w-5 text-blue-600" /></div>
-              </div>
-            </div>
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-green-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-green-600">Prontos</p>
-                  <p className="text-2xl font-black text-green-700">{orders?.filter((o: any) => o.status === 'ready').length || 0}</p>
-                </div>
-                <div className="bg-green-100 p-2 rounded-xl"><CheckCircle2 className="h-5 w-5 text-green-600" /></div>
-              </div>
-            </div>
-            <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-purple-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Em Entrega</p>
-                  <p className="text-2xl font-black text-purple-700">{orders?.filter((o: any) => o.status === 'out_for_delivery').length || 0}</p>
-                </div>
-                <div className="bg-purple-100 p-2 rounded-xl"><ShoppingBag className="h-5 w-5 text-purple-600" /></div>
-              </div>
-            </div>
-          </div>
+    <div className="h-screen bg-slate-100 flex flex-col overflow-hidden">
+      {/* Dark Top Navigation Bar */}
+      <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center px-4 shrink-0 shadow-sm z-10">
+        <div className="flex h-full">
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('delivery')}
+            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'delivery' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+          >
+            Delivery
+          </button>
+          <button 
+            onClick={() => setActiveTab('novo_pedido')}
+            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+          >
+            Balcão
+          </button>
+          <button 
+            onClick={() => setActiveTab('mesas')}
+            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+          >
+            Mesa
+          </button>
         </div>
-      </section>
-      <div className="max-w-6xl mx-auto px-4 md:px-8 space-y-8 relative pb-12">
+        
+        <div className="flex items-center gap-4 h-full">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" />
+            <Badge className="bg-red-500 hover:bg-red-600 border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider">
+              Fechado permanente
+            </Badge>
+          </div>
+          <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
+          <button 
+            onClick={() => setActiveTab('configuracoes')}
+            className={`flex items-center gap-2 transition-colors ${activeTab === 'configuracoes' ? 'text-white' : 'hover:text-white'}`}
+          >
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <span className="text-sm font-medium">Caixa / Admin</span>
+          </button>
+          <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
+          <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
+             Sair
+          </button>
+          <button 
+            onClick={() => setActiveTab('configuracoes')}
+            className={`p-2 hover:text-white transition-colors rounded ${activeTab === 'configuracoes' ? 'bg-white/10 text-white' : ''}`}
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
 
-        <Tabs defaultValue="orders" className="w-full">
+      {/* Content Area */}
+      <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+        
+        {activeTab === 'dashboard' && (
+          <div className="text-center p-20 flex flex-col items-center gap-4 text-slate-400">
+            <LayoutDashboard className="h-16 w-16 opacity-50" />
+            <p className="text-xl font-medium">Dashboard Estatístico em Desenvolvimento...</p>
+          </div>
+        )}
+
+        {activeTab === 'delivery' && (
+          <DeliveryTab 
+            db={db}
+            orders={orders || []} 
+            updateOrderStatus={updateOrderStatus} 
+            registrarLancamento={registrarLancamento}
+            caixaAberto={!!caixaAberto}
+            storeProfile={storeProfile}
+          />
+        )}
+
+        {activeTab === 'novo_pedido' && (
+          <NovoPedidoTab 
+            categories={categories || []} 
+            items={items || []} 
+            db={db} 
+            user={user}
+            registrarLancamento={registrarLancamento}
+            caixaAberto={!!caixaAberto}
+            storeProfile={storeProfile}
+          />
+        )}
+
+        {activeTab === 'mesas' && (
+          <MesasTab 
+            orders={orders || []} 
+            categories={categories || []}
+            items={items || []}
+            db={db}
+            user={user}
+            registrarLancamento={registrarLancamento}
+            caixaAberto={!!caixaAberto}
+          />
+        )}
+
+        {/* Módulo Administrativo Antigo */}
+        <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
+          <div className="max-w-6xl mx-auto space-y-8 relative pb-12 mt-4">
+            <Tabs defaultValue="caixa" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
-            <TabsTrigger value="orders" className="rounded-lg px-6 flex gap-2">
-              <ShoppingBag className="h-4 w-4" /> Pedidos
+            <TabsTrigger value="caixa" className="rounded-lg px-6 flex gap-2">
+              <Wallet className="h-4 w-4" /> Caixa
             </TabsTrigger>
             <TabsTrigger value="products" className="rounded-lg px-6 flex gap-2">
               <Utensils className="h-4 w-4" /> Produtos
@@ -444,149 +610,76 @@ export default function AdminPage() {
             <TabsTrigger value="reports" className="rounded-lg px-6 flex gap-2">
               <BarChart3 className="h-4 w-4" /> Relatórios
             </TabsTrigger>
+            <TabsTrigger value="profile" className="rounded-lg px-6 flex gap-2">
+              <Store className="h-4 w-4" /> Perfil da Empresa
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="orders" className="mt-6 space-y-4">
-            {loadingOrders ? (
-              <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
-            ) : !orders || orders.length === 0 ? (
-              <Card className="border-dashed border-2 rounded-2xl py-20">
-                <div className="text-center space-y-3">
-                  <ShoppingBag className="h-16 w-16 text-muted-foreground/30 mx-auto" />
-                  <p className="text-muted-foreground font-medium">Nenhum pedido ainda. Divulgue seu link!</p>
-                </div>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {orders.map((order: any) => {
-                  const borderColor =
-                    order.status === 'pending' ? 'border-l-yellow-500' :
-                    order.status === 'received' ? 'border-l-blue-500' :
-                    order.status === 'ready' ? 'border-l-green-500' :
-                    order.status === 'out_for_delivery' ? 'border-l-purple-500' :
-                    order.status === 'delivered' ? 'border-l-gray-500' :
-                    'border-l-gray-400';
-                  const statusLabel =
-                    order.status === 'pending' ? 'Pendente' :
-                    order.status === 'received' ? 'Recebido' :
-                    order.status === 'ready' ? 'Pronto' :
-                    order.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
-                    order.status === 'delivered' ? 'Concluído' : order.status;
-                  const statusColor =
-                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                    order.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
-                    order.status === 'ready' ? 'bg-green-100 text-green-700 border-green-300' :
-                    order.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-700 border-purple-300' :
-                    order.status === 'delivered' ? 'bg-gray-200 text-gray-700 border-gray-400' :
-                    'bg-gray-100 text-gray-700 border-gray-300';
-                  return (
-                    <Card key={order.id} className={`rounded-2xl shadow-sm border-l-4 ${borderColor} bg-white hover:shadow-lg transition-shadow`}>
-                      <CardContent className="p-5 space-y-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-mono font-bold text-muted-foreground">#{order.id}</span>
-                              <Badge className={`${statusColor} border font-bold text-[10px] uppercase`}>{statusLabel}</Badge>
-                              <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
-                                {order.orderType === 'pickup' ? '🏪 Retirada' : '🛵 Entrega'}
-                              </Badge>
-                            </div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                              <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Total</p>
-                            <p className="text-xl font-black text-primary">R$ {order.totalAmount.toFixed(2)}</p>
-                            {order.deliveryFee > 0 && (
-                              <p className="text-[10px] text-muted-foreground">inclui taxa R$ {order.deliveryFee.toFixed(2)}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="bg-muted/40 rounded-xl p-3 space-y-1">
-                          <div className="flex items-center gap-2 text-sm font-bold">
-                            <User className="h-3 w-3" /> {order.customerName}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Phone className="h-3 w-3" /> {order.customerPhone}
-                          </div>
-                          {order.deliveryAddress && (
-                            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                              <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> <span className="leading-snug">{order.deliveryAddress}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          {order.items?.map((it: any, i: number) => (
-                            <div key={i} className="text-sm">
-                              <div className="flex justify-between gap-2">
-                                <span><span className="font-bold text-primary">{it.quantity}x</span> {it.name}</span>
-                                <span className="text-muted-foreground whitespace-nowrap">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
-                              </div>
-                              {it.addons?.length > 0 && (
-                                <div className="text-xs text-muted-foreground pl-4 mt-0.5 space-y-0.5">
-                                  {it.addons.map((a: any, j: number) => (
-                                    <div key={j}>+ {a.name}{typeof a.price === 'number' && a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
-                                  ))}
-                                </div>
-                              )}
-                              {it.notes && (
-                                <div className="text-xs italic text-muted-foreground pl-4 mt-0.5">Obs: {it.notes}</div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="pt-3 border-t border-dashed flex flex-wrap gap-2">
-                          {order.status === 'pending' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'received')} className="bg-blue-600 hover:bg-blue-700 w-full">
-                              <CheckCircle2 className="h-4 w-4 mr-2" /> Confirmar Recebimento
-                            </Button>
-                          )}
-                          {order.status === 'received' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready')} className="bg-green-600 hover:bg-green-700 w-full">
-                              <CheckCircle2 className="h-4 w-4 mr-2" /> {order.orderType === 'pickup' ? 'Pronto p/ Retirada' : 'Marcar como Pronto'}
-                            </Button>
-                          )}
-                          {order.status === 'ready' && order.orderType === 'delivery' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} className="bg-purple-600 hover:bg-purple-700 w-full">
-                              Saiu para Entrega
-                            </Button>
-                          )}
-                          {order.status === 'ready' && order.orderType === 'pickup' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'delivered')} className="bg-gray-700 hover:bg-gray-800 w-full">
-                              <CheckCircle2 className="h-4 w-4 mr-2" /> Cliente Retirou
-                            </Button>
-                          )}
-                          {order.status === 'out_for_delivery' && (
-                            <Button size="sm" onClick={() => updateOrderStatus(order.id, 'delivered')} className="bg-gray-700 hover:bg-gray-800 w-full">
-                              <CheckCircle2 className="h-4 w-4 mr-2" /> Marcar como Entregue
-                            </Button>
-                          )}
-                          {order.status === 'delivered' && (
-                            <div className="w-full text-center text-xs text-muted-foreground italic py-1">Pedido concluído</div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
 
           <TabsContent value="products" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
-                <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); } }}>
-                  <DialogTrigger asChild>
-                    <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); }} className="bg-primary text-white">
-                      <Plus className="mr-2 h-4 w-4" /> Novo Prato
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex gap-2">
+                  <Button onClick={async () => {
+                    if (!db || !user) return;
+                    if (!confirm("Isso apagará o cardápio atual e reimportará todos os 169 produtos da base antiga. Tem certeza?")) return;
+                    toast({ title: 'Limpeza e Importação Iniciadas. Aguarde...' });
+                    try {
+                      const oldCatsSnap = await getDocs(query(collection(db, 'categories'), where('ownerId', '==', user.uid)));
+                      const oldItemsSnap = await getDocs(query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)));
+                      for (const doc of oldCatsSnap.docs) await deleteDoc(doc.ref);
+                      for (const doc of oldItemsSnap.docs) await deleteDoc(doc.ref);
+
+                      const CATS = ['Marmitex','Prato do dia','Prato Feito','Massas','Omeletes','Crepiocas','Tapiocas','Lanches Naturais','Lanches Quentes','Promoção Lanches Quentes','Sucos','Sucos Detox (Funcionais)','Vitaminas','Refrigerantes','Salgados','Sobremesas','Bomboniere','Café','Caldos'];
+                      const ITEMS = [
+                        {n:'COMBO FEIJOADA',d:'',p:50,c:'Marmitex'},{n:'Marmitex P (1 Carne)',d:'',p:18.9,c:'Marmitex'},{n:'Marmitex P (2 Carne)',d:'',p:23.9,c:'Marmitex'},{n:'Marmitex M (1 Carne)',d:'',p:22.9,c:'Marmitex'},{n:'Marmitex M (2 Carne)',d:'',p:27.9,c:'Marmitex'},{n:'Marmitex Executiva (1 Carne)',d:'',p:27,c:'Marmitex'},{n:'Marmitex Executiva (2 Carne)',d:'',p:30,c:'Marmitex'},{n:'Marmitex M Feijoada',d:'',p:25.9,c:'Marmitex'},
+                        {n:'Bauru',d:'Presunto, Muçarela e Tomate.',p:15,c:'Lanches Quentes'},{n:'Misto',d:'Presunto e Mussarela.',p:12,c:'Lanches Quentes'},{n:'Americano',d:'Presunto, Mussarela, Ovo, Alface e Tomate.',p:18,c:'Lanches Quentes'},{n:'X Salada',d:'Hambúrguer, Presunto, Mussarela, Alface e Tomate.',p:18,c:'Lanches Quentes'},{n:'X Salada EGG',d:'',p:19,c:'Lanches Quentes'},{n:'X Salada Bacon',d:'',p:20,c:'Lanches Quentes'},{n:'X Salada EGG Bacon',d:'',p:21,c:'Lanches Quentes'},{n:'X Tudo',d:'',p:22,c:'Lanches Quentes'},{n:'Copa Lombo Salada',d:'',p:20,c:'Lanches Quentes'},{n:'Copa Lombo Salada EGG',d:'',p:21,c:'Lanches Quentes'},{n:'Copa Lombo Salada Bacon',d:'',p:22,c:'Lanches Quentes'},{n:'Copa Lombo Salada Bacon EGG',d:'',p:23,c:'Lanches Quentes'},{n:'Copa Lombo Tudo',d:'',p:25,c:'Lanches Quentes'},{n:'X Linguiça Salada',d:'',p:19,c:'Lanches Quentes'},{n:'X Linguiça Salada EGG',d:'',p:20,c:'Lanches Quentes'},{n:'X Linguiça Bacon',d:'',p:21,c:'Lanches Quentes'},{n:'X Linguiça EGG Bacon',d:'',p:22,c:'Lanches Quentes'},{n:'X Linguiça Tudo',d:'',p:23,c:'Lanches Quentes'},{n:'Frango Salada',d:'',p:21,c:'Lanches Quentes'},{n:'Frango Salada EGG',d:'',p:22,c:'Lanches Quentes'},{n:'Frango Salada Bacon',d:'',p:23,c:'Lanches Quentes'},{n:'Frango Salada EGG Bacon',d:'',p:24,c:'Lanches Quentes'},{n:'Frango Tudo',d:'',p:25,c:'Lanches Quentes'},{n:'Filé Salada',d:'Contra filé, presunto, queijo, alface e tomate.',p:25,c:'Lanches Quentes'},{n:'Filé Salada EGG',d:'',p:27,c:'Lanches Quentes'},{n:'Filé Salada Bacon',d:'',p:29,c:'Lanches Quentes'},{n:'Filé Salada EGG Bacon',d:'',p:31,c:'Lanches Quentes'},{n:'Carne Queijo Acebolado',d:'Contra filé, Queijo, cebola.',p:30,c:'Lanches Quentes'},{n:'Filé tudo',d:'',p:35,c:'Lanches Quentes'},{n:'X Burguer',d:'Hambúrguer e queijo',p:15,c:'Lanches Quentes'},
+                        {n:'Copa Lombo salada',d:'Promoção',p:25,c:'Promoção Lanches Quentes'},{n:'X tudo',d:'Promoção',p:27,c:'Promoção Lanches Quentes'},{n:'X linguiça salada',d:'Promoção',p:24,c:'Promoção Lanches Quentes'},{n:'Frango salada',d:'Promoção',p:26,c:'Promoção Lanches Quentes'},{n:'X salada',d:'Promoção',p:23,c:'Promoção Lanches Quentes'},{n:'2 X tudo',d:'Promoção',p:50,c:'Promoção Lanches Quentes'},
+                        {n:'PF Pão de queijo',d:'',p:3.5,c:'Salgados'},{n:'Croissant de chocolate',d:'',p:8,c:'Salgados'},{n:'Salgados fritos',d:'',p:6.5,c:'Salgados'},{n:'Torta de sardinha',d:'',p:7,c:'Salgados'},{n:'Salgados Assados',d:'',p:6.5,c:'Salgados'},{n:'Pizzas',d:'',p:8,c:'Salgados'},{n:'Croissant presunto e queijo',d:'',p:8,c:'Salgados'},{n:'Croissant quatro queijos',d:'',p:7,c:'Salgados'},{n:'Croissant frango',d:'',p:8,c:'Salgados'},{n:'Folheado de Ricota',d:'',p:7,c:'Salgados'},{n:'Folheado de peito de peru',d:'',p:7,c:'Salgados'},{n:'Folheado de Presunto e queijo',d:'',p:7,c:'Salgados'},{n:'Empadas',d:'',p:8,c:'Salgados'},
+                        {n:'Promoção Suco de Limão',d:'',p:9,c:'Sucos'},{n:'Suco 500 ml',d:'',p:12,c:'Sucos'},
+                        {n:'Salada de Frutas',d:'Laranja, mamão, maçã, pera, banana, manga e uva.',p:15,c:'Sobremesas'},{n:'Açaí',d:'',p:18,c:'Sobremesas'},{n:'Pedaço bolo fubá c/laranja',d:'',p:5,c:'Sobremesas'},{n:'Pudim de leite condensado',d:'',p:6,c:'Sobremesas'},
+                        {n:'Pão de Queijo',d:'',p:4,c:'Café'},{n:'Pão de Queijo Recheado',d:'',p:6,c:'Café'},{n:'Pão na Chapa com Manteiga',d:'',p:5,c:'Café'},{n:'Pão na chapa com queijo',d:'',p:10,c:'Café'},{n:'Pão com ovo',d:'',p:12,c:'Café'},{n:'Pão com ovo e queijo',d:'',p:15,c:'Café'},{n:'Café',d:'',p:3.5,c:'Café'},{n:'Pingado',d:'',p:7,c:'Café'},{n:'Capuccino Quente',d:'',p:8,c:'Café'},{n:'Capuccino Gelado',d:'',p:10,c:'Café'},
+                        {n:'Coca cola 1L',d:'Consumo no local',p:10,c:'Refrigerantes'},{n:'Bioleve',d:'',p:4,c:'Refrigerantes'},{n:'Refrigerante lata 350ml',d:'',p:6.5,c:'Refrigerantes'},{n:'Coca cola 220ml',d:'',p:5,c:'Refrigerantes'},{n:'Coca-Cola KS',d:'Consumo no local',p:5,c:'Refrigerantes'},{n:'Coca-Cola 600ml',d:'',p:8,c:'Refrigerantes'},{n:'Coca-Cola 2Lts',d:'',p:13,c:'Refrigerantes'},{n:'Jaboti 600ml',d:'Consumo no local',p:5,c:'Refrigerantes'},{n:'Jaboti 250ml',d:'',p:3.5,c:'Refrigerantes'},{n:'Jaboti 2Lts',d:'',p:7,c:'Refrigerantes'},{n:'Água com Gás',d:'',p:4,c:'Refrigerantes'},{n:'Água sem Gás',d:'',p:4,c:'Refrigerantes'},{n:'Limoneto H2OH',d:'',p:7,c:'Refrigerantes'},{n:'Suco Nativo',d:'',p:3.5,c:'Refrigerantes'},{n:'Guarana Antarctica 300ml (Retornavel)',d:'Consumo no local',p:4.5,c:'Refrigerantes'},
+                        {n:'Lanche Natural',d:'',p:10,c:'Lanches Naturais'},
+                        {n:'PF: File de Frango a Parmegiana',d:'',p:26.9,c:'Prato do dia'},{n:'PF: Quibe assado',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Pernil Suina Acebolada',d:'',p:19.9,c:'Prato do dia'},{n:'Pedaço de quibe',d:'',p:8,c:'Prato do dia'},{n:'PF: Moqueca',d:'',p:26.9,c:'Prato do dia'},{n:'PF: Peixe frito',d:'',p:22.9,c:'Prato do dia'},{n:'Porção de moqueca',d:'',p:20,c:'Prato do dia'},{n:'PF: Fricasse Frango',d:'',p:18.9,c:'Prato do dia'},{n:'PF: Carne de Panela c/ Batata',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Feijão gordo',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Tirinha de Frango Acebolada',d:'',p:18.9,c:'Prato do dia'},{n:'PF : Calabresa Acebolada',d:'',p:18.9,c:'Prato do dia'},{n:'PF: Feijoada',d:'',p:25.9,c:'Prato do dia'},{n:'Pf : Sobrecoxa com Quiabo ao molho',d:'',p:19.9,c:'Prato do dia'},{n:'PF: Copa Lombo em tiras Aceboladas',d:'',p:21.9,c:'Prato do dia'},{n:'PF: Meio d Asa Frango e sobrecoxa refogada suculenta',d:'',p:18.9,c:'Prato do dia'},{n:'Unidade panqueca',d:'',p:10,c:'Prato do dia'},{n:'PF: Carne Suina em cubos',d:'',p:21.9,c:'Prato do dia'},{n:'PF: Almôndega ao molho',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Ponta de Peito de panela',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Costela Bovina cm Mandioca',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Coxinha Asa Frango Frita',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Macarrão ao Sugo c/ Coxinha Frango Frita',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Panqueca',d:'',p:22.9,c:'Prato do dia'},{n:'Unidade charuto',d:'',p:10,c:'Prato do dia'},{n:'PF: Filé de Frango a Milanesa',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Carne Moída c/ Legumes',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Peixe c/ batata ao molho',d:'',p:24.9,c:'Prato do dia'},{n:'PF: Lasanha ao Molho Rose',d:'',p:20.9,c:'Prato do dia'},{n:'PF : Sobrecoxa c/ Macarrão ao Sugo',d:'',p:20.9,c:'Prato do dia'},{n:'Porção de Maionese 300grs',d:'',p:24,c:'Prato do dia'},{n:'PF : Strogonoff de Carne',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Macarrão ao Sugo c/ Sobrecoxa',d:'',p:22.9,c:'Prato do dia'},{n:'Torta de sardinha',d:'',p:7,c:'Prato do dia'},{n:'Capeletti de carne ao molho Bolonhesa',d:'',p:19.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Sobrecoxa Frango Assada',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Charuto',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Carré Suino Assado c/ Vinagrete',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Tiras de carne Acebolado',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Strogonoff de Frango',d:'',p:19.9,c:'Prato do dia'},{n:'PF: Lasanha ao molho rose presunto e queijo',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Tirinha Carne Acebolada e Salada',d:'',p:22.9,c:'Prato do dia'},{n:'Pedaço individual lasanha',d:'',p:15,c:'Prato do dia'},
+                        {n:'PF: Filé de frango',d:'Arroz, feijão, filé de frango grelhado, acompanhamento e salada',p:20.9,c:'Prato Feito'},{n:'PF: Filé de peixe',d:'Arroz, feijão, filé de tilápia grelhado, acompanhamento e salada',p:28.9,c:'Prato Feito'},{n:'PF: Linguiça',d:'Arroz, feijão, linguiça, acompanhamento e salada',p:20.9,c:'Prato Feito'},{n:'PF: sem carne',d:'Arroz, feijão, dois acompanhamentos e salada',p:17.9,c:'Prato Feito'},{n:'Salada no prato',d:'',p:30,c:'Prato Feito'},{n:'PF: Copa Lombo',d:'Arroz, feijão, copa lombo grelhado, acompanhamento e salada',p:21.9,c:'Prato Feito'},{n:'PF: Contra filé',d:'Arroz, feijão, contra filé grelhado, acompanhamento e salada',p:28.9,c:'Prato Feito'},{n:'PF: Kids c/ Nuggets',d:'',p:17.9,c:'Prato Feito'},{n:'PF: Omelete',d:'Omelete simples (sem recheio), Arroz, Feijão e salada',p:16.9,c:'Prato Feito'},{n:'PF: Kids c/ hamburguer',d:'Arroz, feijão, hambúrguer, queijo, batata frita + salada',p:17.9,c:'Prato Feito'},{n:'Add Prato',d:'Somente PDV',p:0,c:'Prato Feito'},
+                        {n:'Bomboniere',d:'',p:0.2,c:'Bomboniere'},{n:'Azedinha',d:'',p:3,c:'Bomboniere'},{n:'Balas',d:'',p:0.2,c:'Bomboniere'},{n:'Trident',d:'',p:3,c:'Bomboniere'},{n:'Halls',d:'',p:2,c:'Bomboniere'},{n:'Suflair',d:'',p:8,c:'Bomboniere'},{n:'Kit kat',d:'',p:7,c:'Bomboniere'},{n:'Doce Ninho',d:'',p:2.5,c:'Bomboniere'},{n:'Pingo Leite',d:'',p:2.5,c:'Bomboniere'},{n:'Paçoca',d:'',p:3.5,c:'Bomboniere'},{n:'Pé de Moça',d:'',p:3.5,c:'Bomboniere'},{n:'Paçoquita',d:'',p:0.5,c:'Bomboniere'},{n:'Trento',d:'',p:4,c:'Bomboniere'},{n:'Stikadinho',d:'',p:2,c:'Bomboniere'},{n:'Sonho de valsa',d:'',p:2.5,c:'Bomboniere'},{n:'Ouro branco',d:'',p:2.5,c:'Bomboniere'},
+                        {n:'Nhoque',d:'',p:20,c:'Massas'},
+                        {n:'Omelete',d:'',p:18,c:'Omeletes'},
+                        {n:'Crepioca',d:'',p:20,c:'Crepiocas'},
+                        {n:'Escolha sua tapioca doce',d:'',p:25,c:'Tapiocas'},{n:'Tapioca',d:'',p:18,c:'Tapiocas'},
+                        {n:'Sucos Funcionais (Detox)',d:'',p:15,c:'Sucos Detox (Funcionais)'},
+                        {n:'Promoção vitamina Mista com Laranja 500 ml',d:'',p:9,c:'Vitaminas'},{n:'Promoção vitamina de Abacate 500ml',d:'',p:10,c:'Vitaminas'},{n:'Vitaminas 500 ml',d:'',p:15,c:'Vitaminas'},
+                      ];
+                      const catMap: Record<string,string> = {};
+                      for (let i = 0; i < CATS.length; i++) {
+                        const ref = doc(collection(db, 'categories'));
+                        await setDoc(ref, { id:ref.id, name:CATS[i], ownerId:user.uid, displayOrder:i, description:'' });
+                        catMap[CATS[i]] = ref.id;
+                      }
+                      let ok = 0;
+                      for (const it of ITEMS) {
+                        const catId = catMap[it.c];
+                        if (!catId) continue;
+                        const ref = doc(collection(db, 'menuItems'));
+                        await setDoc(ref, { id:ref.id, name:it.n, description:it.d, price:it.p, categoryId:catId, ownerId:user.uid, isAvailable:true, isRecommended:false, imageUrl:'', addonIds:[] });
+                        ok++;
+                      }
+                      toast({ title: `Importação concluída! ${CATS.length} categorias + ${ok} produtos criados.` });
+                    } catch (e: any) {
+                      console.error(e);
+                      toast({ title: 'Erro na importação', description: e.message, variant: 'destructive' });
+                    }
+                  }} className="bg-yellow-500 text-white">
+                    Seed Antigo
+                  </Button>
+                  <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); } }}>
+                    <DialogTrigger asChild>
+                      <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); }} className="bg-primary text-white">
+                        <Plus className="mr-2 h-4 w-4" /> Novo Prato
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
                       <DialogTitle>{editingItem?.id ? 'Editar Prato' : 'Novo Prato'}</DialogTitle>
@@ -670,40 +763,101 @@ export default function AdminPage() {
                     </form>
                   </DialogContent>
                 </Dialog>
-              </CardHeader>
+              </div>
+            </CardHeader>
               <CardContent className="p-0">
+                <div className="p-4 border-b bg-slate-50 flex flex-col md:flex-row gap-4 items-center">
+                  <select 
+                    className="h-10 px-3 py-2 rounded-md border border-input bg-background text-sm min-w-[200px]"
+                    value={productCategoryFilter}
+                    onChange={(e) => setProductCategoryFilter(e.target.value)}
+                  >
+                    <option value="todas">Todas Categorias</option>
+                    {categories?.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <Input 
+                    placeholder="Procurar por..." 
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="w-[80px] pl-6">Foto</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Preço</TableHead>
-                      <TableHead className="text-right pr-6">Ações</TableHead>
+                      <TableHead className="pl-6 w-[80px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('id')}>
+                        <div className="flex items-center">Id {sortConfig?.key === 'id' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                      </TableHead>
+                      <TableHead className="w-[80px]">Ref</TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('name')}>
+                        <div className="flex items-center">Título {sortConfig?.key === 'name' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                      </TableHead>
+                      <TableHead className="w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
+                        <div className="flex items-center">Valor {sortConfig?.key === 'price' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                      </TableHead>
+                      <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
+                        <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                      </TableHead>
+                      <TableHead className="w-[100px] text-center">Ativo</TableHead>
+                      <TableHead className="text-right pr-6 w-[120px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items?.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="pl-6">
-                          <div className="relative h-12 w-12 rounded-lg overflow-hidden border">
-                            <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-bold">{item.name}</TableCell>
-                        <TableCell className="font-semibold text-primary">R$ {item.price.toFixed(2)}</TableCell>
-                        <TableCell className="text-right pr-6 space-x-1">
-                          <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setSelectedAddonIds(item.addonIds || []); setImageFile(null); setImagePreview(''); }}>
-                            <Pencil className="h-4 w-4 text-blue-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={async () => {
-                            if (!db) return;
-                            if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
-                          }}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredItems?.map((item) => {
+                      const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
+                      const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
+                      const isAvailable = item.isAvailable !== false; // Default is true se não estiver definido
+                      
+                      return (
+                        <TableRow key={item.id} className={!isAvailable ? 'opacity-60 bg-slate-50/50' : ''}>
+                          <TableCell className="pl-6 text-muted-foreground text-xs">{item.id.slice(-6).toUpperCase()}</TableCell>
+                          <TableCell>
+                            <div className="relative h-10 w-10 rounded overflow-hidden border bg-muted/30 flex items-center justify-center">
+                              {item.imageUrl ? (
+                                <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                              ) : (
+                                <Utensils className="h-4 w-4 text-muted-foreground/40" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-800">{item.name}</div>
+                            {itemAddons.length > 0 && (
+                              <div className="mt-1">
+                                <Badge className="text-[10px] bg-teal-500 hover:bg-teal-600 font-normal">
+                                  Opções: {itemAddons.map(a => a.name).join('; ')}
+                                </Badge>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">R$ {item.price.toFixed(2)}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
+                          <TableCell className="text-center">
+                            <Switch 
+                              checked={isAvailable}
+                              onCheckedChange={async (checked) => {
+                                if (!db) return;
+                                await updateDoc(doc(db, 'menuItems', item.id), { isAvailable: checked });
+                                toast({ title: checked ? 'Produto Ativado' : 'Produto Desativado' });
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right pr-6 space-x-1">
+                            <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setSelectedAddonIds(item.addonIds || []); setImageFile(null); setImagePreview(''); }}>
+                              <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={async () => {
+                              if (!db) return;
+                              if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
+                            }}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -714,41 +868,121 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Categorias</CardTitle>
-                <Button onClick={async () => {
-                  if (!db || !user) return;
-                  const name = prompt("Nome da Categoria:");
-                  if (name) {
-                    const newDoc = doc(collection(db, 'categories'));
-                    await setDoc(newDoc, { id: newDoc.id, name, ownerId: user.uid, displayOrder: 0, description: "" });
-                  }
-                }} className="bg-primary text-white">
-                  <Plus className="mr-2 h-4 w-4" /> Nova Categoria
-                </Button>
+                <Dialog open={isCategoryModalOpen} onOpenChange={(open) => {
+                  setIsCategoryModalOpen(open);
+                  if (!open) setNewCategoryName('');
+                }}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-primary text-white">
+                      <Plus className="mr-2 h-4 w-4" /> Nova Categoria
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Nova Categoria</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4 space-y-2">
+                      <Label htmlFor="catName">Nome da Categoria</Label>
+                      <Input 
+                        id="catName" 
+                        value={newCategoryName} 
+                        onChange={(e) => setNewCategoryName(e.target.value)} 
+                        placeholder="Ex: Lanches, Bebidas..." 
+                        autoFocus
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Dica: Crie várias de uma vez separando por vírgula (,) ou ponto-e-vírgula (;)
+                      </p>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>Cancelar</Button>
+                      <Button onClick={async () => {
+                        if (!db || !user || !newCategoryName.trim()) return;
+                        
+                        // Divide por vírgula ou ponto-e-vírgula e remove espaços vazios
+                        const nomes = newCategoryName.split(/[,;]/).map(n => n.trim()).filter(n => n.length > 0);
+                        
+                        if (nomes.length === 0) return;
+
+                        try {
+                          // Cria todas as categorias em paralelo
+                          await Promise.all(nomes.map(async (name) => {
+                            const newDoc = doc(collection(db, 'categories'));
+                            return setDoc(newDoc, { 
+                              id: newDoc.id, 
+                              name, 
+                              ownerId: user.uid, 
+                              displayOrder: 0, 
+                              description: "" 
+                            });
+                          }));
+
+                          setIsCategoryModalOpen(false);
+                          setNewCategoryName('');
+                          
+                          if (nomes.length > 1) {
+                            toast({ title: `${nomes.length} categorias criadas com sucesso!` });
+                          } else {
+                            toast({ title: 'Categoria criada com sucesso!' });
+                          }
+                        } catch (err: any) {
+                          toast({ variant: 'destructive', title: 'Erro ao criar', description: err.message });
+                        }
+                      }} className="bg-primary text-white">
+                        Salvar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="pl-6">Nome</TableHead>
-                      <TableHead className="text-right pr-6">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {categories?.map((cat) => (
-                      <TableRow key={cat.id}>
-                        <TableCell className="font-bold pl-6">{cat.name}</TableCell>
-                        <TableCell className="text-right pr-6">
-                          <Button variant="ghost" size="icon" onClick={async () => {
-                            if (!db) return;
-                            if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
-                          }}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
+                <div className="max-h-[65vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
+                      <TableRow>
+                        <TableHead className="pl-6">Nome</TableHead>
+                        <TableHead className="text-right pr-6">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
+                    </TableHeader>
+                  <DragDropContext onDragEnd={handleDragEndCategory}>
+                    <Droppable droppableId="categories-list">
+                      {(provided) => (
+                        <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                          {categories?.sort((a,b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat, index) => (
+                            <Draggable key={cat.id} draggableId={cat.id} index={index}>
+                              {(provided) => (
+                                <TableRow 
+                                  ref={provided.innerRef} 
+                                  {...provided.draggableProps}
+                                  className="bg-white"
+                                >
+                                  <TableCell className="font-bold pl-6">
+                                    <div className="flex items-center gap-3">
+                                      <div {...provided.dragHandleProps} className="cursor-grab hover:text-primary active:cursor-grabbing p-1">
+                                        <GripVertical className="h-5 w-5 text-muted-foreground" />
+                                      </div>
+                                      {cat.name}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right pr-6">
+                                    <Button variant="ghost" size="icon" onClick={async () => {
+                                      if (!db) return;
+                                      if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
+                                    }}>
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </TableBody>
+                      )}
+                    </Droppable>
+                  </DragDropContext>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -898,7 +1132,7 @@ export default function AdminPage() {
                               <div key={d.date} className="space-y-1">
                                 <div className="flex items-center justify-between gap-2 text-sm">
                                   <span className="font-bold">{label}</span>
-                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} · <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
+                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} í‚Â· <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
                                 </div>
                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                   <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -946,7 +1180,7 @@ export default function AdminPage() {
                                         <span className="text-muted-foreground">{new Date(oc.orderDateTime).toLocaleString('pt-BR')}</span>
                                       </div>
                                       <div className="text-muted-foreground">
-                                        <span className="font-mono">#{oc.orderId}</span> · {oc.customerPhone || '-'} · <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
+                                        <span className="font-mono">#{oc.orderId}</span> í‚Â· {oc.customerPhone || '-'} í‚Â· <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
                                       </div>
                                       {oc.addons?.length > 0 && (
                                         <div className="pl-2 text-[11px] text-muted-foreground mt-0.5">
@@ -1005,7 +1239,7 @@ export default function AdminPage() {
                                       o.status === 'received' ? 'Recebido' :
                                       o.status === 'ready' ? 'Pronto' :
                                       o.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
-                                      o.status === 'delivered' ? 'Concluído' : o.status;
+                                      o.status === 'delivered' ? 'ConcluíÂ­do' : o.status;
                                     const sColor =
                                       o.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
                                       o.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
@@ -1019,7 +1253,7 @@ export default function AdminPage() {
                                             <span className="text-xs font-mono font-bold text-muted-foreground">#{o.id}</span>
                                             <Badge className={`${sColor} border font-bold text-[10px] uppercase`}>{sLabel}</Badge>
                                             <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
-                                              {o.orderType === 'pickup' ? '🏪 Retirada' : '🛵 Entrega'}
+                                              {o.orderType === 'pickup' ? 'í°Å¸ÂÂª Retirada' : 'í°Å¸â€ºÂµ Entrega'}
                                             </Badge>
                                           </div>
                                           <span className="text-xs text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
@@ -1068,7 +1302,15 @@ export default function AdminPage() {
               </>
             )}
           </TabsContent>
+          <TabsContent value="caixa" className="mt-6">
+            <CaixaTab storeProfile={storeProfile} orders={orders || []} />
+          </TabsContent>
+          <TabsContent value="profile" className="mt-6">
+            <StoreProfileTab db={db} user={user} />
+          </TabsContent>
         </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   );

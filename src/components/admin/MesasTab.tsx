@@ -1,0 +1,572 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import Image from 'next/image';
+import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { PrintReceipt } from './PrintReceipt';
+
+interface MesasTabProps {
+  orders?: any[];
+  categories?: any[];
+  items?: any[];
+  db?: any;
+  user?: any;
+  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  caixaAberto?: boolean;
+  storeInfo?: any;
+}
+
+const FORMAS_PAGAMENTO = [
+  { id: 'dinheiro', label: 'Dinheiro', icon: Banknote },
+  { id: 'pix', label: 'Pix', icon: QrCode },
+  { id: 'debito', label: 'Débito', icon: CreditCard },
+  { id: 'credito', label: 'Crédito', icon: Wallet },
+];
+
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto, storeInfo }: MesasTabProps) {
+  const { toast } = useToast();
+  const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
+  const [searchTable, setSearchTable] = useState('');
+  const [selectedTable, setSelectedTable] = useState<number | null>(null);
+
+  // PDV States
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [cart, setCart] = useState<any[]>([]);
+  const [originalCart, setOriginalCart] = useState<any[]>([]);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  
+  // Impressão e Pagamento
+  const [orderToPrint, setOrderToPrint] = useState<any>(null);
+  const [isKitchenPrint, setIsKitchenPrint] = useState(false);
+  
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [pendingItemToAdd, setPendingItemToAdd] = useState<any>(null);
+  const [receiptPrinted, setReceiptPrinted] = useState(false);
+
+  const activeOrders = orders?.filter(o => o.orderType === 'dine_in' && o.status !== 'delivered' && o.status !== 'canceled') || [];
+  
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState('');
+  const [valorRecebido, setValorRecebido] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Derivando mesas
+  const tables = Array.from({ length: 15 }, (_, i) => i + 1);
+  
+  const activeTableNumbers = activeOrders.map(o => o.tableNumber).filter(Boolean);
+
+  useEffect(() => {
+    if (selectedTable) {
+      const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
+      if (activeOrder) {
+        setCart(activeOrder.items || []);
+        setOriginalCart(activeOrder.items || []);
+        setActiveOrderId(activeOrder.id);
+        setReceiptPrinted(activeOrder.status === 'awaiting_payment');
+      } else {
+        setCart([]);
+        setOriginalCart([]);
+        setActiveOrderId(null);
+        setReceiptPrinted(false);
+      }
+    } else {
+      setCart([]);
+      setOriginalCart([]);
+      setActiveOrderId(null);
+      setReceiptPrinted(false);
+    }
+  }, [selectedTable, orders]); // depends on orders to sync in real-time
+
+  const cartTotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+
+  const filteredItems = items?.filter(item => {
+    const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
+
+  const addToCart = (item: any) => {
+    if (activeOrderId) {
+      const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
+      if (activeOrder && activeOrder.status === 'awaiting_payment') {
+        setPendingItemToAdd(item);
+        setReopenModalOpen(true);
+        return;
+      }
+    }
+
+    setCart(prev => {
+      const existing = prev.find(i => i.id === item.id);
+      if (existing) {
+        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, { id: item.id, name: item.name, quantity: 1, unitPrice: item.price, addons: [], notes: '' }];
+    });
+  };
+
+  const updateQuantity = (id: string, delta: number) => {
+    setCart(prev => {
+      return prev.map(i => {
+        if (i.id === id) {
+          const newQ = i.quantity + delta;
+          return newQ > 0 ? { ...i, quantity: newQ } : i;
+        }
+        return i;
+      });
+    });
+  };
+
+  const removeFromCart = (id: string) => {
+    setCart(prev => prev.filter(i => i.id !== id));
+  };
+
+  const handleSaveOrder = async () => {
+    if (!db || !user || !selectedTable || cart.length === 0) return;
+    setIsSubmitting(true);
+    
+    // Calcula diferença para impressão da cozinha
+    const newItemsToPrint: any[] = [];
+    cart.forEach(item => {
+      const originalItem = originalCart.find(oi => oi.id === item.id);
+      const diffQty = item.quantity - (originalItem ? originalItem.quantity : 0);
+      if (diffQty > 0) {
+        newItemsToPrint.push({ ...item, quantity: diffQty });
+      }
+    });
+
+    try {
+      let finalOrderId = activeOrderId;
+      
+      if (activeOrderId) {
+        await updateDoc(doc(db, 'orders', activeOrderId), {
+          items: cart,
+          totalAmount: cartTotal,
+          subtotal: cartTotal,
+        });
+      } else {
+        finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
+        await setDoc(doc(db, 'orders', finalOrderId), {
+          id: finalOrderId,
+          ownerId: user.uid,
+          customerName: `Mesa ${selectedTable}`,
+          tableNumber: selectedTable,
+          orderType: 'dine_in',
+          status: 'pending',
+          paymentStatus: 'pending',
+          items: cart,
+          totalAmount: cartTotal,
+          subtotal: cartTotal,
+          orderDateTime: new Date().toISOString(),
+          createdAt: new Date(),
+        });
+      }
+
+      setOriginalCart(cart);
+
+      if (newItemsToPrint.length > 0) {
+        setIsKitchenPrint(true);
+        setReceiptPrinted(false); // Reseta o botão de "Receber" para "Imprimir Conta" pois a conta mudou
+        setOrderToPrint({
+          id: finalOrderId,
+          customerName: `Mesa ${selectedTable}`,
+          orderType: 'dine_in',
+          items: newItemsToPrint,
+          orderDateTime: new Date().toISOString(),
+        });
+        setTimeout(() => window.print(), 500);
+        toast({ title: 'Sucesso', description: 'Pedido salvo e enviado para produção!' });
+      } else {
+        toast({ title: 'Sucesso', description: 'Mesa atualizada (sem novos itens).' });
+      }
+
+    } catch(e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível salvar.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
+    if (!activeOrder) return;
+
+    try {
+      setIsSubmitting(true);
+      if (activeOrder.status !== 'awaiting_payment') {
+        await updateDoc(doc(db, 'orders', activeOrder.id), {
+          status: 'awaiting_payment'
+        });
+      }
+      
+      setIsKitchenPrint(false);
+      setOrderToPrint(activeOrder);
+      setReceiptPrinted(true);
+      setTimeout(() => window.print(), 500);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao atualizar mesa.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const confirmReopenTable = async () => {
+    if (!db || !activeOrderId) return;
+    try {
+      setIsSubmitting(true);
+      await updateDoc(doc(db, 'orders', activeOrderId), { status: 'pending' });
+      setReceiptPrinted(false);
+      setReopenModalOpen(false);
+      
+      if (pendingItemToAdd) {
+        setCart(prev => {
+          const existing = prev.find(i => i.id === pendingItemToAdd.id);
+          if (existing) return prev.map(i => i.id === pendingItemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+          return [...prev, { id: pendingItemToAdd.id, name: pendingItemToAdd.name, quantity: 1, unitPrice: pendingItemToAdd.price, addons: [], notes: '' }];
+        });
+        setPendingItemToAdd(null);
+      }
+      toast({ title: 'Mesa Reaberta', description: 'Pode adicionar novos itens à mesa.' });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao reabrir a mesa.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenPayment = () => {
+    setSelectedPayment('');
+    setValorRecebido('');
+    setPaymentModalOpen(true);
+  };
+
+  const handleConfirmCheckout = async () => {
+    if (!db || !activeOrderId || !selectedPayment) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'orders', activeOrderId), {
+        status: 'delivered',
+        paymentMethod: selectedPayment === 'dinheiro' && valorRecebido ? `Dinheiro (Troco para R$ ${Number(valorRecebido).toFixed(2)})` : selectedPayment,
+      });
+
+      if (registrarLancamento && caixaAberto) {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: `Mesa ${selectedTable} - Finalizada`,
+          valor: cartTotal,
+          formaPagamento: selectedPayment,
+        });
+      }
+
+      toast({ title: 'Sucesso', description: 'Mesa finalizada com sucesso!' });
+      setPaymentModalOpen(false);
+      setSelectedTable(null);
+    } catch(e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao encerrar.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-4 h-[calc(100vh-140px)] overflow-hidden">
+      
+      {/* Grade de Mesas */}
+      {!selectedTable && (
+        <div className="flex-1 bg-white rounded-xl shadow-sm border p-4 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Gerenciar Mesas</h2>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">Abertas: {activeTableNumbers.length}</Badge>
+              <Badge variant="outline" className="bg-slate-50 text-slate-500">Livres: {tables.length - activeTableNumbers.length}</Badge>
+            </div>
+          </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {tables.map(num => {
+              const activeOrder = activeOrders.find(o => o.tableNumber === num);
+              const isOpen = !!activeOrder;
+              const isAwaitingPayment = activeOrder?.status === 'awaiting_payment';
+
+              return (
+                <button
+                  key={num}
+                  onClick={() => setSelectedTable(num)}
+                  className={`
+                    h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
+                    ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105'}
+                    ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
+                  `}
+                >
+                  <span className="text-2xl font-black">{num}</span>
+                  {isOpen && <span className="text-[10px] uppercase font-bold bg-black/20 px-1.5 py-0.5 rounded mt-1 truncate max-w-[90%]">{isAwaitingPayment ? 'Aguardando Pagamento' : 'Ocupada'}</span>}
+                </button>
+              );
+            })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDV - Consumo da Mesa Expandido */}
+      {selectedTable && (
+        <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col h-full overflow-hidden shrink-0">
+          
+          <div className="bg-slate-800 text-white p-3 flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h3 className="font-bold text-lg">Mesa {selectedTable}</h3>
+                <p className="text-xs text-slate-300">{activeOrderId ? 'Comanda Aberta' : 'Nova Comanda'}</p>
+              </div>
+            </div>
+            {/* Podemos manter o X ou apenas a seta para voltar. Manter o X pra fechar também. */}
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+            
+            {/* Lista do Carrinho */}
+            <div className="w-full md:w-1/2 flex flex-col border-r overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-3 bg-slate-50 custom-scrollbar">
+                {cart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                    <ShoppingCart className="h-10 w-10 text-slate-300" />
+                    <p className="text-sm">Mesa livre. Adicione itens para abrir a comanda.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {cart.map((item, index) => (
+                      <div key={`${item.id}-${index}`} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base font-bold text-slate-800 truncate">{item.name}</p>
+                          <p className="text-sm text-green-600 font-bold">R$ {item.unitPrice.toFixed(2)}</p>
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
+                          <button onClick={() => updateQuantity(item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
+                          <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
+                        </div>
+                        <button onClick={() => removeFromCart(item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Total e Ações */}
+              <div className="p-4 bg-white shrink-0 space-y-3 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Subtotal:</span>
+                  <span className="text-2xl font-black text-slate-800">R$ {cartTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 h-12 border-primary text-primary hover:bg-primary/5 font-bold text-lg"
+                    onClick={handleSaveOrder}
+                    disabled={cart.length === 0 || isSubmitting}
+                  >
+                    Salvar Pedido
+                  </Button>
+                  {activeOrderId && (
+                    <div className="flex-[1.5] flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="px-3 border-slate-300 text-slate-600 hover:bg-slate-100"
+                        onClick={() => {
+                          const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
+                          if (activeOrder) {
+                            setIsKitchenPrint(false);
+                            setOrderToPrint(activeOrder);
+                            setTimeout(() => window.print(), 500);
+                          }
+                        }}
+                        title="Imprimir Parcial"
+                        disabled={isSubmitting}
+                      >
+                        <Printer className="h-5 w-5" />
+                      </Button>
+                      
+                      {!receiptPrinted ? (
+                        <Button 
+                          className="flex-1 bg-blue-500 hover:bg-blue-600 font-bold text-white shadow-sm text-lg"
+                          onClick={handlePrintReceipt}
+                          disabled={isSubmitting}
+                        >
+                          Imprimir Conta
+                        </Button>
+                      ) : (
+                        <Button 
+                          className="flex-1 bg-orange-500 hover:bg-orange-600 font-bold text-white shadow-sm text-lg"
+                          onClick={handleOpenPayment}
+                          disabled={isSubmitting}
+                        >
+                          Receber
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Menu Rápido (Bottom / Right) */}
+            <div className="w-full md:w-1/2 flex flex-col shrink-0 bg-white">
+              <div className="p-3 border-b flex gap-2 overflow-x-auto custom-scrollbar shrink-0">
+                <Badge 
+                  variant="secondary" 
+                  className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  onClick={() => setActiveCategory('all')}
+                >
+                  Todos
+                </Badge>
+                {categories.map(cat => (
+                  <Badge 
+                    key={cat.id} 
+                    variant="secondary" 
+                    className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => setActiveCategory(cat.id)}
+                  >
+                    {cat.name}
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
+                {filteredItems.map(item => (
+                  <button 
+                    key={item.id} 
+                    onClick={() => addToCart(item)}
+                    className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[90px]"
+                  >
+                    <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
+                    <span className="text-sm font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
+                  </button>
+                ))}
+                {filteredItems.length === 0 && (
+                  <div className="col-span-full text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pagamento Mesa */}
+      <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Encerrar Mesa {selectedTable}</DialogTitle>
+            <DialogDescription>Recebimento do valor total da mesa.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3 py-4">
+            {FORMAS_PAGAMENTO.map(fp => {
+              const Icon = fp.icon;
+              return (
+                <button
+                  key={fp.id}
+                  type="button"
+                  onClick={() => setSelectedPayment(fp.id)}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-bold text-sm transition-all ${
+                    selectedPayment === fp.id 
+                      ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30 scale-105' 
+                      : 'border-muted text-muted-foreground hover:border-slate-300'
+                  }`}
+                >
+                  <Icon className="h-6 w-6" />
+                  {fp.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-3">
+            <div className="bg-slate-50 p-3 rounded-lg border text-center">
+              <p className="text-sm text-muted-foreground">Total do pedido</p>
+              <p className="text-2xl font-black text-primary">R$ {cartTotal.toFixed(2)}</p>
+            </div>
+
+            {selectedPayment === 'dinheiro' && (
+              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-2">
+                <label className="text-sm font-medium text-amber-800">💵 Valor recebido em dinheiro (R$)</label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="R$ 0,00"
+                  value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/\D/g, '');
+                    if (!val) setValorRecebido('');
+                    else setValorRecebido((Number(val) / 100).toFixed(2));
+                  }}
+                  className="text-lg font-bold text-center bg-white"
+                  autoFocus
+                />
+                {Number(valorRecebido) > 0 && (
+                  <div className={`text-center p-2 rounded-lg font-bold text-lg ${Number(valorRecebido) >= cartTotal ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                    {Number(valorRecebido) >= cartTotal 
+                      ? `Troco: R$ ${(Number(valorRecebido) - cartTotal).toFixed(2)}`
+                      : `Falta: R$ ${(cartTotal - Number(valorRecebido)).toFixed(2)}`
+                    }
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
+            <Button 
+              disabled={!selectedPayment || isSubmitting} 
+              onClick={handleConfirmCheckout}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isSubmitting ? '...' : '✅ Encerrar Mesa'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Reabrir Mesa */}
+      <Dialog open={reopenModalOpen} onOpenChange={setReopenModalOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Reabrir Mesa {selectedTable}?</DialogTitle>
+            <DialogDescription>
+              A conta desta mesa já foi impressa e está aguardando pagamento. Tem certeza que deseja reabrir a mesa para adicionar novos itens?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-4">
+            <Button variant="outline" onClick={() => { setReopenModalOpen(false); setPendingItemToAdd(null); }}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmReopenTable} disabled={isSubmitting}>
+              Sim, Reabrir Mesa
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Impressão Oculta */}
+      {orderToPrint && (
+        <PrintReceipt order={orderToPrint} storeInfo={storeInfo} isKitchen={isKitchenPrint} />
+      )}
+    </div>
+  );
+}

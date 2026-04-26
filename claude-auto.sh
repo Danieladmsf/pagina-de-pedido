@@ -17,9 +17,23 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# Adiciona o diretório do script ao PATH (para encontrar jq.exe local)
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="${SCRIPT_DIR}:${HOME}/bin:${PATH}"
+
+# ---------------------------------------------------------------------------
 # Configuração (sobrescrevível por env)
 # ---------------------------------------------------------------------------
-SESSIONS_DIR="${CLAUDE_SESSIONS_DIR:-${HOME}/.claude/tmux-sessions}"
+# Detecta HOME correto no Windows (WSL usa /mnt/c, Git Bash usa /c)
+if [[ -d "/mnt/c/Users/Administrador" ]]; then
+    WIN_HOME="/mnt/c/Users/Administrador"
+elif [[ -d "/c/Users/Administrador" ]]; then
+    WIN_HOME="/c/Users/Administrador"
+else
+    WIN_HOME="$HOME"
+fi
+SESSIONS_DIR="${CLAUDE_SESSIONS_DIR:-${WIN_HOME}/.claude/tmux-sessions}"
 STATE_FILE="${SESSIONS_DIR}/sessions.json"
 CURRENT_PORT_FILE="${SESSIONS_DIR}/current_port"
 LOG_FILE="${SESSIONS_DIR}/auto_switch.log"
@@ -44,9 +58,31 @@ fi
 # ---------------------------------------------------------------------------
 # Dependências
 # ---------------------------------------------------------------------------
+# No Windows (WSL/Git Bash), tenta localizar binários se não estiverem no PATH
+_find_cmd() {
+    local cmd="$1"; shift
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        for _candidate in "$@"; do
+            if [[ -x "$_candidate" ]]; then
+                eval "$cmd() { \"$_candidate\" \"\$@\"; }"
+                return 0
+            fi
+        done
+    fi
+}
+_find_cmd jq \
+    "${SCRIPT_DIR}/jq.exe" \
+    "${SCRIPT_DIR}/jq" \
+    "/mnt/c/Users/Administrador/bin/jq.exe" \
+    "/c/Users/Administrador/bin/jq.exe"
+_find_cmd claude \
+    "/mnt/c/Users/Administrador/.local/bin/claude.exe" \
+    "/c/Users/Administrador/.local/bin/claude.exe" \
+    "/c/Users/Administrador/.local/bin/claude"
+
 require() {
     for cmd in "$@"; do
-        command -v "$cmd" >/dev/null 2>&1 || {
+        command -v "$cmd" >/dev/null 2>&1 || type "$cmd" >/dev/null 2>&1 || {
             echo -e "${RED}Dependência faltando: $cmd${NC}" >&2
             exit 1
         }

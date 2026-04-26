@@ -61,13 +61,20 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [] }: MenuIt
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="relative w-full h-48 mb-4 overflow-hidden rounded-lg">
-            <Image
-              src={item.imageUrl}
-              alt={item.name}
-              fill
-              className="object-cover"
-            />
+          <div className="relative w-full h-48 mb-4 overflow-hidden rounded-lg bg-muted/30 flex items-center justify-center">
+            {item.imageUrl ? (
+              <Image
+                src={item.imageUrl}
+                alt={item.name}
+                fill
+                className="object-cover"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-muted-foreground/40">
+                <span className="text-4xl">🍽️</span>
+                <span className="text-sm mt-2 font-medium">Sem imagem</span>
+              </div>
+            )}
           </div>
           <DialogTitle className="text-2xl font-bold">{item.name}</DialogTitle>
           <p className="text-muted-foreground">{item.description}</p>

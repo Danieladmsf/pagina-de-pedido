@@ -60,5 +60,30 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow delete: if false;
     }
+
+    match /cash_registers/{registerId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    match /cash_transactions/{transactionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    match /store_profiles/{profileId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && request.auth.uid == profileId;
+    }
+
+    match /active_sessions/{sessionId} {
+      allow read, write: if true;
+    }
   }
 }

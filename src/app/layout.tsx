@@ -5,6 +5,7 @@ import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { AuthInit } from '@/components/providers/AuthInit';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { PWARegister } from '@/components/providers/PWARegister';
+import { Toaster } from '@/components/ui/toaster';
 
 export const metadata = {
   title: 'Lima Limão - Cardápio Digital',
@@ -39,6 +40,7 @@ export default function RootLayout({
           </AuthInit>
         </FirebaseClientProvider>
         <PWARegister />
+        <Toaster />
       </body>
     </html>
   );
