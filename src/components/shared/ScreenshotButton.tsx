@@ -11,28 +11,54 @@ export default function ScreenshotButton() {
     try {
       setIsCapturing(true);
       
-      // Select the main element to capture, fallback to body
       const elementToCapture = document.querySelector('main') || document.body;
       
+      // Salvar os estilos originais para restaurar depois
+      const originalStyle = elementToCapture.style.cssText;
+      
+      // Forçar o elemento a ter sua altura total visível (sem scroll interno)
+      elementToCapture.style.height = 'auto';
+      elementToCapture.style.overflow = 'visible';
+      
+      // Se tiver um container pai com overflow hidden
+      const parentContainer = elementToCapture.parentElement;
+      let parentOriginalStyle = '';
+      if (parentContainer) {
+        parentOriginalStyle = parentContainer.style.cssText;
+        parentContainer.style.height = 'auto';
+        parentContainer.style.overflow = 'visible';
+      }
+
+      // Pequeno delay para a página renderizar com a altura expandida
+      await new Promise(r => setTimeout(r, 100));
+      
       const canvas = await html2canvas(elementToCapture, {
-        scale: 2, // High quality
-        useCORS: true, // Allow cross-origin images to be captured
-        logging: false,
-        backgroundColor: '#FAFAF7', // Default background
+        scale: 2, // Alta qualidade
+        useCORS: true, // Permitir imagens externas
+        allowTaint: true,
+        logging: true,
+        backgroundColor: '#FAFAF7',
+        windowHeight: elementToCapture.scrollHeight,
+        scrollY: 0
       });
+
+      // Restaurar estilos originais
+      elementToCapture.style.cssText = originalStyle;
+      if (parentContainer) {
+        parentContainer.style.cssText = parentOriginalStyle;
+      }
 
       const image = canvas.toDataURL('image/png');
       
-      // Create a temporary link to download the image
       const link = document.createElement('a');
       link.href = image;
       link.download = `Print-${new Date().toISOString().split('T')[0]}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error capturing screenshot:', error);
-      alert('Não foi possível capturar a tela. Tente novamente.');
+      alert('Não foi possível capturar a tela. Detalhes: ' + (error?.message || error));
     } finally {
       setIsCapturing(false);
     }
