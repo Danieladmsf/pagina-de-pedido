@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -150,7 +150,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     
     try {
       if (activeOrderId) {
-        const { deleteDoc } = await import('firebase/firestore');
         await deleteDoc(doc(db, 'orders', activeOrderId));
       }
       setCart([]);
