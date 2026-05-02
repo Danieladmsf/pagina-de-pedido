@@ -56,7 +56,8 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
         setSuggestions([]);
         setIsOpen(false);
       }
-    } catch {
+    } catch (error) {
+      console.error('[AddressAutocomplete] Erro na API:', error);
       setSuggestions([]);
     } finally {
       setLoading(false);

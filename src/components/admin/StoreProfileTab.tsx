@@ -318,11 +318,10 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                   <div className="flex justify-between items-center">
                     <Label className="font-bold text-sm flex items-center gap-2">
                       🛵 Taxas por Distância (KM)
-                      {feeRules.length > 0 && <Badge className="bg-blue-500 hover:bg-blue-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">{formData.freeDeliveryOver > 0 ? '2º Prioridade' : '1º Prioridade'}</Badge>}
+                      {feeRules.length > 0 && formData.deliveryFee === 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Regra Aplicada</Badge>}
                     </Label>
                     <Button onClick={addFeeRule} type="button" size="sm" variant="outline" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Adicionar Regra</Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Configure as faixas de distância e o valor da taxa para cada faixa. Ex: "Até 5km = R$ 5,00".</p>
                   
                   <div className="space-y-2">
                     {feeRules.map((rule, index) => (
@@ -351,21 +350,17 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                 <div className="space-y-1">
                   <Label className="flex items-center gap-2">
                     Taxa de Entrega Padrão (R$)
-                    <Badge className="bg-slate-400 hover:bg-slate-500 text-[10px] h-4 px-1.5 uppercase tracking-wider">
-                      {(formData.freeDeliveryOver > 0 && feeRules.length > 0) ? '3º Prioridade (Fallback)' : (formData.freeDeliveryOver > 0 || feeRules.length > 0) ? '2º Prioridade (Fallback)' : 'Única Ativa'}
-                    </Badge>
+                    {formData.deliveryFee > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Regra Aplicada</Badge>}
                   </Label>
                   <CurrencyInput name="deliveryFee" value={formData.deliveryFee} onChange={(val) => setFormData({...formData, deliveryFee: val})} />
-                  <p className="text-xs text-muted-foreground">Usada se nenhuma regra de KM for aplicável.</p>
                 </div>
                 
                 <div className="space-y-1">
                   <Label className="flex items-center gap-2">
                     Frete Grátis em pedidos acima de (R$)
-                    {formData.freeDeliveryOver > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">1º Prioridade</Badge>}
+                    {formData.freeDeliveryOver > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Regra Aplicada</Badge>}
                   </Label>
                   <CurrencyInput name="freeDeliveryOver" value={formData.freeDeliveryOver} onChange={(val) => setFormData({...formData, freeDeliveryOver: val})} />
-                  <p className="text-xs text-muted-foreground">Deixe 0 para desabilitar o frete grátis.</p>
                 </div>
                 
 
