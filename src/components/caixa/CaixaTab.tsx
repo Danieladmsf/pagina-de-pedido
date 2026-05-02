@@ -159,17 +159,33 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   `;
 
   const openPrintWindow = (title: string, bodyHTML: string) => {
-    const printWindow = window.open('', '', 'width=400,height=500');
-    if (!printWindow) return;
-    printWindow.document.write(`
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.write(`
       <html>
-        <head><title>${title}</title><style>${thermalCSS}</style></head>
+        <head>
+          <title>${title}</title>
+          <style>${thermalCSS}</style>
+        </head>
         <body>${bodyHTML}</body>
       </html>
     `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 2000);
+    }, 500);
   };
 
   // ── Comprovante de Abertura ──
