@@ -218,15 +218,30 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   }, [toast, number, calculateDeliveryFee]);
 
-  // Callback: quando o cliente seleciona um endereço do autocomplete
+  // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
-    // Calcular taxa imediatamente ao selecionar
     if (orderType === 'delivery' && selectedAddress) {
-      // Adiciona o número se já preenchido
-      const fullAddr = number ? `${selectedAddress}, ${number}` : selectedAddress;
+      // Se a string já tiver vírgula (foi montada no onBlur com cidade/bairro), manda direto
+      // Senão (veio do clique no autocomplete), junta com o número que estiver preenchido
+      const fullAddr = selectedAddress.includes(',') ? selectedAddress : (number ? `${selectedAddress}, ${number}` : selectedAddress);
       calculateDeliveryFee(fullAddr);
     }
   }, [orderType, number, calculateDeliveryFee]);
+
+  // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
+  // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
+  useEffect(() => {
+    if (orderType !== 'delivery') return;
+    if (street && street.length > 3 && city && city.length > 3) {
+      const timeout = setTimeout(() => {
+        if (dynamicFee === null && !calculatingFee) {
+          const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+          calculateDeliveryFee(fullAddr);
+        }
+      }, 1000); // 1 segundo de espera após o preenchimento para acionar
+      return () => clearTimeout(timeout);
+    }
+  }, [street, city, neighborhood, number, orderType, dynamicFee, calculatingFee, calculateDeliveryFee]);
 
   const fullDeliveryAddress = [street, number, complement, neighborhood, city, cep].filter(Boolean).join(', ');
 
@@ -463,38 +478,58 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust_name">Nome Completo</Label>
-                <Input id="cust_name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                <Input id="cust_name" autoComplete="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
-                <Input id="cust_phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
               </div>
               {orderType === 'delivery' && (
                 <>
                   <div className="space-y-2">
                     <Label>Endereço de Entrega</Label>
                     <AddressAutocomplete 
+                      id="cust_street"
                       value={street} 
                       onChange={(val) => {
                         setStreet(val);
-                        // Limpar taxa anterior se o usuário editar manualmente
                         if (dynamicFee !== null) {
                           setDynamicFee(null);
                           setDistanceInfo(null);
                         }
                       }}
                       onSelect={handleAddressSelected}
+                      onBlur={() => {
+                        if (street && street.length > 5 && dynamicFee === null && !calculatingFee && !distanceInfo) {
+                          const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+                          handleAddressSelected(fullAddr);
+                        }
+                      }}
+                      forceClose={distanceInfo !== null || deliveryBlocked}
+                      disableSearch={!!city && !!neighborhood}
                       placeholder="Digite rua, bairro ou cidade..."
                     />
+                    {/* Hack para o navegador reconhecer o campo como rua no autofill */}
+                    <input type="hidden" autoComplete="street-address" value={street} onChange={() => {}} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-2">
                       <Label htmlFor="cust_number">Número</Label>
-                      <Input id="cust_number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" />
+                      <Input id="cust_number" autoComplete="address-line2" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="cust_comp">Complemento</Label>
                       <Input id="cust_comp" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto, Bloco..." />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="cust_neighborhood">Bairro</Label>
+                      <Input id="cust_neighborhood" autoComplete="address-level3" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cust_city">Cidade</Label>
+                      <Input id="cust_city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Sua Cidade - SP" />
                     </div>
                   </div>
                   

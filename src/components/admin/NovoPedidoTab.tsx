@@ -163,6 +163,20 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     }
   }, [storeAddress, deliveryFeeRules, maxDeliveryRadius, toast]);
 
+  // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
+  React.useEffect(() => {
+    if (orderType !== 'delivery') return;
+    if (addressObj.street && addressObj.street.length > 3 && addressObj.city && addressObj.city.length > 3) {
+      const timeout = setTimeout(() => {
+        if (dynamicFee === null && !calculatingFee) {
+          const fullAddr = [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ');
+          calculateDeliveryFee(fullAddr);
+        }
+      }, 1000); // 1 segundo de espera
+      return () => clearTimeout(timeout);
+    }
+  }, [addressObj.street, addressObj.city, addressObj.neighborhood, addressObj.number, orderType, dynamicFee, calculatingFee, calculateDeliveryFee]);
+
   const handleAddressSelected = (addr: string) => {
     setAddressObj(prev => ({ ...prev, street: addr }));
     const fullAddr = addressObj.number ? `${addr}, ${addressObj.number}` : addr;
@@ -207,7 +221,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           addons: i.addons,
           notes: i.notes
         })),
-        status: 'delivered',
+        status: orderType === 'delivery' ? 'received' : 'delivered',
+        paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
         subtotal: cartTotal,
         deliveryFee: Number(deliveryFeeInput) || 0,
         distanceKm: distanceInfo?.distanceKm || null,
@@ -396,24 +411,41 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             </div>
             
             <div className="space-y-1.5">
-              <Input placeholder="Nome do Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-7 text-xs" />
-              <Input placeholder="Telefone / WhatsApp" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-7 text-xs" />
+              <Input autoComplete="name" placeholder="Nome do Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-7 text-xs" />
+              <Input autoComplete="tel" placeholder="Telefone / WhatsApp" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-7 text-xs" />
               
               {orderType === 'delivery' && (
                 <div className="pt-1.5 border-t space-y-1.5 mt-1.5">
                   <AddressAutocomplete
+                    id="np_street"
                     value={addressObj.street}
-                    onChange={(val) => setAddressObj(prev => ({...prev, street: val}))}
+                    onChange={(val) => {
+                      setAddressObj(prev => ({...prev, street: val}));
+                      if (dynamicFee !== null) {
+                        setDynamicFee(null);
+                        setDistanceInfo(null);
+                      }
+                    }}
                     onSelect={handleAddressSelected}
+                    onBlur={() => {
+                      if (addressObj.street && addressObj.street.length > 5 && dynamicFee === null && !calculatingFee && !distanceInfo) {
+                        const fullAddr = [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ');
+                        handleAddressSelected(fullAddr);
+                      }
+                    }}
+                    forceClose={distanceInfo !== null || deliveryBlocked}
+                    disableSearch={!!addressObj.city && !!addressObj.neighborhood}
                     placeholder="Buscar endereço no Maps..."
                   />
+                  <input type="hidden" autoComplete="street-address" value={addressObj.street} onChange={() => {}} />
                   <div className="flex gap-1.5">
-                    <Input placeholder="Número" value={addressObj.number} onChange={e => {
+                    <Input autoComplete="address-line2" placeholder="Número" value={addressObj.number} onChange={e => {
                       setAddressObj(prev => ({...prev, number: e.target.value}));
                     }} onBlur={() => {
                       if (addressObj.street) calculateDeliveryFee(`${addressObj.street}, ${addressObj.number}`);
                     }} className="h-7 text-xs w-1/3" />
-                    <Input placeholder="Bairro" value={addressObj.neighborhood} onChange={e => setAddressObj(prev => ({...prev, neighborhood: e.target.value}))} className="h-7 text-xs flex-1" />
+                    <Input autoComplete="address-level3" placeholder="Bairro" value={addressObj.neighborhood} onChange={e => setAddressObj(prev => ({...prev, neighborhood: e.target.value}))} className="h-7 text-xs flex-1" />
+                    <Input autoComplete="address-level2" placeholder="Cidade" value={addressObj.city} onChange={e => setAddressObj(prev => ({...prev, city: e.target.value}))} className="h-7 text-xs flex-1" />
                   </div>
                   {distanceInfo && (
                     <div className="text-[10px] text-teal-600 font-bold bg-teal-50 p-1.5 rounded text-center border border-teal-100">

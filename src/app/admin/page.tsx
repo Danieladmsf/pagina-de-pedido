@@ -56,8 +56,8 @@ export default function AdminPage() {
     setSortConfig({ key, direction });
   };
   
-  // Hook do Caixa ââ‚¬â€ compartilhado entre módulos
-  const { caixaAberto, registrarLancamento } = useCaixa();
+  // Hook do Caixa compartilhado entre módulos
+  const { caixaAberto, registrarLancamento, caixaAtual, setCaixaSelecionadoId } = useCaixa();
   
   const isRealUser = !!(user && !user.isAnonymous);
 
@@ -97,9 +97,27 @@ export default function AdminPage() {
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
   const orders = React.useMemo(() => {
-    if (!ordersRaw) return ordersRaw;
-    return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-  }, [ordersRaw]);
+    if (!ordersRaw) return [];
+    
+    let validOrders = [...ordersRaw];
+    
+    if (caixaAtual) {
+      // Converter Timestamp para milissegundos
+      const openingTime = caixaAtual.dataAbertura?.toDate?.()?.getTime() || 0;
+      const closingTime = caixaAtual.dataFechamento?.toDate?.()?.getTime() || Infinity;
+      
+      validOrders = validOrders.filter(o => {
+        const oTime = new Date(o.orderDateTime || o.createdAt || 0).getTime();
+        // Incluir uma margem de segurança de 1 minuto antes e depois para cobrir eventuais atrasos de rede no Firebase
+        return oTime >= (openingTime - 60000) && oTime <= (closingTime + 60000);
+      });
+    } else {
+      // Se não há caixa aberto nem selecionado no histórico, não mostra pedidos na interface principal
+      validOrders = [];
+    }
+
+    return validOrders.sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+  }, [ordersRaw, caixaAtual]);
 
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
@@ -374,6 +392,13 @@ export default function AdminPage() {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
+
+  // Ao sair da aba de configurações (onde o histórico do caixa é visto), voltar a visualizar o Caixa Aberto atual
+  useEffect(() => {
+    if (activeTab !== 'configuracoes') {
+      setCaixaSelecionadoId(null);
+    }
+  }, [activeTab, setCaixaSelecionadoId]);
 
   const handleLogout = async () => {
     if (!auth) return;

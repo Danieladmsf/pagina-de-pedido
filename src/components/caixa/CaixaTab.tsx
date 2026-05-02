@@ -55,9 +55,13 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showFechamentoModal, setShowFechamentoModal] = useState(false);
+  const [destinatarioTipoInput, setDestinatarioTipoInput] = useState<'avulso'|'motoboy'|'freelancer'>('avulso');
+  const [destinatarioIdInput, setDestinatarioIdInput] = useState<string>('');
   const [freelancers, setFreelancers] = useState<FreelancerEntry[]>([]);
   const [view, setView] = useState<'caixa' | 'anteriores'>('caixa');
   const [printRequested, setPrintRequested] = useState(false);
+  const [dinheiroApurado, setDinheiroApurado] = useState<string>('');
+  const [justificativaFalta, setJustificativaFalta] = useState<string>('');
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -256,16 +260,33 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         toast({ title: 'Caixa aberto com sucesso!' });
         printComprovanteAbertura(proximaSessao, valorInput);
       } else if (modalOpen === 'sangria' || modalOpen === 'suprimento' || modalOpen === 'venda') {
-        const titulo = justificativaInput || (
-          modalOpen === 'sangria' ? 'Sangria de Caixa' :
-          modalOpen === 'suprimento' ? 'Suprimento de Caixa' :
-          'Venda Manual'
-        );
+        let titulo = justificativaInput;
+        let destId = undefined;
+        let destTipo = undefined;
+
+        if (modalOpen === 'sangria' && destinatarioTipoInput !== 'avulso') {
+          destTipo = destinatarioTipoInput;
+          destId = destinatarioIdInput;
+          const labelTipo = destinatarioTipoInput === 'motoboy' ? 'Motoboy' : 'Freelancer';
+          const name = destinatarioTipoInput === 'motoboy' 
+            ? storeProfile?.motoboys?.find((m:any) => m.id === destinatarioIdInput)?.name 
+            : destinatarioIdInput;
+          titulo = justificativaInput || `Adiantamento / Vale para ${labelTipo}: ${name || 'Desconhecido'}`;
+        } else {
+          titulo = justificativaInput || (
+            modalOpen === 'sangria' ? 'Sangria de Caixa' :
+            modalOpen === 'suprimento' ? 'Suprimento de Caixa' :
+            'Venda Manual'
+          );
+        }
+
         await registrarLancamento({
           tipo: modalOpen,
           titulo,
           valor: valorInput,
-          formaPagamento: formaPagamentoInput
+          formaPagamento: formaPagamentoInput,
+          destinatarioId: destId,
+          destinatarioTipo: destTipo as any
         });
         toast({ title: `${modalOpen === 'sangria' ? 'Sangria' : modalOpen === 'suprimento' ? 'Suprimento' : 'Venda'} registrado!` });
         printComprovanteOperacao(modalOpen, titulo, valorInput, formaPagamentoInput);
@@ -301,33 +322,41 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     return fee * pedidosDaSessao.length; // valor fixo por pedido
   }, [storeProfile, pedidosDaSessao]);
 
-  // Cálculo dos motoboys
+  // Cálculo dos motoboys: Diária fixa + Soma do Frete de cada entrega
   const motoboysSessao = useMemo(() => {
     const motoboys = storeProfile?.motoboys || [];
-    const map: Record<string, { name: string; entregas: number; taxa: number; total: number }> = {};
+    const map: Record<string, { id: string; name: string; entregas: number; taxa: number; somaFretes: number; total: number; jaPago: number; saldo: number }> = {};
     pedidosDaSessao.forEach((o: any) => {
       if (!o.motoboyId) return;
       const mb = motoboys.find((m: any) => m.id === o.motoboyId);
       if (!map[o.motoboyId]) {
-        map[o.motoboyId] = { name: mb?.name || 'Desconhecido', entregas: 0, taxa: Number(mb?.fee || 0), total: 0 };
+        map[o.motoboyId] = { 
+          id: o.motoboyId,
+          name: mb?.name || 'Desconhecido', 
+          entregas: 0, 
+          taxa: Number(mb?.fee || 0), // Diária Fixa
+          somaFretes: 0,
+          total: 0,
+          jaPago: 0,
+          saldo: 0
+        };
       }
       map[o.motoboyId].entregas++;
-      map[o.motoboyId].total = map[o.motoboyId].entregas * map[o.motoboyId].taxa;
+      map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0); // Soma os fretes cobrados dos clientes
     });
-    return Object.values(map);
-  }, [storeProfile, pedidosDaSessao]);
+    
+    return Object.values(map).map(m => {
+      m.total = m.taxa + m.somaFretes; // Total = Diária + Fretes
+      const adiantamentos = lancamentos
+        .filter(l => l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId === m.id)
+        .reduce((s, l) => s + Math.abs(l.valor), 0);
+      m.jaPago = adiantamentos;
+      m.saldo = Math.max(0, m.total - m.jaPago);
+      return m;
+    });
+  }, [storeProfile, pedidosDaSessao, lancamentos]);
 
-  const totalMotoboys = motoboysSessao.reduce((s, m) => s + m.total, 0);
-
-  const totalFreelancersCalc = useMemo(() => {
-    return freelancers.reduce((s, f) => {
-      let t = 0;
-      if (f.tipo === 'diaria') t = f.diaria;
-      else if (f.tipo === 'comissao') t = f.comissao * f.entregas;
-      else t = f.diaria + (f.comissao * f.entregas);
-      return s + t;
-    }, 0);
-  }, [freelancers]);
+  const totalMotoboys = motoboysSessao.reduce((s, m) => s + m.saldo, 0);
 
   const addFreelancer = () => {
     setFreelancers(prev => [...prev, { name: '', tipo: 'diaria', diaria: 0, comissao: 0, entregas: 0 }]);
@@ -346,6 +375,25 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     if (f.tipo === 'comissao') return f.comissao * f.entregas;
     return f.diaria + (f.comissao * f.entregas);
   };
+
+  const freelancersComSaldo = useMemo(() => {
+    return freelancers.map(f => {
+      const total = getFreelancerTotal(f);
+      const adiantamentos = lancamentos
+        .filter(l => l.tipo === 'sangria' && l.destinatarioTipo === 'freelancer' && l.destinatarioId === f.name)
+        .reduce((s, l) => s + Math.abs(l.valor), 0);
+      return {
+        ...f,
+        total,
+        jaPago: adiantamentos,
+        saldo: Math.max(0, total - adiantamentos)
+      };
+    });
+  }, [freelancers, lancamentos]);
+
+  const totalFreelancersCalc = useMemo(() => {
+    return freelancersComSaldo.reduce((s, f) => s + f.saldo, 0);
+  }, [freelancersComSaldo]);
 
   const handleFecharCaixa = () => {
     // ─── Segurança: bloquear se houver pedidos abertos ───
@@ -393,6 +441,8 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         setFreelancers(freelancersDoDia);
       }
     }
+    setDinheiroApurado('');
+    setJustificativaFalta('');
     setShowFechamentoModal(true);
   };
 
@@ -403,15 +453,31 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         ...f,
         total: getFreelancerTotal(f),
       }));
+
+      const valorLiquidoCaixaFisico = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
+      const numApurado = dinheiroApurado !== '' ? Number(dinheiroApurado) : valorLiquidoCaixaFisico;
+      const diferencaCaixa = numApurado - valorLiquidoCaixaFisico;
+
+      if (diferencaCaixa < 0 && !justificativaFalta.trim()) {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Por favor, informe a justificativa para a falta de caixa.' });
+        setIsSubmitting(false);
+        return;
+      }
+
       await fecharCaixa({
         taxaGarcom: taxaGarcomCalculada,
         detalhesMotoboys: motoboysSessao,
         detalhesFreelancers,
+        dinheiroApurado: numApurado,
+        diferencaCaixa: diferencaCaixa,
+        justificativaFalta: justificativaFalta,
       });
       toast({ title: 'Caixa fechado com sucesso!', description: 'Todas as deduções foram registradas.' });
       handlePrint();
       setShowFechamentoModal(false);
       setFreelancers([]);
+      setDinheiroApurado('');
+      setJustificativaFalta('');
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
     } finally {
@@ -441,29 +507,29 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         <div class="section">
           <p class="title">MOTOBOYS / ENTREGAS</p>
           <table>
-            <thead><tr><th>Nome</th><th class="r">Ent.</th><th class="r">Taxa</th><th class="r">Total</th></tr></thead>
+            <thead><tr><th>Nome</th><th class="r">Total</th><th class="r">Vale</th><th class="r">Rest.</th></tr></thead>
             <tbody>
-              ${motoboysSessao.map(m => `<tr><td>${m.name}</td><td class="r">${m.entregas}</td><td class="r">R$ ${m.taxa.toFixed(2)}</td><td class="r bold">R$ ${m.total.toFixed(2)}</td></tr>`).join('')}
+              ${motoboysSessao.map(m => `<tr><td>${m.name}</td><td class="r">R$ ${m.total.toFixed(2)}</td><td class="r">${m.jaPago > 0 ? `-R$ ${m.jaPago.toFixed(2)}` : '-'}</td><td class="r bold">R$ ${m.saldo.toFixed(2)}</td></tr>`).join('')}
             </tbody>
           </table>
-          <div class="row bold"><span>Total Motoboys</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>
+          <div class="row bold"><span>Saldo Motoboys</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>
         </div>
         <p class="sep">${sep}</p>
       `;
     }
 
     let freelancerBlock = '';
-    if (freelancers.length > 0) {
+    if (freelancersComSaldo.length > 0) {
       freelancerBlock = `
         <div class="section">
           <p class="title">FREELANCERS / EXTRAS</p>
           <table>
-            <thead><tr><th>Nome</th><th class="r">Diária</th></tr></thead>
+            <thead><tr><th>Nome</th><th class="r">Total</th><th class="r">Vale</th><th class="r">Rest.</th></tr></thead>
             <tbody>
-              ${freelancers.map(f => `<tr><td>${f.name}</td><td class="r bold">R$ ${f.diaria.toFixed(2)}</td></tr>`).join('')}
+              ${freelancersComSaldo.map(f => `<tr><td>${f.name}</td><td class="r">R$ ${f.total.toFixed(2)}</td><td class="r">${f.jaPago > 0 ? `-R$ ${f.jaPago.toFixed(2)}` : '-'}</td><td class="r bold">R$ ${f.saldo.toFixed(2)}</td></tr>`).join('')}
             </tbody>
           </table>
-          <div class="row bold"><span>Total Freelancers</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>
+          <div class="row bold"><span>Saldo Freelancers</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>
         </div>
         <p class="sep">${sep}</p>
       `;
@@ -515,8 +581,24 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(−) Taxa Garçom</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
         ${totalMotoboys > 0 ? `<div class="row"><span>(−) Motoboys</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
         ${totalFreelancersCalc > 0 ? `<div class="row"><span>(−) Freelancers</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
-        <div class="row total-final"><span>Valor Líquido</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
+        <div class="row total-final"><span>Valor Esperado</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
       </div>
+
+      ${isFechado && caixaAtual?.fechamentoDetalhes?.dinheiroApurado !== undefined ? `
+      <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
+        <div class="row"><span>Apurado na Gaveta</span><span>R$ ${caixaAtual.fechamentoDetalhes.dinheiroApurado.toFixed(2)}</span></div>
+        ${caixaAtual.fechamentoDetalhes.diferencaCaixa !== 0 ? `
+          <div class="row bold"><span>Diferença (${caixaAtual.fechamentoDetalhes.diferencaCaixa > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${caixaAtual.fechamentoDetalhes.diferencaCaixa.toFixed(2)}</span></div>
+        ` : ''}
+      </div>
+      ` : (!isFechado && dinheiroApurado !== '' ? `
+      <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
+        <div class="row"><span>Apurado na Gaveta</span><span>R$ ${Number(dinheiroApurado).toFixed(2)}</span></div>
+        ${Number(dinheiroApurado) - valorLiquido !== 0 ? `
+          <div class="row bold"><span>Diferença (${Number(dinheiroApurado) - valorLiquido > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${(Number(dinheiroApurado) - valorLiquido).toFixed(2)}</span></div>
+        ` : ''}
+      </div>
+      ` : '')}
 
       <div class="footer">
         <p>${sep}</p>
@@ -530,6 +612,8 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     setValorInput(0);
     setFormaPagamentoInput('dinheiro');
     setJustificativaInput('');
+    setDestinatarioTipoInput('avulso');
+    setDestinatarioIdInput('');
     setErrorMsg('');
   };
 
@@ -870,6 +954,67 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
             {modalOpen !== 'abrir' && (
               <>
+                {modalOpen === 'sangria' && (
+                  <div className="space-y-2">
+                    <Label>Destino da Retirada</Label>
+                    <Select value={destinatarioTipoInput} onValueChange={(val: any) => {
+                      setDestinatarioTipoInput(val);
+                      setDestinatarioIdInput('');
+                      setJustificativaInput('');
+                      setValorInput(0);
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="avulso">Outros / Despesa Avulsa</SelectItem>
+                        <SelectItem value="motoboy">Motoboy</SelectItem>
+                        <SelectItem value="freelancer">Freelancer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {modalOpen === 'sangria' && destinatarioTipoInput === 'motoboy' && (
+                  <div className="space-y-2">
+                    <Label>Selecione o Motoboy</Label>
+                    <Select value={destinatarioIdInput} onValueChange={(val) => {
+                      setDestinatarioIdInput(val);
+                      const m = motoboysSessao.find(mb => mb.id === val);
+                      if (m) setValorInput(m.saldo);
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o motoboy" /></SelectTrigger>
+                      <SelectContent>
+                        {motoboysSessao.map(m => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name} (Saldo: R$ {m.saldo.toFixed(2)})
+                          </SelectItem>
+                        ))}
+                        {motoboysSessao.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy registrado hoje</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {modalOpen === 'sangria' && destinatarioTipoInput === 'freelancer' && (
+                  <div className="space-y-2">
+                    <Label>Selecione o Freelancer</Label>
+                    <Select value={destinatarioIdInput} onValueChange={(val) => {
+                      setDestinatarioIdInput(val);
+                      const f = freelancersComSaldo.find(fr => fr.name === val);
+                      if (f) setValorInput(f.saldo);
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o freelancer" /></SelectTrigger>
+                      <SelectContent>
+                        {freelancersComSaldo.map(f => (
+                          <SelectItem key={f.name} value={f.name}>
+                            {f.name} (Saldo: R$ {f.saldo.toFixed(2)})
+                          </SelectItem>
+                        ))}
+                        {freelancersComSaldo.length === 0 && <SelectItem value="none" disabled>Nenhum freelancer registrado hoje</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label>Forma de Pagamento</Label>
                   <Select value={formaPagamentoInput} onValueChange={setFormaPagamentoInput}>
@@ -882,19 +1027,22 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Título / Motivo</Label>
-                  <Input
-                    value={justificativaInput}
-                    onChange={(e) => setJustificativaInput(e.target.value)}
-                    placeholder={
-                      modalOpen === 'sangria' ? "Ex: Pagamento Motoboy" :
-                      modalOpen === 'suprimento' ? "Ex: Troco inicial" :
-                      "Ex: Pedido Nº 123 (PDV)"
-                    }
-                    required
-                  />
-                </div>
+                
+                {(modalOpen !== 'sangria' || destinatarioTipoInput === 'avulso') && (
+                  <div className="space-y-2">
+                    <Label>Título / Motivo</Label>
+                    <Input
+                      value={justificativaInput}
+                      onChange={(e) => setJustificativaInput(e.target.value)}
+                      placeholder={
+                        modalOpen === 'sangria' ? "Ex: Material de limpeza" :
+                        modalOpen === 'suprimento' ? "Ex: Troco inicial" :
+                        "Ex: Pedido Nº 123 (PDV)"
+                      }
+                      required={modalOpen !== 'sangria' || destinatarioTipoInput === 'avulso'}
+                    />
+                  </div>
+                )}
               </>
             )}
 
@@ -986,9 +1134,11 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="py-0.5">Motoboy</th>
-                        <th className="py-0.5 text-center">Entregas</th>
-                        <th className="py-0.5 text-right">Taxa/Entrega</th>
+                        <th className="py-0.5 text-center" title="Entregas">Ent.</th>
+                        <th className="py-0.5 text-right">Taxa</th>
                         <th className="py-0.5 text-right">Total</th>
+                        <th className="py-0.5 text-right text-rose-500">Vale</th>
+                        <th className="py-0.5 text-right font-bold text-emerald-600">Restante</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -997,13 +1147,15 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                           <td className="py-1 font-medium">{m.name}</td>
                           <td className="py-1 text-center">{m.entregas}</td>
                           <td className="py-1 text-right">R$ {m.taxa.toFixed(2)}</td>
-                          <td className="py-1 text-right font-bold">R$ {m.total.toFixed(2)}</td>
+                          <td className="py-1 text-right">R$ {m.total.toFixed(2)}</td>
+                          <td className="py-1 text-right text-rose-500">{m.jaPago > 0 ? `R$ ${m.jaPago.toFixed(2)}` : '-'}</td>
+                          <td className="py-1 text-right font-bold text-emerald-600">R$ {m.saldo.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t font-bold">
-                        <td colSpan={3} className="py-1 text-right">Total Motoboys:</td>
+                        <td colSpan={5} className="py-1 text-right">Saldo a pagar (Motoboys):</td>
                         <td className="py-1 text-right text-blue-700">R$ {totalMotoboys.toFixed(2)}</td>
                       </tr>
                     </tfoot>
@@ -1025,15 +1177,19 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="py-0.5">Nome</th>
-                        <th className="py-0.5 text-right">Diária</th>
+                        <th className="py-0.5 text-right">Total</th>
+                        <th className="py-0.5 text-right text-rose-500">Vale</th>
+                        <th className="py-0.5 text-right font-bold text-emerald-600">Restante</th>
                         <th className="py-0.5 w-6"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {freelancers.map((f, i) => (
+                      {freelancersComSaldo.map((f, i) => (
                         <tr key={i} className="border-b last:border-0">
                           <td className="py-1 font-medium">{f.name}</td>
-                          <td className="py-1 text-right font-bold">R$ {f.diaria.toFixed(2)}</td>
+                          <td className="py-1 text-right">R$ {f.total.toFixed(2)}</td>
+                          <td className="py-1 text-right text-rose-500">{f.jaPago > 0 ? `R$ ${f.jaPago.toFixed(2)}` : '-'}</td>
+                          <td className="py-1 text-right font-bold text-emerald-600">R$ {f.saldo.toFixed(2)}</td>
                           <td className="py-1 text-right">
                             <Button size="icon" variant="ghost" className="text-red-500 h-5 w-5" onClick={() => removeFreelancer(i)}>
                               <Trash2 className="h-3 w-3" />
@@ -1044,7 +1200,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     </tbody>
                     <tfoot>
                       <tr className="border-t font-bold">
-                        <td className="py-1 text-right">Total Freelancers:</td>
+                        <td colSpan={3} className="py-1 text-right">Saldo a pagar (Freelancers):</td>
                         <td colSpan={2} className="py-1 text-right text-purple-700">R$ {totalFreelancersCalc.toFixed(2)}</td>
                       </tr>
                     </tfoot>
@@ -1080,26 +1236,93 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                   </div>
                 )}
                 <div className="border-t border-slate-600 pt-1 mt-1 flex justify-between text-sm">
-                  <span className="font-bold">Valor Líquido a Retirar</span>
+                  <span className="font-bold">Valor Esperado</span>
                   <span className="font-black text-emerald-400">
                     R$ {(totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc).toFixed(2)}
                   </span>
                 </div>
               </div>
             </div>
-          </div>
 
-          <DialogFooter className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowFechamentoModal(false)}>Cancelar</Button>
-            <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir
-            </Button>
+            {/* Seção 6: Apuração de Caixa (Novo) */}
+            <div className="bg-white rounded-xl p-3 border space-y-3">
+              <h3 className="font-bold text-[11px] uppercase tracking-wider text-slate-700">🔍 Apuração Física da Gaveta</h3>
+              
+              <div className="space-y-2">
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground font-bold">Total contado em Dinheiro</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <CurrencyInput
+                        value={dinheiroApurado}
+                        onChange={(e) => setDinheiroApurado(e.target.value)}
+                        placeholder="R$ 0,00"
+                        className="font-bold text-lg h-10 w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {dinheiroApurado !== '' && (() => {
+                  const valorLiquido = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
+                  const diferenca = Number(dinheiroApurado) - valorLiquido;
+                  const isFalta = diferenca < 0;
+                  const isSobra = diferenca > 0;
+                  const isExato = diferenca === 0;
+
+                  return (
+                    <div className="space-y-3 mt-3">
+                      <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                        isFalta ? 'bg-rose-50 border-rose-200 text-rose-700' :
+                        isSobra ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                        'bg-blue-50 border-blue-200 text-blue-700'
+                      }`}>
+                        <div className="font-bold text-sm">
+                          {isExato ? '✅ Caixa Bateu perfeitamente' : isFalta ? '⚠️ Falta de Caixa' : '⚠️ Sobra de Caixa'}
+                        </div>
+                        <div className="font-black text-lg">
+                          {isExato ? '' : `R$ ${Math.abs(diferenca).toFixed(2)}`}
+                        </div>
+                      </div>
+
+                      {isFalta && (
+                        <div className="bg-rose-50 p-3 rounded-lg border border-rose-200 space-y-2">
+                          <Label className="text-rose-700 font-bold text-xs flex gap-1">
+                            Motivo / Justificativa da Quebra <span className="text-rose-500">*</span>
+                          </Label>
+                          <Input 
+                            placeholder="Descreva por que faltou dinheiro na gaveta..."
+                            value={justificativaFalta}
+                            onChange={(e) => setJustificativaFalta(e.target.value)}
+                            className="bg-white border-rose-300 focus-visible:ring-rose-500"
+                          />
+                          <p className="text-[10px] text-rose-600">
+                            A falta de {Math.abs(diferenca).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL'})} será registrada como uma Sangria de Quebra no relatório.
+                          </p>
+                        </div>
+                      )}
+                      
+                      {isSobra && (
+                        <p className="text-[10px] text-emerald-600 px-1">
+                          A sobra de {diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL'})} será registrada como um Suprimento de Sobra no relatório.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+            
+          </div>
+          <DialogFooter className="border-t pt-3 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-row gap-2">
+            <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
             <Button 
+              className="bg-red-600 hover:bg-red-700 text-white font-bold w-full sm:w-auto px-8"
               onClick={confirmarFechamento} 
-              disabled={isSubmitting} 
-              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+              disabled={isSubmitting || (dinheiroApurado !== '' && (Number(dinheiroApurado) - (totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc) < 0) && !justificativaFalta.trim())}
             >
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : '✅ Confirmar Fechamento'}
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+              Confirmar Fechamento
             </Button>
           </DialogFooter>
         </DialogContent>

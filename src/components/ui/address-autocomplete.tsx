@@ -12,6 +12,9 @@ interface AddressAutocompleteProps {
   className?: string;
   id?: string;
   types?: string;
+  onBlur?: () => void;
+  forceClose?: boolean;
+  disableSearch?: boolean;
 }
 
 interface Prediction {
@@ -19,7 +22,7 @@ interface Prediction {
   placeId: string;
 }
 
-export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types }: AddressAutocompleteProps) {
+export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types, onBlur, forceClose, disableSearch }: AddressAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,8 +40,16 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Fechar dropdown de forma forçada se a prop forceClose for ativada (ex: auto-calculado)
+  useEffect(() => {
+    if (forceClose) {
+      setIsOpen(false);
+      setSuggestions([]);
+    }
+  }, [forceClose]);
+
   const fetchSuggestions = async (input: string) => {
-    if (input.length < 3) {
+    if (disableSearch || input.length < 3) {
       setSuggestions([]);
       setIsOpen(false);
       return;
@@ -92,6 +103,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
           value={value}
           onChange={handleInputChange}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+          onBlur={onBlur}
           placeholder={placeholder || 'Digite o endereço...'}
           className={`pl-9 ${className || ''}`}
         />

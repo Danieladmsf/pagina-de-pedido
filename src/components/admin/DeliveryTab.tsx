@@ -31,10 +31,12 @@ const DEFAULT_FORMAS_PAGAMENTO = [
 export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
-  const onlyDeliveryAppOrders = orders?.filter(o => 
-    !o.customerName?.toLowerCase().includes('balcão') && 
-    !o.customerName?.toLowerCase().includes('mesa')
-  ) || [];
+  // Mostrar todos os pedidos de delivery, além de pedidos do App de outros tipos
+  const onlyDeliveryAppOrders = orders?.filter(o => {
+    if (o.orderType === 'delivery') return true;
+    const nameLower = o.customerName?.toLowerCase() || '';
+    return !nameLower.includes('balcão') && !nameLower.includes('mesa');
+  }) || [];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
@@ -117,15 +119,36 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
   };
 
+  const proceedToPayment = (order: any) => {
+    if (order.paymentRegistered) {
+      // Se já foi pago no Balcão (paymentRegistered = true), não cobra de novo. Apenas marca como entregue.
+      updateOrderStatus(order.id, 'delivered');
+      toast({ title: 'Pedido entregue!', description: 'Status atualizado (pagamento já havia sido registrado no balcão).' });
+      return;
+    }
+    setPaymentModalOrder(order);
+    setSelectedPayment('');
+    setValorRecebido('');
+  };
+
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
   const handleMarkDelivered = (order: any) => {
     if (order.status === 'delivered') {
       toast({ title: 'Aviso', description: 'Este pedido já foi finalizado e registrado no caixa.' });
       return;
     }
-    setPaymentModalOrder(order);
-    setSelectedPayment('');
-    setValorRecebido('');
+    
+    // Se pular direto para Entregue sem informar motoboy, força a escolha do motoboy primeiro
+    if (order.orderType === 'delivery' && !order.motoboyId) {
+      setShowMotoboyModal({ 
+        order, 
+        dispatch: false, 
+        onConfirm: () => proceedToPayment(order) 
+      });
+      return;
+    }
+
+    proceedToPayment(order);
   };
 
   // Confirmar pagamento + registrar no caixa
@@ -188,9 +211,15 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
     
     updateOrderStatus(showMotoboyModal.order.id, updates);
+    const onConfirmCallback = showMotoboyModal.onConfirm;
+    
     setShowMotoboyModal(null);
     setSelectedMotoboyId('');
     toast({ title: 'Sucesso', description: msg });
+
+    if (onConfirmCallback) {
+      setTimeout(() => onConfirmCallback(), 300);
+    }
   };
 
   return (

@@ -483,23 +483,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                         <Printer className="h-5 w-5" />
                       </Button>
                       
-                      {!receiptPrinted ? (
-                        <Button 
-                          className="flex-1 bg-blue-500 hover:bg-blue-600 font-bold text-white shadow-sm text-lg"
-                          onClick={handlePrintReceipt}
-                          disabled={isSubmitting}
-                        >
-                          Imprimir Conta
-                        </Button>
-                      ) : (
-                        <Button 
-                          className="flex-1 bg-orange-500 hover:bg-orange-600 font-bold text-white shadow-sm text-lg"
-                          onClick={handleOpenPayment}
-                          disabled={isSubmitting}
-                        >
-                          Receber
-                        </Button>
-                      )}
+                      <Button 
+                        className="flex-1 bg-orange-500 hover:bg-orange-600 font-bold text-white shadow-sm text-lg"
+                        onClick={handleOpenPayment}
+                        disabled={isSubmitting}
+                      >
+                        Receber
+                      </Button>
                     </div>
                   )}
                 </div>

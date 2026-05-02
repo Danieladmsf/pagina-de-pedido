@@ -26,6 +26,8 @@ export interface LancamentoCaixa {
   formaPagamento: string;
   data: any;
   usuario: string;
+  destinatarioId?: string;
+  destinatarioTipo?: 'motoboy' | 'freelancer';
 }
 
 export function useCaixa() {
@@ -136,10 +138,13 @@ export function useCaixa() {
     return caixaRef.id;
   }, [db, isRealUser, user, caixaAberto, proximaSessao]);
 
-  const fecharCaixa = useCallback(async (params?: {
-    taxaGarcom?: number;
+  const fecharCaixa = useCallback(async (params?: { 
+    taxaGarcom?: number; 
     detalhesMotoboys?: Array<{ name: string; entregas: number; taxa: number; total: number }>;
     detalhesFreelancers?: Array<{ name: string; tipo: string; diaria: number; comissao: number; entregas: number; total: number }>;
+    dinheiroApurado?: number;
+    diferencaCaixa?: number;
+    justificativaFalta?: string;
   }) => {
     if (!db || !isRealUser || !caixaAberto?.id) return;
 
@@ -221,31 +226,41 @@ export function useCaixa() {
     const dinheiroEmCaixa = saldoIni + totalVendasDinheiro + totalSuprimentos - totalSangrias - totalDeducoes;
     const valorRetirada = dinheiroEmCaixa > 0 ? dinheiroEmCaixa : 0;
 
-    // Registrar lançamento de Retirada no Fechamento
-    if (valorRetirada > 0) {
+    // Lançamentos de Apuração de Caixa (Falta/Sobra)
+    if (params?.diferencaCaixa !== undefined && params.diferencaCaixa !== 0) {
+      const isFalta = params.diferencaCaixa < 0;
       await addDoc(collection(db, 'cash_transactions'), {
         caixaId: caixaAberto.id,
         ownerId: user!.uid,
-        tipo: 'retirada_fechamento',
-        titulo: 'Retirada no Fechamento',
-        valor: valorRetirada * -1,
+        tipo: isFalta ? 'sangria' : 'suprimento',
+        titulo: isFalta ? `Falta de Caixa: ${params.justificativaFalta || 'Não justificada'}` : 'Sobra de Caixa Identificada',
+        valor: params.diferencaCaixa, // Positivo para sobra (suprimento), negativo para falta (sangria)
         formaPagamento: '--',
         data: serverTimestamp(),
         usuario: user?.displayName || user?.email || 'Principal',
       });
     }
 
-    // Registrar lançamento de Fechamento (O Saldo que fica no sistema para o final do dia)
-    await addDoc(collection(db, 'cash_transactions'), {
-      caixaId: caixaAberto.id,
-      ownerId: user!.uid,
-      tipo: 'fechamento',
-      titulo: 'Fechamento do Caixa',
-      valor: totalVendas, // Apenas o total de faturamento do dia para registro, ou 0 se preferir
-      formaPagamento: '--',
-      data: serverTimestamp(),
-      usuario: user?.displayName || user?.email || 'Principal',
-    });
+    // O valor a ser retirado para zerar a gaveta é o valor real apurado (se informado), ou o cálculo padrão.
+    const valorParaRetirada = params?.dinheiroApurado !== undefined && params.dinheiroApurado >= 0 
+      ? params.dinheiroApurado 
+      : valorRetirada;
+
+    // Registrar lançamento de Retirada no Fechamento
+    if (valorParaRetirada > 0) {
+      await addDoc(collection(db, 'cash_transactions'), {
+        caixaId: caixaAberto.id,
+        ownerId: user!.uid,
+        tipo: 'retirada_fechamento',
+        titulo: 'Retirada no Fechamento',
+        valor: valorParaRetirada * -1,
+        formaPagamento: '--',
+        data: serverTimestamp(),
+        usuario: user?.displayName || user?.email || 'Principal',
+      });
+    }
+
+
 
     await updateDoc(doc(db, 'cash_registers', caixaAberto.id), {
       status: 'fechado',
@@ -255,8 +270,11 @@ export function useCaixa() {
         taxaGarcom: params?.taxaGarcom || 0,
         motoboys: params?.detalhesMotoboys || [],
         freelancers: params?.detalhesFreelancers || [],
+        dinheiroApurado: params?.dinheiroApurado || 0,
+        diferencaCaixa: params?.diferencaCaixa || 0,
+        justificativaFalta: params?.justificativaFalta || '',
         totalDeducoes,
-        valorRetirada,
+        valorRetirada: valorParaRetirada,
       },
     });
 
@@ -264,11 +282,13 @@ export function useCaixa() {
     await setDoc(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: false }, { merge: true });
   }, [db, isRealUser, user, caixaAberto, lancamentos]);
 
-  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento }: {
+  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo }: {
     tipo: 'sangria' | 'suprimento' | 'venda',
     titulo: string,
     valor: number,
-    formaPagamento: string
+    formaPagamento: string,
+    destinatarioId?: string,
+    destinatarioTipo?: 'motoboy' | 'freelancer'
   }) => {
     if (!db || !isRealUser || !caixaAberto?.id) {
       throw new Error("Não há caixa aberto no momento.");
@@ -285,6 +305,8 @@ export function useCaixa() {
       formaPagamento,
       data: serverTimestamp(),
       usuario: user?.displayName || user?.email || 'Principal',
+      ...(destinatarioId && { destinatarioId }),
+      ...(destinatarioTipo && { destinatarioTipo }),
     });
   }, [db, isRealUser, user, caixaAberto]);
 
