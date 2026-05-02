@@ -144,6 +144,26 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
   };
 
+  const handleCancelTable = async () => {
+    if (!db || !selectedTable) return;
+    if (!confirm(`Cancelar a Mesa ${selectedTable}? Todos os itens serão removidos e a comanda será fechada.`)) return;
+    
+    try {
+      if (activeOrderId) {
+        const { deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, 'orders', activeOrderId));
+      }
+      setCart([]);
+      setOriginalCart([]);
+      setActiveOrderId(null);
+      setReceiptPrinted(false);
+      toast({ title: `Mesa ${selectedTable} cancelada com sucesso.` });
+      setSelectedTable(null);
+    } catch (err) {
+      toast({ title: 'Erro ao cancelar mesa', variant: 'destructive' });
+    }
+  };
+
   const handleSaveOrder = async () => {
     if (!db || !user || !selectedTable || cart.length === 0) return;
     setIsSubmitting(true);
@@ -374,10 +394,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 <p className="text-xs text-slate-300">{activeOrderId ? 'Comanda Aberta' : 'Nova Comanda'}</p>
               </div>
             </div>
-            {/* Podemos manter o X ou apenas a seta para voltar. Manter o X pra fechar também. */}
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
-              <X className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {activeOrderId && (
+                <Button variant="ghost" size="sm" className="text-red-300 hover:text-red-100 hover:bg-red-500/30 text-xs gap-1" onClick={handleCancelTable}>
+                  <X className="h-3.5 w-3.5" /> Cancelar Mesa
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
