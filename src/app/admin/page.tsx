@@ -627,7 +627,7 @@ export default function AdminPage() {
                 <div className="flex gap-2">
                   <Button onClick={async () => {
                     if (!db || !user) return;
-                    if (!confirm("Isso apagará o cardápio atual e reimportará todos os 169 produtos da base antiga. Tem certeza?")) return;
+                    if (!confirm("Isso apagará o cardápio atual e reimportará a NOVA BASE extraída do Bysell (300+ itens). Tem certeza?")) return;
                     toast({ title: 'Limpeza e Importação Iniciadas. Aguarde...' });
                     try {
                       const oldCatsSnap = await getDocs(query(collection(db, 'categories'), where('ownerId', '==', user.uid)));
@@ -638,35 +638,60 @@ export default function AdminPage() {
                       const oldAddonsSnap = await getDocs(query(collection(db, 'addons'), where('ownerId', '==', user.uid)));
                       for (const doc of oldAddonsSnap.docs) await deleteDoc(doc.ref);
 
+                      const res = await fetch('/menu.json');
+                      const data = await res.json();
+
                       const catMap: Record<string,string> = {};
-                      for (let i = 0; i < CATS.length; i++) {
+                      for (let i = 0; i < data.categories.length; i++) {
                         const ref = doc(collection(db as any, 'categories'));
-                        await setDoc(ref, { id:ref.id, name:CATS[i], ownerId:user.uid, displayOrder:i, description:'' });
-                        catMap[CATS[i]] = ref.id;
+                        await setDoc(ref, { id:ref.id, name:data.categories[i], ownerId:user.uid, displayOrder:i, description:'' });
+                        catMap[data.categories[i]] = ref.id;
                       }
                       
+                      const addonMap: Record<string,string> = {};
                       let okAddons = 0;
-                      for (const a of ADDONS) {
+                      for (const a of data.addons) {
                         const ref = doc(collection(db as any, 'addons'));
-                        await setDoc(ref, { id:ref.id, name:a.n, price:a.p, group:a.g, ownerId:user.uid });
+                        await setDoc(ref, { id:ref.id, name:a.name, price:a.price, group:a.group, ownerId:user.uid, isAvailable:true });
+                        addonMap[a.id] = ref.id;
                         okAddons++;
                       }
 
                       let ok = 0;
-                      for (const it of ITEMS) {
-                        const catId = catMap[it.c];
+                      for (const it of data.items) {
+                        const catId = catMap[it.category];
                         if (!catId) continue;
+
+                        const finalAddonGroups = it.addonGroups.map((group: any) => ({
+                          ...group,
+                          addonIds: group.addonIds.map((oldId: string) => addonMap[oldId]).filter(Boolean)
+                        }));
+
                         const ref = doc(collection(db as any, 'menuItems'));
-                        await setDoc(ref, { id:ref.id, name:it.n, description:it.d, price:it.p, categoryId:catId, ownerId:user.uid, isAvailable:true, isRecommended:false, imageUrl:'', addonIds:[] });
+                        await setDoc(ref, { 
+                          id:ref.id, 
+                          name:it.name, 
+                          description:it.description, 
+                          price:it.price, 
+                          categoryId:catId, 
+                          ownerId:user.uid, 
+                          isAvailable:true, 
+                          isMarmita: it.isMarmita || false,
+                          addonGroups: finalAddonGroups,
+                          fixedItems: [],
+                          isRecommended:false, 
+                          imageUrl:'', 
+                          addonIds:[] 
+                        });
                         ok++;
                       }
-                      toast({ title: `Importação concluída! ${CATS.length} categorias, ${ok} produtos e ${okAddons} adicionais criados.` });
+                      toast({ title: `Importação concluída! ${data.categories.length} categorias, ${ok} produtos e ${okAddons} adicionais.` });
                     } catch (e: any) {
                       console.error(e);
                       toast({ title: 'Erro na importação', description: e.message, variant: 'destructive' });
                     }
-                  }} className="bg-yellow-500 text-white">
-                    Seed Antigo
+                  }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                    Importar Base Bysell
                   </Button>
                   <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); } }}>
                     <DialogTrigger asChild>
@@ -674,23 +699,23 @@ export default function AdminPage() {
                         <Plus className="mr-2 h-4 w-4" /> Novo Prato
                       </Button>
                     </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
+                  <DialogContent className="sm:max-w-[480px] max-h-[90vh] flex flex-col">
+                    <DialogHeader className="pb-2">
                       <DialogTitle>{editingItem?.id ? 'Editar Prato' : 'Novo Prato'}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSaveItem} className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nome do Prato</Label>
-                        <Input id="name" name="name" defaultValue={editingItem?.name} required />
+                    <form onSubmit={handleSaveItem} className="space-y-3 overflow-y-auto pr-1 flex-1" style={{maxHeight: 'calc(90vh - 120px)'}}>
+                      <div className="space-y-1">
+                        <Label htmlFor="name" className="text-xs">Nome do Prato</Label>
+                        <Input id="name" name="name" defaultValue={editingItem?.name} required className="h-9" />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="price">Preço (R$)</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="price" className="text-xs">Preço (R$)</Label>
                           <CurrencyInput id="price" name="price" defaultValue={editingItem?.price} required />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="categoryId">Categoria</Label>
-                          <select name="categoryId" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" defaultValue={editingItem?.categoryId}>
+                        <div className="space-y-1">
+                          <Label htmlFor="categoryId" className="text-xs">Categoria</Label>
+                          <select name="categoryId" className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm" defaultValue={editingItem?.categoryId}>
                             <option value="">Selecione...</option>
                             {categories?.map(cat => (
                               <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -698,18 +723,18 @@ export default function AdminPage() {
                           </select>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Foto do Prato</Label>
-                        <div className="flex items-center gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Foto do Prato</Label>
+                        <div className="flex items-center gap-2">
                           {(imagePreview || editingItem?.imageUrl) && (
-                            <div className="relative h-16 w-16 rounded-lg overflow-hidden border flex-shrink-0">
+                            <div className="relative h-12 w-12 rounded-lg overflow-hidden border flex-shrink-0">
                               <Image src={imagePreview || editingItem?.imageUrl} alt="preview" fill className="object-cover" />
                             </div>
                           )}
                           <label className="flex-1 cursor-pointer">
-                            <div className="flex items-center justify-center gap-2 border-2 border-dashed border-muted-foreground/30 rounded-lg p-3 hover:border-primary transition-colors">
+                            <div className="flex items-center justify-center gap-2 border-2 border-dashed border-muted-foreground/30 rounded-lg p-2 hover:border-primary transition-colors">
                               <Upload className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">
+                              <span className="text-xs text-muted-foreground">
                                 {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
                               </span>
                             </div>
@@ -717,18 +742,18 @@ export default function AdminPage() {
                           </label>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="description">Descrição</Label>
-                        <Textarea id="description" name="description" defaultValue={editingItem?.description} required />
+                      <div className="space-y-1">
+                        <Label htmlFor="description" className="text-xs">Descrição</Label>
+                        <Textarea id="description" name="description" defaultValue={editingItem?.description} required className="min-h-[60px] resize-none" />
                       </div>
                       {addons && addons.length > 0 && (
-                        <div className="space-y-2">
-                          <Label>Adicionais Disponíveis</Label>
-                          <div className="space-y-2 border rounded-md p-3 max-h-48 overflow-y-auto">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Adicionais Disponíveis</Label>
+                          <div className="space-y-1 border rounded-md p-2 max-h-36 overflow-y-auto">
                             {addons.map(addon => {
                               const checked = selectedAddonIds.includes(addon.id);
                               return (
-                                <label key={addon.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/50 p-2 rounded">
+                                <label key={addon.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/50 px-2 py-1 rounded">
                                   <div className="flex items-center gap-2">
                                     <input
                                       type="checkbox"
@@ -737,20 +762,20 @@ export default function AdminPage() {
                                         if (e.target.checked) setSelectedAddonIds([...selectedAddonIds, addon.id]);
                                         else setSelectedAddonIds(selectedAddonIds.filter(id => id !== addon.id));
                                       }}
-                                      className="h-4 w-4"
+                                      className="h-3.5 w-3.5"
                                     />
-                                    <span className="text-sm">{addon.name}</span>
+                                    <span className="text-xs">{addon.name}</span>
                                   </div>
-                                  <span className="text-xs font-semibold text-primary">+ R$ {addon.price.toFixed(2)}</span>
+                                  <span className="text-[10px] font-semibold text-primary">+ R$ {(addon.price || 0).toFixed(2)}</span>
                                 </label>
                               );
                             })}
                           </div>
-                          <p className="text-xs text-muted-foreground">Marque os adicionais que este produto pode receber. Deixe vazio se não aplicável.</p>
+                          <p className="text-[10px] text-muted-foreground">Marque os adicionais que este produto pode receber.</p>
                         </div>
                       )}
-                      <DialogFooter>
-                        <Button type="submit" className="w-full h-12 font-bold" disabled={uploadingImage}>
+                      <DialogFooter className="pt-2">
+                        <Button type="submit" className="w-full h-10 font-bold" disabled={uploadingImage}>
                           {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar'}
                         </Button>
                       </DialogFooter>
@@ -834,7 +859,7 @@ export default function AdminPage() {
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">R$ {item.price.toFixed(2)}</TableCell>
+                          <TableCell className="text-muted-foreground">R$ {(item.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
                             <Switch 
@@ -1039,7 +1064,7 @@ export default function AdminPage() {
                       addons.map((addon) => (
                         <TableRow key={addon.id}>
                           <TableCell className="font-bold pl-6">{addon.name}</TableCell>
-                          <TableCell className="text-primary font-semibold">R$ {addon.price.toFixed(2)}</TableCell>
+                          <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6 space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
                               <Pencil className="h-4 w-4 text-blue-500" />

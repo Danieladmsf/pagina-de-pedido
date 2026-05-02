@@ -1,0 +1,3244 @@
+{
+  "categories": [
+    "Marmitex",
+    "Prato do dia",
+    "Prato Feito",
+    "Massas",
+    "Omeletes",
+    "Crepiocas",
+    "Tapiocas",
+    "Lanches Naturais",
+    "Lanches Quentes",
+    "Promoção Lanches Quentes",
+    "Sucos",
+    "Sucos Detox (Funcionais)",
+    "Vitaminas",
+    "Refrigerantes",
+    "Salgados",
+    "Sobremesas",
+    "Bomboniere",
+    "Café",
+    "Caldos"
+  ],
+  "items": [
+    {
+      "name": "Marmitex P (1 Carne)",
+      "description": "",
+      "price": 18.9,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 57,
+          "addonIds": [
+            "addon_1",
+            "addon_2",
+            "addon_3",
+            "addon_4",
+            "addon_5",
+            "addon_6",
+            "addon_7",
+            "addon_8",
+            "addon_9",
+            "addon_10",
+            "addon_11",
+            "addon_12",
+            "addon_13",
+            "addon_14",
+            "addon_15",
+            "addon_16",
+            "addon_17",
+            "addon_18",
+            "addon_19",
+            "addon_20",
+            "addon_21",
+            "addon_22",
+            "addon_23",
+            "addon_24",
+            "addon_25",
+            "addon_26",
+            "addon_27",
+            "addon_28",
+            "addon_29",
+            "addon_30",
+            "addon_31",
+            "addon_32",
+            "addon_33",
+            "addon_34",
+            "addon_35",
+            "addon_36",
+            "addon_37",
+            "addon_38",
+            "addon_39",
+            "addon_40",
+            "addon_41",
+            "addon_42",
+            "addon_43",
+            "addon_44",
+            "addon_45",
+            "addon_46",
+            "addon_47",
+            "addon_48",
+            "addon_49",
+            "addon_50",
+            "addon_51",
+            "addon_52",
+            "addon_53",
+            "addon_54",
+            "addon_55",
+            "addon_56",
+            "addon_57"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Marmitex P (2 Carne)",
+      "description": "",
+      "price": 23.9,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Marmitex M (1 Carne)",
+      "description": "",
+      "price": 22.9,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Marmitex M (2 Carne)",
+      "description": "",
+      "price": 27.9,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Marmitex Executiva (1 Carne)",
+      "description": "",
+      "price": 27,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Marmitex Executiva (2 Carne)",
+      "description": "",
+      "price": 30,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Suco 500 ml",
+      "description": "",
+      "price": 12,
+      "category": "Sucos",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 29,
+          "addonIds": [
+            "addon_58",
+            "addon_59",
+            "addon_60",
+            "addon_61",
+            "addon_62",
+            "addon_63",
+            "addon_64",
+            "addon_65",
+            "addon_66",
+            "addon_67",
+            "addon_68",
+            "addon_69",
+            "addon_70",
+            "addon_71",
+            "addon_72",
+            "addon_73",
+            "addon_74",
+            "addon_75",
+            "addon_76",
+            "addon_77",
+            "addon_78",
+            "addon_79",
+            "addon_80",
+            "addon_81",
+            "addon_82",
+            "addon_83",
+            "addon_84",
+            "addon_85",
+            "addon_86"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Vitaminas 500 ml",
+      "description": "",
+      "price": 15,
+      "category": "Vitaminas",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 25,
+          "addonIds": [
+            "addon_60",
+            "addon_87",
+            "addon_88",
+            "addon_89",
+            "addon_63",
+            "addon_90",
+            "addon_91",
+            "addon_69",
+            "addon_70",
+            "addon_92",
+            "addon_93",
+            "addon_73",
+            "addon_64",
+            "addon_65",
+            "addon_77",
+            "addon_59",
+            "addon_81",
+            "addon_82",
+            "addon_83",
+            "addon_84",
+            "addon_94",
+            "addon_95",
+            "addon_96",
+            "addon_97",
+            "addon_98"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sucos Funcionais (Detox)",
+      "description": "",
+      "price": 15,
+      "category": "Sucos Detox (Funcionais)",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 11,
+          "addonIds": [
+            "addon_99",
+            "addon_100",
+            "addon_101",
+            "addon_102",
+            "addon_103",
+            "addon_104",
+            "addon_105",
+            "addon_81",
+            "addon_82",
+            "addon_83",
+            "addon_84"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Lanche Natural",
+      "description": "",
+      "price": 10,
+      "category": "Lanches Naturais",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 11,
+          "addonIds": [
+            "addon_106",
+            "addon_107",
+            "addon_108",
+            "addon_109",
+            "addon_110",
+            "addon_111",
+            "addon_112",
+            "addon_113",
+            "addon_114",
+            "addon_115",
+            "addon_116"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pão de Batata Requeijão",
+      "description": "",
+      "price": 6.5,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Esfiha de Frango",
+      "description": "",
+      "price": 6,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Esfiha de Carne",
+      "description": "",
+      "price": 6,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Hamburguer",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Doguinho",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Calabresa",
+      "description": "",
+      "price": 6,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão de Batata Frango",
+      "description": "",
+      "price": 6.5,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Enroladinho de presunto e queijo",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pizza Calabresa",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pizza Frango",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pizza Presunto e Queijo",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Empadas",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_117",
+            "addon_118",
+            "addon_119"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tapioca Doce Creme de Avelã",
+      "description": "",
+      "price": 25,
+      "category": "Tapiocas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Tapioca Doce Banana com Leite Condensado",
+      "description": "",
+      "price": 25,
+      "category": "Tapiocas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Tapioca Doce Queijo e Canela",
+      "description": "",
+      "price": 25,
+      "category": "Tapiocas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Tapioca Doce Romeu & Julieta",
+      "description": "",
+      "price": 25,
+      "category": "Tapiocas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Salada de Frutas - 300 Ml",
+      "description": "Itens: Laranja, mamão, maçã, pera, banana, manga e uva.",
+      "price": 15,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Salada de Frutas - 500 Ml",
+      "description": "Itens: Laranja, mamão, maçã, pera, banana, manga e uva.",
+      "price": 18,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - 300 Ml",
+      "description": "",
+      "price": 18,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - 500 Ml",
+      "description": "",
+      "price": 20,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Banana",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Granola",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Morango",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Kiwi",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Uva",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Leite em Pó",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Leite Condensado",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Manga",
+      "description": "",
+      "price": 0,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Chocopower Ball",
+      "description": "",
+      "price": 5,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Confete",
+      "description": "",
+      "price": 5,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Açai - Nutella",
+      "description": "",
+      "price": 5,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Bauru",
+      "description": "Presunto, Muçarela e Tomate.",
+      "price": 15,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 14,
+          "addonIds": [
+            "addon_120",
+            "addon_121",
+            "addon_122",
+            "addon_123",
+            "addon_124",
+            "addon_115",
+            "addon_125",
+            "addon_126",
+            "addon_127",
+            "addon_128",
+            "addon_129",
+            "addon_130",
+            "addon_131",
+            "addon_132"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Misto",
+      "description": "Presunto e Mussarela.",
+      "price": 12,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_133",
+            "addon_132"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Americano",
+      "description": "Presunto, Mussarela, Ovo, Alface e Tomate.",
+      "price": 18,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Salada",
+      "description": "Hambúrguer, Presunto, Mussarela, Alface e Tomate.",
+      "price": 18,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Salada EGG",
+      "description": "Hambúrguer, Presunto, Mussarela, Ovo, Alface e Tomate.",
+      "price": 19,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Salada Bacon",
+      "description": "Hambúrguer, Presunto, Mussarela, Bacon, Alface e Tomate.",
+      "price": 20,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Salada EGG Bacon",
+      "description": "Hambúrguer, Presunto, Mussarela, Bacon, Ovo, Alface e Tomate.",
+      "price": 21,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Tudo",
+      "description": "Hambúrguer, Presunto, Muss., Bacon, Ovo, Alface, Sals., Alface e Tomate.",
+      "price": 22,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo Salada",
+      "description": "Lombo, Presunto, Mussarela, Alface e Tomate.",
+      "price": 20,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo Salada EGG",
+      "description": "Lombo, Presunto, Mussarela, Ovo, Alface e Tomate.",
+      "price": 21,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo Salada Bacon",
+      "description": "Lombo, Presunto, Mussarela, Bacon, Alface e Tomate.",
+      "price": 22,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo Salada Bacon EGG",
+      "description": "Lombo, Presunto, Mussarela, Bacon, Ovo, Alface e Tomate.",
+      "price": 23,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo Tudo",
+      "description": "Lombo, Presunto, Mussarela, Bacon, Ovo, Salsicha, Alface e Tomate.",
+      "price": 25,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Linguiça Salada",
+      "description": "Linguiça, Presunto, Mussarela, Alface e Tomate.",
+      "price": 19,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Linguiça Salada EGG",
+      "description": "Linguiça, Presunto, Mussarela, Ovo, Alface e Tomate.",
+      "price": 20,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Linguiça Bacon",
+      "description": "Linguiça, Presunto, Mussarela, Bacon, Alface e Tomate.",
+      "price": 21,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Linguiça EGG Bacon",
+      "description": "Linguiça, Presunto, Mussarela, Bacon, Ovo, Alface e Tomate.",
+      "price": 22,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "X Linguiça Tudo",
+      "description": "Linguiça, Presunto, Muss., Bacon, Ovo, Salsicha, Alface e Tomate.",
+      "price": 23,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Frango Salada",
+      "description": "Frango, Presunto, Mussarela, Alface e Tomate.",
+      "price": 21,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Frango Salada EGG",
+      "description": "Frango, Presunto, Mussarela, Ovo, Alface e Tomate.",
+      "price": 22,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Frango Salada Bacon",
+      "description": "Frango, Presunto, Mussarela, Bacon, Alface e Tomate.",
+      "price": 23,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Frango Salada EGG Bacon",
+      "description": "Frango, Presunto, Mussarela, Bacon, Ovo, Alface e Tomate.",
+      "price": 24,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Frango Tudo",
+      "description": "Frango, Presunto, Muss., Bacon, Ovo, Alface, Salsicha, Alface e Tomate.",
+      "price": 25,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Filé Salada",
+      "description": "Contra filé, presunto, queijo, alface e tomate.",
+      "price": 25,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Filé Salada EGG",
+      "description": "Contra filé, presunto, queijo, ovo, alface e tomate.",
+      "price": 27,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "File Salada Bacon",
+      "description": "Contra filé presunto, queijo, bacon, alface, tomate.",
+      "price": 29,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Filé Salada EGG Bacon",
+      "description": "Contra Filé, presunto, queijo, ovo, bacon, alface, tomate.",
+      "price": 31,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Carne Queijo Acebolado",
+      "description": "Contra filé, Queijo, cebola.",
+      "price": 30,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Filé tudo",
+      "description": "Contra filé, presunto, queijo, ovo, bacon, salsicha, alface e tomate.",
+      "price": 35,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão de Queijo",
+      "description": "",
+      "price": 4,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão de Queijo Recheado",
+      "description": "",
+      "price": 6,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão na Chapa com Manteiga",
+      "description": "",
+      "price": 5,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão na chapa com queijo",
+      "description": "",
+      "price": 10,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão com ovo",
+      "description": "",
+      "price": 12,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pão com ovo e queijo",
+      "description": "",
+      "price": 15,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Café",
+      "description": "",
+      "price": 3.5,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pingado",
+      "description": "",
+      "price": 7,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Capuccino Quente",
+      "description": "",
+      "price": 8,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Capuccino Gelado",
+      "description": "",
+      "price": 10,
+      "category": "Café",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Coca Cola",
+      "description": "",
+      "price": 6.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Sprite",
+      "description": "",
+      "price": 6.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Fanta Uva",
+      "description": "",
+      "price": 6.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Fanta Laranja",
+      "description": "",
+      "price": 6.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Guaraná Antártica",
+      "description": "",
+      "price": 5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Schweppes",
+      "description": "",
+      "price": 7,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Refrigerante lata 350ml - Coca cola zero",
+      "description": "",
+      "price": 6.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Coca cola 220ml",
+      "description": "",
+      "price": 5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_134",
+            "addon_135"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coca-Cola KS",
+      "description": "",
+      "price": 5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Coca-Cola 600ml",
+      "description": "",
+      "price": 8,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_134",
+            "addon_135"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coca-Cola 2Lts",
+      "description": "",
+      "price": 13,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_134",
+            "addon_135"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Jaboti 600ml",
+      "description": "",
+      "price": 5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Jaboti 250ml",
+      "description": "",
+      "price": 3.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Jaboti 2Lts",
+      "description": "",
+      "price": 7,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Água com Gás",
+      "description": "",
+      "price": 4,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Água sem Gás",
+      "description": "",
+      "price": 4,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Limoneto H2OH",
+      "description": "",
+      "price": 7,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Suco Nativo",
+      "description": "",
+      "price": 3.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_136",
+            "addon_79",
+            "addon_137"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF : Calabresa Acebolada",
+      "description": "Arroz, Feijão, Calabresa Acebolada, 1 Guarnição e Salada",
+      "price": 18.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Copa Lombo salada",
+      "description": "Copa lombo salada + batata frita + bebida",
+      "price": 25,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_138",
+            "addon_139",
+            "addon_140"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "X tudo",
+      "description": "X tudo + batata frita + bebida",
+      "price": 27,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_138",
+            "addon_139",
+            "addon_140"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "X linguiça salada",
+      "description": "X linguiça salada + batata frita + bebida",
+      "price": 24,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_138",
+            "addon_139",
+            "addon_140"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Frango salada",
+      "description": "Frango salada + batata frita + bebida",
+      "price": 26,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_138",
+            "addon_139",
+            "addon_140"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "X salada",
+      "description": "X salada + batata frita + bebida",
+      "price": 23,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_138",
+            "addon_139",
+            "addon_140"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Contra filé",
+      "description": "Arroz, feijão, bife de contra filé grelhado, um acompanhamento e salada",
+      "price": 28.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Filé de frango",
+      "description": "Arroz, feijão, filé de frango grelhado, um acompanhamento e salada",
+      "price": 20.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Filé de peixe",
+      "description": "Arroz, feijão, filé de tilápia grelhado, um acompanhamento e salada",
+      "price": 28.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Linguiça",
+      "description": "Arroz, feijão, linguiça, um acompanhamento e salada",
+      "price": 20.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Copa Lombo",
+      "description": "Arroz, feijão, copa lombo grelhado, um acompanhamento e salada",
+      "price": 21.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 38,
+          "addonIds": [
+            "addon_141",
+            "addon_142",
+            "addon_143",
+            "addon_38",
+            "addon_144",
+            "addon_45",
+            "addon_48",
+            "addon_145",
+            "addon_146",
+            "addon_44",
+            "addon_57",
+            "addon_147",
+            "addon_148",
+            "addon_149",
+            "addon_150",
+            "addon_151",
+            "addon_152",
+            "addon_153",
+            "addon_47",
+            "addon_154",
+            "addon_52",
+            "addon_51",
+            "addon_53",
+            "addon_54",
+            "addon_155",
+            "addon_156",
+            "addon_157",
+            "addon_158",
+            "addon_159",
+            "addon_160",
+            "addon_161",
+            "addon_162",
+            "addon_163",
+            "addon_164",
+            "addon_165",
+            "addon_166",
+            "addon_56",
+            "addon_167"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Bisteca Suina Acebolada",
+      "description": "Arroz, Feijão, Bisteca, 1 Guanição e Salada",
+      "price": 19.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Balas",
+      "description": "",
+      "price": 0.2,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Trident",
+      "description": "",
+      "price": 3,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Halls",
+      "description": "",
+      "price": 2,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Suflair",
+      "description": "",
+      "price": 8,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Kit kat",
+      "description": "",
+      "price": 7,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Doce Ninho",
+      "description": "",
+      "price": 2.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pingo Leite",
+      "description": "",
+      "price": 2.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Paçoca",
+      "description": "",
+      "price": 3.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pé de Moça",
+      "description": "",
+      "price": 3.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Paçoquita",
+      "description": "",
+      "price": 0.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pudim de leite condensado",
+      "description": "",
+      "price": 6,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF : Strogonoff de Carne",
+      "description": "Arroz, Strogonoff de Carne ,1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_168",
+            "addon_169",
+            "addon_170"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coca cola 1L",
+      "description": "",
+      "price": 10,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_135",
+            "addon_134"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Caldo de mandioca",
+      "description": "",
+      "price": 20,
+      "category": "Caldos",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: sem carne",
+      "description": "Arroz, feijão, dois acompanhamentos e salada",
+      "price": 17.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 6,
+          "addonIds": [
+            "addon_143",
+            "addon_141",
+            "addon_142",
+            "addon_38",
+            "addon_144",
+            "addon_171"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF : Sobrecoxa c/ Macarrão ao Sugo",
+      "description": "Arroz, Feijão,Sobrecoxa, Macarrão ao sugo e Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Nhoque",
+      "description": "",
+      "price": 20,
+      "category": "Massas",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 4,
+          "addonIds": [
+            "addon_172",
+            "addon_173",
+            "addon_174",
+            "addon_111"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Panqueca",
+      "description": "Arroz, Panqueca(Escolha Recheio), Batata Frita e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 5,
+          "addonIds": [
+            "addon_9",
+            "addon_10",
+            "addon_13",
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Carne de Panela c/ Batata",
+      "description": "Arroz, Feijão, Carne Panela, 1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Croissant de chocolate",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Quibe assado",
+      "description": "Arroz, Feijão, Quibe, 1 Guarnição e Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Pedaço de quibe",
+      "description": "",
+      "price": 8,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Salada no prato",
+      "description": "Arroz integral, uma proteína, legumes na manteiga e salada.",
+      "price": 30,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_176",
+            "addon_6",
+            "addon_4"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Costela Bovina cm Mandioca",
+      "description": "Arroz, Feijão, Costela, 1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Bioleve",
+      "description": "",
+      "price": 4,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Unidade panqueca",
+      "description": "",
+      "price": 10,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_13",
+            "addon_9",
+            "addon_10"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Carne Suina em cubos",
+      "description": "Arroz, feijão, Carne Suina, 1 Guarnição e Salada",
+      "price": 21.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Almôndega ao molho",
+      "description": "Arroz, Feijão, Almôndega ao Molho, 1 Guarnição e Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Azedinha",
+      "description": "",
+      "price": 3,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Pf : Sobrecoxa com Quiabo ao molho",
+      "description": "Arroz, Feijão, Sobrecoxa Refogada, 1 Guarniçaõ e Salada",
+      "price": 19.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Carré Suino Assado c/ Vinagrete",
+      "description": "Arroz, Feijão, Carré Suino Assado, 1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Tiras de carne Acebolado",
+      "description": "Arroz, Feijão, Tirinha Carne , 1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Lasanha ao molho rose presunto e queijo",
+      "description": "Arroz, Feijão, Lasanha, Batata Frita e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pedaço individual lasanha",
+      "description": "",
+      "price": 15,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Carne Moída c/ Legumes",
+      "description": "Arroz, Feijão, Carne Moida, 1 Guarnição e Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Ponta de Peito de panela",
+      "description": "Arroz, Feijão, Carne Panela, 1 Guarnição e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "2 X tudo",
+      "description": "2 X Tudo + refrigerante 2L + batata frita",
+      "price": 50,
+      "category": "Promoção Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Trento",
+      "description": "",
+      "price": 4,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Stikadinho",
+      "description": "",
+      "price": 2,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Sonho de valsa",
+      "description": "",
+      "price": 2.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Ouro branco",
+      "description": "",
+      "price": 2.5,
+      "category": "Bomboniere",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF : Macarrão ao Sugo c/ Sobrecoxa",
+      "description": "Macarrão ao Sugo,Sobrecoxa Frango,(Escolha Guarnição), Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Kids c/ NUGGETS",
+      "description": "arroz, feijão, Nuggets, queijo, batata frita + salada",
+      "price": 17.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Pedaço bolo fubá c/laranja",
+      "description": "",
+      "price": 5,
+      "category": "Sobremesas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Promoção vitamina Mista com Laranja 500 ml",
+      "description": "",
+      "price": 9,
+      "category": "Vitaminas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF : Nhoqque c/ Sobrecoxa Frango Assada",
+      "description": "Nhoque(escolha Recheio) c/ Sobrecoxa Assada,(Escolha Guarnição), Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Charuto",
+      "description": "Arroz, feijão, charuto, uma guarnição e salada.",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Salgados fritos",
+      "description": "",
+      "price": 6.5,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 7,
+          "addonIds": [
+            "addon_177",
+            "addon_178",
+            "addon_179",
+            "addon_180",
+            "addon_181",
+            "addon_182",
+            "addon_183"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Unidade charuto",
+      "description": "",
+      "price": 10,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Add Prato",
+      "description": "",
+      "price": 0,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Peixe c/ batata ao molho",
+      "description": "Arroz, Feijão , Peixe ao molho c/ Batata, e Salada",
+      "price": 24.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Moqueca",
+      "description": "Arroz, Moqueca Peixe e Salada",
+      "price": 26.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Porção de moqueca",
+      "description": "",
+      "price": 20,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "X Burguer",
+      "description": "Hambúrguer e queijo",
+      "price": 15,
+      "category": "Lanches Quentes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Feijoada",
+      "description": "Arroz, Feijoada, Couve, Farofa e Vinagrete",
+      "price": 25.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Lasanha ao Molho Rose",
+      "description": "Arroz, feijão, pedaço de lasanha, batata frita e salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Feijão gordo",
+      "description": "Arroz feijão gordo (preto), uma guarnição e salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Tapioca Salgada",
+      "description": "",
+      "price": 18,
+      "category": "Tapiocas",
+      "isMarmita": false,
+      "addonGroups": [
+        {
+          "name": "Adicionais / Variações",
+          "min": 0,
+          "max": 5,
+          "addonIds": [
+            "addon_109",
+            "addon_184",
+            "addon_173",
+            "addon_111",
+            "addon_185"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: Omelete",
+      "description": "Omelete simples (sem recheio), Arroz , Feijão e salada",
+      "price": 16.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Meio d Asa Frango c/ coxinha refogada suculenta",
+      "description": "arroz, feijão, coxinha, uma guarnição e salada",
+      "price": 18.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Kids c/ Nuggets",
+      "description": "arroz, feijão, Nuggets, batata frita + salada",
+      "price": 17.9,
+      "category": "Prato Feito",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF : Nhoqque c/ Coxinha Asa Frango Frita",
+      "description": "Nhoque(escolha Recheio) c/ Coxinha Frango Frita,(Escolha Guarnição), Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF : Macarrão ao Sugo c/ Coxinha Frango Frita",
+      "description": "Macarrão ao Sugo,Coxinha FRango Frita,(Escolha Guarnição), Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Tirinha de Frango Acebolada",
+      "description": "Arroz, Feijão, Tirinha Frango , 1 Guarnição e Salada",
+      "price": 18.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Copa Lombo em tiras Aceboladas",
+      "description": "Arroz, feijão, copa lombo, 1 Guarnição e Salada",
+      "price": 21.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Filé de Frango a Milanesa",
+      "description": "Arroz, Feijão, Filé de frango a Milanesa , 1 Guarnição e Salada",
+      "price": 20.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF : Strogonoff de Frango",
+      "description": "Arroz, Strogonoff de Frango ,1 Guarnição e Salada",
+      "price": 19.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 3,
+          "addonIds": [
+            "addon_168",
+            "addon_169",
+            "addon_170"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF : Nhoqque c/ Tirinha Carne Acebolada e Salada",
+      "description": "Nhoque(escolha Recheio) c/ Tirinha Carne Acebolada, Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": [
+        {
+          "name": "Opções e Acompanhamentos",
+          "min": 0,
+          "max": 2,
+          "addonIds": [
+            "addon_175",
+            "addon_169"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PF: File de Frango a Parmegiana",
+      "description": "Arroz, Feijão, File Frango Parmegiana, Batata Frita e Salada",
+      "price": 26.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Peixe frito",
+      "description": "Arroz, Feijão, Peixe frito, 1 Guarniçao e Salada",
+      "price": 22.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF: Fricasse Frango",
+      "description": "Arroz, Feijão, Fricasse Frango, 1 Guarnição e Salada",
+      "price": 18.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Guarana Antarctica 300ml (Retornavel)",
+      "description": "",
+      "price": 4.5,
+      "category": "Refrigerantes",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Croissant presunto e queijo",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Croissant quatro queijos",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Croissant frango",
+      "description": "",
+      "price": 8,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Folheado de Ricota",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Folheado de peito de peru",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Folheado de Presunto e queijo",
+      "description": "",
+      "price": 7,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Promoção vitamina de Abacate 500ml",
+      "description": "",
+      "price": 10,
+      "category": "Vitaminas",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Capeletti de carne ao molho Bolonhesa",
+      "description": "Arroz, feijão Capeletti de carne, guarnição a escolher",
+      "price": 19.9,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Porção de Maionese 300grs",
+      "description": "",
+      "price": 24,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "PF Pão de queijo",
+      "description": "",
+      "price": 3.5,
+      "category": "Salgados",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Marmitex M Feijoada",
+      "description": "Arroz, Feijoada, Farofa, Couve e Vinagrete",
+      "price": 25.9,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "COMBO FEIJOADA",
+      "description": "Arroz, Feijoada, Farofa, Couve e Vinagrete",
+      "price": 50,
+      "category": "Marmitex",
+      "isMarmita": true,
+      "addonGroups": []
+    },
+    {
+      "name": "Promoção Suco de Limão",
+      "description": "",
+      "price": 9,
+      "category": "Sucos",
+      "isMarmita": false,
+      "addonGroups": []
+    },
+    {
+      "name": "Torta de sardinha",
+      "description": "",
+      "price": 7,
+      "category": "Prato do dia",
+      "isMarmita": true,
+      "addonGroups": []
+    }
+  ],
+  "addons": [
+    {
+      "id": "addon_1",
+      "name": "Tirinhas de frango acebolado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_2",
+      "name": "Linguiça Acebolada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_3",
+      "name": "Calabresa acebolada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_4",
+      "name": "Filé de frango",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_5",
+      "name": "Carne de Panela",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_6",
+      "name": "Copa lombo",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_7",
+      "name": "Strogonoff de Frango",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_8",
+      "name": "Sobre Coxa assada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_9",
+      "name": "Panqueca de carne moída",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_10",
+      "name": "Panqueca de presunto e queijo",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_11",
+      "name": "Costela Bovina C/ Mandioca",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_12",
+      "name": "Ponta de Peito na panela",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_13",
+      "name": "Panqueca de frango",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_14",
+      "name": "Costelinha Suína",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_15",
+      "name": "Fricasse de Frango",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_16",
+      "name": "File Frango Acebolada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_17",
+      "name": "Bife Acebolado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_18",
+      "name": "Lasanha Abobrinha",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_19",
+      "name": "Bisteca suina",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_20",
+      "name": "Bife a Rolê",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_21",
+      "name": "Peixe frito",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_22",
+      "name": "Peixe ao molho com batata",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_23",
+      "name": "Charuto",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_24",
+      "name": "Lasanha a bolonhesa",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_25",
+      "name": "Feijão gordo (preto)",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_26",
+      "name": "Lasanha ao Molho Rose",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_27",
+      "name": "Meio da asa c/ coxinha refogada suculenta",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_28",
+      "name": "Carne de Panela c/ batata",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_29",
+      "name": "Filé de Frango a Milanesa",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_30",
+      "name": "Carne Moida c/ legumes",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_31",
+      "name": "Almôndega ao molho",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_32",
+      "name": "Strogonoff de Carne",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_33",
+      "name": "Nuggets Frito",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_34",
+      "name": "Carré Suino Assado c/ Vinagrete",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_35",
+      "name": "Legumes na Manteiga",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_36",
+      "name": "Ovo Frito",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_37",
+      "name": "Batata Frita",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_38",
+      "name": "Farofa",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_39",
+      "name": "Cabutiá refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_40",
+      "name": "Repolho refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_41",
+      "name": "Batata palha",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_42",
+      "name": "Batata sauté",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_43",
+      "name": "Beringela refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_44",
+      "name": "Couve refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_45",
+      "name": "Torta de sardinha",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_46",
+      "name": "Maionese",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_47",
+      "name": "Polenta frita",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_48",
+      "name": "Macarrão ao Sugo",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_49",
+      "name": "Macarrão alho e óleo",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_50",
+      "name": "Abobrinha refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_51",
+      "name": "Macarrão c/ calabresa",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_52",
+      "name": "Mandioca frita",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_53",
+      "name": "Banana frita",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_54",
+      "name": "Batata gratinada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_55",
+      "name": "Purê de batata",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_56",
+      "name": "chuchu refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_57",
+      "name": "Creme de Milho",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_58",
+      "name": "Abacaxi",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_59",
+      "name": "Acerola",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_60",
+      "name": "Amora",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_61",
+      "name": "Cajá",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_62",
+      "name": "Caju",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_63",
+      "name": "Cupuaçu",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_64",
+      "name": "Frutas Vermelhas",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_65",
+      "name": "Goiaba",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_66",
+      "name": "Graviola",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_67",
+      "name": "Laranja",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_68",
+      "name": "Limão",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_69",
+      "name": "Mamão",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_70",
+      "name": "Manga",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_71",
+      "name": "Melancia",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_72",
+      "name": "Melão",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_73",
+      "name": "Morango",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_74",
+      "name": "Pêssego",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_75",
+      "name": "Tamarindo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_76",
+      "name": "Uva",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_77",
+      "name": "Maracujá",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_78",
+      "name": "Tangerina",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_79",
+      "name": "Açai",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_80",
+      "name": "Beterraba e Cenoura",
+      "price": 3,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_81",
+      "name": "Com açúcar",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_82",
+      "name": "Sem açúcar",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_83",
+      "name": "Com Gelo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_84",
+      "name": "Sem Gelo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_85",
+      "name": "Embalagem Copo 500ml",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_86",
+      "name": "Garrafa Embalagem 500ml",
+      "price": 2,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_87",
+      "name": "Açai com Banana",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_88",
+      "name": "Abacate",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_89",
+      "name": "Banana",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_90",
+      "name": "Coco com Ameixa",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_91",
+      "name": "Limão Especial",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_92",
+      "name": "Mista",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_93",
+      "name": "Mista com Laranja",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_94",
+      "name": "Leite condensado",
+      "price": 3,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_95",
+      "name": "Gengibre",
+      "price": 2,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_96",
+      "name": "Chia",
+      "price": 1,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_97",
+      "name": "Linhaça",
+      "price": 1,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_98",
+      "name": "Pó de Guaraná",
+      "price": 1,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_99",
+      "name": "Detox Full",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_100",
+      "name": "Detox Betacaroteno",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_101",
+      "name": "Detox Atiox",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_102",
+      "name": "Detox Slim",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_103",
+      "name": "Detox Mix",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_104",
+      "name": "Detox Ativo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_105",
+      "name": "Detox Energia",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_106",
+      "name": "Salame",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_107",
+      "name": "Queijo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_108",
+      "name": "Peito de Peru",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_109",
+      "name": "Atum",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_110",
+      "name": "Presunto e Queijo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_111",
+      "name": "Frango",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_112",
+      "name": "pão francês",
+      "price": 2,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_113",
+      "name": "pão de forma",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_114",
+      "name": "pão integral",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_115",
+      "name": "Presunto",
+      "price": 3,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_116",
+      "name": "Peito de peru",
+      "price": 5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_117",
+      "name": "Empada Mista",
+      "price": 8,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_118",
+      "name": "Empada Frango",
+      "price": 8,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_119",
+      "name": "Empada Palmito",
+      "price": 8,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_120",
+      "name": "Catupiry",
+      "price": 3.5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_121",
+      "name": "Cheddar",
+      "price": 3.5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_122",
+      "name": "Bacon",
+      "price": 5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_123",
+      "name": "Hambúrger",
+      "price": 5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_124",
+      "name": "Ovo",
+      "price": 3.5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_125",
+      "name": "Queijo",
+      "price": 5,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_126",
+      "name": "Cebola",
+      "price": 2,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_127",
+      "name": "Salsicha",
+      "price": 3,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_128",
+      "name": "Tomate",
+      "price": 2,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_129",
+      "name": "Batata frita",
+      "price": 8,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_130",
+      "name": "Pão Francês (Bola)",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_131",
+      "name": "Pão Francês Normal",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_132",
+      "name": "Pão de Forma",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_133",
+      "name": "Francês",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_134",
+      "name": "Coca cola",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_135",
+      "name": "Coca cola zero",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_136",
+      "name": "Frutas Citrícas",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_137",
+      "name": "Laranja com Acerola",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_138",
+      "name": "Coca cola 200ml",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_139",
+      "name": "Suco de laranja 300ml",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_140",
+      "name": "Refrigerante 200ml(Fanta Guarana)",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_141",
+      "name": "Legumes na manteiga",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_142",
+      "name": "Batata frita",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_143",
+      "name": "Ovo frito",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_144",
+      "name": "Abobrinha refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_145",
+      "name": "Moranga refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_146",
+      "name": "Berinjela refogada",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_147",
+      "name": "Repolho Refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_148",
+      "name": "Batata Palha",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_149",
+      "name": "Purê de Batata",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_150",
+      "name": "Quiabo refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_151",
+      "name": "Arroz",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_152",
+      "name": "Feijão",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_153",
+      "name": "salada de mandioca com bacon",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_154",
+      "name": "Torta de frango",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_155",
+      "name": "Pure Mandioquinha sauté",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_156",
+      "name": "Chuchu refogado",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_157",
+      "name": "Batata Gratinada",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_158",
+      "name": "Maionese",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_159",
+      "name": "Macarrão alho e óleo",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_160",
+      "name": "Beringela/Tomate",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_161",
+      "name": "Couve Refogada",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_162",
+      "name": "Linguiça",
+      "price": 7,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_163",
+      "name": "file de peixe",
+      "price": 12,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_164",
+      "name": "Contra filé",
+      "price": 12,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_165",
+      "name": "Filé de frango",
+      "price": 9,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_166",
+      "name": "Copa lombo",
+      "price": 8,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_167",
+      "name": "Mandioca Cozida",
+      "price": 3.5,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_168",
+      "name": "Com feijão Tradicional",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_169",
+      "name": "Sem feijão",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_170",
+      "name": "Feijão Preto c/ Bacon e Calabresa",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_171",
+      "name": "Macarrão ao sugo",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_172",
+      "name": "Tradicional",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_173",
+      "name": "Presunto e queijo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_174",
+      "name": "Mussarela",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_175",
+      "name": "Com feijão",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_176",
+      "name": "Filé de peixe",
+      "price": 0,
+      "group": "Opções PF/Marmitex"
+    },
+    {
+      "id": "addon_177",
+      "name": "Coxinha",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_178",
+      "name": "Enroladinho de presunto e queijo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_179",
+      "name": "Enroladinho de salsicha",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_180",
+      "name": "Pastel Carne",
+      "price": 6,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_181",
+      "name": "Pastel Queijo",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_182",
+      "name": "Quibe",
+      "price": 6,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_183",
+      "name": "Espetinho Frango",
+      "price": 7,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_184",
+      "name": "Peito de peru",
+      "price": 0,
+      "group": "Adicionais Extras"
+    },
+    {
+      "id": "addon_185",
+      "name": "Queijo e tomate",
+      "price": 0,
+      "group": "Adicionais Extras"
+    }
+  ]
+}

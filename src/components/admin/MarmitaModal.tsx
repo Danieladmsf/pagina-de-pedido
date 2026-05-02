@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { AddonGroup, Addon } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
@@ -27,8 +27,8 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
   const [groupNameInput, setGroupNameInput] = useState('');
   
   const handleAddGroup = () => {
-    if (!groupNameInput.trim()) return;
-    setGroups([...groups, { name: groupNameInput.trim(), addonIds: [], min: 1, max: 1 }]);
+    const name = groupNameInput.trim() || 'Nova Etapa';
+    setGroups([...groups, { name, addonIds: [], min: 1, max: 1 }]);
     setGroupNameInput('');
   };
 
@@ -83,7 +83,7 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
         await updateDoc(doc(db, 'menuItems', editingMarmita.id), data);
         toast({ title: 'Marmita atualizada com sucesso!' });
       } else {
-        const ref = doc(db, 'menuItems');
+        const ref = doc(collection(db, 'menuItems'));
         await setDoc(ref, { id: ref.id, ...data });
         toast({ title: 'Marmita criada com sucesso!' });
       }

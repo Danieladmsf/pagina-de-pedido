@@ -90,6 +90,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const cartTotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
 
   const filteredItems = items?.filter(item => {
+    if (item.isAvailable === false) return false;
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCat && matchesSearch;

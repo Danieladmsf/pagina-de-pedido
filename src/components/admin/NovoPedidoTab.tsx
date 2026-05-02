@@ -46,6 +46,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [cart, setCart] = useState<any[]>([]);
 
   const filteredItems = items?.filter(item => {
+    if (item.isAvailable === false) return false;
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCat && matchesSearch;
