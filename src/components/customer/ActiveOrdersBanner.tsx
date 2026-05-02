@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { ShoppingBag, ChevronRight } from 'lucide-react';
 
@@ -16,13 +16,33 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function ActiveOrdersBanner() {
   const db = useFirestore();
-  const { user } = useUser();
-  const isRealUser = !!(user && !user.isAnonymous && user.email);
+  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
+  // Lê o telefone salvo no localStorage + escuta atualizações
+  useEffect(() => {
+    const readPhone = () => {
+      try {
+        const phone = localStorage.getItem('customer_phone');
+        setCustomerPhone(phone);
+      } catch {}
+    };
+
+    readPhone();
+
+    // Escuta quando o CartDrawer salva um novo telefone
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) setCustomerPhone(detail);
+    };
+    window.addEventListener('customer_phone_updated', handler);
+    return () => window.removeEventListener('customer_phone_updated', handler);
+  }, []);
+
+  // Busca pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'orders'), where('customerIdentifier', '==', user!.uid));
-  }, [db, isRealUser]);
+    if (!db || !customerPhone) return null;
+    return query(collection(db, 'orders'), where('customerIdentifier', '==', customerPhone));
+  }, [db, customerPhone]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 
   const activeOrders = useMemo(() => {
@@ -32,7 +52,7 @@ export function ActiveOrdersBanner() {
       .sort((a, b) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
   }, [ordersRaw]);
 
-  if (!isRealUser || activeOrders.length === 0) return null;
+  if (!customerPhone || activeOrders.length === 0) return null;
 
   const latest = activeOrders[0];
   const statusLabel = STATUS_LABELS[latest.status] || latest.status;

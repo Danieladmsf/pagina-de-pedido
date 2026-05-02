@@ -1,7 +1,7 @@
 
 "use client"
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -24,12 +24,77 @@ export function MenuPageClient() {
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const storeId = searchParams.get('s');
+  const checkScrollButtons = useCallback(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  }, []);
+
+
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const scrollAmount = 280;
+    el.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+  };
+
+  const storeIdFromUrl = searchParams.get('s');
+
+  // Proteção: Só tenta criar a referência se o 'db' for válido
+  const storeRef = useMemoFirebase(() => {
+    if (!db || !storeIdFromUrl) return null;
+    return doc(db, 'roles_admin', storeIdFromUrl);
+  }, [db, storeIdFromUrl]);
+
+  const categoriesQuery = useMemoFirebase(() => {
+    if (!db) return null;
+    if (storeIdFromUrl) return query(collection(db, 'categories'), where('ownerId', '==', storeIdFromUrl));
+    return collection(db, 'categories');
+  }, [db, storeIdFromUrl]);
+
+  const itemsQuery = useMemoFirebase(() => {
+    if (!db) return null;
+    if (storeIdFromUrl) return query(collection(db, 'menuItems'), where('ownerId', '==', storeIdFromUrl));
+    return collection(db, 'menuItems');
+  }, [db, storeIdFromUrl]);
+
+  const addonsQuery = useMemoFirebase(() => {
+    if (!db) return null;
+    if (storeIdFromUrl) return query(collection(db, 'addons'), where('ownerId', '==', storeIdFromUrl));
+    return collection(db, 'addons');
+  }, [db, storeIdFromUrl]);
+
+  const { data: storeInfo } = useDoc(storeRef);
+  const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
+  const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
+  const { data: addons } = useCollection(addonsQuery);
+
+  // Derivar storeId efetivo: do URL (?s=) ou do ownerId do primeiro item carregado
+  const storeId = storeIdFromUrl || (items && items.length > 0 ? (items[0] as any).ownerId : null);
+
+  const storeProfileRef = useMemoFirebase(() => {
+    if (!db || !storeId) return null;
+    return doc(db, 'store_profiles', storeId);
+  }, [db, storeId]);
+
+  const { data: storeProfile } = useDoc(storeProfileRef);
+
+  // 🔍 DEBUG: Ver storeId e storeProfile completo
+  if (storeProfile) {
+    console.log('[MenuPageClient] ✅ storeId=' + storeId + ' | address=' + (storeProfile?.general?.address || 'VAZIO') + ' | feeRules(root)=' + JSON.stringify(storeProfile?.feeRules) + ' | feeRules(fees)=' + JSON.stringify(storeProfile?.fees?.feeRules) + ' | deliveryFee=' + storeProfile?.fees?.deliveryFee);
+  } else {
+    console.log('[MenuPageClient] ❌ storeProfile é NULL/UNDEFINED | storeId=' + storeId);
+  }
 
   // Controle de Presença (Cliente Online)
   React.useEffect(() => {
-    if (!db) return;
+    if (!db || !storeId) return;
     const sessionId = Math.random().toString(36).substring(2, 15);
     const sessionRef = doc(db, 'active_sessions', sessionId);
 
@@ -57,41 +122,18 @@ export function MenuPageClient() {
     };
   }, [db, storeId]);
 
-  // Proteção: Só tenta criar a referência se o 'db' for válido
-  const storeRef = useMemoFirebase(() => {
-    if (!db || !storeId) return null;
-    return doc(db, 'roles_admin', storeId);
-  }, [db, storeId]);
-  
-  const storeProfileRef = useMemoFirebase(() => {
-    if (!db || !storeId) return null;
-    return doc(db, 'store_profiles', storeId);
-  }, [db, storeId]);
-  
-  const { data: storeInfo } = useDoc(storeRef);
-  const { data: storeProfile } = useDoc(storeProfileRef);
-
-  const categoriesQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeId) return query(collection(db, 'categories'), where('ownerId', '==', storeId));
-    return collection(db, 'categories');
-  }, [db, storeId]);
-
-  const itemsQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeId) return query(collection(db, 'menuItems'), where('ownerId', '==', storeId));
-    return collection(db, 'menuItems');
-  }, [db, storeId]);
-
-  const addonsQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeId) return query(collection(db, 'addons'), where('ownerId', '==', storeId));
-    return collection(db, 'addons');
-  }, [db, storeId]);
-
-  const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
-  const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
-  const { data: addons } = useCollection(addonsQuery);
+  useEffect(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    checkScrollButtons();
+    el.addEventListener('scroll', checkScrollButtons, { passive: true });
+    const ro = new ResizeObserver(checkScrollButtons);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScrollButtons);
+      ro.disconnect();
+    };
+  }, [checkScrollButtons, categories]);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -103,6 +145,45 @@ export function MenuPageClient() {
       return matchesCategory && matchesSearch;
     });
   }, [activeCategoryId, searchQuery, items]);
+
+  const isStoreOpenRightNow = useMemo(() => {
+    if (!storeProfile) return { isOpen: true, reason: '' };
+
+    // Check caixa
+    if (storeProfile.isCaixaAberto === false) {
+      return { isOpen: false, reason: 'caixa_closed' };
+    }
+
+    // Check working hours
+    if (storeProfile.workingHours && storeProfile.workingHours.length > 0) {
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 is Sunday
+      const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+      const currentDayName = daysMap[dayOfWeek];
+
+      const todayConfig = storeProfile.workingHours.find((wh: any) => wh.day === currentDayName);
+
+      if (todayConfig) {
+        if (todayConfig.isClosed) return { isOpen: false, reason: 'hours_closed' };
+        
+        const [openHour, openMin] = todayConfig.open.split(':').map(Number);
+        const [closeHour, closeMin] = todayConfig.close.split(':').map(Number);
+        
+        const currentHour = today.getHours();
+        const currentMin = today.getMinutes();
+        
+        const currentMins = currentHour * 60 + currentMin;
+        const openMins = openHour * 60 + openMin;
+        const closeMins = closeHour * 60 + closeMin;
+        
+        if (currentMins < openMins || currentMins > closeMins) {
+          return { isOpen: false, reason: 'hours_closed' };
+        }
+      }
+    }
+
+    return { isOpen: true, reason: '' };
+  }, [storeProfile]);
 
   if (!db || loadingCats || loadingItems) {
     return (
@@ -117,6 +198,13 @@ export function MenuPageClient() {
 
   return (
     <div className="min-h-screen pb-24 relative">
+      {!isStoreOpenRightNow.isOpen && (
+        <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
+          {isStoreOpenRightNow.reason === 'hours_closed' 
+            ? '⚠️ Fechado no momento devido ao horário de funcionamento.'
+            : '⚠️ Abriremos em breve! O sistema está sendo preparado.'}
+        </div>
+      )}
       <section
         className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] md:aspect-[1832/560] bg-[image:url('/lima-limao-bg-mobile.png')] md:bg-[image:url('/lima-limao-bg.png')]"
       >
@@ -125,12 +213,27 @@ export function MenuPageClient() {
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
+            {/* 🔍 DEBUG */}
+            {(() => {
+              console.log('[MenuPageClient] storeProfile para CartDrawer:', {
+                fees: storeProfile?.fees,
+                feeRules_root: storeProfile?.feeRules,
+                feeRules_fees: storeProfile?.fees?.feeRules,
+                address: storeProfile?.general?.address?.substring(0, 30),
+                deliveryFee: storeProfile?.fees?.deliveryFee,
+                maxRadius: storeProfile?.fees?.maxDeliveryRadius,
+              });
+              return null;
+            })()}
             <CartDrawer 
               storeOwnerId={storeId} 
               deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0} 
               storeAddress={storeProfile?.general?.address || (storeInfo as any)?.storeAddress || ''}
               deliveryFeeRules={storeProfile?.fees?.feeRules || storeProfile?.feeRules || (storeInfo as any)?.deliveryFeeRules || []}
               maxDeliveryRadius={storeProfile?.fees?.maxDeliveryRadius || 0}
+              paymentMethods={storeProfile?.paymentMethods}
+              isStoreOpen={isStoreOpenRightNow.isOpen}
+              menuItems={items || []}
             />
           </div>
         </div>
@@ -144,32 +247,62 @@ export function MenuPageClient() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex flex-row md:flex-wrap gap-2 overflow-x-auto md:overflow-visible pb-4 md:pb-0 hide-scrollbar snap-x">
-            <Button
-              variant={activeCategoryId === 'all' ? 'default' : 'outline'}
-              className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
-                activeCategoryId === 'all'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-              }`}
-              onClick={() => setActiveCategoryId('all')}
+          <div className="relative group/cats">
+            {/* Left fade gradient */}
+            <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white/80 to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
+
+            {/* Left scroll arrow - desktop only */}
+            <button
+              onClick={() => scrollCategories('left')}
+              className={`hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/90 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              aria-label="Scroll categorias esquerda"
             >
-              Todos
-            </Button>
-            {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+
+            {/* Category buttons */}
+            <div
+              ref={categoryScrollRef}
+              className="flex flex-row gap-2 overflow-x-auto pb-4 md:pb-2 hide-scrollbar snap-x md:mx-11"
+            >
               <Button
-                key={cat.id}
-                variant={activeCategoryId === cat.id ? 'default' : 'outline'}
-                className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm ${
-                  activeCategoryId === cat.id
+                variant={activeCategoryId === 'all' ? 'default' : 'outline'}
+                className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                  activeCategoryId === 'all'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
                 }`}
-                onClick={() => setActiveCategoryId(cat.id)}
+                onClick={() => setActiveCategoryId('all')}
               >
-                {cat.name}
+                Todos
               </Button>
-            ))}
+              {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
+                <Button
+                  key={cat.id}
+                  variant={activeCategoryId === cat.id ? 'default' : 'outline'}
+                  className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                    activeCategoryId === cat.id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+                  }`}
+                  onClick={() => setActiveCategoryId(cat.id)}
+                >
+                  {cat.name}
+                </Button>
+              ))}
+            </div>
+
+            {/* Right fade gradient */}
+            <div className={`hidden md:block absolute right-10 top-0 bottom-0 w-8 bg-gradient-to-l from-white/80 to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0'}`} />
+
+            {/* Right scroll arrow - desktop only */}
+            <button
+              onClick={() => scrollCategories('right')}
+              className={`hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/90 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              aria-label="Scroll categorias direita"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </section>
@@ -239,6 +372,7 @@ export function MenuPageClient() {
         isOpen={!!selectedItem}
         onClose={() => setSelectedItem(null)}
         allAddons={addons || []}
+        isStoreOpen={isStoreOpenRightNow.isOpen}
       />
       
       <Toaster />

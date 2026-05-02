@@ -38,6 +38,7 @@ export default function ScreenshotButton() {
         backgroundColor: '#FAFAF7',
         pixelRatio: 2,
         height: elementToCapture.scrollHeight,
+        fontEmbedCSS: '', // Previne o SecurityError de CORS ao ler fontes do Google
         style: {
           transform: 'none', // Prevent transform issues
         }

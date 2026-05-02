@@ -2,14 +2,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useFirestore, useCollection, useMemoFirebase, useUser, useAuth, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
 import { collection, query, where, doc, setDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ShoppingBag, Clock, Loader2, LogOut, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
@@ -89,21 +87,36 @@ function OrderTimeline({ status, orderType }: { status: string; orderType: strin
 export default function MyOrdersPage() {
   const { user, isUserLoading } = useUser();
   const db = useFirestore();
-  const auth = useAuth();
-  const router = useRouter();
   const { toast } = useToast();
   const { addToCart } = useCart();
-  const isRealUser = !!(user && !user.isAnonymous && user.email);
 
+  // Telefone como identificador principal
+  const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneSearched, setPhoneSearched] = useState(false);
+
+  // Carrega o telefone salvo no localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('customer_phone');
+      if (saved) {
+        setCustomerPhone(saved);
+        setPhoneInput(saved);
+        setPhoneSearched(true);
+      }
+    } catch {}
+  }, []);
+
+  // Buscar pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'orders'), where('customerIdentifier', '==', user!.uid));
-  }, [db, isRealUser]);
+    if (!db || !customerPhone) return null;
+    return query(collection(db, 'orders'), where('customerIdentifier', '==', customerPhone));
+  }, [db, customerPhone]);
 
   const profileRef = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return doc(db, 'customers', user!.uid);
-  }, [db, isRealUser]);
+    if (!db || !user) return null;
+    return doc(db, 'customers', user.uid);
+  }, [db, user]);
 
   const menuItemsQuery = useMemoFirebase(() => (db ? collection(db, 'menuItems') : null), [db]);
 
@@ -162,7 +175,6 @@ export default function MyOrdersPage() {
     try {
       await setDoc(doc(db, 'customers', user.uid), {
         uid: user.uid,
-        email: user.email || '',
         name, phone, address,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
@@ -173,12 +185,6 @@ export default function MyOrdersPage() {
     } finally {
       setSavingProfile(false);
     }
-  };
-
-  const handleLogout = async () => {
-    if (!auth) return;
-    await signOut(auth);
-    router.push('/');
   };
 
   const handleRepeatOrder = (order: any) => {
@@ -203,6 +209,17 @@ export default function MyOrdersPage() {
     }
   };
 
+  const handlePhoneLookup = () => {
+    const cleaned = phoneInput.replace(/\D/g, '');
+    if (cleaned.length < 10) {
+      toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Digite um número com DDD (mínimo 10 dígitos).' });
+      return;
+    }
+    setCustomerPhone(cleaned);
+    setPhoneSearched(true);
+    try { localStorage.setItem('customer_phone', cleaned); } catch {}
+  };
+
   if (isUserLoading || !db) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
@@ -211,15 +228,34 @@ export default function MyOrdersPage() {
     );
   }
 
-  if (!isRealUser) {
+  // Se não tem telefone salvo, mostra tela para digitar
+  if (!customerPhone || !phoneSearched) {
     return (
       <div className="min-h-screen bg-[#FAFAF7] p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full text-center p-8 space-y-4">
-          <UserIcon className="h-16 w-16 text-muted-foreground/30 mx-auto" />
-          <h1 className="text-2xl font-bold">Faça login para ver seus pedidos</h1>
-          <p className="text-sm text-muted-foreground">Entre com sua conta no cardápio para acessar o histórico.</p>
+        <Card className="max-w-md w-full p-8 space-y-4">
+          <div className="text-center space-y-2">
+            <Phone className="h-12 w-12 text-primary mx-auto" />
+            <h1 className="text-2xl font-bold">Acompanhe seus pedidos</h1>
+            <p className="text-sm text-muted-foreground">Digite o telefone usado no pedido para ver o histórico e acompanhar a entrega.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone_lookup">Seu telefone (com DDD)</Label>
+            <Input 
+              id="phone_lookup" 
+              type="tel" 
+              placeholder="Ex: 16991017726" 
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePhoneLookup()}
+            />
+          </div>
+          <Button className="w-full" onClick={handlePhoneLookup}>
+            <ShoppingBag className="h-4 w-4 mr-2" /> Buscar Meus Pedidos
+          </Button>
           <Link href="/">
-            <Button className="w-full">Ir para o Cardápio</Button>
+            <Button variant="ghost" className="w-full text-muted-foreground">
+              <ChevronLeft className="h-4 w-4 mr-2" /> Voltar ao Cardápio
+            </Button>
           </Link>
         </Card>
       </div>
@@ -236,18 +272,15 @@ export default function MyOrdersPage() {
   return (
     <div className="min-h-screen bg-[#FAFAF7] p-4 md:p-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <header className="flex items-center justify-between gap-4">
+        <header className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Link href="/">
               <Button variant="ghost" size="icon">
                 <ChevronLeft className="h-6 w-6" />
               </Button>
             </Link>
-            <h1 className="text-2xl font-bold">Minha Conta</h1>
+            <h1 className="text-2xl font-bold">Meus Pedidos</h1>
           </div>
-          <Button variant="ghost" size="sm" className="text-destructive" onClick={handleLogout}>
-            <LogOut className="h-4 w-4 mr-2" /> Sair
-          </Button>
         </header>
 
         <Card className="shadow-sm rounded-2xl overflow-hidden">
@@ -269,7 +302,6 @@ export default function MyOrdersPage() {
             )}
           </CardHeader>
           <CardContent className="p-4 bg-white space-y-3">
-            <div className="text-xs text-muted-foreground">{user!.email}</div>
             {editingProfile ? (
               <div className="space-y-3">
                 <div className="space-y-1">

@@ -24,7 +24,7 @@ interface FreelancerEntry {
   entregas: number;
 }
 
-export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?: any[] }) {
+export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpened }: { storeProfile?: any; orders?: any[]; autoOpenAbrirCaixa?: boolean; onModalOpened?: () => void }) {
   const {
     caixaAberto,
     caixaAtual,
@@ -42,6 +42,13 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
 
   // Modal state
   const [modalOpen, setModalOpen] = useState<'abrir' | 'sangria' | 'suprimento' | 'venda' | null>(null);
+
+  useEffect(() => {
+    if (autoOpenAbrirCaixa && !caixaAberto) {
+      setModalOpen('abrir');
+      if (onModalOpened) onModalOpened();
+    }
+  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened]);
   const [valorInput, setValorInput] = useState<number>(0);
   const [formaPagamentoInput, setFormaPagamentoInput] = useState('dinheiro');
   const [justificativaInput, setJustificativaInput] = useState('');
@@ -528,7 +535,7 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
 
   const isAberto = caixaAtual?.status === 'aberto';
   const sessaoLabel = caixaAtual
-    ? `Caixa sessão: ${caixaAtual.sessao || '?'} (${isAberto ? 'ABERTO' : 'FECHADO'})`
+    ? `Caixa sessão: ${caixaAtual.sessao || '?'}`
     : 'Nenhum caixa';
 
   // Safe print trigger
@@ -546,9 +553,9 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-2">
       {/* ─── Navegação Global ─── */}
-      <div className="flex justify-between items-start mb-2">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-[26px] font-light text-slate-500 mb-1 leading-none">Caixas</h1>
           <div className="text-[11px] text-muted-foreground flex gap-1 items-center">
@@ -723,16 +730,16 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
 
                       return (
                         <TableRow key={lanc.id}>
-                          <TableCell className="pl-6 text-sm text-muted-foreground whitespace-nowrap">{date}</TableCell>
+                          <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">{date}</TableCell>
                           <TableCell className="font-semibold text-slate-700">{lanc.titulo}</TableCell>
                           <TableCell className={`font-bold whitespace-nowrap ${isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
-                            R$ {lanc.valor.toFixed(2).replace('-', '- ')}
+                            {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
                           </TableCell>
                           <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento}</TableCell>
                           <TableCell>
                             <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
                           </TableCell>
-                          <TableCell className="pr-6 text-sm text-muted-foreground">{lanc.usuario}</TableCell>
+                          <TableCell className="pr-6 text-muted-foreground">{lanc.usuario}</TableCell>
                         </TableRow>
                       );
                     })
@@ -761,16 +768,18 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
 
       {/* Tela: Caixa Fechado */}
       {!caixaAberto && view === 'caixa' && !caixaSelecionadoId && (
-        <div className="bg-white border rounded-2xl py-16 text-center space-y-5">
-          <Calculator className="h-20 w-20 text-muted-foreground/30 mx-auto" />
-          <h2 className="text-2xl font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
-          <div className="max-w-md mx-auto bg-slate-50 border rounded-xl p-4 text-sm text-muted-foreground space-y-1">
-            <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado (Marcado com entregue).</p>
-            <p>O caixa será automaticamente aberto após o lançamento do pedido.</p>
-            <p className="font-semibold">Não esquecer de fechar o caixa no final do expediente.</p>
-          </div>
-          <div className="flex gap-3 justify-center">
-            <Button onClick={() => setModalOpen('abrir')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6">Abrir Caixa</Button>
+        <div className="flex justify-center">
+          <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
+            <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+            <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
+            <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+              <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado (Marcado com entregue).</p>
+              <p>O caixa será automaticamente aberto após o lançamento do pedido.</p>
+              <p className="font-semibold">Não esquecer de fechar o caixa no final do expediente.</p>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <Button onClick={() => setModalOpen('abrir')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
+            </div>
           </div>
         </div>
       )}
@@ -805,11 +814,11 @@ export function CaixaTab({ storeProfile, orders }: { storeProfile?: any; orders?
                     caixasOrdenados.filter(c => c.status === 'fechado').map(c => (
                       <TableRow key={c.id}>
                         <TableCell className="pl-4 font-bold">{c.sessao}</TableCell>
-                        <TableCell className="text-sm">{c.dataAbertura?.toDate?.().toLocaleString('pt-BR') || '—'}</TableCell>
+                        <TableCell>{c.dataAbertura?.toDate?.().toLocaleString('pt-BR') || '—'}</TableCell>
                         <TableCell className="font-semibold">R$ {Math.abs(c.saldoInicial || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-sm">{c.dataFechamento?.toDate?.().toLocaleString('pt-BR') || '—'}</TableCell>
+                        <TableCell>{c.dataFechamento?.toDate?.().toLocaleString('pt-BR') || '—'}</TableCell>
                         <TableCell><Badge className="bg-slate-100 text-slate-600 border border-slate-300 text-[10px]">FECHADO</Badge></TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{c.usuarioAbertura || 'Principal'}</TableCell>
+                        <TableCell className="text-muted-foreground">{c.usuarioAbertura || 'Principal'}</TableCell>
                         <TableCell className="pr-4 text-right">
                           <div className="flex gap-1 justify-end">
                             <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => { setCaixaSelecionadoId(c.id); setView('caixa'); }}>

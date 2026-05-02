@@ -21,16 +21,23 @@ interface DeliveryTabProps {
   db?: any;
 }
 
-const FORMAS_PAGAMENTO = [
-  { id: 'dinheiro', label: 'Dinheiro', icon: Banknote, color: 'bg-amber-500 hover:bg-amber-600' },
-  { id: 'pix', label: 'Pix', icon: QrCode, color: 'bg-teal-500 hover:bg-teal-600' },
-  { id: 'debito', label: 'Débito', icon: CreditCard, color: 'bg-slate-600 hover:bg-slate-700' },
-  { id: 'credito', label: 'Crédito', icon: Wallet, color: 'bg-violet-500 hover:bg-violet-600' },
+const DEFAULT_FORMAS_PAGAMENTO = [
+  { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
+  { id: 'pix', label: 'Pix', icon: '📱', active: true },
+  { id: 'debito', label: 'Débito', icon: '💳', active: true },
+  { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
 export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db }: DeliveryTabProps) {
+  const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
+  // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
+  const onlyDeliveryAppOrders = orders?.filter(o => 
+    !o.customerName?.toLowerCase().includes('balcão') && 
+    !o.customerName?.toLowerCase().includes('mesa')
+  ) || [];
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(orders && orders.length > 0 ? orders[0].id : null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
   const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -68,19 +75,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     return () => unsubscribe();
   }, [db, storeProfile?.id]);
 
-  // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
-  const onlyDeliveryAppOrders = orders?.filter(o => 
-    !o.customerName?.toLowerCase().includes('balcão') && 
-    !o.customerName?.toLowerCase().includes('mesa')
-  ) || [];
-
   const filteredOrders = onlyDeliveryAppOrders.filter(o => 
     o.id.includes(searchTerm) || 
     o.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     o.customerPhone?.includes(searchTerm)
   );
 
-  const selectedOrder = orders?.find(o => o.id === selectedOrderId);
+  const selectedOrder = onlyDeliveryAppOrders?.find(o => o.id === selectedOrderId);
 
   // Auto-selecionar o primeiro se a busca mudar e o selecionado atual não estiver na lista
   React.useEffect(() => {
@@ -118,6 +119,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
   const handleMarkDelivered = (order: any) => {
+    if (order.status === 'delivered') {
+      toast({ title: 'Aviso', description: 'Este pedido já foi finalizado e registrado no caixa.' });
+      return;
+    }
     setPaymentModalOrder(order);
     setSelectedPayment('');
     setValorRecebido('');
@@ -143,8 +148,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       } else {
         toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status atualizado.' });
       }
-      
-      setPaymentModalOrder(null);
+      setOrderToPrint(paymentModalOrder);
+      setTimeout(() => {
+        window.print();
+        setPaymentModalOrder(null);
+      }, 500);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao registrar.' });
     } finally {
@@ -159,12 +167,30 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }, 500);
   };
 
-  const assignMotoboy = (chamar: boolean) => {
+  const assignMotoboy = () => {
     if (!showMotoboyModal || !selectedMotoboyId) return;
-    updateOrderStatus(showMotoboyModal.id, { motoboyId: selectedMotoboyId });
+    
+    const updates: any = {};
+    let msg = '';
+    
+    if (selectedMotoboyId === 'retirada') {
+      updates.motoboyId = null;
+      updates.orderType = 'pickup';
+      msg = 'Pedido alterado para Retirada no Local.';
+    } else {
+      updates.motoboyId = selectedMotoboyId;
+      msg = 'O motoboy foi atribuído com sucesso.';
+    }
+
+    if (showMotoboyModal.dispatch) {
+      updates.status = 'out_for_delivery';
+      msg += ' Status alterado para Saiu para Entrega/Retirada.';
+    }
+    
+    updateOrderStatus(showMotoboyModal.order.id, updates);
     setShowMotoboyModal(null);
     setSelectedMotoboyId('');
-    toast({ title: 'Entregador vinculado!', description: 'O motoboy foi atribuído com sucesso.' });
+    toast({ title: 'Sucesso', description: msg });
   };
 
   return (
@@ -248,7 +274,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px]">{new Date(selectedOrder.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</Badge>
-                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal(selectedOrder)}>
+                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal({ order: selectedOrder, dispatch: false })}>
                   <Bike className="h-4 w-4" />
                 </Button>
                 <Button size="icon" className="bg-blue-500 hover:bg-blue-600 text-white h-8 w-8" onClick={() => triggerPrint(selectedOrder)}>
@@ -263,15 +289,30 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               {[
                 { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { updateOrderStatus(selectedOrder.id, 'received'); triggerPrint(selectedOrder); } },
                 { key: 'ready', label: 'Preparo', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
-                { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'out_for_delivery') },
+                { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
+                  if (selectedOrder.orderType === 'delivery' && !selectedOrder.motoboyId) {
+                    setShowMotoboyModal({ order: selectedOrder, dispatch: true });
+                  } else {
+                    updateOrderStatus(selectedOrder.id, 'out_for_delivery');
+                  }
+                } },
                 { key: 'delivered', label: 'Entregue', active: selectedOrder.status === 'delivered', action: () => handleMarkDelivered(selectedOrder) },
               ].map(step => (
-                <button key={step.key} onClick={step.action} className={`flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-bold transition-colors ${step.active ? 'bg-teal-500 text-white' : 'bg-white border text-slate-500 hover:bg-teal-50'}`}>
+                <button 
+                  key={step.key} 
+                  onClick={step.action} 
+                  disabled={selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                  className={`flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-bold transition-colors ${step.active ? 'bg-teal-500 text-white' : 'bg-white border text-slate-500 hover:bg-teal-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
+                >
                   <div className={`h-2.5 w-2.5 rounded-full ${step.active ? 'bg-white' : 'bg-slate-300'}`}></div>
                   {step.label}
                 </button>
               ))}
-              <button onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')} className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'}`}>
+              <button 
+                onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')} 
+                disabled={selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
                 ✕
               </button>
             </div>
@@ -288,8 +329,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 {selectedOrder.paymentMethod || 'Não definido'}
               </div>
               {selectedOrder.orderType === 'delivery' && (
-                <div className="border px-3 py-1 rounded text-slate-700 font-medium whitespace-nowrap">
-                  Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
+                <div className="border border-teal-200 bg-teal-50 px-3 py-1 rounded text-teal-700 font-bold whitespace-nowrap">
+                  🛵 Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
+                  {selectedOrder.distanceKm && <span className="text-[10px] font-normal ml-1">({selectedOrder.distanceKm}km)</span>}
                 </div>
               )}
             </div>
@@ -331,80 +373,72 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
     {/* Modal: Forma de Pagamento para Concluir Pedido */}
     <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
-      <DialogContent className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle className="text-lg">💰 Forma de Pagamento</DialogTitle>
-          <DialogDescription>
-            Selecione como o pedido <span className="font-bold">#{paymentModalOrder?.id?.substring(0, 5)}</span> foi pago.
-            {!caixaAberto && <span className="text-red-500 block mt-1">⚠️ O caixa está fechado. A venda será registrada apenas como entregue.</span>}
+      <DialogContent className="sm:max-w-[380px] p-4">
+        <DialogHeader className="pb-1">
+          <DialogTitle className="text-sm flex items-center justify-between">
+            <span>💰 Pagamento #{paymentModalOrder?.id?.substring(0, 5)}</span>
+            <span className="text-lg font-black text-primary">R$ {paymentModalOrder?.totalAmount?.toFixed(2)}</span>
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Selecione como o pedido foi pago.
+            {!caixaAberto && <span className="text-red-500 block">⚠️ Caixa fechado — registrado apenas como entregue.</span>}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3 py-4">
-          {FORMAS_PAGAMENTO.map(fp => {
-            const Icon = fp.icon;
-            return (
+        <div className="grid grid-cols-4 gap-2 py-2">
+          {FORMAS_PAGAMENTO.map((fp: any) => (
               <button
                 key={fp.id}
                 type="button"
                 onClick={() => setSelectedPayment(fp.id)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-bold text-sm transition-all ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
                   selectedPayment === fp.id 
-                    ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30 scale-105' 
+                    ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
                     : 'border-muted text-muted-foreground hover:border-slate-300'
                 }`}
               >
-                <Icon className="h-6 w-6" />
+                <span className="text-lg">{fp.icon}</span>
                 {fp.label}
               </button>
-            );
-          })}
+          ))}
         </div>
 
-        {paymentModalOrder && (
-          <div className="space-y-3">
-            <div className="bg-slate-50 p-3 rounded-lg border text-center">
-              <p className="text-sm text-muted-foreground">Valor do pedido</p>
-              <p className="text-2xl font-black text-primary">R$ {paymentModalOrder.totalAmount?.toFixed(2)}</p>
-            </div>
-
-            {selectedPayment === 'dinheiro' && (
-              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-2">
-                <label className="text-sm font-medium text-amber-800">💵 Valor recebido em dinheiro (R$)</label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="R$ 0,00"
-                  value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (!val) setValorRecebido('');
-                    else setValorRecebido((Number(val) / 100).toFixed(2));
-                  }}
-                  className="text-lg font-bold text-center bg-white"
-                  autoFocus
-                />
-                {Number(valorRecebido) > 0 && (
-                  <div className={`text-center p-2 rounded-lg font-bold text-lg ${Number(valorRecebido) >= paymentModalOrder.totalAmount ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                    {Number(valorRecebido) >= paymentModalOrder.totalAmount 
-                      ? `Troco: R$ ${(Number(valorRecebido) - paymentModalOrder.totalAmount).toFixed(2)}`
-                      : `Falta: R$ ${(paymentModalOrder.totalAmount - Number(valorRecebido)).toFixed(2)}`
-                    }
-                  </div>
-                )}
+        {selectedPayment === 'dinheiro' && paymentModalOrder && (
+          <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
+            <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="R$ 0,00"
+              value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+              onChange={(e) => {
+                let val = e.target.value.replace(/\D/g, '');
+                if (!val) setValorRecebido('');
+                else setValorRecebido((Number(val) / 100).toFixed(2));
+              }}
+              className="text-sm font-bold text-center bg-white h-9"
+              autoFocus
+            />
+            {Number(valorRecebido) > 0 && (
+              <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= paymentModalOrder.totalAmount ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                {Number(valorRecebido) >= paymentModalOrder.totalAmount 
+                  ? `Troco: R$ ${(Number(valorRecebido) - paymentModalOrder.totalAmount).toFixed(2)}`
+                  : `Falta: R$ ${(paymentModalOrder.totalAmount - Number(valorRecebido)).toFixed(2)}`
+                }
               </div>
             )}
           </div>
         )}
 
-        <DialogFooter className="pt-2">
-          <Button variant="outline" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
+        <DialogFooter className="pt-1 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
           <Button 
+            size="sm"
             disabled={!selectedPayment || isProcessing} 
             onClick={handleConfirmPayment}
             className="bg-green-600 hover:bg-green-700"
           >
-            {isProcessing ? '...' : '✅ Confirmar e Finalizar'}
+            {isProcessing ? '...' : '✅ Confirmar'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -416,12 +450,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
           <DialogHeader>
             <DialogTitle>Informe o Entregador</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
             <Select value={selectedMotoboyId} onValueChange={setSelectedMotoboyId}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecione um motoboy..." />
+                <SelectValue placeholder="Selecione um motoboy ou Retirada..." />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="retirada" className="text-amber-600 font-bold">Retirou no local</SelectItem>
                 {storeProfile?.motoboys?.map((m: any) => (
                   <SelectItem key={m.id} value={m.id}>{m.name} (R$ {Number(m.fee || 0).toFixed(2)})</SelectItem>
                 ))}
@@ -430,10 +465,15 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 )}
               </SelectContent>
             </Select>
+            {showMotoboyModal?.dispatch && (
+              <p className="text-xs text-muted-foreground bg-slate-50 p-2 rounded border border-slate-100">
+                O pedido será marcado como <strong>{selectedMotoboyId === 'retirada' ? 'Retirada no Local' : 'Saiu para Entrega'}</strong> após confirmar.
+              </p>
+            )}
           </div>
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setShowMotoboyModal(null)}>Cancelar</Button>
-            <Button variant="default" className="bg-teal-500 hover:bg-teal-600" onClick={() => assignMotoboy(false)} disabled={!selectedMotoboyId || selectedMotoboyId === 'none'}>Vincular entregador</Button>
+            <Button variant="default" className="bg-teal-500 hover:bg-teal-600" onClick={assignMotoboy} disabled={!selectedMotoboyId || selectedMotoboyId === 'none'}>Confirmar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

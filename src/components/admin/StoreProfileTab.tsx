@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,7 +24,7 @@ const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado
 
 export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'geral' | 'taxas' | 'horarios' | 'motoboys'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos'>('geral');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -61,6 +61,13 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
     { maxKm: 10, fee: 12 }
   ]);
 
+  const [paymentMethods, setPaymentMethods] = useState<{ id: string, label: string, icon: string, active: boolean }[]>([
+    { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
+    { id: 'pix', label: 'Pix', icon: '📱', active: true },
+    { id: 'debito', label: 'Débito', icon: '💳', active: true },
+    { id: 'credito', label: 'Crédito', icon: '💳', active: true },
+  ]);
+
   useEffect(() => {
     if (!db || !user?.uid) return;
     const fetchProfile = async () => {
@@ -88,6 +95,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
             })));
           }
           if (data.feeRules) setFeeRules(data.feeRules);
+          if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
         }
       } catch (err) {
         console.error('Erro ao buscar perfil da loja', err);
@@ -127,6 +135,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         motoboys,
         freelancers,
         feeRules: feeRules.sort((a, b) => a.maxKm - b.maxKm),
+        paymentMethods,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -221,37 +230,38 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
   }
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row gap-4 border-b pb-4">
-        <button onClick={() => setActiveTab('geral')} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'geral' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-slate-100'}`}><Store className="w-4 h-4"/> Dados e Contato</button>
-        <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'taxas' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-slate-100'}`}><Settings className="w-4 h-4"/> Taxas, Prazos e KM</button>
-        <button onClick={() => setActiveTab('horarios')} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'horarios' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-slate-100'}`}><Clock className="w-4 h-4"/> Horários</button>
-        <button onClick={() => setActiveTab('motoboys')} className={`flex items-center gap-2 px-4 py-2 font-bold rounded-lg transition-colors ${activeTab === 'motoboys' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-slate-100'}`}><Truck className="w-4 h-4"/> Motoboys / Freelancers</button>
+    <div className="w-full max-w-[1400px] mx-auto space-y-3">
+      <div className="flex flex-col md:flex-row gap-2 border-b pb-3 overflow-x-auto whitespace-nowrap hide-scrollbar">
+        <button onClick={() => setActiveTab('geral')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'geral' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Store className="w-3.5 h-3.5"/> Dados e Contato</button>
+        <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'taxas' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Settings className="w-3.5 h-3.5"/> Taxas, Prazos e KM</button>
+        <button onClick={() => setActiveTab('horarios')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'horarios' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Clock className="w-3.5 h-3.5"/> Horários</button>
+        <button onClick={() => setActiveTab('motoboys')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'motoboys' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Truck className="w-3.5 h-3.5"/> Motoboys / Freelancers</button>
+        <button onClick={() => setActiveTab('pagamentos')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'pagamentos' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Wallet className="w-3.5 h-3.5"/> Formas de Pagamento</button>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border">
+      <div className="bg-white p-3 rounded-xl shadow-sm border">
         {activeTab === 'geral' && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold mb-4">Dados da Empresa</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
+          <div className="space-y-1">
+            <h2 className="text-sm font-bold">Dados da Empresa</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2 gap-y-1">
+              <div className="space-y-0.5">
                 <Label>Nome da Empresa</Label>
                 <Input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Minha Lanchonete" />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 <Label>CNPJ</Label>
                 <Input name="cnpj" value={formData.cnpj} onChange={(e) => setFormData({...formData, cnpj: formatCNPJ(e.target.value)})} placeholder="00.000.000/0000-00" maxLength={18} />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 <Label>Telefone (Opcional)</Label>
                 <Input name="phone" value={formData.phone} onChange={(e) => setFormData({...formData, phone: formatPhone(e.target.value)})} placeholder="(00) 0000-0000" maxLength={15} />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 <Label>WhatsApp</Label>
                 <Input name="whatsapp" value={formData.whatsapp} onChange={(e) => setFormData({...formData, whatsapp: formatPhone(e.target.value)})} placeholder="(00) 90000-0000" maxLength={15} />
               </div>
             </div>
-            <div className="space-y-2 pt-2">
+            <div className="space-y-0.5">
               <Label>Endereço Completo</Label>
               <AddressAutocomplete 
                 value={formData.address} 
@@ -259,12 +269,12 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                 placeholder="Busque o endereço do estabelecimento..."
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2 gap-y-1 pt-1">
+              <div className="space-y-0.5">
                 <Label>Número</Label>
                 <Input name="addressNumber" value={formData.addressNumber} onChange={handleChange} placeholder="Ex: 123" />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 <Label>Complemento (Opcional)</Label>
                 <Input name="addressComplement" value={formData.addressComplement} onChange={handleChange} placeholder="Ex: Sala 2, Loja B" />
               </div>
@@ -273,13 +283,13 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'taxas' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold mb-4">Taxas, Prazos e Área de Entrega</h2>
+          <div className="space-y-2">
+            <h2 className="text-sm font-bold">Taxas, Prazos e Área de Entrega</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2">
               {/* Coluna Esquerda */}
-              <div className="space-y-6">
-                <div className="space-y-2">
+              <div className="space-y-2">
+                <div className="space-y-0.5">
                   <Label>Área de Atuação (Cidades atendidas)</Label>
                   <div className="flex gap-2">
                     <div className="flex-1">
@@ -293,21 +303,21 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                         types="(cities)"
                       />
                     </div>
-                    <Button onClick={addCity} type="button">Adicionar</Button>
+                    <Button onClick={addCity} type="button" className="h-9">Adicionar</Button>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {formData.deliveryCities.map((c, i) => (
-                      <Badge key={i} variant="secondary" className="px-3 py-1 text-sm flex gap-2 items-center">
+                      <Badge key={i} variant="secondary" className="px-2 py-0.5 text-xs flex gap-2 items-center">
                         {c} <Trash2 className="w-3 h-3 cursor-pointer text-red-500 hover:text-red-700" onClick={() => removeCity(i)} />
                       </Badge>
                     ))}
                   </div>
                 </div>
 
-                <div className="pt-2 pb-4 space-y-3 bg-slate-50 p-4 rounded-xl border">
+                <div className="pt-1 pb-3 space-y-2 bg-slate-50 p-3 rounded-lg border">
                   <div className="flex justify-between items-center">
-                    <Label className="font-bold text-base">🛵 Taxas por Distância (KM)</Label>
-                    <Button onClick={addFeeRule} type="button" size="sm" variant="outline"><Plus className="w-3 h-3 mr-1" /> Adicionar Regra</Button>
+                    <Label className="font-bold text-sm">🛵 Taxas por Distância (KM)</Label>
+                    <Button onClick={addFeeRule} type="button" size="sm" variant="outline" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" /> Adicionar Regra</Button>
                   </div>
                   <p className="text-xs text-muted-foreground">Configure as faixas de distância e o valor da taxa para cada faixa. Ex: "Até 5km = R$ 5,00".</p>
                   
@@ -315,11 +325,11 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                     {feeRules.map((rule, index) => (
                       <div key={index} className="flex items-center gap-3">
                         <div className="flex-1">
-                          <Label className="text-xs">Até (KM)</Label>
+                          <Label>Até (KM)</Label>
                           <Input type="number" step="0.5" min="0" value={rule.maxKm} onChange={(e) => updateFeeRule(index, 'maxKm', parseFloat(e.target.value) || 0)} />
                         </div>
                         <div className="flex-1">
-                          <Label className="text-xs">Taxa (R$)</Label>
+                          <Label>Taxa (R$)</Label>
                           <CurrencyInput value={rule.fee} onChange={(val) => updateFeeRule(index, 'fee', val)} />
                         </div>
                         <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5" onClick={() => removeFeeRule(index)}>
@@ -335,19 +345,19 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label>Taxa de Entrega Padrão (R$)</Label>
                   <CurrencyInput name="deliveryFee" value={formData.deliveryFee} onChange={(val) => setFormData({...formData, deliveryFee: val})} />
                   <p className="text-xs text-muted-foreground">Usada se nenhuma regra de KM for aplicável.</p>
                 </div>
                 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label>Frete Grátis em pedidos acima de (R$)</Label>
                   <CurrencyInput name="freeDeliveryOver" value={formData.freeDeliveryOver} onChange={(val) => setFormData({...formData, freeDeliveryOver: val})} />
                   <p className="text-xs text-muted-foreground">Deixe 0 para desabilitar o frete grátis.</p>
                 </div>
                 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <div className="flex justify-between items-center">
                     <Label>Taxa do Garçom / Serviço de Mesa</Label>
                     <div className="flex bg-slate-100 rounded-md p-1 border">
@@ -379,23 +389,23 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
               </div>
 
               {/* Coluna Direita */}
-              <div className="space-y-6">
-                <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="space-y-1">
                   <Label>Valor Mínimo do Pedido (R$)</Label>
                   <CurrencyInput name="minOrderValue" value={formData.minOrderValue} onChange={(val) => setFormData({...formData, minOrderValue: val})} />
                 </div>
                 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label>Tempo Médio de Entrega (Motoboy)</Label>
                   <Input type="time" name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} />
                 </div>
                 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label>Tempo Médio para Retirar no Local</Label>
                   <Input type="time" name="pickupTime" value={formData.pickupTime} onChange={handleChange} />
                 </div>
                 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label>Limitar Entregas pelo Mapa (Raio em KM)</Label>
                   <div className="flex relative items-center">
                     <Input type="number" name="maxDeliveryRadius" value={formData.maxDeliveryRadius} onChange={handleNumberChange} className="pr-12" />
@@ -409,13 +419,13 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'horarios' && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold mb-4">Horários de Funcionamento</h2>
-            <div className="space-y-3">
+          <div className="space-y-2">
+            <h2 className="text-base font-bold">Horários de Funcionamento</h2>
+            <div className="space-y-1">
               {workingHours.map((wh, idx) => (
-                <div key={wh.day} className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border">
-                  <div className="w-24 font-bold">{wh.day}</div>
-                  <div className="flex items-center space-x-2">
+                <div key={wh.day} className="flex items-center gap-3 py-2 px-3 rounded-md border bg-slate-50/50 hover:bg-slate-50">
+                  <div className="w-20 font-semibold text-sm">{wh.day}</div>
+                  <div className="flex items-center space-x-1.5">
                     <Switch 
                       id={`closed-${idx}`} 
                       checked={wh.isClosed} 
@@ -424,9 +434,9 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                         newWH[idx].isClosed = checked;
                         setWorkingHours(newWH);
                       }} 
-                      className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500"
+                      className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500 scale-90"
                     />
-                    <Label htmlFor={`closed-${idx}`}>{wh.isClosed ? 'Fechado' : 'Aberto'}</Label>
+                    <Label htmlFor={`closed-${idx}`} className="text-xs">{wh.isClosed ? 'Fechado' : 'Aberto'}</Label>
                   </div>
                   {!wh.isClosed && (
                     <div className="flex items-center gap-2 flex-1 justify-end">
@@ -434,17 +444,17 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                         const newWH = [...workingHours];
                         newWH[idx].open = e.target.value;
                         setWorkingHours(newWH);
-                      }} className="w-32" />
-                      <span>até</span>
+                      }} className="w-28 h-8 text-sm" />
+                      <span className="text-xs text-muted-foreground">até</span>
                       <Input type="time" value={wh.close} onChange={(e) => {
                         const newWH = [...workingHours];
                         newWH[idx].close = e.target.value;
                         setWorkingHours(newWH);
-                      }} className="w-32" />
+                      }} className="w-28 h-8 text-sm" />
                     </div>
                   )}
                   {wh.isClosed && (
-                    <div className="flex-1 text-right text-muted-foreground italic">__:__ - __:__</div>
+                    <div className="flex-1 text-right text-muted-foreground italic text-xs">__:__ - __:__</div>
                   )}
                 </div>
               ))}
@@ -453,104 +463,83 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'motoboys' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Gerenciar Motoboys</h2>
-                <Button onClick={addMotoboy} size="sm"><Plus className="w-4 h-4 mr-2"/> Adicionar</Button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <h2 className="text-sm font-bold">Motoboys</h2>
+                <Button onClick={addMotoboy} size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1"/> Adicionar</Button>
               </div>
               
               {motoboys.length === 0 ? (
-                <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-xl">Nenhum motoboy cadastrado.</div>
+                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum motoboy cadastrado.</div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   {motoboys.map((m, idx) => (
-                    <div key={m.id} className="bg-slate-50 p-4 rounded-xl border relative">
-                      <div className="absolute top-2 right-2">
-                        <Button variant="ghost" onClick={() => removeMotoboy(m.id)} className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8 w-8 p-0"><Trash2 className="w-4 h-4"/></Button>
-                      </div>
-                      <div className="grid grid-cols-12 gap-3 pr-8">
-                        <div className="col-span-12 sm:col-span-6 lg:col-span-4 space-y-1">
-                          <Label className="text-xs">Nome</Label>
-                          <Input value={m.name} onChange={(e) => updateMotoboy(m.id, 'name', e.target.value)} placeholder="João Silva" className="h-8 text-xs" />
+                    <div key={m.id} className="flex items-center gap-2 py-1.5 px-3 rounded-md border bg-slate-50/50">
+                      <div className="grid grid-cols-4 gap-2 flex-1">
+                        <div className="space-y-0.5">
+                          <Label>Nome</Label>
+                          <Input value={m.name} onChange={(e) => updateMotoboy(m.id, 'name', e.target.value)} placeholder="João" className="h-7 text-xs" />
                         </div>
-                        <div className="col-span-12 sm:col-span-6 lg:col-span-4 space-y-1">
-                          <Label className="text-xs">WhatsApp</Label>
-                          <Input value={m.phone} onChange={(e) => updateMotoboy(m.id, 'phone', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-8 text-xs" />
+                        <div className="space-y-0.5">
+                          <Label>WhatsApp</Label>
+                          <Input value={m.phone} onChange={(e) => updateMotoboy(m.id, 'phone', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
                         </div>
-                        <div className="col-span-12 sm:col-span-6 lg:col-span-2 space-y-1">
-                          <Label className="text-xs">Placa</Label>
-                          <Input value={m.licensePlate} onChange={(e) => updateMotoboy(m.id, 'licensePlate', e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} className="h-8 text-xs" />
+                        <div className="space-y-0.5">
+                          <Label>Placa</Label>
+                          <Input value={m.licensePlate} onChange={(e) => updateMotoboy(m.id, 'licensePlate', e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} className="h-7 text-xs" />
                         </div>
-                        <div className="col-span-12 sm:col-span-6 lg:col-span-2 space-y-1">
-                          <Label className="text-xs">Taxa (R$)</Label>
+                        <div className="space-y-0.5">
+                          <Label>Taxa (R$)</Label>
                           <CurrencyInput value={m.fee} onChange={(val) => updateMotoboy(m.id, 'fee', val)} />
                         </div>
                       </div>
+                      <Button variant="ghost" onClick={() => removeMotoboy(m.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Gerenciar Freelancers</h2>
-                <Button onClick={addFreelancer} size="sm"><Plus className="w-4 h-4 mr-2"/> Adicionar</Button>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <h2 className="text-sm font-bold">Freelancers</h2>
+                <Button onClick={addFreelancer} size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1"/> Adicionar</Button>
               </div>
               
               {freelancers.length === 0 ? (
-                <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-xl">Nenhum freelancer cadastrado.</div>
+                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum freelancer cadastrado.</div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   {freelancers.map((f, idx) => (
-                    <div key={f.id} className="grid grid-cols-1 gap-3 bg-purple-50 p-4 rounded-xl border border-purple-100 relative">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center space-x-2">
-                          <Switch 
-                            checked={f.active} 
-                            onCheckedChange={(checked) => updateFreelancer(f.id, 'active', checked)} 
-                            className="data-[state=checked]:bg-green-500"
-                          />
-                          <Label className="text-xs font-bold text-slate-700">{f.active ? 'Ativo' : 'Inativo'}</Label>
-                        </div>
-                        <Button variant="ghost" onClick={() => removeFreelancer(f.id)} className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8 w-8 p-0">
-                          <Trash2 className="w-4 h-4"/>
-                        </Button>
+                    <div key={f.id} className="py-2 px-3 rounded-md border bg-purple-50/50 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Switch checked={f.active} onCheckedChange={(checked) => updateFreelancer(f.id, 'active', checked)} className="data-[state=checked]:bg-green-500 scale-90" />
+                        <Label className="text-[10px] font-bold text-slate-700 flex-1">{f.active ? 'Ativo' : 'Inativo'}</Label>
+                        <Button variant="ghost" onClick={() => removeFreelancer(f.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
                       </div>
-
-                      <div className="grid grid-cols-12 gap-3">
-                        <div className="col-span-12 sm:col-span-5 lg:col-span-5 space-y-1">
-                          <Label className="text-xs">Nome</Label>
-                          <Input value={f.name} onChange={(e) => updateFreelancer(f.id, 'name', e.target.value)} placeholder="Pedro (Garçom)" className="h-8 text-xs" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-0.5">
+                          <Label>Nome</Label>
+                          <Input value={f.name} onChange={(e) => updateFreelancer(f.id, 'name', e.target.value)} placeholder="Pedro" className="h-7 text-xs" />
                         </div>
-                        <div className="col-span-12 sm:col-span-4 lg:col-span-4 space-y-1">
-                          <Label className="text-xs">WhatsApp</Label>
-                          <Input value={f.whatsapp} onChange={(e) => updateFreelancer(f.id, 'whatsapp', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-8 text-xs" />
+                        <div className="space-y-0.5">
+                          <Label>WhatsApp</Label>
+                          <Input value={f.whatsapp} onChange={(e) => updateFreelancer(f.id, 'whatsapp', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
                         </div>
-                        <div className="col-span-12 sm:col-span-3 lg:col-span-3 space-y-1">
-                          <Label className="text-xs">Valor (R$)</Label>
+                        <div className="space-y-0.5">
+                          <Label>Valor (R$)</Label>
                           <CurrencyInput value={f.dailyRate} onChange={(val) => updateFreelancer(f.id, 'dailyRate', val)} />
                         </div>
                       </div>
-
-                      <div className="space-y-1.5 mt-1 border-t border-purple-200/50 pt-3">
-                        <Label className="text-[10px] uppercase font-bold text-slate-500">Dias de Trabalho</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(day => (
-                            <div key={day} className="flex items-center space-x-1 bg-white px-2 py-1 rounded border shadow-sm">
-                              <Checkbox 
-                                id={`day-${f.id}-${day}`} 
-                                checked={f.workDays?.includes(day)}
-                                onCheckedChange={() => toggleFreelancerDay(f.id, day)}
-                                className="h-3.5 w-3.5"
-                              />
-                              <Label htmlFor={`day-${f.id}-${day}`} className="text-[10px] cursor-pointer">
-                                {day}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-purple-200/30">
+                        <Label className="text-[10px] uppercase font-bold text-slate-500 shrink-0">Dias:</Label>
+                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(day => (
+                          <div key={day} className="flex items-center space-x-0.5 bg-white px-1.5 py-0.5 rounded border text-[10px]">
+                            <Checkbox id={`day-${f.id}-${day}`} checked={f.workDays?.includes(day)} onCheckedChange={() => toggleFreelancerDay(f.id, day)} className="h-3 w-3" />
+                            <Label htmlFor={`day-${f.id}-${day}`} className="text-[10px] cursor-pointer">{day}</Label>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -560,8 +549,70 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           </div>
         )}
 
-        <div className="pt-6 mt-6 border-t flex justify-end">
-          <Button size="lg" className="w-full md:w-auto bg-green-600 hover:bg-green-700" onClick={handleSave} disabled={isSaving}>
+        {activeTab === 'pagamentos' && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-bold">Formas de Pagamento</h2>
+                <p className="text-xs text-muted-foreground">Escolha quais métodos estarão disponíveis para seus clientes e no PDV.</p>
+              </div>
+              <Button onClick={() => setPaymentMethods([...paymentMethods, { id: 'novo_'+Date.now(), label: 'Nova Forma', icon: '💳', active: true }])} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 h-8 text-xs">
+                <Plus className="w-3 h-3" /> Novo Método
+              </Button>
+            </div>
+            
+            <div className="space-y-1.5">
+              {paymentMethods.map((method, index) => (
+                <div key={method.id} className="flex items-center gap-2 py-1 px-3 border rounded-md bg-white hover:bg-slate-50 transition-colors">
+                  <Input 
+                    value={method.icon} 
+                    onChange={(e) => {
+                      const newMethods = [...paymentMethods];
+                      newMethods[index].icon = e.target.value;
+                      setPaymentMethods(newMethods);
+                    }}
+                    className="w-12 h-8 text-center text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20"
+                    placeholder="🔷"
+                  />
+                  <Input 
+                    value={method.label} 
+                    onChange={(e) => {
+                      const newMethods = [...paymentMethods];
+                      newMethods[index].label = e.target.value;
+                      if (!['dinheiro', 'pix', 'debito', 'credito'].includes(newMethods[index].id)) {
+                         newMethods[index].id = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                      }
+                      setPaymentMethods(newMethods);
+                    }}
+                    className="font-semibold flex-1 h-8 text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 px-1"
+                    placeholder="Nome do método"
+                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Switch 
+                      checked={method.active} 
+                      onCheckedChange={(checked) => {
+                        const newMethods = [...paymentMethods];
+                        newMethods[index].active = checked;
+                        setPaymentMethods(newMethods);
+                      }}
+                      className="scale-90"
+                    />
+                    <Label className="w-12 text-xs font-semibold">{method.active ? 'Ativo' : 'Inativo'}</Label>
+                  </div>
+                  <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 shrink-0" onClick={() => setPaymentMethods(paymentMethods.filter((_, i) => i !== index))}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+              {paymentMethods.length === 0 && (
+                <p className="text-center text-muted-foreground py-4 text-sm">Nenhuma forma de pagamento configurada.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="pt-3 mt-3 border-t flex justify-end">
+          <Button size="default" className="w-full md:w-auto bg-green-600 hover:bg-green-700 h-8 text-xs px-4" onClick={handleSave} disabled={isSaving}>
             {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Salvar Configurações
           </Button>

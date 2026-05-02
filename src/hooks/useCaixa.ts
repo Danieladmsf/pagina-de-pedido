@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFirestore, useCollection, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, updateDoc, doc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore';
 
 export interface Caixa {
   id: string;
@@ -123,11 +123,14 @@ export function useCaixa() {
       ownerId: user!.uid,
       tipo: 'abertura',
       titulo: 'Abertura de Caixa',
-      valor: Number(saldoInicial) * -1, // Negativo como no sistema original
+      valor: Number(saldoInicial), // Positivo
       formaPagamento: '--',
       data: serverTimestamp(),
       usuario: user?.displayName || user?.email || 'Principal',
     });
+
+    // Atualiza o perfil da loja para o cardápio de clientes
+    await setDoc(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: true }, { merge: true });
 
     setCaixaSelecionadoId(caixaRef.id);
     return caixaRef.id;
@@ -143,12 +146,18 @@ export function useCaixa() {
     // Calcular totais
     const lancs = lancamentos.filter(l => l.caixaId === caixaAberto.id);
     let totalVendas = 0;
+    let totalVendasDinheiro = 0;
     let totalSangrias = 0;
     let totalSuprimentos = 0;
     const saldoIni = caixaAberto.saldoInicial || 0;
 
     lancs.forEach(l => {
-      if (l.tipo === 'venda') totalVendas += l.valor;
+      if (l.tipo === 'venda') {
+        totalVendas += l.valor;
+        if (l.formaPagamento.toLowerCase().includes('dinheiro')) {
+          totalVendasDinheiro += l.valor;
+        }
+      }
       if (l.tipo === 'sangria') totalSangrias += Math.abs(l.valor);
       if (l.tipo === 'suprimento') totalSuprimentos += l.valor;
     });
@@ -208,8 +217,9 @@ export function useCaixa() {
       + (params?.detalhesMotoboys?.reduce((s, m) => s + m.total, 0) || 0) 
       + (params?.detalhesFreelancers?.reduce((s, f) => s + f.total, 0) || 0);
 
-    const totalEmCaixa = saldoIni + totalVendas + totalSuprimentos - totalSangrias - totalDeducoes;
-    const valorRetirada = totalEmCaixa > 0 ? totalEmCaixa : 0;
+    // O dinheiro real físico na gaveta é apenas Vendas em Dinheiro, Suprimentos, menos Sangrias e Deduções.
+    const dinheiroEmCaixa = saldoIni + totalVendasDinheiro + totalSuprimentos - totalSangrias - totalDeducoes;
+    const valorRetirada = dinheiroEmCaixa > 0 ? dinheiroEmCaixa : 0;
 
     // Registrar lançamento de Retirada no Fechamento
     if (valorRetirada > 0) {
@@ -225,13 +235,13 @@ export function useCaixa() {
       });
     }
 
-    // Registrar lançamento de Fechamento
+    // Registrar lançamento de Fechamento (O Saldo que fica no sistema para o final do dia)
     await addDoc(collection(db, 'cash_transactions'), {
       caixaId: caixaAberto.id,
       ownerId: user!.uid,
       tipo: 'fechamento',
       titulo: 'Fechamento do Caixa',
-      valor: totalVendas + totalSuprimentos,
+      valor: totalVendas, // Apenas o total de faturamento do dia para registro, ou 0 se preferir
       formaPagamento: '--',
       data: serverTimestamp(),
       usuario: user?.displayName || user?.email || 'Principal',
@@ -249,6 +259,9 @@ export function useCaixa() {
         valorRetirada,
       },
     });
+
+    // Atualiza o perfil da loja para o cardápio de clientes
+    await setDoc(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: false }, { merge: true });
   }, [db, isRealUser, user, caixaAberto, lancamentos]);
 
   const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento }: {

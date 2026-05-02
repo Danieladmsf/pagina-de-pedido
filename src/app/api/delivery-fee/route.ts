@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { storeAddress, customerAddress, feeRules } = body;
+    console.log('[API delivery-fee] Recebido:', { storeAddress: storeAddress?.substring(0, 40), customerAddress: customerAddress?.substring(0, 40), feeRules });
 
     if (!storeAddress || !customerAddress) {
       return NextResponse.json({ error: 'Endereços obrigatórios.' }, { status: 400 });

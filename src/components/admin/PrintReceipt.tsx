@@ -85,10 +85,10 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
           <span>Subtotal</span>
           <span>R$ {order.items?.reduce((acc: number, item: any) => acc + ((item.unitPrice || 0) * item.quantity), 0).toFixed(2) || '0.00'}</span>
         </div>
-        {order.deliveryFee > 0 && (
+        {order.orderType === 'delivery' && (
           <div className="flex justify-between">
             <span>Taxa de entrega</span>
-            <span>R$ {order.deliveryFee.toFixed(2)}</span>
+            <span>{order.deliveryFee > 0 ? `R$ ${order.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
           </div>
         )}
         <div className="flex justify-between font-bold text-sm mt-2 pt-2 border-t border-black">

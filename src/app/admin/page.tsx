@@ -24,9 +24,12 @@ import { DeliveryTab } from '@/components/admin/DeliveryTab';
 import { NovoPedidoTab } from '@/components/admin/NovoPedidoTab';
 import { MesasTab } from '@/components/admin/MesasTab';
 import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
+import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
+import { ComboModal } from '@/components/admin/ComboModal';
+import { MarmitaModal } from '@/components/admin/MarmitaModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
-import { Settings, MessageCircle, MapPinned } from 'lucide-react';
+import { Settings, MessageCircle, MapPinned, Box, Component } from 'lucide-react';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -35,7 +38,7 @@ export default function AdminPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
-  
+  const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -256,6 +259,8 @@ export default function AdminPage() {
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingCombo, setEditingCombo] = useState<any>(null);
+  const [editingMarmita, setEditingMarmita] = useState<any>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -520,8 +525,8 @@ export default function AdminPage() {
         <div className="flex items-center gap-4 h-full">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
-            <Badge className="bg-red-500 hover:bg-red-600 border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider">
-              Fechado permanente
+            <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
+              {caixaAberto ? 'Aberto' : 'Fechado'}
             </Badge>
           </div>
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
@@ -529,7 +534,7 @@ export default function AdminPage() {
             onClick={() => setActiveTab('configuracoes')}
             className={`flex items-center gap-2 transition-colors ${activeTab === 'configuracoes' ? 'text-white' : 'hover:text-white'}`}
           >
-            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <div className={`w-2 h-2 rounded-full ${caixaAberto ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
             <span className="text-sm font-medium">Caixa / Admin</span>
           </button>
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
@@ -575,6 +580,7 @@ export default function AdminPage() {
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
             storeProfile={storeProfile}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
         )}
 
@@ -587,6 +593,7 @@ export default function AdminPage() {
             user={user}
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
         )}
 
@@ -606,9 +613,6 @@ export default function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="addons" className="rounded-lg px-6 flex gap-2">
               <Plus className="h-4 w-4" /> Adicionais
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="rounded-lg px-6 flex gap-2">
-              <BarChart3 className="h-4 w-4" /> Relatórios
             </TabsTrigger>
             <TabsTrigger value="profile" className="rounded-lg px-6 flex gap-2">
               <Store className="h-4 w-4" /> Perfil da Empresa
@@ -631,42 +635,32 @@ export default function AdminPage() {
                       for (const doc of oldCatsSnap.docs) await deleteDoc(doc.ref);
                       for (const doc of oldItemsSnap.docs) await deleteDoc(doc.ref);
 
-                      const CATS = ['Marmitex','Prato do dia','Prato Feito','Massas','Omeletes','Crepiocas','Tapiocas','Lanches Naturais','Lanches Quentes','Promoção Lanches Quentes','Sucos','Sucos Detox (Funcionais)','Vitaminas','Refrigerantes','Salgados','Sobremesas','Bomboniere','Café','Caldos'];
-                      const ITEMS = [
-                        {n:'COMBO FEIJOADA',d:'',p:50,c:'Marmitex'},{n:'Marmitex P (1 Carne)',d:'',p:18.9,c:'Marmitex'},{n:'Marmitex P (2 Carne)',d:'',p:23.9,c:'Marmitex'},{n:'Marmitex M (1 Carne)',d:'',p:22.9,c:'Marmitex'},{n:'Marmitex M (2 Carne)',d:'',p:27.9,c:'Marmitex'},{n:'Marmitex Executiva (1 Carne)',d:'',p:27,c:'Marmitex'},{n:'Marmitex Executiva (2 Carne)',d:'',p:30,c:'Marmitex'},{n:'Marmitex M Feijoada',d:'',p:25.9,c:'Marmitex'},
-                        {n:'Bauru',d:'Presunto, Muçarela e Tomate.',p:15,c:'Lanches Quentes'},{n:'Misto',d:'Presunto e Mussarela.',p:12,c:'Lanches Quentes'},{n:'Americano',d:'Presunto, Mussarela, Ovo, Alface e Tomate.',p:18,c:'Lanches Quentes'},{n:'X Salada',d:'Hambúrguer, Presunto, Mussarela, Alface e Tomate.',p:18,c:'Lanches Quentes'},{n:'X Salada EGG',d:'',p:19,c:'Lanches Quentes'},{n:'X Salada Bacon',d:'',p:20,c:'Lanches Quentes'},{n:'X Salada EGG Bacon',d:'',p:21,c:'Lanches Quentes'},{n:'X Tudo',d:'',p:22,c:'Lanches Quentes'},{n:'Copa Lombo Salada',d:'',p:20,c:'Lanches Quentes'},{n:'Copa Lombo Salada EGG',d:'',p:21,c:'Lanches Quentes'},{n:'Copa Lombo Salada Bacon',d:'',p:22,c:'Lanches Quentes'},{n:'Copa Lombo Salada Bacon EGG',d:'',p:23,c:'Lanches Quentes'},{n:'Copa Lombo Tudo',d:'',p:25,c:'Lanches Quentes'},{n:'X Linguiça Salada',d:'',p:19,c:'Lanches Quentes'},{n:'X Linguiça Salada EGG',d:'',p:20,c:'Lanches Quentes'},{n:'X Linguiça Bacon',d:'',p:21,c:'Lanches Quentes'},{n:'X Linguiça EGG Bacon',d:'',p:22,c:'Lanches Quentes'},{n:'X Linguiça Tudo',d:'',p:23,c:'Lanches Quentes'},{n:'Frango Salada',d:'',p:21,c:'Lanches Quentes'},{n:'Frango Salada EGG',d:'',p:22,c:'Lanches Quentes'},{n:'Frango Salada Bacon',d:'',p:23,c:'Lanches Quentes'},{n:'Frango Salada EGG Bacon',d:'',p:24,c:'Lanches Quentes'},{n:'Frango Tudo',d:'',p:25,c:'Lanches Quentes'},{n:'Filé Salada',d:'Contra filé, presunto, queijo, alface e tomate.',p:25,c:'Lanches Quentes'},{n:'Filé Salada EGG',d:'',p:27,c:'Lanches Quentes'},{n:'Filé Salada Bacon',d:'',p:29,c:'Lanches Quentes'},{n:'Filé Salada EGG Bacon',d:'',p:31,c:'Lanches Quentes'},{n:'Carne Queijo Acebolado',d:'Contra filé, Queijo, cebola.',p:30,c:'Lanches Quentes'},{n:'Filé tudo',d:'',p:35,c:'Lanches Quentes'},{n:'X Burguer',d:'Hambúrguer e queijo',p:15,c:'Lanches Quentes'},
-                        {n:'Copa Lombo salada',d:'Promoção',p:25,c:'Promoção Lanches Quentes'},{n:'X tudo',d:'Promoção',p:27,c:'Promoção Lanches Quentes'},{n:'X linguiça salada',d:'Promoção',p:24,c:'Promoção Lanches Quentes'},{n:'Frango salada',d:'Promoção',p:26,c:'Promoção Lanches Quentes'},{n:'X salada',d:'Promoção',p:23,c:'Promoção Lanches Quentes'},{n:'2 X tudo',d:'Promoção',p:50,c:'Promoção Lanches Quentes'},
-                        {n:'PF Pão de queijo',d:'',p:3.5,c:'Salgados'},{n:'Croissant de chocolate',d:'',p:8,c:'Salgados'},{n:'Salgados fritos',d:'',p:6.5,c:'Salgados'},{n:'Torta de sardinha',d:'',p:7,c:'Salgados'},{n:'Salgados Assados',d:'',p:6.5,c:'Salgados'},{n:'Pizzas',d:'',p:8,c:'Salgados'},{n:'Croissant presunto e queijo',d:'',p:8,c:'Salgados'},{n:'Croissant quatro queijos',d:'',p:7,c:'Salgados'},{n:'Croissant frango',d:'',p:8,c:'Salgados'},{n:'Folheado de Ricota',d:'',p:7,c:'Salgados'},{n:'Folheado de peito de peru',d:'',p:7,c:'Salgados'},{n:'Folheado de Presunto e queijo',d:'',p:7,c:'Salgados'},{n:'Empadas',d:'',p:8,c:'Salgados'},
-                        {n:'Promoção Suco de Limão',d:'',p:9,c:'Sucos'},{n:'Suco 500 ml',d:'',p:12,c:'Sucos'},
-                        {n:'Salada de Frutas',d:'Laranja, mamão, maçã, pera, banana, manga e uva.',p:15,c:'Sobremesas'},{n:'Açaí',d:'',p:18,c:'Sobremesas'},{n:'Pedaço bolo fubá c/laranja',d:'',p:5,c:'Sobremesas'},{n:'Pudim de leite condensado',d:'',p:6,c:'Sobremesas'},
-                        {n:'Pão de Queijo',d:'',p:4,c:'Café'},{n:'Pão de Queijo Recheado',d:'',p:6,c:'Café'},{n:'Pão na Chapa com Manteiga',d:'',p:5,c:'Café'},{n:'Pão na chapa com queijo',d:'',p:10,c:'Café'},{n:'Pão com ovo',d:'',p:12,c:'Café'},{n:'Pão com ovo e queijo',d:'',p:15,c:'Café'},{n:'Café',d:'',p:3.5,c:'Café'},{n:'Pingado',d:'',p:7,c:'Café'},{n:'Capuccino Quente',d:'',p:8,c:'Café'},{n:'Capuccino Gelado',d:'',p:10,c:'Café'},
-                        {n:'Coca cola 1L',d:'Consumo no local',p:10,c:'Refrigerantes'},{n:'Bioleve',d:'',p:4,c:'Refrigerantes'},{n:'Refrigerante lata 350ml',d:'',p:6.5,c:'Refrigerantes'},{n:'Coca cola 220ml',d:'',p:5,c:'Refrigerantes'},{n:'Coca-Cola KS',d:'Consumo no local',p:5,c:'Refrigerantes'},{n:'Coca-Cola 600ml',d:'',p:8,c:'Refrigerantes'},{n:'Coca-Cola 2Lts',d:'',p:13,c:'Refrigerantes'},{n:'Jaboti 600ml',d:'Consumo no local',p:5,c:'Refrigerantes'},{n:'Jaboti 250ml',d:'',p:3.5,c:'Refrigerantes'},{n:'Jaboti 2Lts',d:'',p:7,c:'Refrigerantes'},{n:'Água com Gás',d:'',p:4,c:'Refrigerantes'},{n:'Água sem Gás',d:'',p:4,c:'Refrigerantes'},{n:'Limoneto H2OH',d:'',p:7,c:'Refrigerantes'},{n:'Suco Nativo',d:'',p:3.5,c:'Refrigerantes'},{n:'Guarana Antarctica 300ml (Retornavel)',d:'Consumo no local',p:4.5,c:'Refrigerantes'},
-                        {n:'Lanche Natural',d:'',p:10,c:'Lanches Naturais'},
-                        {n:'PF: File de Frango a Parmegiana',d:'',p:26.9,c:'Prato do dia'},{n:'PF: Quibe assado',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Pernil Suina Acebolada',d:'',p:19.9,c:'Prato do dia'},{n:'Pedaço de quibe',d:'',p:8,c:'Prato do dia'},{n:'PF: Moqueca',d:'',p:26.9,c:'Prato do dia'},{n:'PF: Peixe frito',d:'',p:22.9,c:'Prato do dia'},{n:'Porção de moqueca',d:'',p:20,c:'Prato do dia'},{n:'PF: Fricasse Frango',d:'',p:18.9,c:'Prato do dia'},{n:'PF: Carne de Panela c/ Batata',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Feijão gordo',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Tirinha de Frango Acebolada',d:'',p:18.9,c:'Prato do dia'},{n:'PF : Calabresa Acebolada',d:'',p:18.9,c:'Prato do dia'},{n:'PF: Feijoada',d:'',p:25.9,c:'Prato do dia'},{n:'Pf : Sobrecoxa com Quiabo ao molho',d:'',p:19.9,c:'Prato do dia'},{n:'PF: Copa Lombo em tiras Aceboladas',d:'',p:21.9,c:'Prato do dia'},{n:'PF: Meio d Asa Frango e sobrecoxa refogada suculenta',d:'',p:18.9,c:'Prato do dia'},{n:'Unidade panqueca',d:'',p:10,c:'Prato do dia'},{n:'PF: Carne Suina em cubos',d:'',p:21.9,c:'Prato do dia'},{n:'PF: Almôndega ao molho',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Ponta de Peito de panela',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Costela Bovina cm Mandioca',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Coxinha Asa Frango Frita',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Macarrão ao Sugo c/ Coxinha Frango Frita',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Panqueca',d:'',p:22.9,c:'Prato do dia'},{n:'Unidade charuto',d:'',p:10,c:'Prato do dia'},{n:'PF: Filé de Frango a Milanesa',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Carne Moída c/ Legumes',d:'',p:20.9,c:'Prato do dia'},{n:'PF: Peixe c/ batata ao molho',d:'',p:24.9,c:'Prato do dia'},{n:'PF: Lasanha ao Molho Rose',d:'',p:20.9,c:'Prato do dia'},{n:'PF : Sobrecoxa c/ Macarrão ao Sugo',d:'',p:20.9,c:'Prato do dia'},{n:'Porção de Maionese 300grs',d:'',p:24,c:'Prato do dia'},{n:'PF : Strogonoff de Carne',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Macarrão ao Sugo c/ Sobrecoxa',d:'',p:22.9,c:'Prato do dia'},{n:'Torta de sardinha',d:'',p:7,c:'Prato do dia'},{n:'Capeletti de carne ao molho Bolonhesa',d:'',p:19.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Sobrecoxa Frango Assada',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Charuto',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Carré Suino Assado c/ Vinagrete',d:'',p:22.9,c:'Prato do dia'},{n:'PF: Tiras de carne Acebolado',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Strogonoff de Frango',d:'',p:19.9,c:'Prato do dia'},{n:'PF: Lasanha ao molho rose presunto e queijo',d:'',p:22.9,c:'Prato do dia'},{n:'PF : Nhoqque c/ Tirinha Carne Acebolada e Salada',d:'',p:22.9,c:'Prato do dia'},{n:'Pedaço individual lasanha',d:'',p:15,c:'Prato do dia'},
-                        {n:'PF: Filé de frango',d:'Arroz, feijão, filé de frango grelhado, acompanhamento e salada',p:20.9,c:'Prato Feito'},{n:'PF: Filé de peixe',d:'Arroz, feijão, filé de tilápia grelhado, acompanhamento e salada',p:28.9,c:'Prato Feito'},{n:'PF: Linguiça',d:'Arroz, feijão, linguiça, acompanhamento e salada',p:20.9,c:'Prato Feito'},{n:'PF: sem carne',d:'Arroz, feijão, dois acompanhamentos e salada',p:17.9,c:'Prato Feito'},{n:'Salada no prato',d:'',p:30,c:'Prato Feito'},{n:'PF: Copa Lombo',d:'Arroz, feijão, copa lombo grelhado, acompanhamento e salada',p:21.9,c:'Prato Feito'},{n:'PF: Contra filé',d:'Arroz, feijão, contra filé grelhado, acompanhamento e salada',p:28.9,c:'Prato Feito'},{n:'PF: Kids c/ Nuggets',d:'',p:17.9,c:'Prato Feito'},{n:'PF: Omelete',d:'Omelete simples (sem recheio), Arroz, Feijão e salada',p:16.9,c:'Prato Feito'},{n:'PF: Kids c/ hamburguer',d:'Arroz, feijão, hambúrguer, queijo, batata frita + salada',p:17.9,c:'Prato Feito'},{n:'Add Prato',d:'Somente PDV',p:0,c:'Prato Feito'},
-                        {n:'Bomboniere',d:'',p:0.2,c:'Bomboniere'},{n:'Azedinha',d:'',p:3,c:'Bomboniere'},{n:'Balas',d:'',p:0.2,c:'Bomboniere'},{n:'Trident',d:'',p:3,c:'Bomboniere'},{n:'Halls',d:'',p:2,c:'Bomboniere'},{n:'Suflair',d:'',p:8,c:'Bomboniere'},{n:'Kit kat',d:'',p:7,c:'Bomboniere'},{n:'Doce Ninho',d:'',p:2.5,c:'Bomboniere'},{n:'Pingo Leite',d:'',p:2.5,c:'Bomboniere'},{n:'Paçoca',d:'',p:3.5,c:'Bomboniere'},{n:'Pé de Moça',d:'',p:3.5,c:'Bomboniere'},{n:'Paçoquita',d:'',p:0.5,c:'Bomboniere'},{n:'Trento',d:'',p:4,c:'Bomboniere'},{n:'Stikadinho',d:'',p:2,c:'Bomboniere'},{n:'Sonho de valsa',d:'',p:2.5,c:'Bomboniere'},{n:'Ouro branco',d:'',p:2.5,c:'Bomboniere'},
-                        {n:'Nhoque',d:'',p:20,c:'Massas'},
-                        {n:'Omelete',d:'',p:18,c:'Omeletes'},
-                        {n:'Crepioca',d:'',p:20,c:'Crepiocas'},
-                        {n:'Escolha sua tapioca doce',d:'',p:25,c:'Tapiocas'},{n:'Tapioca',d:'',p:18,c:'Tapiocas'},
-                        {n:'Sucos Funcionais (Detox)',d:'',p:15,c:'Sucos Detox (Funcionais)'},
-                        {n:'Promoção vitamina Mista com Laranja 500 ml',d:'',p:9,c:'Vitaminas'},{n:'Promoção vitamina de Abacate 500ml',d:'',p:10,c:'Vitaminas'},{n:'Vitaminas 500 ml',d:'',p:15,c:'Vitaminas'},
-                      ];
+                      const oldAddonsSnap = await getDocs(query(collection(db, 'addons'), where('ownerId', '==', user.uid)));
+                      for (const doc of oldAddonsSnap.docs) await deleteDoc(doc.ref);
+
                       const catMap: Record<string,string> = {};
                       for (let i = 0; i < CATS.length; i++) {
-                        const ref = doc(collection(db, 'categories'));
+                        const ref = doc(collection(db as any, 'categories'));
                         await setDoc(ref, { id:ref.id, name:CATS[i], ownerId:user.uid, displayOrder:i, description:'' });
                         catMap[CATS[i]] = ref.id;
                       }
+                      
+                      let okAddons = 0;
+                      for (const a of ADDONS) {
+                        const ref = doc(collection(db as any, 'addons'));
+                        await setDoc(ref, { id:ref.id, name:a.n, price:a.p, group:a.g, ownerId:user.uid });
+                        okAddons++;
+                      }
+
                       let ok = 0;
                       for (const it of ITEMS) {
                         const catId = catMap[it.c];
                         if (!catId) continue;
-                        const ref = doc(collection(db, 'menuItems'));
+                        const ref = doc(collection(db as any, 'menuItems'));
                         await setDoc(ref, { id:ref.id, name:it.n, description:it.d, price:it.p, categoryId:catId, ownerId:user.uid, isAvailable:true, isRecommended:false, imageUrl:'', addonIds:[] });
                         ok++;
                       }
-                      toast({ title: `Importação concluída! ${CATS.length} categorias + ${ok} produtos criados.` });
+                      toast({ title: `Importação concluída! ${CATS.length} categorias, ${ok} produtos e ${okAddons} adicionais criados.` });
                     } catch (e: any) {
                       console.error(e);
                       toast({ title: 'Erro na importação', description: e.message, variant: 'destructive' });
@@ -763,6 +757,14 @@ export default function AdminPage() {
                     </form>
                   </DialogContent>
                 </Dialog>
+
+                <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 flex gap-2">
+                  <Box className="h-4 w-4" /> Criar Combo
+                </Button>
+                
+                <Button onClick={() => setEditingMarmita({})} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
+                  <Component className="h-4 w-4" /> Criar Marmita
+                </Button>
               </div>
             </CardHeader>
               <CardContent className="p-0">
@@ -1303,7 +1305,12 @@ export default function AdminPage() {
             )}
           </TabsContent>
           <TabsContent value="caixa" className="mt-6">
-            <CaixaTab storeProfile={storeProfile} orders={orders || []} />
+            <CaixaTab 
+              storeProfile={storeProfile} 
+              orders={orders || []} 
+              autoOpenAbrirCaixa={autoOpenAbrirCaixa}
+              onModalOpened={() => setAutoOpenAbrirCaixa(false)}
+            />
           </TabsContent>
           <TabsContent value="profile" className="mt-6">
             <StoreProfileTab db={db} user={user} />
@@ -1312,6 +1319,19 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      <ComboModal 
+        db={db} user={user} items={items || []} 
+        editingCombo={editingCombo} setEditingCombo={setEditingCombo} 
+        categories={categories || []} 
+      />
+      
+      <MarmitaModal 
+        db={db} user={user} addons={addons || []} 
+        editingMarmita={editingMarmita} setEditingMarmita={setEditingMarmita} 
+        categories={categories || []} 
+      />
+
     </div>
   );
 }

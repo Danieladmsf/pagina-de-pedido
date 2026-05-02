@@ -10,12 +10,18 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useAuth } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { collection, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
+
+interface PaymentMethodConfig {
+  id: string;
+  label: string;
+  icon: string;
+  active: boolean;
+}
 
 interface CartDrawerProps {
   storeOwnerId?: string | null;
@@ -24,20 +30,37 @@ interface CartDrawerProps {
   deliveryFeeRules?: Array<{ maxKm: number; fee: number; perKmExtra?: number }>; // Regras por distância
   maxDeliveryRadius?: number; // Limite de KM
   freeDeliveryOver?: number; // Frete grátis acima de
+  paymentMethods?: PaymentMethodConfig[]; // Formas de pagamento configuradas pela loja
+  isStoreOpen?: boolean;
+  menuItems?: any[];
 }
 
-type Step = 'cart' | 'auth' | 'info';
+const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
+  { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
+  { id: 'pix', label: 'Pix', icon: '📱', active: true },
+  { id: 'debito', label: 'Débito', icon: '💳', active: true },
+  { id: 'credito', label: 'Crédito', icon: '💳', active: true },
+];
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0 }: CartDrawerProps) {
+type Step = 'cart' | 'info';
+
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [] }: CartDrawerProps) {
+  // 🔍 DEBUG: Verificar props recebidas
+  console.log('[CartDrawer] Props recebidas:', {
+    storeAddress: storeAddress?.substring(0, 30),
+    deliveryFee,
+    deliveryFeeRules,
+    maxDeliveryRadius,
+    freeDeliveryOver,
+    rulesCount: deliveryFeeRules?.length || 0
+  });
+  const activePaymentMethods = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).filter(m => m.active);
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<Step>('cart');
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>('delivery');
@@ -64,16 +87,18 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
   const appliedDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
   const grandTotal = totalPrice + appliedDeliveryFee;
+  
+  // 🔍 DEBUG: Estado da taxa
+  console.log('[CartDrawer] Taxa:', { orderType, dynamicFee, deliveryFee, appliedDeliveryFee, isFreeDelivery, grandTotal });
 
   const db = useFirestore();
-  const auth = useAuth();
   const { user } = useUser();
 
-  const isRealUser = !!(user && !user.isAnonymous && user.email);
-
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [savedStreet, setSavedStreet] = useState('');
+  const [savedNumber, setSavedNumber] = useState('');
   useEffect(() => {
-    if (!isRealUser || !db || !user) { setProfileLoaded(false); return; }
+    if (!db || !user) { setProfileLoaded(false); return; }
     if (profileLoaded) return;
     (async () => {
       try {
@@ -82,51 +107,32 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           const d = snap.data();
           setCustomerName(d.name || '');
           setCustomerPhone(d.phone || '');
-          setEmail(d.username || user.email || '');
           // Carregar endereço salvo
           if (d.cep) setCep(d.cep);
-          if (d.street) setStreet(d.street);
-          if (d.number) setNumber(d.number);
+          if (d.street) { setStreet(d.street); setSavedStreet(d.street); }
+          if (d.number) { setNumber(d.number); setSavedNumber(d.number); }
           if (d.neighborhood) setNeighborhood(d.neighborhood);
           if (d.complement) setComplement(d.complement);
           if (d.city) setCity(d.city);
-        } else {
-          setEmail(user.email || '');
         }
         setProfileLoaded(true);
       } catch (e) {
         console.warn('load customer profile failed', e);
       }
     })();
-  }, [isRealUser, db, user, profileLoaded]);
-
-  // Busca automática de CEP via ViaCEP
-  const searchCep = useCallback(async (rawCep: string) => {
-    const cleaned = rawCep.replace(/\D/g, '');
-    if (cleaned.length !== 8) return;
-
-    setLoadingCep(true);
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
-      const data = await res.json();
-      if (data.erro) {
-        toast({ variant: 'destructive', title: 'CEP não encontrado', description: 'Verifique e tente novamente.' });
-        return;
-      }
-      setStreet(data.logradouro || '');
-      setNeighborhood(data.bairro || '');
-      setCity(`${data.localidade} - ${data.uf}` || '');
-    } catch {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao buscar CEP.' });
-    } finally {
-      setLoadingCep(false);
-    }
-  }, [toast]);
+  }, [db, user, profileLoaded]);
 
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
   const calculateDeliveryFee = useCallback(async (customerAddress: string) => {
-    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
-    if (!customerAddress || customerAddress.length < 5) return;
+    console.log('[CartDrawer] calculateDeliveryFee chamado:', { customerAddress, storeAddress: storeAddress?.substring(0, 30), rulesCount: deliveryFeeRules?.length, rules: deliveryFeeRules });
+    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) {
+      console.warn('[CartDrawer] ABORTANDO cálculo - falta dados:', { storeAddress: !!storeAddress, rules: deliveryFeeRules?.length });
+      return;
+    }
+    if (!customerAddress || customerAddress.length < 5) {
+      console.warn('[CartDrawer] ABORTANDO - endereço curto:', customerAddress);
+      return;
+    }
 
     setCalculatingFee(true);
     try {
@@ -140,6 +146,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         }),
       });
       const data = await res.json();
+      console.log('[CartDrawer] Resposta da API delivery-fee:', data);
       if (res.ok) {
         if (maxDeliveryRadius > 0 && data.distanceKm > maxDeliveryRadius) {
           setDeliveryBlocked(true);
@@ -167,7 +174,49 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     } finally {
       setCalculatingFee(false);
     }
-  }, [storeAddress, deliveryFeeRules, toast]);
+  }, [storeAddress, deliveryFeeRules, maxDeliveryRadius, toast]);
+
+  // Auto-calcular taxa quando AMBOS o endereço salvo E as regras da loja estiverem prontos
+  const [autoCalcDone, setAutoCalcDone] = useState(false);
+  useEffect(() => {
+    if (autoCalcDone) return;
+    if (!savedStreet || savedStreet.length < 5) return;
+    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
+    
+    console.log('[CartDrawer] ✅ Auto-cálculo: endereço salvo + regras prontos. Calculando taxa...');
+    const addr = savedNumber ? `${savedStreet}, ${savedNumber}` : savedStreet;
+    calculateDeliveryFee(addr);
+    setAutoCalcDone(true);
+  }, [savedStreet, savedNumber, storeAddress, deliveryFeeRules, autoCalcDone, calculateDeliveryFee]);
+
+  // Busca automática de CEP via ViaCEP
+  const searchCep = useCallback(async (rawCep: string) => {
+    const cleaned = rawCep.replace(/\D/g, '');
+    if (cleaned.length !== 8) return;
+
+    setLoadingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        toast({ variant: 'destructive', title: 'CEP não encontrado', description: 'Verifique e tente novamente.' });
+        return;
+      }
+      setStreet(data.logradouro || '');
+      setNeighborhood(data.bairro || '');
+      setCity(`${data.localidade} - ${data.uf}` || '');
+      
+      // Auto-calcular taxa após buscar CEP
+      if (data.logradouro) {
+        const addr = number ? `${data.logradouro}, ${number}, ${data.localidade}` : `${data.logradouro}, ${data.localidade}`;
+        setTimeout(() => calculateDeliveryFee(addr), 300);
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao buscar CEP.' });
+    } finally {
+      setLoadingCep(false);
+    }
+  }, [toast, number, calculateDeliveryFee]);
 
   // Callback: quando o cliente seleciona um endereço do autocomplete
   const handleAddressSelected = useCallback((selectedAddress: string) => {
@@ -186,43 +235,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja." });
       return;
     }
-    setStep(isRealUser ? 'info' : 'auth');
+    setStep('info');
   };
 
-  const toAuthEmail = (input: string): string => {
-    if (input.includes('@')) return input.trim().toLowerCase();
-    const sanitized = input.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    return `${sanitized}@cliente.app`;
-  };
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!auth) return;
-    if (!email || !password || password.length < 6) {
-      toast({ variant: "destructive", title: "Dados inválidos", description: "Usuário e senha (6+ caracteres)." });
-      return;
-    }
-    setIsSubmitting(true);
-    const authEmail = toAuthEmail(email);
-    try {
-      try {
-        await signInWithEmailAndPassword(auth, authEmail, password);
-      } catch (err: any) {
-        if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
-          await createUserWithEmailAndPassword(auth, authEmail, password);
-        } else {
-          throw err;
-        }
-      }
-      toast({ title: "Bem-vindo!", description: "Agora informe seus dados de entrega." });
-      setStep('info');
-    } catch (err: any) {
-      console.error(err);
-      toast({ variant: "destructive", title: "Erro no login", description: err?.message || "Falha na autenticação." });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleCheckout = async () => {
     if (!user || !db) {
@@ -245,14 +261,30 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja." });
       return;
     }
+    if (!isStoreOpen) {
+      toast({ variant: "destructive", title: "Loja Fechada", description: "A loja está fechada no momento." });
+      return;
+    }
+    if (cart.length === 0) {
+      toast({ variant: "destructive", title: "Carrinho Vazio", description: "Adicione itens antes de finalizar." });
+      return;
+    }
+    if (orderType === 'delivery' && maxDeliveryRadius > 0) {
+      if (!distanceInfo) {
+        toast({ variant: "destructive", title: "Endereço Inválido", description: "Não foi possível traçar a rota. Verifique seu endereço." });
+        return;
+      }
+      if (distanceInfo.distanceKm > maxDeliveryRadius) {
+        toast({ variant: "destructive", title: "Fora da área", description: `Desculpe, só entregamos até ${maxDeliveryRadius}km de distância.` });
+        return;
+      }
+    }
 
     setIsSubmitting(true);
     try {
       // Salva/atualiza perfil do cliente
       await setDoc(doc(db, 'customers', user.uid), {
         uid: user.uid,
-        email: user.email || '',
-        username: email,
         name: customerName,
         phone: customerPhone,
         address: fullDeliveryAddress,
@@ -263,9 +295,31 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
       const orderRef = doc(collection(db, 'orders'), orderId);
 
+      // Validação de Preço Segura (Cruza com menuItems oficial se disponível)
+      let safeSubtotal = 0;
+      const safeItems = cart.map(item => {
+        const officialItem = menuItems.find(mi => mi.id === item.id);
+        const basePrice = officialItem ? officialItem.price : item.price;
+        
+        const addons = item.customization?.addons || [];
+        const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
+        
+        const safeUnitPrice = basePrice + addonsTotal;
+        safeSubtotal += safeUnitPrice * item.quantity;
+        
+        return {
+          name: officialItem ? officialItem.name : item.name,
+          quantity: item.quantity,
+          unitPrice: safeUnitPrice,
+          addons: addons.map(a => ({ name: a.name, price: a.price })),
+          notes: item.customization?.notes || '',
+        };
+      });
+      const safeGrandTotal = safeSubtotal + appliedDeliveryFee;
+
       const orderData = {
         id: orderId,
-        customerIdentifier: user.uid,
+        customerIdentifier: customerPhone,
         ownerId: effectiveStoreOwnerId,
         customerName,
         customerPhone,
@@ -274,34 +328,30 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
-        totalAmount: grandTotal,
-        subtotal: totalPrice,
+        totalAmount: safeGrandTotal,
+        subtotal: safeSubtotal,
         deliveryFee: appliedDeliveryFee,
         distanceKm: distanceInfo?.distanceKm || null,
         paymentStatus: 'pending',
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
         orderType,
-        items: cart.map(item => {
-          const addons = item.customization?.addons || [];
-          const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
-          return {
-            name: item.name,
-            quantity: item.quantity,
-            unitPrice: item.price + addonsTotal,
-            addons: addons.map(a => ({ name: a.name, price: a.price })),
-            notes: item.customization?.notes || '',
-          };
-        })
+        items: safeItems
       };
 
       await setDoc(orderRef, orderData);
 
       toast({ title: "Pedido Enviado!", description: `Pedido #${orderId} foi recebido.` });
 
+      // Salva o telefone no localStorage e notifica outros componentes
+      try {
+        localStorage.setItem('customer_phone', customerPhone);
+        window.dispatchEvent(new CustomEvent('customer_phone_updated', { detail: customerPhone }));
+      } catch {}
+
       clearCart();
       setIsOpen(false);
       setStep('cart');
-      setPassword('');
+
       setDynamicFee(null);
       setDistanceInfo(null);
     } catch (error: any) {
@@ -312,7 +362,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   };
 
-  const headerTitle = step === 'cart' ? 'Meu Pedido' : step === 'auth' ? 'Identificação' : 'Dados de Entrega';
+  const headerTitle = step === 'cart' ? 'Meu Pedido' : 'Dados de Entrega';
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
@@ -381,20 +431,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 );
               })}
             </div>
-          </ScrollArea>
-        ) : step === 'auth' ? (
-          <ScrollArea className="flex-1 -mx-6 px-6 py-4">
-            <form onSubmit={handleAuth} className="space-y-4" id="auth-form">
-              <p className="text-sm text-muted-foreground">Digite seu telefone, nome ou email e crie uma senha. Sua conta é criada automaticamente.</p>
-              <div className="space-y-2">
-                <Label htmlFor="cust_email">Usuário (telefone, nome ou email)</Label>
-                <Input id="cust_email" type="text" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="Ex: 16991017726" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust_pass">Senha (mínimo 6 caracteres)</Label>
-                <Input id="cust_pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-              </div>
-            </form>
           </ScrollArea>
         ) : (
           <ScrollArea className="flex-1 -mx-6 px-6 py-4">
@@ -492,12 +528,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
               <div className="space-y-3 pt-4 border-t mt-4">
                 <Label>Como você vai pagar?</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-                    { id: 'pix', label: 'Pix', icon: '📱' },
-                    { id: 'debito', label: 'Débito', icon: '💳' },
-                    { id: 'credito', label: 'Crédito', icon: '💳' }
-                  ].map(method => (
+                  {activePaymentMethods.map(method => (
                     <button
                       key={method.id}
                       type="button"
@@ -567,13 +598,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
               <Button className="w-full h-14 bg-primary text-white font-bold" onClick={goToCheckout}>
                 Continuar
               </Button>
-            ) : step === 'auth' ? (
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 h-14" onClick={() => setStep('cart')}>Voltar</Button>
-                <Button form="auth-form" type="submit" className="flex-[2] h-14 bg-primary text-white font-bold" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Entrar / Cadastrar'}
-                </Button>
-              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 {deliveryBlocked && orderType === 'delivery' && (
@@ -582,7 +606,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 h-14" onClick={() => setStep(isRealUser ? 'cart' : 'auth')}>Voltar</Button>
+                  <Button variant="outline" className="flex-1 h-14" onClick={() => setStep('cart')}>Voltar</Button>
                   <Button 
                     className="flex-[2] h-14 bg-accent text-white font-bold" 
                     onClick={handleCheckout} 

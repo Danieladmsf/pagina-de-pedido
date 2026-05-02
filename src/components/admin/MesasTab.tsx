@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
@@ -21,16 +21,18 @@ interface MesasTabProps {
   registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
   caixaAberto?: boolean;
   storeInfo?: any;
+  onOpenCaixa?: () => void;
 }
 
-const FORMAS_PAGAMENTO = [
-  { id: 'dinheiro', label: 'Dinheiro', icon: Banknote },
-  { id: 'pix', label: 'Pix', icon: QrCode },
-  { id: 'debito', label: 'Débito', icon: CreditCard },
-  { id: 'credito', label: 'Crédito', icon: Wallet },
+const DEFAULT_FORMAS_PAGAMENTO = [
+  { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
+  { id: 'pix', label: 'Pix', icon: '📱', active: true },
+  { id: 'debito', label: 'Débito', icon: '💳', active: true },
+  { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto, storeInfo }: MesasTabProps) {
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa }: MesasTabProps) {
+  const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [searchTable, setSearchTable] = useState('');
@@ -249,6 +251,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const handleConfirmCheckout = async () => {
     if (!db || !activeOrderId || !selectedPayment) return;
+    
+    if (!caixaAberto) {
+      toast({ variant: 'destructive', title: 'Caixa Fechado', description: 'Você não pode finalizar mesas com o caixa fechado. Abra o caixa primeiro.' });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await updateDoc(doc(db, 'orders', activeOrderId), {
@@ -256,14 +264,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         paymentMethod: selectedPayment === 'dinheiro' && valorRecebido ? `Dinheiro (Troco para R$ ${Number(valorRecebido).toFixed(2)})` : selectedPayment,
       });
 
-      if (registrarLancamento && caixaAberto) {
-        await registrarLancamento({
-          tipo: 'venda',
-          titulo: `Mesa ${selectedTable} - Finalizada`,
-          valor: cartTotal,
-          formaPagamento: selectedPayment,
-        });
-      }
+      await registrarLancamento({
+        tipo: 'venda',
+        titulo: `Mesa ${selectedTable} - Finalizada`,
+        valor: cartTotal,
+        formaPagamento: selectedPayment,
+      });
 
       toast({ title: 'Sucesso', description: 'Mesa finalizada com sucesso!' });
       setPaymentModalOpen(false);
@@ -274,6 +280,30 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       setIsSubmitting(false);
     }
   };
+
+  if (!caixaAberto) {
+    return (
+      <div className="flex justify-center">
+        <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
+          <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+          <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
+          <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+            <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
+            <p>O caixa precisa estar aberto para poder abrir e gerenciar mesas.</p>
+            <p className="font-semibold text-slate-600">Acesse a aba <span className="text-slate-800">Caixa / Admin</span> no topo da tela para abrir o caixa.</p>
+          </div>
+          <div className="flex gap-3 justify-center">
+            <Button 
+              onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })} 
+              size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+            >
+              Abrir Caixa
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-4 h-[calc(100vh-140px)] overflow-hidden">
@@ -375,14 +405,19 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   <span className="text-2xl font-black text-slate-800">R$ {cartTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 h-12 border-primary text-primary hover:bg-primary/5 font-bold text-lg"
-                    onClick={handleSaveOrder}
-                    disabled={cart.length === 0 || isSubmitting}
-                  >
-                    Salvar Pedido
-                  </Button>
+                  {(() => {
+                    const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart);
+                    return (
+                      <Button 
+                        variant={hasUnsavedChanges ? "outline" : "secondary"} 
+                        className={`flex-1 h-12 font-bold text-lg ${hasUnsavedChanges ? 'border-primary text-primary hover:bg-primary/5' : 'bg-slate-100 text-slate-400 pointer-events-none'}`}
+                        onClick={handleSaveOrder}
+                        disabled={cart.length === 0 || isSubmitting || !hasUnsavedChanges}
+                      >
+                        {isSubmitting ? 'Salvando...' : hasUnsavedChanges ? 'Salvar Pedido' : 'Salvo ✅'}
+                      </Button>
+                    );
+                  })()}
                   {activeOrderId && (
                     <div className="flex-[1.5] flex gap-2">
                       <Button 
@@ -469,70 +504,64 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
       {/* Modal Pagamento Mesa */}
       <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle className="text-lg">Encerrar Mesa {selectedTable}</DialogTitle>
-            <DialogDescription>Recebimento do valor total da mesa.</DialogDescription>
+        <DialogContent className="sm:max-w-[380px] p-4">
+          <DialogHeader className="pb-1">
+            <DialogTitle className="text-sm flex items-center justify-between">
+              <span>💰 Encerrar Mesa {selectedTable}</span>
+              <span className="text-lg font-black text-primary">R$ {cartTotal.toFixed(2)}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">Selecione a forma de pagamento.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-3 py-4">
-            {FORMAS_PAGAMENTO.map(fp => {
-              const Icon = fp.icon;
-              return (
-                <button
-                  key={fp.id}
-                  type="button"
-                  onClick={() => setSelectedPayment(fp.id)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-bold text-sm transition-all ${
-                    selectedPayment === fp.id 
-                      ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30 scale-105' 
-                      : 'border-muted text-muted-foreground hover:border-slate-300'
-                  }`}
-                >
-                  <Icon className="h-6 w-6" />
-                  {fp.label}
-                </button>
-              );
-            })}
+          <div className="grid grid-cols-4 gap-2 py-2">
+            {FORMAS_PAGAMENTO.map((fp: any) => (
+              <button
+                key={fp.id}
+                type="button"
+                onClick={() => setSelectedPayment(fp.id)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
+                  selectedPayment === fp.id 
+                    ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
+                    : 'border-muted text-muted-foreground hover:border-slate-300'
+                }`}
+              >
+                <span className="text-lg">{fp.icon}</span>
+                {fp.label}
+              </button>
+            ))}
           </div>
 
-          <div className="space-y-3">
-            <div className="bg-slate-50 p-3 rounded-lg border text-center">
-              <p className="text-sm text-muted-foreground">Total do pedido</p>
-              <p className="text-2xl font-black text-primary">R$ {cartTotal.toFixed(2)}</p>
+          {selectedPayment === 'dinheiro' && (
+            <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
+              <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="R$ 0,00"
+                value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+                onChange={(e) => {
+                  let val = e.target.value.replace(/\D/g, '');
+                  if (!val) setValorRecebido('');
+                  else setValorRecebido((Number(val) / 100).toFixed(2));
+                }}
+                className="text-sm font-bold text-center bg-white h-9"
+                autoFocus
+              />
+              {Number(valorRecebido) > 0 && (
+                <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= cartTotal ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                  {Number(valorRecebido) >= cartTotal 
+                    ? `Troco: R$ ${(Number(valorRecebido) - cartTotal).toFixed(2)}`
+                    : `Falta: R$ ${(cartTotal - Number(valorRecebido)).toFixed(2)}`
+                  }
+                </div>
+              )}
             </div>
+          )}
 
-            {selectedPayment === 'dinheiro' && (
-              <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-2">
-                <label className="text-sm font-medium text-amber-800">💵 Valor recebido em dinheiro (R$)</label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="R$ 0,00"
-                  value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (!val) setValorRecebido('');
-                    else setValorRecebido((Number(val) / 100).toFixed(2));
-                  }}
-                  className="text-lg font-bold text-center bg-white"
-                  autoFocus
-                />
-                {Number(valorRecebido) > 0 && (
-                  <div className={`text-center p-2 rounded-lg font-bold text-lg ${Number(valorRecebido) >= cartTotal ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                    {Number(valorRecebido) >= cartTotal 
-                      ? `Troco: R$ ${(Number(valorRecebido) - cartTotal).toFixed(2)}`
-                      : `Falta: R$ ${(cartTotal - Number(valorRecebido)).toFixed(2)}`
-                    }
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
+          <DialogFooter className="pt-1 gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
             <Button 
+              size="sm"
               disabled={!selectedPayment || isSubmitting} 
               onClick={handleConfirmCheckout}
               className="bg-green-600 hover:bg-green-700"
