@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { PrintReceipt } from './PrintReceipt';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
+import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -23,6 +24,7 @@ interface NovoPedidoTabProps {
   caixaAberto?: boolean;
   storeProfile?: any;
   onOpenCaixa?: () => void;
+  addons?: any[];
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -35,12 +37,14 @@ const DEFAULT_FORMAS_PAGAMENTO = [
 export function NovoPedidoTab({ categories, items, db, user, registrarLancamento,
   caixaAberto = false,
   storeProfile,
-  onOpenCaixa
+  onOpenCaixa,
+  addons = []
 }: NovoPedidoTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   
   // Carrinho
   const [cart, setCart] = useState<any[]>([]);
@@ -53,19 +57,29 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   });
 
   const addToCart = (item: any) => {
-    setCart(prev => {
-      const existing = prev.find(i => i.id === item.id);
-      if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
-      }
-      return [...prev, { ...item, quantity: 1, addons: [], notes: '' }];
-    });
+    setSelectedItemForDialog(item);
   };
 
-  const updateQuantity = (id: string, delta: number) => {
+  const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
+    const cartItemId = `${item.id}-${Date.now()}`;
+    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+    setCart(prev => [
+      ...prev,
+      {
+        ...item,
+        cartItemId,
+        quantity,
+        addons: options.addons || [],
+        notes: options.notes || '',
+        unitPrice
+      }
+    ]);
+  };
+
+  const updateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => {
       return prev.map(i => {
-        if (i.id === id) {
+        if ((i.cartItemId || i.id) === cartItemId) {
           const newQ = i.quantity + delta;
           return newQ > 0 ? { ...i, quantity: newQ } : i;
         }
@@ -74,11 +88,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     });
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(i => i.id !== id));
+  const removeFromCart = (cartItemId: string) => {
+    setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const cartTotal = cart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0);
 
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState('');
@@ -205,7 +219,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       await setDoc(newOrderRef, orderData);
 
       // Registrar venda no caixa
-      await registrarLancamento({
+      await registrarLancamento?.({
         tipo: 'venda',
         titulo: `PDV #${newOrderRef.id.substring(0, 5)} - Balcão`,
         valor: finalTotal,
@@ -425,23 +439,29 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           ) : (
             <div className="space-y-2">
               {cart.map((item) => (
-                <div key={item.id} className="flex justify-between items-start border-b pb-2">
+                <div key={item.cartItemId || item.id} className="flex justify-between items-start border-b pb-2">
                   <div className="flex-1">
                     <h4 className="font-semibold text-xs text-slate-800">{item.name}</h4>
-                    <p className="text-[10px] text-muted-foreground">R$ {item.price.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                    {item.addons && item.addons.length > 0 && (
+                      <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                        {item.addons.map((a: any) => a.name).join(', ')}
+                      </div>
+                    )}
+                    {item.notes && <div className="text-[10px] text-orange-500 mt-0.5">Obs: {item.notes}</div>}
                     <div className="flex items-center gap-1 mt-1">
-                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.id, -1)}>
+                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, -1)}>
                         <Minus className="h-2 w-2" />
                       </Button>
                       <span className="text-[10px] font-bold w-3 text-center">{item.quantity}</span>
-                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.id, 1)}>
+                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, 1)}>
                         <Plus className="h-2 w-2" />
                       </Button>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                     <span className="font-semibold text-xs">R$ {(item.price * item.quantity).toFixed(2)}</span>
-                     <Button variant="ghost" size="icon" className="h-5 w-5 text-red-400 hover:text-red-500" onClick={() => removeFromCart(item.id)}>
+                     <span className="font-semibold text-xs">R$ {((item.unitPrice || item.price) * item.quantity).toFixed(2)}</span>
+                     <Button variant="ghost" size="icon" className="h-5 w-5 text-red-400 hover:text-red-500" onClick={() => removeFromCart(item.cartItemId || item.id)}>
                         <X className="h-3 w-3" />
                      </Button>
                   </div>
@@ -565,6 +585,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       {orderToPrint && (
         <PrintReceipt order={orderToPrint} storeInfo={storeProfile} />
       )}
+      <MenuItemDialog
+        item={selectedItemForDialog}
+        isOpen={!!selectedItemForDialog}
+        onClose={() => setSelectedItemForDialog(null)}
+        allAddons={addons}
+        onAddToCart={handleDialogAddToCart}
+      />
     </div>
   );
 }

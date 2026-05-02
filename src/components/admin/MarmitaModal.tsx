@@ -25,6 +25,7 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
   const [fixedItemsText, setFixedItemsText] = useState((editingMarmita?.fixedItems || []).join(', '));
   const [groups, setGroups] = useState<AddonGroup[]>(editingMarmita?.addonGroups || []);
   const [groupNameInput, setGroupNameInput] = useState('');
+  const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   
   const handleAddGroup = () => {
     const name = groupNameInput.trim() || 'Nova Etapa';
@@ -49,6 +50,21 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
       group.addonIds = group.addonIds.filter(id => id !== addonId);
     } else {
       group.addonIds = [...group.addonIds, addonId];
+    }
+    setGroups(newGroups);
+  };
+
+  const handleToggleFreeAddon = (groupIndex: number, addonId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const newGroups = [...groups];
+    const group = newGroups[groupIndex];
+    if (!group.freeAddonIds) group.freeAddonIds = [];
+    
+    if (group.freeAddonIds.includes(addonId)) {
+      group.freeAddonIds = group.freeAddonIds.filter(id => id !== addonId);
+    } else {
+      group.freeAddonIds = [...group.freeAddonIds, addonId];
     }
     setGroups(newGroups);
   };
@@ -113,7 +129,7 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
 
   return (
     <Dialog open={editingMarmita !== null} onOpenChange={(open) => { if (!open) setEditingMarmita(null); }}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{editingMarmita.id ? 'Editar Marmita/Prato Montável' : 'Nova Marmita / Prato Montável'}</DialogTitle>
         </DialogHeader>
@@ -151,9 +167,8 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
               Crie os passos que o cliente deve seguir. Ex: "1. Escolha a Carne", "2. Escolha as Guarnições".
             </p>
 
-            <div className="flex gap-2 mb-4">
-              <Input placeholder="Nome do novo grupo (Ex: Escolha a Carne)" value={groupNameInput} onChange={e => setGroupNameInput(e.target.value)} onKeyDown={e => { if(e.key === 'Enter'){ e.preventDefault(); handleAddGroup(); }}} />
-              <Button type="button" onClick={handleAddGroup} variant="secondary"><Plus className="h-4 w-4 mr-1"/> Adicionar Etapa</Button>
+            <div className="mb-4">
+              <Button type="button" onClick={handleAddGroup} variant="secondary" className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1"/> Adicionar Etapa</Button>
             </div>
 
             {groups.length > 0 ? (
@@ -172,13 +187,11 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
                                 <Input 
                                   value={group.name} 
                                   onChange={e => handleUpdateGroup(index, 'name', e.target.value)} 
-                                  className="h-8 font-semibold"
+                                  className="h-8 font-semibold flex-1"
                                 />
-                                <div className="flex items-center gap-1 bg-white border rounded px-2">
-                                  <Label className="text-xs">Min</Label>
-                                  <Input type="number" min="0" value={group.min} onChange={e => handleUpdateGroup(index, 'min', parseInt(e.target.value)||0)} className="w-12 h-7 px-1 text-center border-0" />
-                                  <Label className="text-xs ml-1">Max</Label>
-                                  <Input type="number" min="1" value={group.max} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||1)} className="w-12 h-7 px-1 text-center border-0" />
+                                <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded px-2 whitespace-nowrap">
+                                  <Label className="text-[10px] text-emerald-700 font-bold">Qtd Inclusa (Grátis)</Label>
+                                  <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-10 h-7 px-1 text-center border-0 bg-transparent text-emerald-700 font-bold text-[11px]" />
                                 </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={() => handleRemoveGroup(index)}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
@@ -186,26 +199,57 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
                               </div>
                               
                               <div className="bg-white border rounded-md p-2 max-h-[150px] overflow-y-auto">
-                                <Label className="text-xs text-muted-foreground mb-1 block">Selecione as opções disponíveis para este grupo:</Label>
-                                {Object.keys(addonsByGroup || {}).map(g => (
-                                  <div key={g} className="mb-2">
-                                    <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">{g}</div>
-                                    <div className="grid grid-cols-2 gap-1">
-                                      {addonsByGroup[g].map((addon: any) => (
-                                        <label key={addon.id} className="flex items-center gap-2 text-xs p-1 hover:bg-slate-50 rounded cursor-pointer">
-                                          <input 
-                                            type="checkbox" 
-                                            checked={group.addonIds.includes(addon.id)}
-                                            onChange={() => handleToggleAddonInGroup(index, addon.id)}
-                                            className="rounded text-primary focus:ring-primary"
-                                          />
-                                          <span className="truncate flex-1">{addon.name}</span>
-                                          {addon.price > 0 && <span className="text-emerald-600">+R$ {addon.price.toFixed(2)}</span>}
-                                        </label>
-                                      ))}
+                                <div className="flex justify-between items-center mb-1">
+                                  <Label className="text-xs text-muted-foreground">Selecione as opções disponíveis para este grupo:</Label>
+                                  <Input 
+                                    placeholder="Buscar..." 
+                                    className="h-6 text-[10px] w-32"
+                                    value={groupSearchTerms[index] || ''}
+                                    onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [index]: e.target.value})}
+                                  />
+                                </div>
+                                {Object.keys(addonsByGroup || {}).map(g => {
+                                  const searchTerm = (groupSearchTerms[index] || '').toLowerCase();
+                                  const filtered = addonsByGroup[g].filter((addon: any) => addon.name.toLowerCase().includes(searchTerm));
+                                  if (filtered.length === 0) return null;
+                                  
+                                  return (
+                                    <div key={g} className="mb-2">
+                                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">{g}</div>
+                                      <div className="grid grid-cols-2 gap-1">
+                                        {filtered.map((addon: any) => {
+                                          const isChecked = group.addonIds.includes(addon.id);
+                                          const isFree = group.freeAddonIds?.includes(addon.id);
+                                          return (
+                                            <label key={addon.id} className="flex items-center gap-2 text-xs p-1 hover:bg-slate-50 rounded cursor-pointer group/item">
+                                              <input 
+                                                type="checkbox" 
+                                                checked={isChecked}
+                                                onChange={() => handleToggleAddonInGroup(index, addon.id)}
+                                                className="rounded text-primary focus:ring-primary"
+                                              />
+                                              <span className="truncate flex-1">{addon.name}</span>
+                                              {addon.price > 0 && (
+                                                <div className="flex items-center gap-1">
+                                                  {isFree ? (
+                                                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">Grátis</span>
+                                                  ) : (
+                                                    <span className="text-emerald-600">+R$ {addon.price.toFixed(2)}</span>
+                                                  )}
+                                                  {isChecked && (
+                                                    <button type="button" onClick={(e) => handleToggleFreeAddon(index, addon.id, e)} className="opacity-0 group-hover/item:opacity-100 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 rounded transition-opacity">
+                                                      {isFree ? 'Cobrar' : 'Isentar'}
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             </div>
                           )}

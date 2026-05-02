@@ -265,6 +265,9 @@ export default function AdminPage() {
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [addonGroups, setAddonGroups] = useState<any[]>([]);
+  const [addonSearchTerm, setAddonSearchTerm] = useState('');
+  const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('30d');
   const [customFrom, setCustomFrom] = useState<string>('');
@@ -420,6 +423,7 @@ export default function AdminPage() {
         categoryId: formData.get('categoryId') as string,
         imageUrl,
         addonIds: selectedAddonIds,
+        addonGroups: addonGroups,
         ownerId: user.uid,
         isAvailable: true,
         isRecommended: false,
@@ -435,6 +439,7 @@ export default function AdminPage() {
       setImageFile(null);
       setImagePreview('');
       setSelectedAddonIds([]);
+      setAddonGroups([]);
       toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
     } catch (err: any) {
       console.error('Erro ao salvar produto:', err);
@@ -580,6 +585,7 @@ export default function AdminPage() {
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
             storeProfile={storeProfile}
+            addons={addons || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
         )}
@@ -593,6 +599,7 @@ export default function AdminPage() {
             user={user}
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
+            addons={addons || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
         )}
@@ -693,29 +700,29 @@ export default function AdminPage() {
                   }} className="bg-emerald-600 text-white hover:bg-emerald-700">
                     Importar Base Bysell
                   </Button>
-                  <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); } }}>
+                  <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); setAddonGroups([]); } }}>
                     <DialogTrigger asChild>
-                      <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); }} className="bg-primary text-white">
-                        <Plus className="mr-2 h-4 w-4" /> Novo Prato
+                      <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); setAddonGroups([]); }} className="bg-primary text-white">
+                        <Plus className="mr-2 h-4 w-4" /> Novo Produto
                       </Button>
                     </DialogTrigger>
-                  <DialogContent className="sm:max-w-[480px] max-h-[90vh] flex flex-col">
+                  <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col">
                     <DialogHeader className="pb-2">
-                      <DialogTitle>{editingItem?.id ? 'Editar Prato' : 'Novo Prato'}</DialogTitle>
+                      <DialogTitle>{editingItem?.id ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSaveItem} className="space-y-3 overflow-y-auto pr-1 flex-1" style={{maxHeight: 'calc(90vh - 120px)'}}>
+                    <form onSubmit={handleSaveItem} className="space-y-2 overflow-y-auto pr-1 flex-1" style={{maxHeight: 'calc(90vh - 120px)'}}>
                       <div className="space-y-1">
-                        <Label htmlFor="name" className="text-xs">Nome do Prato</Label>
-                        <Input id="name" name="name" defaultValue={editingItem?.name} required className="h-9" />
+                        <Label htmlFor="name" className="text-[11px] font-semibold text-muted-foreground">NOME DO PRATO</Label>
+                        <Input id="name" name="name" defaultValue={editingItem?.name} required className="h-8 text-xs" />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label htmlFor="price" className="text-xs">Preço (R$)</Label>
-                          <CurrencyInput id="price" name="price" defaultValue={editingItem?.price} required />
+                          <Label htmlFor="price" className="text-[11px] font-semibold text-muted-foreground">PREÇO (R$)</Label>
+                          <CurrencyInput id="price" name="price" defaultValue={editingItem?.price} required className="h-8 text-xs" />
                         </div>
                         <div className="space-y-1">
-                          <Label htmlFor="categoryId" className="text-xs">Categoria</Label>
-                          <select name="categoryId" className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm" defaultValue={editingItem?.categoryId}>
+                          <Label htmlFor="categoryId" className="text-[11px] font-semibold text-muted-foreground">CATEGORIA</Label>
+                          <select name="categoryId" className="w-full h-8 rounded-md border border-input bg-background px-2 py-1 text-xs" defaultValue={editingItem?.categoryId}>
                             <option value="">Selecione...</option>
                             {categories?.map(cat => (
                               <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -724,17 +731,17 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Foto do Prato</Label>
+                        <Label className="text-[11px] font-semibold text-muted-foreground">FOTO DO PRATO</Label>
                         <div className="flex items-center gap-2">
                           {(imagePreview || editingItem?.imageUrl) && (
-                            <div className="relative h-12 w-12 rounded-lg overflow-hidden border flex-shrink-0">
+                            <div className="relative h-10 w-10 rounded overflow-hidden border flex-shrink-0">
                               <Image src={imagePreview || editingItem?.imageUrl} alt="preview" fill className="object-cover" />
                             </div>
                           )}
                           <label className="flex-1 cursor-pointer">
-                            <div className="flex items-center justify-center gap-2 border-2 border-dashed border-muted-foreground/30 rounded-lg p-2 hover:border-primary transition-colors">
-                              <Upload className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">
+                            <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded p-1.5 hover:border-primary transition-colors bg-muted/20">
+                              <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-[11px] text-muted-foreground">
                                 {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
                               </span>
                             </div>
@@ -743,35 +750,120 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor="description" className="text-xs">Descrição</Label>
-                        <Textarea id="description" name="description" defaultValue={editingItem?.description} required className="min-h-[60px] resize-none" />
+                        <Label htmlFor="description" className="text-[11px] font-semibold text-muted-foreground">DESCRIÇÃO</Label>
+                        <Textarea id="description" name="description" defaultValue={editingItem?.description} required className="min-h-[40px] text-xs resize-none" />
                       </div>
                       {addons && addons.length > 0 && (
-                        <div className="space-y-1">
-                          <Label className="text-xs">Adicionais Disponíveis</Label>
-                          <div className="space-y-1 border rounded-md p-2 max-h-36 overflow-y-auto">
-                            {addons.map(addon => {
-                              const checked = selectedAddonIds.includes(addon.id);
-                              return (
-                                <label key={addon.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/50 px-2 py-1 rounded">
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={(e) => {
-                                        if (e.target.checked) setSelectedAddonIds([...selectedAddonIds, addon.id]);
-                                        else setSelectedAddonIds(selectedAddonIds.filter(id => id !== addon.id));
-                                      }}
-                                      className="h-3.5 w-3.5"
-                                    />
-                                    <span className="text-xs">{addon.name}</span>
-                                  </div>
-                                  <span className="text-[10px] font-semibold text-primary">+ R$ {(addon.price || 0).toFixed(2)}</span>
-                                </label>
-                              );
-                            })}
+                        <div className="space-y-4 pt-2 border-t mt-4">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-bold flex items-center gap-2"><Component className="h-4 w-4" /> Configuração de Complementos</Label>
                           </div>
-                          <p className="text-[10px] text-muted-foreground">Marque os adicionais que este produto pode receber.</p>
+                          
+                          {(() => {
+                            const sortedAddons = [...(addons || [])].sort((a,b) => a.name.localeCompare(b.name));
+                            const filteredAddons = addonSearchTerm 
+                              ? sortedAddons.filter(a => a.name.toLowerCase().includes(addonSearchTerm.toLowerCase()))
+                              : sortedAddons;
+
+                            return (
+                              <>
+                                {/* Grupos de Adicionais */}
+                                <div className="space-y-3">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs font-semibold">Grupos de Adicionais (Ex: Guarnições, Preferências)</span>
+                                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setAddonGroups([...addonGroups, { name: '', min: 0, max: 1, addonIds: [] }])}>
+                                      <Plus className="h-3 w-3 mr-1" /> Add Grupo
+                                    </Button>
+                                  </div>
+                                  
+                                  {addonGroups.map((group, groupIdx) => (
+                                    <div key={groupIdx} className="border border-primary/20 rounded-md p-3 space-y-2 bg-primary/5">
+                                      <div className="flex items-center gap-2">
+                                        <Input 
+                                          placeholder="Nome do Grupo (Ex: Escolha sua Carne)" 
+                                          className="h-8 text-xs flex-1"
+                                          value={group.name}
+                                          onChange={e => {
+                                            const newGroups = [...addonGroups];
+                                            newGroups[groupIdx].name = e.target.value;
+                                            setAddonGroups(newGroups);
+                                          }}
+                                        />
+                                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setAddonGroups(addonGroups.filter((_, i) => i !== groupIdx))}>
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+
+                                      <div className="pt-1">
+                                        <div className="flex justify-between items-center mb-1">
+                                          <Label className="text-[10px]">Selecione as opções deste grupo:</Label>
+                                          <Input 
+                                            placeholder="Buscar neste grupo..." 
+                                            className="h-6 text-[10px] w-32"
+                                            value={groupSearchTerms[groupIdx] || ''}
+                                            onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [groupIdx]: e.target.value})}
+                                          />
+                                        </div>
+                                        <div className="max-h-32 overflow-y-auto border rounded bg-background p-1 space-y-1">
+                                          {sortedAddons
+                                            .filter(a => a.name.toLowerCase().includes((groupSearchTerms[groupIdx] || '').toLowerCase()))
+                                            .map(addon => {
+                                              const checked = group.addonIds.includes(addon.id);
+                                              const isFree = group.freeAddonIds?.includes(addon.id);
+                                              return (
+                                                <label key={addon.id} className="flex items-center gap-2 px-1 py-0.5 hover:bg-muted/50 rounded cursor-pointer group/item">
+                                                  <input 
+                                                    type="checkbox" className="h-3 w-3" checked={checked}
+                                                    onChange={e => {
+                                                      const newGroups = [...addonGroups];
+                                                      if (e.target.checked) newGroups[groupIdx].addonIds.push(addon.id);
+                                                      else newGroups[groupIdx].addonIds = newGroups[groupIdx].addonIds.filter((id: string) => id !== addon.id);
+                                                      setAddonGroups(newGroups);
+                                                    }}
+                                                  />
+                                                  <span className="text-[10px] flex-1 truncate">{addon.name}</span>
+                                                  {addon.price > 0 && (
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                      {isFree ? (
+                                                        <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">Grátis</span>
+                                                      ) : (
+                                                        <span className="text-[10px] text-primary font-medium">+R${(addon.price||0).toFixed(2)}</span>
+                                                      )}
+                                                      {checked && (
+                                                        <button 
+                                                          type="button" 
+                                                          className="opacity-0 group-hover/item:opacity-100 text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 rounded transition-opacity"
+                                                          onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            const newGroups = [...addonGroups];
+                                                            if (!newGroups[groupIdx].freeAddonIds) newGroups[groupIdx].freeAddonIds = [];
+                                                            if (newGroups[groupIdx].freeAddonIds.includes(addon.id)) {
+                                                              newGroups[groupIdx].freeAddonIds = newGroups[groupIdx].freeAddonIds.filter((id: string) => id !== addon.id);
+                                                            } else {
+                                                              newGroups[groupIdx].freeAddonIds.push(addon.id);
+                                                            }
+                                                            setAddonGroups(newGroups);
+                                                          }}
+                                                        >
+                                                          {isFree ? 'Cobrar' : 'Isentar'}
+                                                        </button>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </label>
+                                              )
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                       <DialogFooter className="pt-2">
@@ -872,7 +964,17 @@ export default function AdminPage() {
                             />
                           </TableCell>
                           <TableCell className="text-right pr-6 space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setEditingItem(item); setSelectedAddonIds(item.addonIds || []); setImageFile(null); setImagePreview(''); }}>
+                            <Button variant="ghost" size="icon" onClick={() => { 
+                              if (item.isMarmita) {
+                                setEditingMarmita(item);
+                              } else {
+                                setEditingItem(item); 
+                                setSelectedAddonIds(item.addonIds || []); 
+                                setAddonGroups(item.addonGroups || []); 
+                                setImageFile(null); 
+                                setImagePreview(''); 
+                              }
+                            }}>
                               <Pencil className="h-4 w-4 text-blue-500" />
                             </Button>
                             <Button variant="ghost" size="icon" onClick={async () => {

@@ -18,9 +18,10 @@ interface MenuItemDialogProps {
   onClose: () => void;
   allAddons?: Addon[];
   isStoreOpen?: boolean;
+  onAddToCart?: (item: any, quantity: number, options: any) => void;
 }
 
-export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreOpen = true }: MenuItemDialogProps) {
+export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreOpen = true, onAddToCart }: MenuItemDialogProps) {
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
@@ -41,7 +42,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
   }, [isOpen, item?.id]);
 
   const productAddons = useMemo(() => {
-    if (item?.isMarmita || item?.isCombo) return [];
+    if (item?.isCombo) return [];
     if (!item?.addonIds || item.addonIds.length === 0) return [];
     return allAddons.filter(a => item.addonIds!.includes(a.id));
   }, [item, allAddons]);
@@ -65,14 +66,15 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
       if (exists) {
         next = next.filter(a => a.id !== addon.id);
       } else {
+        const finalPrice = group.freeAddonIds?.includes(addon.id) ? 0 : addon.price;
         if (next.length >= group.max) {
           if (group.max === 1) {
-            next = [{ id: addon.id, name: addon.name, price: addon.price }];
+            next = [{ id: addon.id, name: addon.name, price: finalPrice }];
           } else {
             return prev; // não permite selecionar mais
           }
         } else {
-          next.push({ id: addon.id, name: addon.name, price: addon.price });
+          next.push({ id: addon.id, name: addon.name, price: finalPrice });
         }
       }
       return { ...prev, [groupIndex]: next };
@@ -83,16 +85,25 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
   let addonsTotal = 0;
   let finalAddonsList: SelectedAddon[] = [];
 
-  if (item.isMarmita) {
-    Object.values(marmitaSelections).forEach(arr => {
-      arr.forEach(a => {
-        addonsTotal += a.price;
+  if (item.addonGroups && item.addonGroups.length > 0) {
+    item.addonGroups.forEach((group, index) => {
+      const arr = marmitaSelections[index] || [];
+      const freeLimit = group.freeLimit || 0;
+      
+      arr.forEach((a, i) => {
+        // Se o índice for maior ou igual ao limite gratuito, cobra o valor
+        if (i >= freeLimit) {
+          addonsTotal += a.price;
+        }
+        // Mas o item sempre vai pro carrinho final
         finalAddonsList.push(a);
       });
     });
-  } else {
-    addonsTotal = selectedAddons.reduce((acc, a) => acc + a.price, 0);
-    finalAddonsList = [...selectedAddons];
+  }
+  
+  if (selectedAddons.length > 0) {
+    addonsTotal += selectedAddons.reduce((acc, a) => acc + a.price, 0);
+    finalAddonsList = [...finalAddonsList, ...selectedAddons];
   }
 
   const unitPrice = item.price + addonsTotal;
@@ -102,13 +113,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
   let canAddToCart = true;
   let validationMessage = '';
 
-  if (item.isMarmita && item.addonGroups) {
+  if (item.addonGroups && item.addonGroups.length > 0) {
     for (let i = 0; i < item.addonGroups.length; i++) {
       const g = item.addonGroups[i];
       const selectedCount = (marmitaSelections[i] || []).length;
       if (selectedCount < g.min) {
         canAddToCart = false;
-        validationMessage = `Falta selecionar itens na etapa: ${g.name} (mínimo ${g.min})`;
+        validationMessage = `Selecione ao menos ${g.min} em: ${g.name}`;
         break;
       }
     }
@@ -116,35 +127,23 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
 
   const handleAdd = () => {
     if (!canAddToCart) return;
-    addToCart(item, quantity, { addons: finalAddonsList, notes });
+    if (onAddToCart) {
+      onAddToCart(item, quantity, { addons: finalAddonsList, notes });
+    } else {
+      addToCart(item, quantity, { addons: finalAddonsList, notes });
+    }
     onClose();
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto flex flex-col">
-        <DialogHeader>
-          <div className="relative w-full h-48 mb-4 overflow-hidden rounded-lg bg-muted/30 flex items-center justify-center">
-            {item.imageUrl ? (
-              <Image
-                src={item.imageUrl}
-                alt={item.name}
-                fill
-                className="object-cover"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center text-muted-foreground/40">
-                <span className="text-4xl">🍽️</span>
-                <span className="text-sm mt-2 font-medium">Sem imagem</span>
-              </div>
-            )}
-          </div>
-          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+      <DialogContent className="sm:max-w-[400px] max-h-[85vh] overflow-y-auto flex flex-col p-4">
+        <DialogHeader className="pb-1 space-y-1">
+          <DialogTitle className="text-lg font-bold flex items-center gap-2 leading-tight">
             {item.name}
-            {item.isCombo && <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded uppercase tracking-wider font-bold">Combo</span>}
-            {item.isMarmita && <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded uppercase tracking-wider font-bold">Montável</span>}
+            {item.isCombo && <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Combo</span>}
           </DialogTitle>
-          <p className="text-muted-foreground">{item.description}</p>
+          <p className="text-xs text-muted-foreground">{item.description}</p>
         </DialogHeader>
 
         <div className="space-y-6 py-4 flex-1 overflow-y-auto pr-2">
@@ -162,25 +161,26 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
           )}
 
           {/* Normal Addons */}
-          {!item.isMarmita && !item.isCombo && productAddons.length > 0 && (
-            <div className="space-y-3">
-              <Label className="text-base font-semibold">Adicionais</Label>
-              <div className="space-y-2">
+          {!item.isCombo && productAddons.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Adicionais Avulsos</Label>
+              <div className="space-y-1.5">
                 {productAddons.map((addon) => {
                   const checked = !!selectedAddons.find(a => a.id === addon.id);
                   return (
                     <label
                       key={addon.id}
-                      className="flex items-center justify-between gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="flex items-center justify-between gap-2 p-2 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <Checkbox
                           checked={checked}
                           onCheckedChange={() => toggleNormalAddon(addon)}
+                          className="h-3.5 w-3.5"
                         />
-                        <span className="text-sm font-medium">{addon.name}</span>
+                        <span className="text-xs font-medium">{addon.name}</span>
                       </div>
-                      <span className="text-sm font-bold text-primary">
+                      <span className="text-xs font-bold text-primary">
                         + R$ {addon.price.toFixed(2)}
                       </span>
                     </label>
@@ -190,28 +190,35 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
             </div>
           )}
 
-          {/* Marmita Addon Groups */}
-          {item.isMarmita && item.addonGroups && item.addonGroups.map((group, groupIndex) => {
+          {/* Addon Groups */}
+          {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
             const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id));
             const currentSelected = marmitaSelections[groupIndex] || [];
             
             if (availableAddons.length === 0) return null;
 
             return (
-              <div key={groupIndex} className="space-y-3 p-4 border rounded-lg bg-slate-50/50">
+              <div key={groupIndex} className="space-y-2 p-3 border rounded-md bg-slate-50/50">
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <Label className="text-base font-bold text-slate-800">{group.name}</Label>
-                    <span className="text-xs bg-slate-200 px-2 py-0.5 rounded text-slate-600 font-medium">
-                      Escolha de {group.min} a {group.max}
-                    </span>
+                    <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
+                    <div className="flex gap-1">
+                      {group.freeLimit ? (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
+                          {group.freeLimit} {group.freeLimit === 1 ? 'grátis' : 'grátis'}
+                        </span>
+                      ) : null}
+                      <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
+                        Escolha de {group.min} a {group.max}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground font-medium">
+                  <span className="text-[10px] text-muted-foreground font-medium">
                     {currentSelected.length} de {group.max} selecionados
                   </span>
                 </div>
                 
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   {availableAddons.map((addon) => {
                     const checked = !!currentSelected.find(a => a.id === addon.id);
                     const disabled = !checked && currentSelected.length >= group.max && group.max > 1;
@@ -219,22 +226,26 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                     return (
                       <label
                         key={addon.id}
-                        className={`flex items-center justify-between gap-3 p-2.5 border rounded-md cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center justify-between gap-2 p-2 border rounded cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
                           <input 
                             type={group.max === 1 ? 'radio' : 'checkbox'} 
                             name={`group-${groupIndex}`}
                             checked={checked}
                             onChange={() => !disabled && toggleMarmitaAddon(groupIndex, addon, group)}
                             disabled={disabled}
-                            className="rounded-sm text-primary focus:ring-primary"
+                            className="h-3.5 w-3.5 rounded-sm text-primary focus:ring-primary"
                           />
-                          <span className={`text-sm ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
+                          <span className={`text-xs ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
                         </div>
                         {addon.price > 0 && (
-                          <span className="text-xs font-bold text-emerald-600">
-                            + R$ {addon.price.toFixed(2)}
+                          <span className="text-[11px] font-bold text-emerald-600">
+                            {group.freeAddonIds?.includes(addon.id) ? (
+                              <span className="bg-emerald-100 text-emerald-700 px-1 rounded">Grátis</span>
+                            ) : (
+                              `+ R$ ${addon.price.toFixed(2)}`
+                            )}
                           </span>
                         )}
                       </label>
@@ -245,13 +256,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
             );
           })}
 
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Observações</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Observações</Label>
             <Textarea
               placeholder="Ex: sem cebola, ponto da carne, etc."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="resize-none"
+              className="resize-none min-h-[50px] text-xs"
             />
           </div>
         </div>

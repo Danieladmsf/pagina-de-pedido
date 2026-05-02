@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
 
+import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+
 interface MesasTabProps {
   orders?: any[];
   categories?: any[];
@@ -22,6 +24,7 @@ interface MesasTabProps {
   caixaAberto?: boolean;
   storeInfo?: any;
   onOpenCaixa?: () => void;
+  addons?: any[];
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -31,12 +34,13 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa }: MesasTabProps) {
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [] }: MesasTabProps) {
   const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [searchTable, setSearchTable] = useState('');
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
+  const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
 
   // PDV States
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -105,20 +109,29 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         return;
       }
     }
-
-    setCart(prev => {
-      const existing = prev.find(i => i.id === item.id);
-      if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
-      }
-      return [...prev, { id: item.id, name: item.name, quantity: 1, unitPrice: item.price, addons: [], notes: '' }];
-    });
+    setSelectedItemForDialog(item);
   };
 
-  const updateQuantity = (id: string, delta: number) => {
+  const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
+    const cartItemId = `${item.id}-${Date.now()}`;
+    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+    setCart(prev => [
+      ...prev,
+      {
+        ...item,
+        cartItemId,
+        quantity,
+        addons: options.addons || [],
+        notes: options.notes || '',
+        unitPrice
+      }
+    ]);
+  };
+
+  const updateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => {
       return prev.map(i => {
-        if (i.id === id) {
+        if ((i.cartItemId || i.id) === cartItemId) {
           const newQ = i.quantity + delta;
           return newQ > 0 ? { ...i, quantity: newQ } : i;
         }
@@ -127,8 +140,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     });
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(i => i.id !== id));
+  const removeFromCart = (cartItemId: string) => {
+    setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
   };
 
   const handleSaveOrder = async () => {
@@ -138,7 +151,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     // Calcula diferença para impressão da cozinha
     const newItemsToPrint: any[] = [];
     cart.forEach(item => {
-      const originalItem = originalCart.find(oi => oi.id === item.id);
+      const originalItem = originalCart.find(oi => (oi.cartItemId || oi.id) === (item.cartItemId || item.id));
       const diffQty = item.quantity - (originalItem ? originalItem.quantity : 0);
       if (diffQty > 0) {
         newItemsToPrint.push({ ...item, quantity: diffQty });
@@ -265,7 +278,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         paymentMethod: selectedPayment === 'dinheiro' && valorRecebido ? `Dinheiro (Troco para R$ ${Number(valorRecebido).toFixed(2)})` : selectedPayment,
       });
 
-      await registrarLancamento({
+      await registrarLancamento?.({
         tipo: 'venda',
         titulo: `Mesa ${selectedTable} - Finalizada`,
         valor: cartTotal,
@@ -380,17 +393,23 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 ) : (
                   <div className="space-y-2">
                     {cart.map((item, index) => (
-                      <div key={`${item.id}-${index}`} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm">
+                      <div key={item.cartItemId || item.id || index} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm">
                         <div className="flex-1 min-w-0">
                           <p className="text-base font-bold text-slate-800 truncate">{item.name}</p>
-                          <p className="text-sm text-green-600 font-bold">R$ {item.unitPrice.toFixed(2)}</p>
+                          <p className="text-sm text-green-600 font-bold">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                          {item.addons && item.addons.length > 0 && (
+                            <div className="text-xs text-muted-foreground leading-tight mt-0.5">
+                              {item.addons.map((a: any) => a.name).join(', ')}
+                            </div>
+                          )}
+                          {item.notes && <div className="text-xs text-orange-500 mt-0.5">Obs: {item.notes}</div>}
                         </div>
                         <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
-                          <button onClick={() => updateQuantity(item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
+                          <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
                           <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
+                          <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
                         </div>
-                        <button onClick={() => removeFromCart(item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
+                        <button onClick={() => removeFromCart(item.cartItemId || item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
                           <X className="h-5 w-5" />
                         </button>
                       </div>
@@ -597,6 +616,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       {orderToPrint && (
         <PrintReceipt order={orderToPrint} storeInfo={storeInfo} isKitchen={isKitchenPrint} />
       )}
+      <MenuItemDialog
+        item={selectedItemForDialog}
+        isOpen={!!selectedItemForDialog}
+        onClose={() => setSelectedItemForDialog(null)}
+        allAddons={addons}
+        onAddToCart={handleDialogAddToCart}
+      />
     </div>
   );
 }
