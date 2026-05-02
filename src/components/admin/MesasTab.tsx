@@ -150,7 +150,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     
     try {
       if (activeOrderId) {
-        await deleteDoc(doc(db, 'orders', activeOrderId));
+        await updateDoc(doc(db, 'orders', activeOrderId), { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 });
       }
       setCart([]);
       setOriginalCart([]);
@@ -158,8 +158,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       setReceiptPrinted(false);
       toast({ title: `Mesa ${selectedTable} cancelada com sucesso.` });
       setSelectedTable(null);
-    } catch (err) {
-      toast({ title: 'Erro ao cancelar mesa', variant: 'destructive' });
+    } catch (err: any) {
+      console.error('Erro ao cancelar mesa:', err);
+      toast({ title: 'Erro ao cancelar mesa', description: err?.message || '', variant: 'destructive' });
     }
   };
 
