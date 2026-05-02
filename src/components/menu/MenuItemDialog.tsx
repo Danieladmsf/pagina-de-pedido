@@ -160,35 +160,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
             </div>
           )}
 
-          {/* Normal Addons */}
-          {!item.isCombo && productAddons.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Adicionais Avulsos</Label>
-              <div className="space-y-1.5">
-                {productAddons.map((addon) => {
-                  const checked = !!selectedAddons.find(a => a.id === addon.id);
-                  return (
-                    <label
-                      key={addon.id}
-                      className="flex items-center justify-between gap-2 p-2 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleNormalAddon(addon)}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span className="text-xs font-medium">{addon.name}</span>
-                      </div>
-                      <span className="text-xs font-bold text-primary">
-                        + R$ {addon.price.toFixed(2)}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+
 
           {/* Addon Groups */}
           {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
