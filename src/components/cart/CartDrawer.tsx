@@ -459,21 +459,36 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => { setOrderType('delivery'); setDynamicFee(null); setDistanceInfo(null); }}
+                    onClick={() => { 
+                      setOrderType('delivery'); 
+                      setDynamicFee(null); 
+                      setDistanceInfo(null); 
+                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+                    }}
                     className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                   >
                     🛵 Entrega
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setOrderType('pickup'); setDynamicFee(null); setDistanceInfo(null); }}
+                    onClick={() => { 
+                      setOrderType('pickup'); 
+                      setDynamicFee(null); 
+                      setDistanceInfo(null); 
+                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+                    }}
                     className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'pickup' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                   >
                     🏪 Retirar
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setOrderType('dine_in'); setDynamicFee(null); setDistanceInfo(null); }}
+                    onClick={() => { 
+                      setOrderType('dine_in'); 
+                      setDynamicFee(null); 
+                      setDistanceInfo(null); 
+                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+                    }}
                     className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'dine_in' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                   >
                     🍽️ Local
@@ -582,7 +597,23 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     <button
                       key={method.id}
                       type="button"
-                      onClick={() => { setPaymentMethod(method.id); setCashChange(''); }}
+                      onClick={() => { 
+                        setPaymentMethod(method.id); 
+                        setCashChange(''); 
+                        if (method.id === 'dinheiro') {
+                          setTimeout(() => {
+                            const el = document.getElementById('troco-input');
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              el.focus();
+                            }
+                          }, 150);
+                        } else {
+                          setTimeout(() => {
+                            document.getElementById('btn-finalizar')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }, 150);
+                        }
+                      }}
                       className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${paymentMethod === method.id ? 'border-primary bg-primary/10 text-primary scale-105' : 'border-muted text-muted-foreground'}`}
                     >
                       <span className="text-xl mb-1">{method.icon}</span>
@@ -593,8 +624,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
                 {paymentMethod === 'dinheiro' && (
                   <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-2 space-y-2">
-                    <Label className="text-amber-800">Precisa de troco para quanto?</Label>
+                    <Label htmlFor="troco-input" className="text-amber-800">Precisa de troco para quanto?</Label>
                     <Input 
+                      id="troco-input"
                       type="text"
                       inputMode="numeric"
                       placeholder="R$ 0,00"
@@ -658,6 +690,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1 h-14" onClick={() => setStep('cart')}>Voltar</Button>
                   <Button 
+                    id="btn-finalizar"
                     className="flex-[2] h-14 bg-accent text-white font-bold" 
                     onClick={handleCheckout} 
                     disabled={isSubmitting || calculatingFee || (orderType === 'delivery' && deliveryBlocked)}
