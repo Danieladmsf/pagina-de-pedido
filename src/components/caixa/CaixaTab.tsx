@@ -716,9 +716,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
               )}
               {isAberto && (
                 <>
-                  <Button onClick={() => setModalOpen('venda')} className="bg-blue-600 hover:bg-blue-700 text-white">
-                    <Plus className="h-4 w-4 mr-1" /> Venda
-                  </Button>
+
                   <Button onClick={() => setModalOpen('suprimento')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="h-4 w-4 mr-1" /> Suprimento
                   </Button>
