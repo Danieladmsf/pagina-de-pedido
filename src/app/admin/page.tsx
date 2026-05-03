@@ -56,7 +56,7 @@ export default function AdminPage() {
     setSortConfig({ key, direction });
   };
   
-  // Hook do Caixa compartilhado entre mÃ³dulos
+  // Hook do Caixa compartilhado entre módulos
   const { caixaAberto, registrarLancamento, caixaAtual, setCaixaSelecionadoId } = useCaixa();
   
   const isRealUser = !!(user && !user.isAnonymous);
@@ -108,11 +108,11 @@ export default function AdminPage() {
       
       validOrders = validOrders.filter(o => {
         const oTime = new Date(o.orderDateTime || o.createdAt || 0).getTime();
-        // Incluir uma margem de seguranÃ§a de 1 minuto antes e depois para cobrir eventuais atrasos de rede no Firebase
+        // Incluir uma margem de segurança de 1 minuto antes e depois para cobrir eventuais atrasos de rede no Firebase
         return oTime >= (openingTime - 60000) && oTime <= (closingTime + 60000);
       });
     } else {
-      // Se nÃ£o hÃ¡ caixa aberto nem selecionado no histÃ³rico, nÃ£o mostra pedidos na interface principal
+      // Se não há caixa aberto nem selecionado no histórico, não mostra pedidos na interface principal
       validOrders = [];
     }
 
@@ -206,10 +206,10 @@ export default function AdminPage() {
     const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending' && o.orderType !== 'dine_in');
     if (newOnes.length > 0) {
       playNewOrderBeep();
-      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmaÃ§Ã£o.` });
+      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmação.` });
       try {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmaÃ§Ã£o.` });
+          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmação.` });
         }
       } catch {}
     }
@@ -356,7 +356,7 @@ export default function AdminPage() {
     }
   }, [user, isUserLoading, router]);
 
-  // Ao sair da aba de configuraÃ§Ãµes (onde o histÃ³rico do caixa Ã© visto), voltar a visualizar o Caixa Aberto atual
+  // Ao sair da aba de configurações (onde o histórico do caixa é visto), voltar a visualizar o Caixa Aberto atual
   useEffect(() => {
     if (activeTab !== 'configuracoes') {
       setCaixaSelecionadoId(null);
@@ -392,7 +392,7 @@ export default function AdminPage() {
       await updateDoc(doc(db, 'orders', orderId), updates);
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicaÃ§Ã£o." });
+      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
     }
   };
 
@@ -433,10 +433,10 @@ export default function AdminPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-1">VocÃª nÃ£o tem permissÃ£o de administrador.</p>
+        <p className="text-muted-foreground mb-1">Você não tem permissão de administrador.</p>
         <p className="text-xs font-mono bg-muted p-2 rounded mb-4">Seu UID: {user.uid}</p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.location.reload()}>Ã­Â°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Tentar novamente</Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>🔄 Tentar novamente</Button>
           <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
         </div>
       </div>
@@ -472,7 +472,7 @@ export default function AdminPage() {
             onClick={() => setActiveTab('novo_pedido')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
-            BalcÃ£o
+            Balcão
           </button>
           <button 
             onClick={() => setActiveTab('mesas')}
@@ -507,7 +507,7 @@ export default function AdminPage() {
         {activeTab === 'dashboard' && (
           <div className="text-center p-20 flex flex-col items-center gap-4 text-slate-400">
             <LayoutDashboard className="h-16 w-16 opacity-50" />
-            <p className="text-xl font-medium">Dashboard EstatÃ­stico em Desenvolvimento...</p>
+            <p className="text-xl font-medium">Dashboard Estatístico em Desenvolvimento...</p>
           </div>
         )}
 
@@ -559,7 +559,7 @@ export default function AdminPage() {
           />
         )}
 
-        {/* MÃ³dulo Administrativo Antigo */}
+        {/* Módulo Administrativo Antigo */}
         <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
           <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
             <Tabs defaultValue="products" className="w-full">
@@ -595,12 +595,12 @@ export default function AdminPage() {
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Gerenciar CardÃ¡pio</CardTitle>
+                <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
                 <div className="flex gap-2">
                   <Button onClick={async () => {
                     if (!db || !user) return;
-                    if (!confirm("Isso apagarÃ¡ o cardÃ¡pio atual e reimportarÃ¡ a NOVA BASE extraÃ­da do Bysell (300+ itens). Tem certeza?")) return;
-                    toast({ title: 'Limpeza e ImportaÃ§Ã£o Iniciadas. Aguarde...' });
+                    if (!confirm("Isso apagará o cardápio atual e reimportará a NOVA BASE extraída do Bysell (300+ itens). Tem certeza?")) return;
+                    toast({ title: 'Limpeza e Importação Iniciadas. Aguarde...' });
                     try {
                       const oldCatsSnap = await getDocs(query(collection(db, 'categories'), where('ownerId', '==', user.uid)));
                       const oldItemsSnap = await getDocs(query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)));
@@ -657,10 +657,10 @@ export default function AdminPage() {
                         });
                         ok++;
                       }
-                      toast({ title: `ImportaÃ§Ã£o concluÃ­da! ${data.categories.length} categorias, ${ok} produtos e ${okAddons} adicionais.` });
+                      toast({ title: `Importação concluída! ${data.categories.length} categorias, ${ok} produtos e ${okAddons} adicionais.` });
                     } catch (e: any) {
                       console.error(e);
-                      toast({ title: 'Erro na importaÃ§Ã£o', description: e.message, variant: 'destructive' });
+                      toast({ title: 'Erro na importação', description: e.message, variant: 'destructive' });
                     }
                   }} className="bg-emerald-600 text-white hover:bg-emerald-700">
                     Importar Base Bysell
@@ -705,7 +705,7 @@ export default function AdminPage() {
                       </TableHead>
                       <TableHead className="w-[80px]">Ref</TableHead>
                       <TableHead className="cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('name')}>
-                        <div className="flex items-center">TÃ­tulo {sortConfig?.key === 'name' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                        <div className="flex items-center">Título {sortConfig?.key === 'name' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
                         <div className="flex items-center">Valor {sortConfig?.key === 'price' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
@@ -714,14 +714,14 @@ export default function AdminPage() {
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[100px] text-center">Ativo</TableHead>
-                      <TableHead className="text-right pr-6 w-[120px]">AÃ§Ãµes</TableHead>
+                      <TableHead className="text-right pr-6 w-[120px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredItems?.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
-                      const isAvailable = item.isAvailable !== false; // Default is true se nÃ£o estiver definido
+                      const isAvailable = item.isAvailable !== false; // Default is true se não estiver definido
                       
                       return (
                         <TableRow key={item.id} className={!isAvailable ? 'opacity-60 bg-slate-50/50' : ''}>
@@ -740,7 +740,7 @@ export default function AdminPage() {
                             {itemAddons.length > 0 && (
                               <div className="mt-1">
                                 <Badge className="text-[10px] bg-teal-500 hover:bg-teal-600 font-normal">
-                                  OpÃ§Ãµes: {itemAddons.map(a => a.name).join('; ')}
+                                  Opções: {itemAddons.map(a => a.name).join('; ')}
                                 </Badge>
                               </div>
                             )}
@@ -811,7 +811,7 @@ export default function AdminPage() {
                         autoFocus
                       />
                       <p className="text-xs text-muted-foreground">
-                        Dica: Crie vÃ¡rias de uma vez separando por vÃ­rgula (,) ou ponto-e-vÃ­rgula (;)
+                        Dica: Crie várias de uma vez separando por vírgula (,) ou ponto-e-vírgula (;)
                       </p>
                     </div>
                     <DialogFooter>
@@ -819,7 +819,7 @@ export default function AdminPage() {
                       <Button onClick={async () => {
                         if (!db || !user || !newCategoryName.trim()) return;
                         
-                        // Divide por vÃ­rgula ou ponto-e-vÃ­rgula e remove espaÃ§os vazios
+                        // Divide por vírgula ou ponto-e-vírgula e remove espaços vazios
                         const nomes = newCategoryName.split(/[,;]/).map(n => n.trim()).filter(n => n.length > 0);
                         
                         if (nomes.length === 0) return;
@@ -861,7 +861,7 @@ export default function AdminPage() {
                     <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
                       <TableRow>
                         <TableHead className="pl-6">Nome</TableHead>
-                        <TableHead className="text-right pr-6">AÃ§Ãµes</TableHead>
+                        <TableHead className="text-right pr-6">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                   <DragDropContext onDragEnd={handleDragEndCategory}>
@@ -910,7 +910,7 @@ export default function AdminPage() {
           <TabsContent value="addons" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Adicionais DisponÃ­veis</CardTitle>
+                <CardTitle className="text-lg">Adicionais Disponíveis</CardTitle>
                 <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
                   <DialogTrigger asChild>
                     <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
@@ -927,7 +927,7 @@ export default function AdminPage() {
                         <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="addonPrice">PreÃ§o (R$)</Label>
+                        <Label htmlFor="addonPrice">Preço (R$)</Label>
                         <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                       </div>
                       <DialogFooter>
@@ -942,15 +942,15 @@ export default function AdminPage() {
                   <TableHeader className="bg-muted/30">
                     <TableRow>
                       <TableHead className="pl-6">Nome</TableHead>
-                      <TableHead>PreÃ§o</TableHead>
-                      <TableHead className="text-right pr-6">AÃ§Ãµes</TableHead>
+                      <TableHead>Preço</TableHead>
+                      <TableHead className="text-right pr-6">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {!addons || addons.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
-                          Nenhum adicional cadastrado. Crie opÃ§Ãµes como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
+                          Nenhum adicional cadastrado. Crie opções como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1000,7 +1000,7 @@ export default function AdminPage() {
                     <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">AtÃ©</Label>
+                    <Label className="text-xs">Até</Label>
                     <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9" />
                   </div>
                   {(customFrom || customTo) && (
@@ -1029,7 +1029,7 @@ export default function AdminPage() {
                   </Card>
                   <Card className="rounded-2xl border-purple-200 shadow-sm">
                     <CardContent className="p-5">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Ticket MÃ©dio</p>
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Ticket Médio</p>
                       <p className="text-3xl font-black text-purple-700">R$ {reportData.avgTicket.toFixed(2)}</p>
                     </CardContent>
                   </Card>
@@ -1039,7 +1039,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5 text-primary" /> Vendas por dia</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.dailyBreakdown.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no perÃ­odo.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
                     ) : (
                       <div className="space-y-2">
                         {(() => {
@@ -1052,7 +1052,7 @@ export default function AdminPage() {
                               <div key={d.date} className="space-y-1">
                                 <div className="flex items-center justify-between gap-2 text-sm">
                                   <span className="font-bold">{label}</span>
-                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} Ã­â€šÃ‚Â· <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
+                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} → <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
                                 </div>
                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                   <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -1070,7 +1070,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingUp className="h-5 w-5 text-primary" /> Itens mais vendidos</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.topItems.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no perÃ­odo.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
                     ) : (
                       <div className="space-y-2">
                         {reportData.topItems.map((it, idx) => {
@@ -1100,7 +1100,7 @@ export default function AdminPage() {
                                         <span className="text-muted-foreground">{new Date(oc.orderDateTime).toLocaleString('pt-BR')}</span>
                                       </div>
                                       <div className="text-muted-foreground">
-                                        <span className="font-mono">#{oc.orderId}</span> Ã­â€šÃ‚Â· {oc.customerPhone || '-'} Ã­â€šÃ‚Â· <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
+                                        <span className="font-mono">#{oc.orderId}</span> → {oc.customerPhone || '-'} → <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
                                       </div>
                                       {oc.addons?.length > 0 && (
                                         <div className="pl-2 text-[11px] text-muted-foreground mt-0.5">
@@ -1128,7 +1128,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-primary" /> Clientes ({reportData.customers.length})</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.customers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem clientes no perÃ­odo.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem clientes no período.</p>
                     ) : (
                       <div className="space-y-2">
                         {reportData.customers.map((c) => {
@@ -1159,7 +1159,7 @@ export default function AdminPage() {
                                       o.status === 'received' ? 'Recebido' :
                                       o.status === 'ready' ? 'Pronto' :
                                       o.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
-                                      o.status === 'delivered' ? 'ConcluÃ­Ã‚Â­do' : o.status;
+                                      o.status === 'delivered' ? 'Concluído' : o.status;
                                     const sColor =
                                       o.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
                                       o.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
@@ -1173,7 +1173,7 @@ export default function AdminPage() {
                                             <span className="text-xs font-mono font-bold text-muted-foreground">#{o.id}</span>
                                             <Badge className={`${sColor} border font-bold text-[10px] uppercase`}>{sLabel}</Badge>
                                             <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
-                                              {o.orderType === 'pickup' ? 'Ã­Â°Ã…Â¸Ã‚ÂÃ‚Âª Retirada' : 'Ã­Â°Ã…Â¸Ã¢â‚¬ÂºÃ‚Âµ Entrega'}
+                                              {o.orderType === 'pickup' ? '📦 Retirada' : '🚚 Entrega'}
                                             </Badge>
                                           </div>
                                           <span className="text-xs text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
