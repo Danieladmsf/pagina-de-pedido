@@ -205,12 +205,12 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
         <CardContent className="p-6">
           <form onSubmit={handleSaveProduct} id="product-form" className="space-y-5">
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-12 md:col-span-4 space-y-1.5">
                 <Label htmlFor="name" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Nome</Label>
                 <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Marmitex M" : "Ex: X-Burguer"} required />
               </div>
-              <div className="space-y-1.5">
+              <div className="col-span-12 md:col-span-4 space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</Label>
                 <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" required>
                   {categories?.map((cat: any) => (
@@ -218,20 +218,12 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                   ))}
                 </select>
               </div>
-              <div className="space-y-1.5">
+              <div className="col-span-6 md:col-span-2 space-y-1.5">
                 <Label htmlFor="price" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço (R$)</Label>
                 <CurrencyInput id="price" name="price" defaultValue={editingProduct?.price} required placeholder="0,00" />
               </div>
-            </div>
-
-            {isMarmita ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="fixedItems" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Itens Fixos (separados por vírgula)</Label>
-                <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
+              {!isMarmita && (
+                <div className="col-span-6 md:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
                   <div className="flex items-center gap-2">
                     {imagePreview && (
@@ -240,20 +232,28 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                       </div>
                     )}
                     <label className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded-lg p-2 hover:border-primary transition-colors bg-muted/10 h-10">
-                        <Upload className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground truncate">
-                          {imageFile ? imageFile.name : 'Escolher foto'}
+                      <div className="flex items-center justify-center gap-1.5 border border-dashed border-muted-foreground/30 rounded-lg hover:border-primary transition-colors bg-muted/10 h-10 px-2">
+                        <Upload className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="text-[11px] text-muted-foreground truncate">
+                          {imageFile ? imageFile.name : 'Foto'}
                         </span>
                       </div>
                       <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
                     </label>
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="description" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Descrição</Label>
-                  <Textarea id="description" name="description" defaultValue={editingProduct?.description} className="min-h-[40px] h-10 text-sm resize-none" placeholder="Ingredientes e detalhes..." />
-                </div>
+              )}
+            </div>
+
+            {isMarmita ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="fixedItems" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Itens Fixos (separados por vírgula)</Label>
+                <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="description" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Descrição</Label>
+                <Input id="description" name="description" defaultValue={editingProduct?.description} placeholder="Ingredientes e detalhes do produto..." />
               </div>
             )}
           </form>
