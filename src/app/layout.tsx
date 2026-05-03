@@ -5,7 +5,7 @@ import { AuthInit } from '@/components/providers/AuthInit';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { PWARegister } from '@/components/providers/PWARegister';
 import { Toaster } from '@/components/ui/toaster';
-import ScreenshotButton from '@/components/shared/ScreenshotButton';
+
 
 export const metadata = {
   title: 'Lima Limão - Cardápio Digital',
@@ -44,7 +44,6 @@ export default function RootLayout({
         </FirebaseClientProvider>
         <PWARegister />
         <Toaster />
-        <ScreenshotButton />
       </body>
     </html>
   );
