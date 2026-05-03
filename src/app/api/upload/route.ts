@@ -4,11 +4,14 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
-    const filename = searchParams.get('filename');
+    let filename = searchParams.get('filename');
 
     if (!filename) {
       return NextResponse.json({ error: 'filename é obrigatório' }, { status: 400 });
     }
+
+    // Remover espaços, vírgulas e caracteres especiais que podem causar erros no Vercel Blob
+    filename = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
     if (!request.body) {
       return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 });
