@@ -310,9 +310,15 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                   className="h-8 font-semibold flex-1 border-0 bg-transparent shadow-none focus-visible:ring-1 px-2"
                                   placeholder="Nome da etapa..."
                                 />
-                                <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
-                                  <span className="text-[10px] text-emerald-700 font-semibold">Grátis:</span>
-                                  <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-emerald-700 font-bold text-xs shadow-none focus-visible:ring-0" />
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                    <span className="text-[10px] text-amber-700 font-semibold">Máximo:</span>
+                                    <Input type="number" min="1" value={group.max || 1} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||1)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de itens que o cliente pode escolher nesta etapa" />
+                                  </div>
+                                  <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                    <span className="text-[10px] text-emerald-700 font-semibold">Grátis:</span>
+                                    <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-emerald-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Quantidade de itens que saem de graça" />
+                                  </div>
                                 </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>
                                   <Trash2 className="h-3.5 w-3.5" />
