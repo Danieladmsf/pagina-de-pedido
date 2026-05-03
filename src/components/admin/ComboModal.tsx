@@ -85,7 +85,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
 
       <Card className="border shadow-md rounded-2xl overflow-hidden">
         <CardContent className="p-6">
-          <form onSubmit={handleSaveCombo} className="space-y-5">
+          <form onSubmit={handleSaveCombo} id="combo-form" className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome do Combo</Label>
@@ -130,15 +130,17 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <Button type="button" variant="outline" className="flex-1 h-11" onClick={() => setEditingCombo(null)}>
-                Cancelar
-              </Button>
-              <Button type="submit" className="flex-1 h-11 font-bold">Salvar Combo</Button>
-            </div>
           </form>
         </CardContent>
       </Card>
+
+      {/* Botões de ação */}
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" className="h-10 px-6" onClick={() => setEditingCombo(null)}>
+          Cancelar
+        </Button>
+        <Button type="submit" form="combo-form" className="h-10 px-10 font-bold">Salvar Combo</Button>
+      </div>
     </div>
   );
 }

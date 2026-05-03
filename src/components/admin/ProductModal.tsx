@@ -427,11 +427,11 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
       </Card>
 
       {/* Botões de ação */}
-      <div className="flex gap-3">
-        <Button type="button" variant="outline" className="h-11 px-8" onClick={() => setEditingProduct(null)}>
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" className="h-10 px-6" onClick={() => setEditingProduct(null)}>
           Cancelar
         </Button>
-        <Button type="submit" form="product-form" className="h-11 px-8 font-bold flex-1" disabled={uploadingImage}>
+        <Button type="submit" form="product-form" className="h-10 px-10 font-bold" disabled={uploadingImage}>
           {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : (isMarmita ? 'Salvar Marmita' : 'Salvar Produto')}
         </Button>
       </div>
