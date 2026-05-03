@@ -80,27 +80,7 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
         </table>
       </div>
 
-      {/* Totais - Ocultos na Cozinha */}
-      {!isKitchen && (
-        <div className="mb-4 border-b border-black border-dashed pb-4 space-y-1">
-        <div className="flex justify-between">
-          <span>Subtotal</span>
-          <span>R$ {order.items?.reduce((acc: number, item: any) => acc + ((item.unitPrice || 0) * item.quantity), 0).toFixed(2) || '0.00'}</span>
-        </div>
-        {order.orderType === 'delivery' && (
-          <div className="flex justify-between">
-            <span>Taxa de entrega</span>
-            <span>{order.deliveryFee > 0 ? `R$ ${order.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
-          </div>
-        )}
-        <div className="flex justify-between font-bold text-sm mt-2 pt-2 border-t border-black">
-          <span>Total</span>
-          <span>R$ {(order.totalAmount || 0).toFixed(2)}</span>
-        </div>
-      </div>
-      )}
-
-      {/* Formas de Pagamento e Rodapé */}
+      {/* Totais e Pagamento */}
       {!isKitchen && (() => {
         let paymentText = order.paymentMethod || 'Pagamento na Entrega/Retirada';
         let changeFor = 0;
@@ -118,20 +98,46 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
 
         return (
           <>
-            <div className="text-center mb-4">
-              <p className="font-bold mb-1 uppercase">Forma de pagamento</p>
-              <p className="uppercase">{paymentText}</p>
-              {changeFor > 0 && changeAmount > 0 && (
-                <div className="mt-2 text-[14px] font-bold">
-                  <p>Troco para: R$ {changeFor.toFixed(2)}</p>
-                  <p>Levar Troco: R$ {changeAmount.toFixed(2)}</p>
+            <div className="mb-4 space-y-1">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>R$ {order.items?.reduce((acc: number, item: any) => acc + ((item.unitPrice || 0) * item.quantity), 0).toFixed(2) || '0.00'}</span>
+              </div>
+              {order.orderType === 'delivery' && (
+                <div className="flex justify-between">
+                  <span>Taxa de entrega</span>
+                  <span>{order.deliveryFee > 0 ? `R$ ${order.deliveryFee.toFixed(2)}` : 'Grátis'}</span>
                 </div>
               )}
+              
+              <div className="border-t border-black border-dashed mt-2 pt-2">
+                <div className="flex justify-between font-bold text-sm uppercase">
+                  <span>TOTAL</span>
+                  <span>R$ {(order.totalAmount || 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {changeFor > 0 && changeAmount > 0 && (
+                <div className="mt-4 space-y-1 uppercase font-bold text-[14px]">
+                  <div className="flex justify-between">
+                    <span>PAGAMENTO</span>
+                    <span>R$ {changeFor.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>TROCO</span>
+                    <span>R$ {changeAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 uppercase text-sm border-b border-black border-dashed pb-4">
+                <p>Forma: {paymentText}</p>
+              </div>
             </div>
 
             <div className="mt-8 text-center text-[10px]">
               <p>Obrigado pela preferência!</p>
-              <p>{storeInfo?.general?.name}</p>
+              <p>{storeInfo?.general?.name || storeInfo?.storeName || 'Loja'}</p>
             </div>
           </>
         );
