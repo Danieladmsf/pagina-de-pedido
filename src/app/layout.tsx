@@ -1,4 +1,3 @@
-
 import React from 'react';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
@@ -12,12 +11,15 @@ export const metadata = {
   title: 'Lima Limão - Cardápio Digital',
   description: 'O verdadeiro sabor da fruta!',
   manifest: '/manifest.json',
-  themeColor: '#16803c',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'Lima Limão',
   },
+};
+
+export const viewport = {
+  themeColor: '#16803c',
 };
 
 export default function RootLayout({
