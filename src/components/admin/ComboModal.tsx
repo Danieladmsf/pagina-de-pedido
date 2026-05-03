@@ -41,7 +41,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const priceStr = formData.get('price') as string;
-    const price = parseFloat(priceStr.replace(/\./g, '').replace(',', '.')) || 0;
+    const price = parseFloat(priceStr) || 0;
 
     const data = {
       name,

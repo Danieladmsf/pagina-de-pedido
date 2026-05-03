@@ -213,15 +213,22 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                           />
                           <span className={`text-xs ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
                         </div>
-                        {addon.price > 0 && (
-                          <span className="text-[11px] font-bold text-emerald-600">
-                            {group.freeAddonIds?.includes(addon.id) ? (
-                              <span className="bg-emerald-100 text-emerald-700 px-1 rounded">Grátis</span>
-                            ) : (
-                              `+ R$ ${addon.price.toFixed(2)}`
-                            )}
-                          </span>
-                        )}
+                        {addon.price > 0 && (() => {
+                          const selectedIndex = currentSelected.findIndex(a => a.id === addon.id);
+                          const isSelected = selectedIndex >= 0;
+                          const isFree = isSelected ? selectedIndex < (group.freeLimit || 0) : currentSelected.length < (group.freeLimit || 0);
+
+                          return (
+                            <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1.5">
+                              {isFree && (
+                                <span className="bg-emerald-100 text-emerald-700 px-1 rounded text-[10px]">Grátis</span>
+                              )}
+                              <span className={isFree && isSelected ? "line-through text-slate-400 font-normal" : ""}>
+                                + R$ {addon.price.toFixed(2)}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </label>
                     );
                   })}
