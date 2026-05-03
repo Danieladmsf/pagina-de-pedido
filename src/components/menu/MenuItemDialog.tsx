@@ -214,18 +214,21 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                           <span className={`text-xs ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
                         </div>
                         {addon.price > 0 && (() => {
+                          const freeLimit = group.freeLimit || 0;
                           const selectedIndex = currentSelected.findIndex(a => a.id === addon.id);
                           const isSelected = selectedIndex >= 0;
-                          const isFree = isSelected ? selectedIndex < (group.freeLimit || 0) : currentSelected.length < (group.freeLimit || 0);
+                          const isFree = isSelected && selectedIndex < freeLimit;
+                          const hasReachedFreeLimit = currentSelected.length >= freeLimit;
+
+                          if (!hasReachedFreeLimit) return null;
 
                           return (
-                            <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1.5">
-                              {isFree && (
-                                <span className="bg-emerald-100 text-emerald-700 px-1 rounded text-[10px]">Grátis</span>
+                            <span className="text-[11px] font-bold flex items-center gap-1.5">
+                              {isFree ? (
+                                <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[10px]">Grátis</span>
+                              ) : (
+                                <span className="text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
                               )}
-                              <span className={isFree && isSelected ? "line-through text-slate-400 font-normal" : ""}>
-                                + R$ {addon.price.toFixed(2)}
-                              </span>
                             </span>
                           );
                         })()}
