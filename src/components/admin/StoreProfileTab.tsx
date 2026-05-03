@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -56,6 +56,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
   const [plannedClosures, setPlannedClosures] = useState<{ id: string, date: string, reason: string }[]>([]);
   const [newClosureDate, setNewClosureDate] = useState('');
   const [newClosureReason, setNewClosureReason] = useState('');
+  const [calMonth, setCalMonth] = useState(() => ({ year: new Date().getFullYear(), month: new Date().getMonth() }));
 
   const [motoboys, setMotoboys] = useState<{ id: string, name: string, phone: string, licensePlate: string, fee: number }[]>([]);
   const [freelancers, setFreelancers] = useState<{ id: string, name: string, whatsapp: string, dailyRate: number, workDays: string[], active: boolean }[]>([]);
@@ -440,12 +441,18 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           // Map day index (0=Sun) to workingHours day name
           const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
           
-          // Generate calendar days for current + next month
-          const calMonths: { year: number, month: number }[] = [];
-          for (let i = 0; i < 2; i++) {
-            const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-            calMonths.push({ year: d.getFullYear(), month: d.getMonth() });
-          }
+          const goToPrevMonth = () => {
+            setCalMonth(prev => {
+              const d = new Date(prev.year, prev.month - 1, 1);
+              return { year: d.getFullYear(), month: d.getMonth() };
+            });
+          };
+          const goToNextMonth = () => {
+            setCalMonth(prev => {
+              const d = new Date(prev.year, prev.month + 1, 1);
+              return { year: d.getFullYear(), month: d.getMonth() };
+            });
+          };
 
           const isDayOpenBySchedule = (dateStr: string) => {
             const d = new Date(dateStr + 'T12:00:00');
@@ -530,23 +537,31 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
               </div>
 
               {/* Right: Interactive Calendar */}
-              <div className="space-y-4">
-                {calMonths.map(({ year, month }) => {
+              <div className="space-y-2">
+                {(() => {
+                  const { year, month } = calMonth;
                   const days = getCalendarDays(year, month);
+                  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
                   return (
-                    <div key={`${year}-${month}`} className="border rounded-xl overflow-hidden">
-                      <div className="bg-slate-100 px-4 py-2 font-bold text-sm text-center capitalize">
-                        {monthNames[month]} {year}
+                    <div className="border rounded-xl overflow-hidden">
+                      <div className="bg-slate-100 px-4 py-2 flex items-center justify-between">
+                        <button type="button" onClick={goToPrevMonth} disabled={isCurrentMonth} className={`p-1 rounded hover:bg-slate-200 transition-colors ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="font-bold text-sm capitalize">{monthNames[month]} {year}</span>
+                        <button type="button" onClick={goToNextMonth} className="p-1 rounded hover:bg-slate-200 transition-colors">
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="p-2">
+                      <div className="p-3">
                         {/* Header */}
-                        <div className="grid grid-cols-7 gap-0.5 mb-1">
+                        <div className="grid grid-cols-7 gap-1 mb-1">
                           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
                             <div key={d} className="text-center text-[10px] font-bold text-muted-foreground uppercase py-1">{d}</div>
                           ))}
                         </div>
                         {/* Days grid */}
-                        <div className="grid grid-cols-7 gap-0.5">
+                        <div className="grid grid-cols-7 gap-1">
                           {days.map((day, i) => {
                             if (day === null) return <div key={`empty-${i}`} />;
                             
@@ -560,7 +575,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                             return (
                               <div 
                                 key={dateStr}
-                                className={`relative flex flex-col items-center justify-center py-1 rounded-lg border transition-all
+                                className={`relative flex flex-col items-center justify-center py-1.5 rounded-lg border transition-all
                                   ${isPast ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:shadow-sm'}
                                   ${isToday ? 'ring-2 ring-primary/50' : ''}
                                   ${!openBySchedule && !closedByPlan ? 'bg-slate-100 border-slate-200' : ''}
@@ -585,7 +600,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                       </div>
                     </div>
                   );
-                })}
+                })()}
 
                 {/* Legend */}
                 <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground px-1">
