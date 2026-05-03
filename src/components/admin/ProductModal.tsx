@@ -4,11 +4,11 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { AddonGroup, Addon } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
 
@@ -26,7 +26,6 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
   const [groups, setGroups] = useState<AddonGroup[]>([]);
-  const [groupNameInput, setGroupNameInput] = useState('');
   const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -40,7 +39,6 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
       setCategoryId(editingProduct.categoryId || categories?.[0]?.id || '');
       setFixedItemsText((editingProduct.fixedItems || []).join(', '));
       setGroups(editingProduct.addonGroups || []);
-      setGroupNameInput('');
       setGroupSearchTerms({});
       setImageFile(null);
       setImagePreview(editingProduct.imageUrl || '');
@@ -49,9 +47,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   }, [editingProduct, categories]);
 
   const handleAddGroup = () => {
-    const name = groupNameInput.trim() || 'Nova Etapa';
-    setGroups([...groups, { name, addonIds: [], min: 1, max: 1 }]);
-    setGroupNameInput('');
+    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 1, max: 1 }]);
   };
 
   const handleRemoveGroup = (index: number) => {
@@ -71,6 +67,15 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
       group.addonIds = group.addonIds.filter(id => id !== addonId);
     } else {
       group.addonIds = [...group.addonIds, addonId];
+    }
+    setGroups(newGroups);
+  };
+
+  const handleRemoveAddonFromGroup = (groupIndex: number, addonId: string) => {
+    const newGroups = [...groups];
+    newGroups[groupIndex].addonIds = newGroups[groupIndex].addonIds.filter(id => id !== addonId);
+    if (newGroups[groupIndex].freeAddonIds) {
+      newGroups[groupIndex].freeAddonIds = newGroups[groupIndex].freeAddonIds!.filter(id => id !== addonId);
     }
     setGroups(newGroups);
   };
@@ -179,12 +184,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
 
   if (editingProduct === null) return null;
 
-  const addonsByGroup = addons?.reduce((acc: any, addon) => {
-    const g = addon.group || 'Sem Grupo';
-    if (!acc[g]) acc[g] = [];
-    acc[g].push(addon);
-    return acc;
-  }, {});
+  const allAddons = [...(addons || [])].sort((a, b) => a.name.localeCompare(b.name));
 
   const pageTitle = editingProduct.id 
     ? (isMarmita ? 'Editar Marmita/Prato Montável' : 'Editar Produto') 
@@ -192,6 +192,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
 
   return (
     <div className="space-y-4">
+      {/* Header com seta e título */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => setEditingProduct(null)} className="h-9 w-9 rounded-full hover:bg-slate-100">
           <ArrowLeft className="h-5 w-5" />
@@ -199,182 +200,241 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
         <h2 className="text-xl font-bold text-slate-800">{pageTitle}</h2>
       </div>
 
+      {/* Card de Dados Básicos */}
       <Card className="border shadow-md rounded-2xl overflow-hidden">
         <CardContent className="p-6">
-          <form onSubmit={handleSaveProduct} className="space-y-5">
+          <form onSubmit={handleSaveProduct} id="product-form" className="space-y-5">
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do {isMarmita ? 'Prato/Marmita' : 'Produto'}</Label>
-                <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Marmitex M (2 Carnes)" : "Ex: X-Burguer"} required />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="name" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Nome</Label>
+                <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Marmitex M" : "Ex: X-Burguer"} required />
               </div>
-              <div className="space-y-2">
-                <Label>Categoria</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</Label>
                 <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" required>
                   {categories?.map((cat: any) => (
                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Preço Base (R$)</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="price" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço (R$)</Label>
                 <CurrencyInput id="price" name="price" defaultValue={editingProduct?.price} required placeholder="0,00" />
               </div>
-              {isMarmita ? (
-                <div className="space-y-2">
-                  <Label htmlFor="fixedItems">Itens Fixos (Separados por vírgula)</Label>
-                  <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Foto do Produto</Label>
+            </div>
+
+            {isMarmita ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="fixedItems" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Itens Fixos (separados por vírgula)</Label>
+                <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
                   <div className="flex items-center gap-2">
                     {imagePreview && (
-                      <div className="relative h-10 w-10 rounded overflow-hidden border flex-shrink-0">
+                      <div className="relative h-10 w-10 rounded-lg overflow-hidden border flex-shrink-0">
                         <Image src={imagePreview} alt="preview" fill className="object-cover" />
                       </div>
                     )}
                     <label className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded p-1.5 hover:border-primary transition-colors bg-muted/20 h-10">
+                      <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded-lg p-2 hover:border-primary transition-colors bg-muted/10 h-10">
                         <Upload className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
+                        <span className="text-xs text-muted-foreground truncate">
+                          {imageFile ? imageFile.name : 'Escolher foto'}
                         </span>
                       </div>
                       <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
                     </label>
                   </div>
                 </div>
-              )}
-            </div>
-
-            {!isMarmita && (
-              <div className="space-y-2">
-                <Label htmlFor="description">Descrição</Label>
-                <Textarea id="description" name="description" defaultValue={editingProduct?.description} className="min-h-[80px] text-sm resize-none" placeholder="Ingredientes e detalhes do produto..." />
+                <div className="space-y-1.5">
+                  <Label htmlFor="description" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Descrição</Label>
+                  <Textarea id="description" name="description" defaultValue={editingProduct?.description} className="min-h-[40px] h-10 text-sm resize-none" placeholder="Ingredientes e detalhes..." />
+                </div>
               </div>
             )}
-
-            <div className="border-t pt-5">
-              <Label className="text-base font-bold text-slate-700">Etapas de Escolha (Grupos de Adicionais)</Label>
-              <p className="text-xs text-muted-foreground mb-3">
-                Crie os passos que o cliente deve seguir. Ex: &quot;1. Escolha a Carne&quot;, &quot;2. Escolha as Guarnições&quot;.
-              </p>
-
-              <div className="mb-4">
-                <Button type="button" onClick={handleAddGroup} variant="secondary" className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-1"/> Adicionar Etapa</Button>
-              </div>
-
-              {groups.length > 0 ? (
-                <DragDropContext onDragEnd={onDragEnd}>
-                  <Droppable droppableId="groups">
-                    {(provided) => (
-                      <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3">
-                        {groups.map((group, index) => (
-                          <Draggable key={`group-${index}`} draggableId={`group-${index}`} index={index}>
-                            {(provided) => (
-                              <div ref={provided.innerRef} {...provided.draggableProps} className="border rounded-lg bg-slate-50 p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div {...provided.dragHandleProps} className="cursor-grab text-slate-400">
-                                    <GripVertical className="h-4 w-4" />
-                                  </div>
-                                  <Input 
-                                    value={group.name} 
-                                    onChange={e => handleUpdateGroup(index, 'name', e.target.value)} 
-                                    className="h-8 font-semibold flex-1"
-                                  />
-                                  <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded px-2 whitespace-nowrap">
-                                    <Label className="text-[10px] text-emerald-700 font-bold">Qtd Inclusa (Grátis)</Label>
-                                    <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-10 h-7 px-1 text-center border-0 bg-transparent text-emerald-700 font-bold text-[11px]" />
-                                  </div>
-                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 ml-auto" onClick={() => handleRemoveGroup(index)}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </div>
-                                
-                                <div className="bg-white border rounded-md p-2 max-h-[150px] overflow-y-auto">
-                                  <div className="flex justify-between items-center mb-1">
-                                    <Label className="text-xs text-muted-foreground">Selecione as opções disponíveis para este grupo:</Label>
-                                    <Input 
-                                      placeholder="Buscar..." 
-                                      className="h-6 text-[10px] w-32"
-                                      value={groupSearchTerms[index] || ''}
-                                      onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [index]: e.target.value})}
-                                    />
-                                  </div>
-                                  {Object.keys(addonsByGroup || {}).map(g => {
-                                    const searchTerm = (groupSearchTerms[index] || '').toLowerCase();
-                                    const filtered = addonsByGroup[g].filter((addon: any) => addon.name.toLowerCase().includes(searchTerm));
-                                    if (filtered.length === 0) return null;
-                                    
-                                    return (
-                                      <div key={g} className="mb-2">
-                                        <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">{g}</div>
-                                        <div className="grid grid-cols-2 gap-1">
-                                          {filtered.map((addon: any) => {
-                                            const isChecked = group.addonIds.includes(addon.id);
-                                            const isFree = group.freeAddonIds?.includes(addon.id);
-                                            return (
-                                              <label key={addon.id} className="flex items-center gap-2 text-xs p-1 hover:bg-slate-50 rounded cursor-pointer group/item">
-                                                <input 
-                                                  type="checkbox" 
-                                                  checked={isChecked}
-                                                  onChange={() => handleToggleAddonInGroup(index, addon.id)}
-                                                  className="rounded text-primary focus:ring-primary"
-                                                />
-                                                <span className="truncate flex-1">{addon.name}</span>
-                                                {addon.price > 0 && (
-                                                  <div className="flex items-center gap-1">
-                                                    {isFree ? (
-                                                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">Grátis</span>
-                                                    ) : (
-                                                      <span className="text-emerald-600">+R$ {addon.price.toFixed(2)}</span>
-                                                    )}
-                                                    {isChecked && (
-                                                      <button type="button" onClick={(e) => handleToggleFreeAddon(index, addon.id, e)} className="opacity-0 group-hover/item:opacity-100 text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 rounded transition-opacity">
-                                                        {isFree ? 'Cobrar' : 'Isentar'}
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </label>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
-                </DragDropContext>
-              ) : (
-                <div className="text-center py-6 border border-dashed rounded-lg text-slate-400 text-sm">
-                  Nenhuma etapa configurada. <br/> Adicione etapas como &quot;Escolha as Carnes&quot; ou &quot;Guarnições&quot;.
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-4 border-t">
-              <Button type="button" variant="outline" className="flex-1 h-11" onClick={() => setEditingProduct(null)}>
-                Cancelar
-              </Button>
-              <Button type="submit" className="flex-1 h-11 font-bold" disabled={uploadingImage}>
-                {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : (isMarmita ? 'Salvar Marmita' : 'Salvar Produto')}
-              </Button>
-            </div>
           </form>
         </CardContent>
       </Card>
+
+      {/* Card de Etapas */}
+      <Card className="border shadow-md rounded-2xl overflow-hidden">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-700">Etapas de Escolha</h3>
+              <p className="text-xs text-muted-foreground">
+                Ex: &quot;Escolha a Carne&quot;, &quot;Escolha as Guarnições&quot;
+              </p>
+            </div>
+            <Button type="button" onClick={handleAddGroup} variant="outline" size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4"/> Etapa
+            </Button>
+          </div>
+
+          {groups.length > 0 ? (
+            <DragDropContext onDragEnd={onDragEnd}>
+              <Droppable droppableId="groups">
+                {(provided) => (
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
+                    {groups.map((group, index) => {
+                      const searchTerm = (groupSearchTerms[index] || '').toLowerCase();
+                      const filteredAddons = allAddons.filter(a => a.name.toLowerCase().includes(searchTerm));
+                      const selectedAddons = allAddons.filter(a => group.addonIds.includes(a.id));
+                      const availableAddons = filteredAddons.filter(a => !group.addonIds.includes(a.id));
+
+                      // Agrupar por grupo
+                      const availableByGroup: Record<string, Addon[]> = {};
+                      availableAddons.forEach(a => {
+                        const g = a.group || 'Sem Grupo';
+                        if (!availableByGroup[g]) availableByGroup[g] = [];
+                        availableByGroup[g].push(a);
+                      });
+
+                      return (
+                        <Draggable key={`group-${index}`} draggableId={`group-${index}`} index={index}>
+                          {(provided) => (
+                            <div ref={provided.innerRef} {...provided.draggableProps} className="border rounded-xl bg-white shadow-sm">
+                              {/* Header da Etapa */}
+                              <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 rounded-t-xl border-b">
+                                <div {...provided.dragHandleProps} className="cursor-grab text-slate-300 hover:text-slate-500 transition-colors">
+                                  <GripVertical className="h-4 w-4" />
+                                </div>
+                                <span className="text-xs font-bold text-slate-400 bg-slate-200 rounded-full h-6 w-6 flex items-center justify-center">{index + 1}</span>
+                                <Input 
+                                  value={group.name} 
+                                  onChange={e => handleUpdateGroup(index, 'name', e.target.value)} 
+                                  className="h-8 font-semibold flex-1 border-0 bg-transparent shadow-none focus-visible:ring-1 px-2"
+                                  placeholder="Nome da etapa..."
+                                />
+                                <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                  <span className="text-[10px] text-emerald-700 font-semibold">Grátis:</span>
+                                  <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-emerald-700 font-bold text-xs shadow-none focus-visible:ring-0" />
+                                </div>
+                                <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+
+                              {/* Corpo: Dois painéis lado a lado */}
+                              <div className="p-3">
+                                {/* Barra de pesquisa fora dos cards */}
+                                <div className="mb-3">
+                                  <Input 
+                                    placeholder="🔍 Buscar adicionais..." 
+                                    className="h-8 text-xs"
+                                    value={groupSearchTerms[index] || ''}
+                                    onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [index]: e.target.value})}
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                  {/* Painel Esquerdo: Disponíveis */}
+                                  <div className="border rounded-lg overflow-hidden">
+                                    <div className="bg-slate-50 px-3 py-1.5 border-b">
+                                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Disponíveis</span>
+                                    </div>
+                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                      {Object.keys(availableByGroup).length > 0 ? Object.entries(availableByGroup).map(([gName, gAddons]) => (
+                                        <div key={gName}>
+                                          <div className="text-[9px] font-bold uppercase text-slate-300 px-1 pt-1">{gName}</div>
+                                          {gAddons.map((addon: any) => (
+                                            <button
+                                              key={addon.id}
+                                              type="button"
+                                              onClick={() => handleToggleAddonInGroup(index, addon.id)}
+                                              className="w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/avail"
+                                            >
+                                              <Plus className="h-3 w-3 text-slate-300 group-hover/avail:text-emerald-500 flex-shrink-0" />
+                                              <span className="truncate flex-1">{addon.name}</span>
+                                              {addon.price > 0 && (
+                                                <span className="text-[10px] text-slate-400 flex-shrink-0">R$ {addon.price.toFixed(2)}</span>
+                                              )}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )) : (
+                                        <div className="text-center text-[11px] text-slate-300 py-4">
+                                          {searchTerm ? 'Nenhum resultado' : 'Todos adicionados'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Painel Direito: Selecionados */}
+                                  <div className="border rounded-lg overflow-hidden border-emerald-200">
+                                    <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
+                                      <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Selecionados</span>
+                                      <span className="text-[10px] bg-emerald-100 text-emerald-600 rounded-full px-1.5 font-bold">{selectedAddons.length}</span>
+                                    </div>
+                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                      {selectedAddons.length > 0 ? selectedAddons.map((addon: any) => {
+                                        const isFree = group.freeAddonIds?.includes(addon.id);
+                                        return (
+                                          <div key={addon.id} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-emerald-50/50 group/sel">
+                                            <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+                                            <span className="truncate flex-1 text-slate-700">{addon.name}</span>
+                                            {addon.price > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => handleToggleFreeAddon(index, addon.id, e)}
+                                                className={`text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors flex-shrink-0 ${
+                                                  isFree 
+                                                    ? 'bg-emerald-100 text-emerald-700 hover:bg-amber-100 hover:text-amber-700' 
+                                                    : 'bg-amber-50 text-amber-600 hover:bg-emerald-100 hover:text-emerald-700'
+                                                }`}
+                                              >
+                                                {isFree ? 'Grátis' : `+R$ ${addon.price.toFixed(2)}`}
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveAddonFromGroup(index, addon.id)}
+                                              className="opacity-0 group-hover/sel:opacity-100 transition-opacity flex-shrink-0"
+                                            >
+                                              <X className="h-3 w-3 text-slate-400 hover:text-red-500" />
+                                            </button>
+                                          </div>
+                                        );
+                                      }) : (
+                                        <div className="text-center text-[11px] text-slate-300 py-4">
+                                          Clique em &quot;+&quot; para adicionar
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </DragDropContext>
+          ) : (
+            <div className="text-center py-8 border border-dashed rounded-xl text-slate-400 text-sm bg-slate-50/50">
+              Nenhuma etapa configurada. <br/> Clique em &quot;+ Etapa&quot; para criar.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Botões de ação */}
+      <div className="flex gap-3">
+        <Button type="button" variant="outline" className="h-11 px-8" onClick={() => setEditingProduct(null)}>
+          Cancelar
+        </Button>
+        <Button type="submit" form="product-form" className="h-11 px-8 font-bold flex-1" disabled={uploadingImage}>
+          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : (isMarmita ? 'Salvar Marmita' : 'Salvar Produto')}
+        </Button>
+      </div>
     </div>
   );
 }
