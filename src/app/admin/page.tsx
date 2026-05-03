@@ -837,7 +837,8 @@ export default function AdminPage() {
                               name, 
                               ownerId: user.uid, 
                               displayOrder: 0, 
-                              description: "" 
+                              description: "",
+                              isAvailable: true
                             });
                           }));
 
@@ -998,6 +999,18 @@ export default function AdminPage() {
                                   </TableCell>
                                   <TableCell className="text-right pr-6">
                                     <div className="flex items-center justify-end gap-1">
+                                      <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
+                                        <Switch 
+                                          checked={cat.isAvailable !== false} 
+                                          onCheckedChange={async (checked) => {
+                                            if (!db) return;
+                                            await updateDoc(doc(db, 'categories', cat.id), { isAvailable: checked });
+                                            toast({ title: checked ? 'Categoria ativada' : 'Categoria desativada' });
+                                          }} 
+                                          className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                                        />
+                                        <span className={`text-[10px] font-medium uppercase ${cat.isAvailable !== false ? 'text-green-600' : 'text-red-500'}`}>{cat.isAvailable !== false ? 'Ligada' : 'Desligada'}</span>
+                                      </div>
                                       <Button variant="ghost" size="icon" onClick={() => {
                                         setEditingCategory(cat);
                                         setIsCategoryConfigModalOpen(true);

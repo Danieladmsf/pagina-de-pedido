@@ -133,6 +133,7 @@ export function MenuPageClient() {
     const currentMins = currentHour * 60 + currentMin;
 
     return categories.filter((cat: any) => {
+      if (cat.isAvailable === false) return false;
       if (!cat.availability?.enabled) return true;
       
       const { days, startTime, endTime } = cat.availability;
