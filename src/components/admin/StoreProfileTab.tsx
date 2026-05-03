@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -53,6 +53,10 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
     DAYS_OF_WEEK.map(day => ({ day, open: '09:00', close: '16:00', isClosed: false }))
   );
 
+  const [plannedClosures, setPlannedClosures] = useState<{ id: string, date: string, reason: string }[]>([]);
+  const [newClosureDate, setNewClosureDate] = useState('');
+  const [newClosureReason, setNewClosureReason] = useState('');
+
   const [motoboys, setMotoboys] = useState<{ id: string, name: string, phone: string, licensePlate: string, fee: number }[]>([]);
   const [freelancers, setFreelancers] = useState<{ id: string, name: string, whatsapp: string, dailyRate: number, workDays: string[], active: boolean }[]>([]);
   const [feeRules, setFeeRules] = useState<{ maxKm: number, fee: number }[]>([
@@ -96,6 +100,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           }
           if (data.feeRules) setFeeRules(data.feeRules);
           if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
+          if (data.plannedClosures) setPlannedClosures(data.plannedClosures);
         }
       } catch (err) {
         console.error('Erro ao buscar perfil da loja', err);
@@ -136,6 +141,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         freelancers,
         feeRules: feeRules.sort((a, b) => a.maxKm - b.maxKm),
         paymentMethods,
+        plannedClosures: plannedClosures.filter(c => c.date >= new Date().toISOString().split('T')[0]),
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -427,7 +433,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'horarios' && (
-          <div className="space-y-2">
+          <div className="space-y-4">
             <h2 className="text-base font-bold">Horários de Funcionamento</h2>
             <div className="space-y-1">
               {workingHours.map((wh, idx) => (
@@ -466,6 +472,85 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* Fechamentos Planejados */}
+            <div className="pt-4 border-t space-y-3">
+              <div className="flex items-center gap-2">
+                <CalendarOff className="w-4 h-4 text-red-500" />
+                <h2 className="text-base font-bold">Fechamentos Planejados</h2>
+              </div>
+              <p className="text-xs text-muted-foreground">Agende feriados ou folgas. Nos dias marcados, a loja ficará fechada automaticamente. Após passar a data, o dia volta ao funcionamento normal.</p>
+
+              <div className="flex items-end gap-2">
+                <div className="space-y-0.5 flex-1">
+                  <Label className="text-xs">Data</Label>
+                  <Input 
+                    type="date" 
+                    value={newClosureDate} 
+                    onChange={(e) => setNewClosureDate(e.target.value)} 
+                    min={new Date().toISOString().split('T')[0]}
+                    className="h-8 text-sm" 
+                  />
+                </div>
+                <div className="space-y-0.5 flex-[2]">
+                  <Label className="text-xs">Motivo (opcional)</Label>
+                  <Input 
+                    value={newClosureReason} 
+                    onChange={(e) => setNewClosureReason(e.target.value)} 
+                    placeholder="Ex: Feriado, Folga, Reforma..." 
+                    className="h-8 text-sm" 
+                  />
+                </div>
+                <Button 
+                  size="sm" 
+                  className="h-8 text-xs gap-1"
+                  disabled={!newClosureDate}
+                  onClick={() => {
+                    if (!newClosureDate) return;
+                    if (plannedClosures.some(c => c.date === newClosureDate)) {
+                      toast({ variant: 'destructive', title: 'Data já agendada' });
+                      return;
+                    }
+                    setPlannedClosures([...plannedClosures, { id: Date.now().toString(), date: newClosureDate, reason: newClosureReason }].sort((a, b) => a.date.localeCompare(b.date)));
+                    setNewClosureDate('');
+                    setNewClosureReason('');
+                  }}
+                >
+                  <Plus className="w-3 h-3" /> Agendar
+                </Button>
+              </div>
+
+              {plannedClosures.length === 0 ? (
+                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
+                  Nenhum fechamento planejado. A loja seguirá os horários normais acima.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {plannedClosures.filter(c => c.date >= new Date().toISOString().split('T')[0]).map((closure) => {
+                    const dateObj = new Date(closure.date + 'T12:00:00');
+                    const dayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
+                    const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    const isToday = closure.date === new Date().toISOString().split('T')[0];
+                    return (
+                      <div key={closure.id} className={`flex items-center gap-3 py-2 px-3 rounded-md border ${isToday ? 'bg-red-50 border-red-200' : 'bg-slate-50/50'}`}>
+                        <CalendarOff className={`w-4 h-4 shrink-0 ${isToday ? 'text-red-500' : 'text-muted-foreground'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm capitalize">{dayName}</span>
+                            <span className="text-xs text-muted-foreground">{dateFormatted}</span>
+                            {isToday && <Badge className="bg-red-500 text-[10px] h-4 px-1.5 uppercase">Hoje — Fechado</Badge>}
+                          </div>
+                          {closure.reason && <p className="text-xs text-muted-foreground truncate">{closure.reason}</p>}
+                        </div>
+                        <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50 h-7 w-7 shrink-0" onClick={() => setPlannedClosures(plannedClosures.filter(c => c.id !== closure.id))}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}

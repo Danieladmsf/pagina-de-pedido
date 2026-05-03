@@ -154,6 +154,15 @@ export function MenuPageClient() {
       return { isOpen: false, reason: 'caixa_closed' };
     }
 
+    // Check planned closures (feriados/folgas agendadas)
+    if (storeProfile.plannedClosures && storeProfile.plannedClosures.length > 0) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const closure = storeProfile.plannedClosures.find((c: any) => c.date === todayStr);
+      if (closure) {
+        return { isOpen: false, reason: closure.reason ? `Fechado hoje: ${closure.reason}` : 'hours_closed' };
+      }
+    }
+
     // Check working hours
     if (storeProfile.workingHours && storeProfile.workingHours.length > 0) {
       const today = new Date();
