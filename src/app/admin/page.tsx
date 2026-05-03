@@ -580,6 +580,19 @@ export default function AdminPage() {
 
 
           <TabsContent value="products" className="mt-6">
+            {editingProduct !== null ? (
+              <ProductModal 
+                db={db} user={user} addons={addons || []} 
+                editingProduct={editingProduct} setEditingProduct={setEditingProduct} 
+                categories={categories || []} 
+              />
+            ) : editingCombo !== null ? (
+              <ComboModal 
+                db={db} user={user} items={items || []} 
+                editingCombo={editingCombo} setEditingCombo={setEditingCombo} 
+                categories={categories || []} 
+              />
+            ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
                 <CardTitle className="text-lg">Gerenciar CardÃ¡pio</CardTitle>
@@ -745,7 +758,13 @@ export default function AdminPage() {
                             />
                           </TableCell>
                           <TableCell className="text-right pr-6 space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => setEditingProduct(item)}>
+                            <Button variant="ghost" size="icon" onClick={() => {
+                              if (item.isCombo) {
+                                setEditingCombo(item);
+                              } else {
+                                setEditingProduct(item);
+                              }
+                            }}>
                               <Pencil className="h-4 w-4 text-blue-500" />
                             </Button>
                             <Button variant="ghost" size="icon" onClick={async () => {
@@ -762,6 +781,7 @@ export default function AdminPage() {
                 </Table>
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="categories" className="mt-6">
@@ -1210,18 +1230,6 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
-
-      <ComboModal 
-        db={db} user={user} items={items || []} 
-        editingCombo={editingCombo} setEditingCombo={setEditingCombo} 
-        categories={categories || []} 
-      />
-      
-      <ProductModal 
-        db={db} user={user} addons={addons || []} 
-        editingProduct={editingProduct} setEditingProduct={setEditingProduct} 
-        categories={categories || []} 
-      />
 
     </div>
   );
