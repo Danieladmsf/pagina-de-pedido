@@ -446,7 +446,7 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
-    <div className="h-screen bg-slate-100 flex flex-col overflow-hidden">
+    <div className="admin-scale h-screen bg-slate-100 flex flex-col overflow-hidden">
       {/* Dark Top Navigation Bar */}
       <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center px-4 shrink-0 shadow-sm z-10">
         <div className="flex h-full">
