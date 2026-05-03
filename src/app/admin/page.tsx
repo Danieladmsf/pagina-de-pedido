@@ -631,7 +631,7 @@ export default function AdminPage() {
 
         {/* Módulo Administrativo Antigo */}
         <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
-          <div className="max-w-6xl mx-auto space-y-8 relative pb-12 mt-4">
+          <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
             <Tabs defaultValue="caixa" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
             <TabsTrigger value="caixa" className="rounded-lg px-6 flex gap-2">

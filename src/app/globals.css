@@ -32,6 +32,7 @@
   * {
     @apply border-border;
   }
+  html { zoom: 0.9; }
   body {
     @apply bg-background text-foreground font-body;
   }
