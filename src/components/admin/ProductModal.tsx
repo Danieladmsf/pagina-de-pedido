@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
+import { uploadImage } from '@/lib/upload';
 
 interface ProductModalProps {
   db: any;
@@ -102,23 +103,11 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
     setImagePreview(URL.createObjectURL(file));
   };
 
-  const uploadImage = async (): Promise<string> => {
+  const handleUploadImage = async (): Promise<string> => {
     if (!imageFile) return editingProduct?.imageUrl || '';
     setUploadingImage(true);
     try {
-      const response = await fetch(`/api/upload?filename=${encodeURIComponent(imageFile.name)}`, {
-        method: 'POST',
-        body: imageFile,
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg = 'Falha no upload da imagem';
-        try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
-        throw new Error(errorMsg);
-      }
-      const blob = await response.json();
-      if (!blob.url) throw new Error('Upload não retornou URL válida');
-      return blob.url;
+      return await uploadImage(imageFile);
     } finally {
       setUploadingImage(false);
     }
@@ -137,7 +126,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
     
     try {
       if (!isMarmita && imageFile) {
-        imageUrl = await uploadImage();
+        imageUrl = await handleUploadImage();
       }
 
       const fixedItems = fixedItemsText.split(',').map((s: string) => s.trim()).filter((s: string) => s);
