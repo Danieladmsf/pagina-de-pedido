@@ -654,34 +654,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
   return (
     <div className="space-y-2">
-      {/* ─── Navegação Global ─── */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-[26px] font-light text-slate-500 mb-1 leading-none">Caixas</h1>
-          <div className="text-[11px] text-muted-foreground flex gap-1 items-center">
-            <span className="cursor-pointer hover:underline">Home</span> 
-            <span>/</span>
-            <span className={view === 'caixa' ? "font-bold text-slate-700" : "cursor-pointer hover:underline"} onClick={() => { setView('caixa'); setCaixaSelecionadoId(null); }}>
-              Caixas
-            </span> 
-            {view === 'anteriores' && (
-              <>
-                <span>/</span>
-                <span className="font-bold text-slate-700">anteriores</span>
-              </>
-            )}
-          </div>
-        </div>
-        {view === 'caixa' ? (
-          <Button className="bg-[#1D82C4] hover:bg-[#16659c] text-white rounded-md shadow-sm h-9 px-4 text-sm" onClick={() => setView('anteriores')}>
-            Caixas anteriores
-          </Button>
-        ) : (
-          <Button className="bg-[#1D82C4] hover:bg-[#16659c] text-white rounded-md shadow-sm h-9 px-4 text-sm" onClick={() => { setView('caixa'); setCaixaSelecionadoId(null); }}>
-            Caixa Atual
-          </Button>
-        )}
-      </div>
+
 
       {view === 'caixa' && (caixaAberto || caixaSelecionadoId) && caixaAtual && (
         <>
@@ -717,6 +690,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
               {isAberto && (
                 <>
 
+                  <Button onClick={() => setView('anteriores')} variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
+                    Caixas anteriores
+                  </Button>
                   <Button onClick={() => setModalOpen('suprimento')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="h-4 w-4 mr-1" /> Suprimento
                   </Button>
@@ -876,6 +852,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
               <p className="font-semibold">Não esquecer de fechar o caixa no final do expediente.</p>
             </div>
             <div className="flex gap-3 justify-center">
+              <Button onClick={() => setView('anteriores')} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
               <Button onClick={() => setModalOpen('abrir')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
             </div>
           </div>
@@ -890,6 +867,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
               <h2 className="text-xl font-bold text-slate-700">Caixas Anteriores</h2>
               <p className="text-sm text-muted-foreground">Histórico de todas as sessões</p>
             </div>
+            <Button variant="outline" onClick={() => { setView('caixa'); setCaixaSelecionadoId(null); }}>
+              Voltar ao Caixa
+            </Button>
           </div>
           <Card className="border shadow-md rounded-2xl overflow-hidden">
             <CardContent className="p-0">
