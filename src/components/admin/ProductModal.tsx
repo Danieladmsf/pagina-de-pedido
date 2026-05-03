@@ -47,7 +47,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   }, [editingProduct, categories]);
 
   const handleAddGroup = () => {
-    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 1, max: 1 }]);
+    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, max: 0 }]);
   };
 
   const handleRemoveGroup = (index: number) => {
@@ -312,8 +312,8 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                 />
                                 <div className="flex items-center gap-1.5">
                                   <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
-                                    <span className="text-[10px] text-amber-700 font-semibold">Máximo:</span>
-                                    <Input type="number" min="1" value={group.max || 1} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||1)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de itens que o cliente pode escolher nesta etapa" />
+                                    <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
+                                    <Input type="number" min="0" value={group.max || 0} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de escolhas (0 = Ilimitado)" />
                                   </div>
                                   <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
                                     <span className="text-[10px] text-emerald-700 font-semibold">Grátis:</span>
