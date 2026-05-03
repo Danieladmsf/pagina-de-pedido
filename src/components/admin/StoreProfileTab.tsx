@@ -432,128 +432,172 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           </div>
         )}
 
-        {activeTab === 'horarios' && (
-          <div className="space-y-4">
-            <h2 className="text-base font-bold">Horários de Funcionamento</h2>
-            <div className="space-y-1">
-              {workingHours.map((wh, idx) => (
-                <div key={wh.day} className="flex items-center gap-3 py-2 px-3 rounded-md border bg-slate-50/50 hover:bg-slate-50">
-                  <div className="w-20 font-semibold text-sm">{wh.day}</div>
-                  <div className="flex items-center space-x-1.5">
-                    <Switch 
-                      id={`closed-${idx}`} 
-                      checked={wh.isClosed} 
-                      onCheckedChange={(checked) => {
-                        const newWH = [...workingHours];
-                        newWH[idx].isClosed = checked;
-                        setWorkingHours(newWH);
-                      }} 
-                      className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500 scale-90"
-                    />
-                    <Label htmlFor={`closed-${idx}`} className="text-xs">{wh.isClosed ? 'Fechado' : 'Aberto'}</Label>
-                  </div>
-                  {!wh.isClosed && (
-                    <div className="flex items-center gap-2 flex-1 justify-end">
-                      <Input type="time" value={wh.open} onChange={(e) => {
-                        const newWH = [...workingHours];
-                        newWH[idx].open = e.target.value;
-                        setWorkingHours(newWH);
-                      }} className="w-28 h-8 text-sm" />
-                      <span className="text-xs text-muted-foreground">até</span>
-                      <Input type="time" value={wh.close} onChange={(e) => {
-                        const newWH = [...workingHours];
-                        newWH[idx].close = e.target.value;
-                        setWorkingHours(newWH);
-                      }} className="w-28 h-8 text-sm" />
-                    </div>
-                  )}
-                  {wh.isClosed && (
-                    <div className="flex-1 text-right text-muted-foreground italic text-xs">__:__ - __:__</div>
-                  )}
-                </div>
-              ))}
-            </div>
+        {activeTab === 'horarios' && (() => {
+          // Calendar state helpers
+          const today = new Date();
+          const todayStr = today.toISOString().split('T')[0];
+          
+          // Map day index (0=Sun) to workingHours day name
+          const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+          
+          // Generate calendar days for current + next month
+          const calMonths: { year: number, month: number }[] = [];
+          for (let i = 0; i < 2; i++) {
+            const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+            calMonths.push({ year: d.getFullYear(), month: d.getMonth() });
+          }
 
-            {/* Fechamentos Planejados */}
-            <div className="pt-4 border-t space-y-3">
-              <div className="flex items-center gap-2">
-                <CalendarOff className="w-4 h-4 text-red-500" />
-                <h2 className="text-base font-bold">Fechamentos Planejados</h2>
-              </div>
-              <p className="text-xs text-muted-foreground">Agende feriados ou folgas. Nos dias marcados, a loja ficará fechada automaticamente. Após passar a data, o dia volta ao funcionamento normal.</p>
+          const isDayOpenBySchedule = (dateStr: string) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            const dayName = daysMap[d.getDay()];
+            const wh = workingHours.find(w => w.day === dayName);
+            return wh ? !wh.isClosed : true;
+          };
 
-              <div className="flex items-end gap-2">
-                <div className="space-y-0.5 flex-1">
-                  <Label className="text-xs">Data</Label>
-                  <Input 
-                    type="date" 
-                    value={newClosureDate} 
-                    onChange={(e) => setNewClosureDate(e.target.value)} 
-                    min={new Date().toISOString().split('T')[0]}
-                    className="h-8 text-sm" 
-                  />
-                </div>
-                <div className="space-y-0.5 flex-[2]">
-                  <Label className="text-xs">Motivo (opcional)</Label>
-                  <Input 
-                    value={newClosureReason} 
-                    onChange={(e) => setNewClosureReason(e.target.value)} 
-                    placeholder="Ex: Feriado, Folga, Reforma..." 
-                    className="h-8 text-sm" 
-                  />
-                </div>
-                <Button 
-                  size="sm" 
-                  className="h-8 text-xs gap-1"
-                  disabled={!newClosureDate}
-                  onClick={() => {
-                    if (!newClosureDate) return;
-                    if (plannedClosures.some(c => c.date === newClosureDate)) {
-                      toast({ variant: 'destructive', title: 'Data já agendada' });
-                      return;
-                    }
-                    setPlannedClosures([...plannedClosures, { id: Date.now().toString(), date: newClosureDate, reason: newClosureReason }].sort((a, b) => a.date.localeCompare(b.date)));
-                    setNewClosureDate('');
-                    setNewClosureReason('');
-                  }}
-                >
-                  <Plus className="w-3 h-3" /> Agendar
-                </Button>
-              </div>
+          const isPlannedClosure = (dateStr: string) => {
+            return plannedClosures.some(c => c.date === dateStr);
+          };
 
-              {plannedClosures.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
-                  Nenhum fechamento planejado. A loja seguirá os horários normais acima.
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {plannedClosures.filter(c => c.date >= new Date().toISOString().split('T')[0]).map((closure) => {
-                    const dateObj = new Date(closure.date + 'T12:00:00');
-                    const dayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
-                    const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    const isToday = closure.date === new Date().toISOString().split('T')[0];
-                    return (
-                      <div key={closure.id} className={`flex items-center gap-3 py-2 px-3 rounded-md border ${isToday ? 'bg-red-50 border-red-200' : 'bg-slate-50/50'}`}>
-                        <CalendarOff className={`w-4 h-4 shrink-0 ${isToday ? 'text-red-500' : 'text-muted-foreground'}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm capitalize">{dayName}</span>
-                            <span className="text-xs text-muted-foreground">{dateFormatted}</span>
-                            {isToday && <Badge className="bg-red-500 text-[10px] h-4 px-1.5 uppercase">Hoje — Fechado</Badge>}
-                          </div>
-                          {closure.reason && <p className="text-xs text-muted-foreground truncate">{closure.reason}</p>}
+          const isDayOpen = (dateStr: string) => {
+            if (isPlannedClosure(dateStr)) return false;
+            return isDayOpenBySchedule(dateStr);
+          };
+
+          const toggleDay = (dateStr: string) => {
+            if (isPlannedClosure(dateStr)) {
+              // Remove closure (re-enable day)
+              setPlannedClosures(plannedClosures.filter(c => c.date !== dateStr));
+            } else if (isDayOpenBySchedule(dateStr)) {
+              // Add closure (disable a normally-open day)
+              setPlannedClosures([...plannedClosures, { id: Date.now().toString(), date: dateStr, reason: '' }].sort((a, b) => a.date.localeCompare(b.date)));
+            }
+            // If day is already closed by schedule, do nothing (can't override to open)
+          };
+
+          const getCalendarDays = (year: number, month: number) => {
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const days: (number | null)[] = [];
+            for (let i = 0; i < firstDay; i++) days.push(null);
+            for (let i = 1; i <= daysInMonth; i++) days.push(i);
+            return days;
+          };
+
+          const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+              {/* Left: Compact Weekly Schedule */}
+              <div className="space-y-2">
+                <h2 className="text-sm font-bold">Horário Semanal</h2>
+                <div className="space-y-0.5">
+                  {workingHours.map((wh, idx) => (
+                    <div key={wh.day} className={`flex items-center gap-2 py-1.5 px-2 rounded border text-xs ${wh.isClosed ? 'bg-red-50/50 border-red-100' : 'bg-slate-50/50'}`}>
+                      <div className="w-14 font-semibold truncate">{wh.day.substring(0, 3)}</div>
+                      <Switch 
+                        id={`closed-${idx}`} 
+                        checked={wh.isClosed} 
+                        onCheckedChange={(checked) => {
+                          const newWH = [...workingHours];
+                          newWH[idx].isClosed = checked;
+                          setWorkingHours(newWH);
+                        }} 
+                        className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500 scale-75"
+                      />
+                      {!wh.isClosed ? (
+                        <div className="flex items-center gap-1 flex-1 justify-end">
+                          <Input type="time" value={wh.open} onChange={(e) => {
+                            const newWH = [...workingHours];
+                            newWH[idx].open = e.target.value;
+                            setWorkingHours(newWH);
+                          }} className="w-20 h-6 text-[11px] px-1" />
+                          <span className="text-muted-foreground">-</span>
+                          <Input type="time" value={wh.close} onChange={(e) => {
+                            const newWH = [...workingHours];
+                            newWH[idx].close = e.target.value;
+                            setWorkingHours(newWH);
+                          }} className="w-20 h-6 text-[11px] px-1" />
                         </div>
-                        <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50 h-7 w-7 shrink-0" onClick={() => setPlannedClosures(plannedClosures.filter(c => c.id !== closure.id))}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    );
-                  })}
+                      ) : (
+                        <span className="flex-1 text-right text-muted-foreground italic">Fechado</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
+                <p className="text-[10px] text-muted-foreground leading-tight pt-1">
+                  Use o calendário ao lado para desligar dias específicos (feriados, folgas). Dias cinza já estão fechados pelo horário semanal.
+                </p>
+              </div>
+
+              {/* Right: Interactive Calendar */}
+              <div className="space-y-4">
+                {calMonths.map(({ year, month }) => {
+                  const days = getCalendarDays(year, month);
+                  return (
+                    <div key={`${year}-${month}`} className="border rounded-xl overflow-hidden">
+                      <div className="bg-slate-100 px-4 py-2 font-bold text-sm text-center capitalize">
+                        {monthNames[month]} {year}
+                      </div>
+                      <div className="p-2">
+                        {/* Header */}
+                        <div className="grid grid-cols-7 gap-0.5 mb-1">
+                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                            <div key={d} className="text-center text-[10px] font-bold text-muted-foreground uppercase py-1">{d}</div>
+                          ))}
+                        </div>
+                        {/* Days grid */}
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {days.map((day, i) => {
+                            if (day === null) return <div key={`empty-${i}`} />;
+                            
+                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const isPast = dateStr < todayStr;
+                            const isToday = dateStr === todayStr;
+                            const openBySchedule = isDayOpenBySchedule(dateStr);
+                            const closedByPlan = isPlannedClosure(dateStr);
+                            const isOpen = isDayOpen(dateStr);
+
+                            return (
+                              <div 
+                                key={dateStr}
+                                className={`relative flex flex-col items-center justify-center py-1 rounded-lg border transition-all
+                                  ${isPast ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:shadow-sm'}
+                                  ${isToday ? 'ring-2 ring-primary/50' : ''}
+                                  ${!openBySchedule && !closedByPlan ? 'bg-slate-100 border-slate-200' : ''}
+                                  ${closedByPlan ? 'bg-red-50 border-red-200' : ''}
+                                  ${isOpen && !isToday ? 'bg-green-50/50 border-green-200/50' : ''}
+                                `}
+                                onClick={() => !isPast && toggleDay(dateStr)}
+                              >
+                                <span className={`text-xs font-semibold ${isToday ? 'text-primary' : isOpen ? 'text-slate-700' : 'text-red-400'}`}>
+                                  {day}
+                                </span>
+                                <Switch
+                                  checked={isOpen}
+                                  onCheckedChange={() => !isPast && toggleDay(dateStr)}
+                                  disabled={isPast || !openBySchedule}
+                                  className="scale-[0.45] mt-0.5 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-400 disabled:opacity-50"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Legend */}
+                <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground px-1">
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-50 border border-green-200" /> Aberto</div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border border-red-200" /> Fechado (feriado/folga)</div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> Fechado (horário semanal)</div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-primary/50" /> Hoje</div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'motoboys' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
