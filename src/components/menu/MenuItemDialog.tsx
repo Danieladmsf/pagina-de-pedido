@@ -95,7 +95,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
       arr.forEach((a, i) => {
         // Se o índice for maior ou igual ao limite gratuito, cobra o valor
         if (i >= freeLimit) {
-          addonsTotal += a.price;
+          addonsTotal += Number(a.price) || 0;
         }
         // Mas o item sempre vai pro carrinho final
         finalAddonsList.push(a);
@@ -104,11 +104,11 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
   }
   
   if (selectedAddons.length > 0) {
-    addonsTotal += selectedAddons.reduce((acc, a) => acc + a.price, 0);
+    addonsTotal += selectedAddons.reduce((acc, a) => acc + (Number(a.price) || 0), 0);
     finalAddonsList = [...finalAddonsList, ...selectedAddons];
   }
 
-  const unitPrice = item.price + addonsTotal;
+  const unitPrice = (Number(item.price) || 0) + addonsTotal;
   const total = unitPrice * quantity;
 
   // Validação
