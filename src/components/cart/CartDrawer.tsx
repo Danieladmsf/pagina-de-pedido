@@ -186,10 +186,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
     
     console.log('[CartDrawer] ✅ Auto-cálculo: endereço salvo + regras prontos. Calculando taxa...');
-    const addr = savedNumber ? `${savedStreet}, ${savedNumber}` : savedStreet;
+    const addr = [savedStreet, savedNumber, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
     calculateDeliveryFee(addr);
     setAutoCalcDone(true);
-  }, [savedStreet, savedNumber, storeAddress, deliveryFeeRules, autoCalcDone, calculateDeliveryFee]);
+  }, [savedStreet, savedNumber, neighborhood, city, storeAddress, deliveryFeeRules, autoCalcDone, calculateDeliveryFee]);
 
   // Busca automática de CEP via ViaCEP
   const searchCep = useCallback(async (rawCep: string) => {
@@ -210,7 +210,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       
       // Auto-calcular taxa após buscar CEP
       if (data.logradouro) {
-        const addr = number ? `${data.logradouro}, ${number}, ${data.localidade}` : `${data.logradouro}, ${data.localidade}`;
+        const addr = [data.logradouro, number, data.bairro, `${data.localidade} - ${data.uf}`, 'Brasil'].filter(Boolean).join(', ');
         setTimeout(() => calculateDeliveryFee(addr), 300);
       }
     } catch {
@@ -223,12 +223,14 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
     if (orderType === 'delivery' && selectedAddress) {
-      // Se a string já tiver vírgula (foi montada no onBlur com cidade/bairro), manda direto
-      // Senão (veio do clique no autocomplete), junta com o número que estiver preenchido
-      const fullAddr = selectedAddress.includes(',') ? selectedAddress : (number ? `${selectedAddress}, ${number}` : selectedAddress);
-      calculateDeliveryFee(fullAddr);
+      if (selectedAddress.includes(',')) {
+        calculateDeliveryFee(selectedAddress);
+      } else {
+        const fullAddr = [selectedAddress, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
+        calculateDeliveryFee(fullAddr);
+      }
     }
-  }, [orderType, number, calculateDeliveryFee]);
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee]);
 
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
@@ -237,7 +239,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     if (street && street.length > 3 && city && city.length > 3) {
       const timeout = setTimeout(() => {
         if (dynamicFee === null && !calculatingFee) {
-          const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+          const fullAddr = [street, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
           calculateDeliveryFee(fullAddr);
         }
       }, 1000); // 1 segundo de espera após o preenchimento para acionar
