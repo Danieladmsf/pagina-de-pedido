@@ -493,7 +493,7 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
           return (
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Left: Compact Weekly Schedule */}
               <div className="space-y-2">
                 <h2 className="text-sm font-bold">Horário Semanal</h2>
