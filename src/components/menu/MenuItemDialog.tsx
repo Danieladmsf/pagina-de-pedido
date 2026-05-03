@@ -67,8 +67,10 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
         next = next.filter(a => a.id !== addon.id);
       } else {
         const finalPrice = group.freeAddonIds?.includes(addon.id) ? 0 : addon.price;
-        if (next.length >= group.max) {
-          if (group.max === 1) {
+        const limit = group.max || 0;
+        
+        if (limit > 0 && next.length >= limit) {
+          if (limit === 1) {
             next = [{ id: addon.id, name: addon.name, price: finalPrice }];
           } else {
             return prev; // não permite selecionar mais
@@ -181,19 +183,19 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                         </span>
                       ) : null}
                       <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                        Escolha de {group.min} a {group.max}
+                        {group.max > 0 ? `Escolha de ${group.min || 0} a ${group.max}` : 'Sem limite'}
                       </span>
                     </div>
                   </div>
                   <span className="text-[10px] text-muted-foreground font-medium">
-                    {currentSelected.length} de {group.max} selecionados
+                    {currentSelected.length} {group.max > 0 ? `de ${group.max}` : ''} selecionados
                   </span>
                 </div>
                 
                 <div className="grid gap-1.5">
                   {availableAddons.map((addon) => {
                     const checked = !!currentSelected.find(a => a.id === addon.id);
-                    const disabled = !checked && currentSelected.length >= group.max && group.max > 1;
+                    const disabled = group.max > 0 && !checked && currentSelected.length >= group.max && group.max > 1;
 
                     return (
                       <label
