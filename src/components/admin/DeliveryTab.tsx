@@ -41,6 +41,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
+  const [isSplitMode, setIsSplitMode] = useState(false);
+  const [paymentSplits, setPaymentSplits] = useState<{methodId: string, label: string, amount: number, received?: number}[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderToPrint, setOrderToPrint] = useState<any>(null);
@@ -129,6 +131,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     setPaymentModalOrder(order);
     setSelectedPayment('');
     setValorRecebido('');
+    setPaymentSplits([]);
+    setIsSplitMode(false);
   };
 
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
@@ -153,25 +157,77 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Confirmar pagamento + registrar no caixa
   const handleConfirmPayment = async () => {
-    if (!selectedPayment || !paymentModalOrder) return;
+    if (isSplitMode && paymentSplits.length === 0 && !selectedPayment) return;
+    if (!isSplitMode && !selectedPayment) return;
+    if (!paymentModalOrder) return;
+    
     setIsProcessing(true);
     try {
-      // 1. Atualizar status do pedido para 'delivered'
-      updateOrderStatus(paymentModalOrder.id, 'delivered');
+      let paymentString = '';
+      const splitsToProcess = isSplitMode ? [...paymentSplits] : [];
+      
+      if (!isSplitMode) {
+        // Fluxo SIMPLES (1 forma de pagamento)
+        let received = undefined;
+        let change = 0;
+        if (selectedPayment === 'dinheiro' && valorRecebido) {
+           const valRec = Number(valorRecebido);
+           if (valRec > paymentModalOrder.totalAmount) {
+             change = valRec - paymentModalOrder.totalAmount;
+           }
+        }
+        const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+        paymentString = selectedPayment === 'dinheiro' && change > 0 
+           ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
+           : label;
+        splitsToProcess.push({ methodId: selectedPayment, label, amount: paymentModalOrder.totalAmount });
+      } else {
+        // Fluxo MÚLTIPLO (Split)
+        if (selectedPayment) {
+          const remaining = Math.max(0, paymentModalOrder.totalAmount - splitsToProcess.reduce((sum, s) => sum + s.amount, 0));
+          let amount = remaining;
+          let received = undefined;
+          if (selectedPayment === 'dinheiro' && valorRecebido) {
+            const valRec = Number(valorRecebido);
+            if (valRec >= remaining) {
+              received = valRec;
+              amount = remaining;
+            } else {
+              amount = valRec;
+              received = valRec;
+            }
+          }
+          if (amount > 0) {
+             const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+             splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
+          }
+        }
+
+        paymentString = splitsToProcess.map(s => `${s.label}: R$ ${s.amount.toFixed(2)}`).join(' | ');
+        const totalReceived = splitsToProcess.reduce((acc, s) => acc + (s.received || s.amount), 0);
+        if (totalReceived > paymentModalOrder.totalAmount) {
+           paymentString += ` (Troco para R$ ${totalReceived.toFixed(2)})`;
+        }
+      }
+
+      // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
+      updateOrderStatus(paymentModalOrder.id, { status: 'delivered', paymentMethod: paymentString });
       
       // 2. Registrar venda no caixa (se caixa estiver aberto)
       if (registrarLancamento && caixaAberto) {
-        await registrarLancamento({
-          tipo: 'venda',
-          titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
-          valor: paymentModalOrder.totalAmount || 0,
-          formaPagamento: selectedPayment,
-        });
-        toast({ title: 'Pedido finalizado!', description: `Venda registrada no caixa (${selectedPayment}).` });
+        for (const split of splitsToProcess) {
+          await registrarLancamento({
+            tipo: 'venda',
+            titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
+            valor: split.amount,
+            formaPagamento: split.methodId,
+          });
+        }
+        toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${selectedPayment}).` });
       } else {
         toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status atualizado.' });
       }
-      setOrderToPrint(paymentModalOrder);
+      setOrderToPrint({ ...paymentModalOrder, paymentMethod: paymentString });
       setTimeout(() => {
         window.print();
         setPaymentModalOrder(null);
@@ -182,6 +238,31 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       setIsProcessing(false);
     }
   };
+
+  const handleAddSplit = () => {
+    if (!selectedPayment || !paymentModalOrder) return;
+    const remaining = Math.max(0, paymentModalOrder.totalAmount - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
+    let amount = remaining;
+    let received = undefined;
+    if (selectedPayment === 'dinheiro' && valorRecebido) {
+      const valRec = Number(valorRecebido);
+      if (valRec >= remaining) {
+        received = valRec;
+        amount = remaining;
+      } else {
+        amount = valRec;
+        received = valRec;
+      }
+    }
+    
+    if (amount <= 0) return;
+    
+    const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+    setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
+    setSelectedPayment('');
+    setValorRecebido('');
+  };
+
 
   const triggerPrint = (order: any) => {
     setOrderToPrint(order);
@@ -403,73 +484,189 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     {/* Modal: Forma de Pagamento para Concluir Pedido */}
     <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
       <DialogContent className="sm:max-w-[380px] p-4">
-        <DialogHeader className="pb-1">
-          <DialogTitle className="text-sm flex items-center justify-between">
-            <span>💰 Pagamento #{paymentModalOrder?.id?.substring(0, 5)}</span>
-            <span className="text-lg font-black text-primary">R$ {paymentModalOrder?.totalAmount?.toFixed(2)}</span>
-          </DialogTitle>
-          <DialogDescription className="text-xs">
-            Selecione como o pedido foi pago.
-            {!caixaAberto && <span className="text-red-500 block">⚠️ Caixa fechado — registrado apenas como entregue.</span>}
-          </DialogDescription>
-        </DialogHeader>
+        {(() => {
+          const totalOrder = paymentModalOrder?.totalAmount || 0;
+          const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
+          const remaining = Math.max(0, totalOrder - totalPaid);
+          const isFullyPaid = remaining <= 0;
 
-        <div className="grid grid-cols-4 gap-2 py-2">
-          {FORMAS_PAGAMENTO.map((fp: any) => (
-              <button
-                key={fp.id}
-                type="button"
-                onClick={() => setSelectedPayment(fp.id)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
-                  selectedPayment === fp.id 
-                    ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
-                    : 'border-muted text-muted-foreground hover:border-slate-300'
-                }`}
-              >
-                <span className="text-lg">{fp.icon}</span>
-                {fp.label}
-              </button>
-          ))}
-        </div>
+          return (
+            <>
+              <DialogHeader className="pb-1 border-b">
+                <DialogTitle className="text-sm flex items-center justify-between">
+                  <span>💰 Pagamento #{paymentModalOrder?.id?.substring(0, 5)}</span>
+                  <div className="flex flex-col items-end">
+                    <span className="text-xs text-muted-foreground font-normal">Total: R$ {totalOrder.toFixed(2)}</span>
+                    <span className={`text-lg font-black ${remaining > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                      {remaining > 0 ? `Falta R$ ${remaining.toFixed(2)}` : 'Pago ✅'}
+                    </span>
+                  </div>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {!caixaAberto && <span className="text-red-500 block mb-1">⚠️ Caixa fechado — venda não será registrada nele.</span>}
+                </DialogDescription>
+              </DialogHeader>
 
-        {selectedPayment === 'dinheiro' && paymentModalOrder && (
-          <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
-            <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              placeholder="R$ 0,00"
-              value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
-              onChange={(e) => {
-                let val = e.target.value.replace(/\D/g, '');
-                if (!val) setValorRecebido('');
-                else setValorRecebido((Number(val) / 100).toFixed(2));
-              }}
-              className="text-sm font-bold text-center bg-white h-9"
-              autoFocus
-            />
-            {Number(valorRecebido) > 0 && (
-              <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= paymentModalOrder.totalAmount ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                {Number(valorRecebido) >= paymentModalOrder.totalAmount 
-                  ? `Troco: R$ ${(Number(valorRecebido) - paymentModalOrder.totalAmount).toFixed(2)}`
-                  : `Falta: R$ ${(paymentModalOrder.totalAmount - Number(valorRecebido)).toFixed(2)}`
-                }
-              </div>
-            )}
-          </div>
-        )}
+              {!isSplitMode ? (
+                <>
+                  <div className="grid grid-cols-4 gap-2 py-2">
+                    {FORMAS_PAGAMENTO.map((fp: any) => (
+                        <button
+                          key={fp.id}
+                          type="button"
+                          onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
+                            selectedPayment === fp.id 
+                              ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
+                              : 'border-muted text-muted-foreground hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="text-lg">{fp.icon}</span>
+                          {fp.label}
+                        </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
+                      className={`col-span-4 flex items-center justify-center gap-2 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
+                    >
+                      <span className="text-lg">🔀</span> Múltiplos Pagamentos
+                    </button>
+                  </div>
 
-        <DialogFooter className="pt-1 gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
-          <Button 
-            size="sm"
-            disabled={!selectedPayment || isProcessing} 
-            onClick={handleConfirmPayment}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {isProcessing ? '...' : '✅ Confirmar'}
-          </Button>
-        </DialogFooter>
+                  {selectedPayment === 'dinheiro' && (
+                    <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
+                      <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, '');
+                          if (!val) setValorRecebido('');
+                          else setValorRecebido((Number(val) / 100).toFixed(2));
+                        }}
+                        className="text-sm font-bold text-center bg-white h-9"
+                        autoFocus
+                      />
+                      {Number(valorRecebido) > 0 && (
+                        <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= totalOrder ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          {Number(valorRecebido) >= totalOrder 
+                            ? `Troco: R$ ${(Number(valorRecebido) - totalOrder).toFixed(2)}`
+                            : `Falta: R$ ${(totalOrder - Number(valorRecebido)).toFixed(2)}`
+                          }
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <DialogFooter className="pt-2 gap-2 border-t mt-2">
+                    <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
+                    <Button 
+                      size="sm"
+                      disabled={!selectedPayment || isProcessing} 
+                      onClick={handleConfirmPayment}
+                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white"
+                    >
+                      {isProcessing ? '...' : '✅ Confirmar Pedido'}
+                    </Button>
+                  </DialogFooter>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setIsSplitMode(false)}
+                    className="text-xs text-blue-600 hover:underline mb-2 flex items-center gap-1"
+                  >
+                    ← Voltar ao Pagamento Simples
+                  </button>
+
+                  {paymentSplits.length > 0 && (
+                    <div className="py-2 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">Pagamentos Adicionados:</span>
+                      {paymentSplits.map((split, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-slate-50 border p-1.5 rounded text-xs">
+                          <span className="font-medium text-slate-700 flex items-center gap-1">
+                            {split.label}
+                            {split.received && split.received > split.amount && <span className="text-[9px] text-muted-foreground">(Recebeu R$ {split.received.toFixed(2)})</span>}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-green-600">R$ {split.amount.toFixed(2)}</span>
+                            <button onClick={() => setPaymentSplits(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!isFullyPaid && (
+                    <>
+                      <div className="grid grid-cols-4 gap-2 py-2">
+                        {FORMAS_PAGAMENTO.map((fp: any) => (
+                            <button
+                              key={fp.id}
+                              type="button"
+                              onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
+                              className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
+                                selectedPayment === fp.id 
+                                  ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
+                                  : 'border-muted text-muted-foreground hover:border-slate-300'
+                              }`}
+                            >
+                              <span className="text-lg">{fp.icon}</span>
+                              {fp.label}
+                            </button>
+                        ))}
+                      </div>
+
+                      {selectedPayment && (
+                        <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 space-y-1.5">
+                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {FORMAS_PAGAMENTO.find((f: any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder={`R$ ${remaining.toFixed(2).replace('.', ',')}`}
+                              value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
+                              onChange={(e) => {
+                                let val = e.target.value.replace(/\D/g, '');
+                                if (!val) setValorRecebido('');
+                                else setValorRecebido((Number(val) / 100).toFixed(2));
+                              }}
+                              className="text-sm font-bold text-center bg-white h-9"
+                              autoFocus
+                            />
+                            <Button onClick={handleAddSplit} className="h-9 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+                              Adicionar
+                            </Button>
+                          </div>
+                          {selectedPayment === 'dinheiro' && Number(valorRecebido) > remaining && (
+                            <div className="text-center p-1 font-bold text-xs bg-amber-100 text-amber-700 rounded">
+                              Troco: R$ {(Number(valorRecebido) - remaining).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <DialogFooter className="pt-2 gap-2 border-t mt-2">
+                    <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
+                    <Button 
+                      size="sm"
+                      disabled={(paymentSplits.length === 0 && !selectedPayment) || isProcessing || (!isFullyPaid && !selectedPayment)} 
+                      onClick={handleConfirmPayment}
+                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white"
+                    >
+                      {isProcessing ? '...' : '✅ Confirmar Pedido'}
+                    </Button>
+                  </DialogFooter>
+                </>
+              )}
+            </>
+          );
+        })()}
       </DialogContent>
     </Dialog>
 
