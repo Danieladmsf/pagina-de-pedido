@@ -1,32 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { AddonGroup, Addon } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Upload, Loader2 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import Image from 'next/image';
 
-interface MarmitaModalProps {
+interface ProductModalProps {
   db: any;
   user: any;
   addons: Addon[];
-  editingMarmita: any;
-  setEditingMarmita: (v: any) => void;
+  editingProduct: any;
+  setEditingProduct: (v: any) => void;
   categories: any[];
 }
 
-export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmita, categories }: MarmitaModalProps) {
+export function ProductModal({ db, user, addons, editingProduct, setEditingProduct, categories }: ProductModalProps) {
   const { toast } = useToast();
-  const [categoryId, setCategoryId] = useState(editingMarmita?.categoryId || categories?.[0]?.id || '');
-  const [fixedItemsText, setFixedItemsText] = useState((editingMarmita?.fixedItems || []).join(', '));
-  const [groups, setGroups] = useState<AddonGroup[]>(editingMarmita?.addonGroups || []);
+  const [categoryId, setCategoryId] = useState('');
+  const [fixedItemsText, setFixedItemsText] = useState('');
+  const [groups, setGroups] = useState<AddonGroup[]>([]);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const isMarmita = editingProduct?.isMarmita === true;
+
+  // Initialize state when editingProduct changes
+  useEffect(() => {
+    if (editingProduct) {
+      setCategoryId(editingProduct.categoryId || categories?.[0]?.id || '');
+      setFixedItemsText((editingProduct.fixedItems || []).join(', '));
+      setGroups(editingProduct.addonGroups || []);
+      setGroupNameInput('');
+      setGroupSearchTerms({});
+      setImageFile(null);
+      setImagePreview(editingProduct.imageUrl || '');
+      setUploadingImage(false);
+    }
+  }, [editingProduct, categories]);
+
   const handleAddGroup = () => {
     const name = groupNameInput.trim() || 'Nova Etapa';
     setGroups([...groups, { name, addonIds: [], min: 1, max: 1 }]);
@@ -69,7 +91,36 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
     setGroups(newGroups);
   };
 
-  const handleSaveMarmita = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const uploadImage = async (): Promise<string> => {
+    if (!imageFile) return editingProduct?.imageUrl || '';
+    setUploadingImage(true);
+    try {
+      const response = await fetch(`/api/upload?filename=${encodeURIComponent(imageFile.name)}`, {
+        method: 'POST',
+        body: imageFile,
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = 'Falha no upload da imagem';
+        try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
+        throw new Error(errorMsg);
+      }
+      const blob = await response.json();
+      if (!blob.url) throw new Error('Upload não retornou URL válida');
+      return blob.url;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!db || !user) return;
     
@@ -78,34 +129,44 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
     const priceStr = formData.get('price') as string;
     const price = parseFloat(priceStr.replace(/\./g, '').replace(',', '.')) || 0;
 
-    const fixedItems = fixedItemsText.split(',').map((s: string) => s.trim()).filter((s: string) => s);
-
-    const data = {
-      name,
-      price,
-      categoryId,
-      description: fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '',
-      ownerId: user.uid,
-      isAvailable: true,
-      isMarmita: true,
-      fixedItems,
-      addonGroups: groups,
-      addonIds: [],
-      imageUrl: ''
-    };
-
+    let imageUrl = editingProduct?.imageUrl || '';
+    
     try {
-      if (editingMarmita?.id) {
-        await updateDoc(doc(db, 'menuItems', editingMarmita.id), data);
-        toast({ title: 'Marmita atualizada com sucesso!' });
+      if (!isMarmita && imageFile) {
+        imageUrl = await uploadImage();
+      }
+
+      const fixedItems = fixedItemsText.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+      const description = isMarmita 
+        ? (fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '')
+        : (formData.get('description') as string || '');
+
+      const data = {
+        name,
+        price,
+        categoryId,
+        description,
+        ownerId: user.uid,
+        isAvailable: editingProduct?.id ? editingProduct.isAvailable : true,
+        isMarmita,
+        fixedItems: isMarmita ? fixedItems : [],
+        addonGroups: groups,
+        addonIds: [],
+        imageUrl
+      };
+
+      if (editingProduct?.id) {
+        await updateDoc(doc(db, 'menuItems', editingProduct.id), data);
+        toast({ title: 'Produto atualizado com sucesso!' });
       } else {
         const ref = doc(collection(db, 'menuItems'));
         await setDoc(ref, { id: ref.id, ...data });
-        toast({ title: 'Marmita criada com sucesso!' });
+        toast({ title: 'Produto criado com sucesso!' });
       }
-      setEditingMarmita(null);
+      setEditingProduct(null);
     } catch (err: any) {
-      toast({ title: 'Erro ao salvar marmita', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao salvar produto', description: err.message, variant: 'destructive' });
+      setUploadingImage(false);
     }
   };
 
@@ -117,7 +178,7 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
     setGroups(newGroups);
   };
 
-  if (editingMarmita === null) return null;
+  if (editingProduct === null) return null;
 
   // Agrupar adicionais disponíveis para facilitar a seleção
   const addonsByGroup = addons?.reduce((acc: any, addon) => {
@@ -128,17 +189,21 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
   }, {});
 
   return (
-    <Dialog open={editingMarmita !== null} onOpenChange={(open) => { if (!open) setEditingMarmita(null); }}>
+    <Dialog open={editingProduct !== null} onOpenChange={(open) => { if (!open) setEditingProduct(null); }}>
       <DialogContent className="sm:max-w-[850px] max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{editingMarmita.id ? 'Editar Marmita/Prato Montável' : 'Nova Marmita / Prato Montável'}</DialogTitle>
+          <DialogTitle>
+            {editingProduct.id 
+              ? (isMarmita ? 'Editar Marmita/Prato Montável' : 'Editar Produto') 
+              : (isMarmita ? 'Nova Marmita/Prato Montável' : 'Novo Produto')}
+          </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSaveMarmita} className="space-y-4 pt-4 flex-1 overflow-y-auto pr-2">
+        <form onSubmit={handleSaveProduct} className="space-y-4 pt-4 flex-1 overflow-y-auto pr-2">
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Nome do Prato/Marmita</Label>
-              <Input id="name" name="name" defaultValue={editingMarmita?.name} placeholder="Ex: Marmitex M (2 Carnes)" required />
+              <Label htmlFor="name">Nome do {isMarmita ? 'Prato/Marmita' : 'Produto'}</Label>
+              <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Marmitex M (2 Carnes)" : "Ex: X-Burguer"} required />
             </div>
             <div className="space-y-2">
               <Label>Categoria</Label>
@@ -153,13 +218,42 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="price">Preço Base (R$)</Label>
-              <CurrencyInput id="price" name="price" defaultValue={editingMarmita?.price} required placeholder="0,00" />
+              <CurrencyInput id="price" name="price" defaultValue={editingProduct?.price} required placeholder="0,00" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="fixedItems">Itens Fixos (Separados por vírgula)</Label>
-              <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
-            </div>
+            {isMarmita ? (
+              <div className="space-y-2">
+                <Label htmlFor="fixedItems">Itens Fixos (Separados por vírgula)</Label>
+                <Input id="fixedItems" value={fixedItemsText} onChange={e => setFixedItemsText(e.target.value)} placeholder="Ex: Arroz, Feijão, Salada" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Foto do Produto</Label>
+                <div className="flex items-center gap-2">
+                  {imagePreview && (
+                    <div className="relative h-10 w-10 rounded overflow-hidden border flex-shrink-0">
+                      <Image src={imagePreview} alt="preview" fill className="object-cover" />
+                    </div>
+                  )}
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded p-1.5 hover:border-primary transition-colors bg-muted/20 h-10">
+                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
+                      </span>
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
+
+          {!isMarmita && (
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrição</Label>
+              <Textarea id="description" name="description" defaultValue={editingProduct?.description} className="min-h-[60px] text-sm resize-none" placeholder="Ingredientes e detalhes do produto..." />
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <Label className="text-base font-bold text-slate-700">Etapas de Escolha (Grupos de Adicionais)</Label>
@@ -268,7 +362,9 @@ export function MarmitaModal({ db, user, addons, editingMarmita, setEditingMarmi
           </div>
 
           <DialogFooter className="mt-4">
-            <Button type="submit" className="w-full font-bold">Salvar Marmita</Button>
+            <Button type="submit" className="w-full font-bold" disabled={uploadingImage}>
+              {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : (isMarmita ? 'Salvar Marmita' : 'Salvar Produto')}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

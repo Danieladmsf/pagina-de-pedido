@@ -26,7 +26,7 @@ import { MesasTab } from '@/components/admin/MesasTab';
 import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
-import { MarmitaModal } from '@/components/admin/MarmitaModal';
+import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Component } from 'lucide-react';
@@ -37,7 +37,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'caixa' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -56,7 +56,7 @@ export default function AdminPage() {
     setSortConfig({ key, direction });
   };
   
-  // Hook do Caixa compartilhado entre módulos
+  // Hook do Caixa compartilhado entre mÃ³dulos
   const { caixaAberto, registrarLancamento, caixaAtual, setCaixaSelecionadoId } = useCaixa();
   
   const isRealUser = !!(user && !user.isAnonymous);
@@ -108,11 +108,11 @@ export default function AdminPage() {
       
       validOrders = validOrders.filter(o => {
         const oTime = new Date(o.orderDateTime || o.createdAt || 0).getTime();
-        // Incluir uma margem de segurança de 1 minuto antes e depois para cobrir eventuais atrasos de rede no Firebase
+        // Incluir uma margem de seguranÃ§a de 1 minuto antes e depois para cobrir eventuais atrasos de rede no Firebase
         return oTime >= (openingTime - 60000) && oTime <= (closingTime + 60000);
       });
     } else {
-      // Se não há caixa aberto nem selecionado no histórico, não mostra pedidos na interface principal
+      // Se nÃ£o hÃ¡ caixa aberto nem selecionado no histÃ³rico, nÃ£o mostra pedidos na interface principal
       validOrders = [];
     }
 
@@ -206,10 +206,10 @@ export default function AdminPage() {
     const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending' && o.orderType !== 'dine_in');
     if (newOnes.length > 0) {
       playNewOrderBeep();
-      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmação.` });
+      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmaÃ§Ã£o.` });
       try {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmação.` });
+          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmaÃ§Ã£o.` });
         }
       } catch {}
     }
@@ -276,16 +276,8 @@ export default function AdminPage() {
   }, [ordersRaw, playLoudAudio]);
   const { data: addons } = useCollection(addonsQuery);
 
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
-  const [editingMarmita, setEditingMarmita] = useState<any>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
-  const [addonGroups, setAddonGroups] = useState<any[]>([]);
-  const [addonSearchTerm, setAddonSearchTerm] = useState('');
-  const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('30d');
   const [customFrom, setCustomFrom] = useState<string>('');
@@ -358,42 +350,13 @@ export default function AdminPage() {
     return { revenue, count: filtered.length, avgTicket, customers, topItems, dailyBreakdown };
   }, [orders, reportPeriod, customFrom, customTo]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-  };
-
-  const uploadImage = async (): Promise<string> => {
-    if (!imageFile) return editingItem?.imageUrl || '';
-    setUploadingImage(true);
-    try {
-      const response = await fetch(`/api/upload?filename=${encodeURIComponent(imageFile.name)}`, {
-        method: 'POST',
-        body: imageFile,
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let errorMsg = 'Falha no upload da imagem';
-        try { errorMsg = JSON.parse(text).error || errorMsg; } catch {}
-        throw new Error(errorMsg);
-      }
-      const blob = await response.json();
-      if (!blob.url) throw new Error('Upload não retornou URL válida');
-      return blob.url;
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
   useEffect(() => {
     if (!isUserLoading && (!user || user.isAnonymous)) {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
 
-  // Ao sair da aba de configurações (onde o histórico do caixa é visto), voltar a visualizar o Caixa Aberto atual
+  // Ao sair da aba de configuraÃ§Ãµes (onde o histÃ³rico do caixa Ã© visto), voltar a visualizar o Caixa Aberto atual
   useEffect(() => {
     if (activeTab !== 'configuracoes') {
       setCaixaSelecionadoId(null);
@@ -429,46 +392,7 @@ export default function AdminPage() {
       await updateDoc(doc(db, 'orders', orderId), updates);
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
-    }
-  };
-
-  const handleSaveItem = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!user || !db) return;
-
-    const formData = new FormData(e.currentTarget);
-
-    try {
-      const imageUrl = await uploadImage();
-      const itemData = {
-        name: formData.get('name') as string,
-        description: formData.get('description') as string,
-        price: parseFloat(formData.get('price') as string),
-        categoryId: formData.get('categoryId') as string,
-        imageUrl,
-        addonIds: selectedAddonIds,
-        addonGroups: addonGroups,
-        ownerId: user.uid,
-        isAvailable: true,
-        isRecommended: false,
-      };
-
-      if (editingItem?.id) {
-        await updateDoc(doc(db, 'menuItems', editingItem.id), itemData);
-      } else {
-        const newDoc = doc(collection(db, 'menuItems'));
-        await setDoc(newDoc, { ...itemData, id: newDoc.id });
-      }
-      setEditingItem(null);
-      setImageFile(null);
-      setImagePreview('');
-      setSelectedAddonIds([]);
-      setAddonGroups([]);
-      toast({ title: "Sucesso", description: "Produto salvo com sucesso." });
-    } catch (err: any) {
-      console.error('Erro ao salvar produto:', err);
-      toast({ variant: "destructive", title: "Erro ao salvar", description: err?.message || "Verifique sua conexão e tente novamente." });
+      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicaÃ§Ã£o." });
     }
   };
 
@@ -509,10 +433,10 @@ export default function AdminPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground mb-1">Você não tem permissão de administrador.</p>
+        <p className="text-muted-foreground mb-1">VocÃª nÃ£o tem permissÃ£o de administrador.</p>
         <p className="text-xs font-mono bg-muted p-2 rounded mb-4">Seu UID: {user.uid}</p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.location.reload()}>í°Å¸â€â€ž Tentar novamente</Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>Ã­Â°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Tentar novamente</Button>
           <Button onClick={handleLogout}>Sair e Trocar Conta</Button>
         </div>
       </div>
@@ -548,7 +472,7 @@ export default function AdminPage() {
             onClick={() => setActiveTab('novo_pedido')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
-            Balcão
+            BalcÃ£o
           </button>
           <button 
             onClick={() => setActiveTab('mesas')}
@@ -583,7 +507,7 @@ export default function AdminPage() {
         {activeTab === 'dashboard' && (
           <div className="text-center p-20 flex flex-col items-center gap-4 text-slate-400">
             <LayoutDashboard className="h-16 w-16 opacity-50" />
-            <p className="text-xl font-medium">Dashboard Estatístico em Desenvolvimento...</p>
+            <p className="text-xl font-medium">Dashboard EstatÃ­stico em Desenvolvimento...</p>
           </div>
         )}
 
@@ -635,7 +559,7 @@ export default function AdminPage() {
           />
         )}
 
-        {/* Módulo Administrativo Antigo */}
+        {/* MÃ³dulo Administrativo Antigo */}
         <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
           <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
             <Tabs defaultValue="products" className="w-full">
@@ -658,12 +582,12 @@ export default function AdminPage() {
           <TabsContent value="products" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
+                <CardTitle className="text-lg">Gerenciar CardÃ¡pio</CardTitle>
                 <div className="flex gap-2">
                   <Button onClick={async () => {
                     if (!db || !user) return;
-                    if (!confirm("Isso apagará o cardápio atual e reimportará a NOVA BASE extraída do Bysell (300+ itens). Tem certeza?")) return;
-                    toast({ title: 'Limpeza e Importação Iniciadas. Aguarde...' });
+                    if (!confirm("Isso apagarÃ¡ o cardÃ¡pio atual e reimportarÃ¡ a NOVA BASE extraÃ­da do Bysell (300+ itens). Tem certeza?")) return;
+                    toast({ title: 'Limpeza e ImportaÃ§Ã£o Iniciadas. Aguarde...' });
                     try {
                       const oldCatsSnap = await getDocs(query(collection(db, 'categories'), where('ownerId', '==', user.uid)));
                       const oldItemsSnap = await getDocs(query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)));
@@ -720,194 +644,23 @@ export default function AdminPage() {
                         });
                         ok++;
                       }
-                      toast({ title: `Importação concluída! ${data.categories.length} categorias, ${ok} produtos e ${okAddons} adicionais.` });
+                      toast({ title: `ImportaÃ§Ã£o concluÃ­da! ${data.categories.length} categorias, ${ok} produtos e ${okAddons} adicionais.` });
                     } catch (e: any) {
                       console.error(e);
-                      toast({ title: 'Erro na importação', description: e.message, variant: 'destructive' });
+                      toast({ title: 'Erro na importaÃ§Ã£o', description: e.message, variant: 'destructive' });
                     }
                   }} className="bg-emerald-600 text-white hover:bg-emerald-700">
                     Importar Base Bysell
                   </Button>
-                  <Dialog open={editingItem !== null} onOpenChange={(open) => { if (!open) { setEditingItem(null); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); setAddonGroups([]); } }}>
-                    <DialogTrigger asChild>
-                      <Button onClick={() => { setEditingItem({}); setImageFile(null); setImagePreview(''); setSelectedAddonIds([]); setAddonGroups([]); }} className="bg-primary text-white">
-                        <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                      </Button>
-                    </DialogTrigger>
-                  <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col">
-                    <DialogHeader className="pb-2">
-                      <DialogTitle>{editingItem?.id ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSaveItem} className="space-y-2 overflow-y-auto pr-1 flex-1" style={{maxHeight: 'calc(90vh - 120px)'}}>
-                      <div className="space-y-1">
-                        <Label htmlFor="name" className="text-[11px] font-semibold text-muted-foreground">NOME DO PRATO</Label>
-                        <Input id="name" name="name" defaultValue={editingItem?.name} required className="h-8 text-xs" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor="price" className="text-[11px] font-semibold text-muted-foreground">PREÇO (R$)</Label>
-                          <CurrencyInput id="price" name="price" defaultValue={editingItem?.price} required className="h-8 text-xs" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="categoryId" className="text-[11px] font-semibold text-muted-foreground">CATEGORIA</Label>
-                          <select name="categoryId" className="w-full h-8 rounded-md border border-input bg-background px-2 py-1 text-xs" defaultValue={editingItem?.categoryId}>
-                            <option value="">Selecione...</option>
-                            {categories?.map(cat => (
-                              <option key={cat.id} value={cat.id}>{cat.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-muted-foreground">FOTO DO PRATO</Label>
-                        <div className="flex items-center gap-2">
-                          {(imagePreview || editingItem?.imageUrl) && (
-                            <div className="relative h-10 w-10 rounded overflow-hidden border flex-shrink-0">
-                              <Image src={imagePreview || editingItem?.imageUrl} alt="preview" fill className="object-cover" />
-                            </div>
-                          )}
-                          <label className="flex-1 cursor-pointer">
-                            <div className="flex items-center justify-center gap-2 border border-dashed border-muted-foreground/30 rounded p-1.5 hover:border-primary transition-colors bg-muted/20">
-                              <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-[11px] text-muted-foreground">
-                                {imageFile ? imageFile.name : 'Clique para escolher uma foto'}
-                              </span>
-                            </div>
-                            <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                          </label>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="description" className="text-[11px] font-semibold text-muted-foreground">DESCRIÇÃO</Label>
-                        <Textarea id="description" name="description" defaultValue={editingItem?.description} required className="min-h-[40px] text-xs resize-none" />
-                      </div>
-                      {addons && addons.length > 0 && (
-                        <div className="space-y-4 pt-2 border-t mt-4">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-sm font-bold flex items-center gap-2"><Component className="h-4 w-4" /> Configuração de Complementos</Label>
-                          </div>
-                          
-                          {(() => {
-                            const sortedAddons = [...(addons || [])].sort((a,b) => a.name.localeCompare(b.name));
-                            const filteredAddons = addonSearchTerm 
-                              ? sortedAddons.filter(a => a.name.toLowerCase().includes(addonSearchTerm.toLowerCase()))
-                              : sortedAddons;
-
-                            return (
-                              <>
-                                {/* Grupos de Adicionais */}
-                                <div className="space-y-3">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs font-semibold">Grupos de Adicionais (Ex: Guarnições, Preferências)</span>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setAddonGroups([...addonGroups, { name: '', min: 0, max: 1, addonIds: [] }])}>
-                                      <Plus className="h-3 w-3 mr-1" /> Add Grupo
-                                    </Button>
-                                  </div>
-                                  
-                                  {addonGroups.map((group, groupIdx) => (
-                                    <div key={groupIdx} className="border border-primary/20 rounded-md p-3 space-y-2 bg-primary/5">
-                                      <div className="flex items-center gap-2">
-                                        <Input 
-                                          placeholder="Nome do Grupo (Ex: Escolha sua Carne)" 
-                                          className="h-8 text-xs flex-1"
-                                          value={group.name}
-                                          onChange={e => {
-                                            const newGroups = [...addonGroups];
-                                            newGroups[groupIdx].name = e.target.value;
-                                            setAddonGroups(newGroups);
-                                          }}
-                                        />
-                                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setAddonGroups(addonGroups.filter((_, i) => i !== groupIdx))}>
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-
-                                      <div className="pt-1">
-                                        <div className="flex justify-between items-center mb-1">
-                                          <Label className="text-[10px]">Selecione as opções deste grupo:</Label>
-                                          <Input 
-                                            placeholder="Buscar neste grupo..." 
-                                            className="h-6 text-[10px] w-32"
-                                            value={groupSearchTerms[groupIdx] || ''}
-                                            onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [groupIdx]: e.target.value})}
-                                          />
-                                        </div>
-                                        <div className="max-h-32 overflow-y-auto border rounded bg-background p-1 space-y-1">
-                                          {sortedAddons
-                                            .filter(a => a.name.toLowerCase().includes((groupSearchTerms[groupIdx] || '').toLowerCase()))
-                                            .map(addon => {
-                                              const checked = group.addonIds.includes(addon.id);
-                                              const isFree = group.freeAddonIds?.includes(addon.id);
-                                              return (
-                                                <label key={addon.id} className="flex items-center gap-2 px-1 py-0.5 hover:bg-muted/50 rounded cursor-pointer group/item">
-                                                  <input 
-                                                    type="checkbox" className="h-3 w-3" checked={checked}
-                                                    onChange={e => {
-                                                      const newGroups = [...addonGroups];
-                                                      if (e.target.checked) newGroups[groupIdx].addonIds.push(addon.id);
-                                                      else newGroups[groupIdx].addonIds = newGroups[groupIdx].addonIds.filter((id: string) => id !== addon.id);
-                                                      setAddonGroups(newGroups);
-                                                    }}
-                                                  />
-                                                  <span className="text-[10px] flex-1 truncate">{addon.name}</span>
-                                                  {addon.price > 0 && (
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                      {isFree ? (
-                                                        <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">Grátis</span>
-                                                      ) : (
-                                                        <span className="text-[10px] text-primary font-medium">+R${(addon.price||0).toFixed(2)}</span>
-                                                      )}
-                                                      {checked && (
-                                                        <button 
-                                                          type="button" 
-                                                          className="opacity-0 group-hover/item:opacity-100 text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 rounded transition-opacity"
-                                                          onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            const newGroups = [...addonGroups];
-                                                            if (!newGroups[groupIdx].freeAddonIds) newGroups[groupIdx].freeAddonIds = [];
-                                                            if (newGroups[groupIdx].freeAddonIds.includes(addon.id)) {
-                                                              newGroups[groupIdx].freeAddonIds = newGroups[groupIdx].freeAddonIds.filter((id: string) => id !== addon.id);
-                                                            } else {
-                                                              newGroups[groupIdx].freeAddonIds.push(addon.id);
-                                                            }
-                                                            setAddonGroups(newGroups);
-                                                          }}
-                                                        >
-                                                          {isFree ? 'Cobrar' : 'Isentar'}
-                                                        </button>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </label>
-                                              )
-                                          })}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-
-
-                              </>
-                            );
-                          })()}
-                        </div>
-                      )}
-                      <DialogFooter className="pt-2">
-                        <Button type="submit" className="w-full h-10 font-bold" disabled={uploadingImage}>
-                          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar'}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
+                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
+                  </Button>
 
                 <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 flex gap-2">
                   <Box className="h-4 w-4" /> Criar Combo
                 </Button>
                 
-                <Button onClick={() => setEditingMarmita({})} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
+                <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
                   <Component className="h-4 w-4" /> Criar Marmita
                 </Button>
               </div>
@@ -939,7 +692,7 @@ export default function AdminPage() {
                       </TableHead>
                       <TableHead className="w-[80px]">Ref</TableHead>
                       <TableHead className="cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('name')}>
-                        <div className="flex items-center">Título {sortConfig?.key === 'name' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
+                        <div className="flex items-center">TÃ­tulo {sortConfig?.key === 'name' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
                         <div className="flex items-center">Valor {sortConfig?.key === 'price' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
@@ -948,14 +701,14 @@ export default function AdminPage() {
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[100px] text-center">Ativo</TableHead>
-                      <TableHead className="text-right pr-6 w-[120px]">Ações</TableHead>
+                      <TableHead className="text-right pr-6 w-[120px]">AÃ§Ãµes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredItems?.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
-                      const isAvailable = item.isAvailable !== false; // Default is true se não estiver definido
+                      const isAvailable = item.isAvailable !== false; // Default is true se nÃ£o estiver definido
                       
                       return (
                         <TableRow key={item.id} className={!isAvailable ? 'opacity-60 bg-slate-50/50' : ''}>
@@ -974,7 +727,7 @@ export default function AdminPage() {
                             {itemAddons.length > 0 && (
                               <div className="mt-1">
                                 <Badge className="text-[10px] bg-teal-500 hover:bg-teal-600 font-normal">
-                                  Opções: {itemAddons.map(a => a.name).join('; ')}
+                                  OpÃ§Ãµes: {itemAddons.map(a => a.name).join('; ')}
                                 </Badge>
                               </div>
                             )}
@@ -992,17 +745,7 @@ export default function AdminPage() {
                             />
                           </TableCell>
                           <TableCell className="text-right pr-6 space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => { 
-                              if (item.isMarmita) {
-                                setEditingMarmita(item);
-                              } else {
-                                setEditingItem(item); 
-                                setSelectedAddonIds(item.addonIds || []); 
-                                setAddonGroups(item.addonGroups || []); 
-                                setImageFile(null); 
-                                setImagePreview(''); 
-                              }
-                            }}>
+                            <Button variant="ghost" size="icon" onClick={() => setEditingProduct(item)}>
                               <Pencil className="h-4 w-4 text-blue-500" />
                             </Button>
                             <Button variant="ghost" size="icon" onClick={async () => {
@@ -1048,7 +791,7 @@ export default function AdminPage() {
                         autoFocus
                       />
                       <p className="text-xs text-muted-foreground">
-                        Dica: Crie várias de uma vez separando por vírgula (,) ou ponto-e-vírgula (;)
+                        Dica: Crie vÃ¡rias de uma vez separando por vÃ­rgula (,) ou ponto-e-vÃ­rgula (;)
                       </p>
                     </div>
                     <DialogFooter>
@@ -1056,7 +799,7 @@ export default function AdminPage() {
                       <Button onClick={async () => {
                         if (!db || !user || !newCategoryName.trim()) return;
                         
-                        // Divide por vírgula ou ponto-e-vírgula e remove espaços vazios
+                        // Divide por vÃ­rgula ou ponto-e-vÃ­rgula e remove espaÃ§os vazios
                         const nomes = newCategoryName.split(/[,;]/).map(n => n.trim()).filter(n => n.length > 0);
                         
                         if (nomes.length === 0) return;
@@ -1098,7 +841,7 @@ export default function AdminPage() {
                     <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
                       <TableRow>
                         <TableHead className="pl-6">Nome</TableHead>
-                        <TableHead className="text-right pr-6">Ações</TableHead>
+                        <TableHead className="text-right pr-6">AÃ§Ãµes</TableHead>
                       </TableRow>
                     </TableHeader>
                   <DragDropContext onDragEnd={handleDragEndCategory}>
@@ -1147,7 +890,7 @@ export default function AdminPage() {
           <TabsContent value="addons" className="mt-6">
             <Card className="border shadow-md rounded-2xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Adicionais Disponíveis</CardTitle>
+                <CardTitle className="text-lg">Adicionais DisponÃ­veis</CardTitle>
                 <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
                   <DialogTrigger asChild>
                     <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
@@ -1164,7 +907,7 @@ export default function AdminPage() {
                         <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="addonPrice">Preço (R$)</Label>
+                        <Label htmlFor="addonPrice">PreÃ§o (R$)</Label>
                         <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                       </div>
                       <DialogFooter>
@@ -1179,15 +922,15 @@ export default function AdminPage() {
                   <TableHeader className="bg-muted/30">
                     <TableRow>
                       <TableHead className="pl-6">Nome</TableHead>
-                      <TableHead>Preço</TableHead>
-                      <TableHead className="text-right pr-6">Ações</TableHead>
+                      <TableHead>PreÃ§o</TableHead>
+                      <TableHead className="text-right pr-6">AÃ§Ãµes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {!addons || addons.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
-                          Nenhum adicional cadastrado. Crie opções como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
+                          Nenhum adicional cadastrado. Crie opÃ§Ãµes como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1237,7 +980,7 @@ export default function AdminPage() {
                     <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Até</Label>
+                    <Label className="text-xs">AtÃ©</Label>
                     <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9" />
                   </div>
                   {(customFrom || customTo) && (
@@ -1266,7 +1009,7 @@ export default function AdminPage() {
                   </Card>
                   <Card className="rounded-2xl border-purple-200 shadow-sm">
                     <CardContent className="p-5">
-                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Ticket Médio</p>
+                      <p className="text-[10px] uppercase tracking-wider font-bold text-purple-600">Ticket MÃ©dio</p>
                       <p className="text-3xl font-black text-purple-700">R$ {reportData.avgTicket.toFixed(2)}</p>
                     </CardContent>
                   </Card>
@@ -1276,7 +1019,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="h-5 w-5 text-primary" /> Vendas por dia</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.dailyBreakdown.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no perÃ­odo.</p>
                     ) : (
                       <div className="space-y-2">
                         {(() => {
@@ -1289,7 +1032,7 @@ export default function AdminPage() {
                               <div key={d.date} className="space-y-1">
                                 <div className="flex items-center justify-between gap-2 text-sm">
                                   <span className="font-bold">{label}</span>
-                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} í‚Â· <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
+                                  <span className="text-muted-foreground text-xs">{d.count} pedido{d.count !== 1 ? 's' : ''} Ã­â€šÃ‚Â· <span className="font-black text-primary">R$ {d.revenue.toFixed(2)}</span></span>
                                 </div>
                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                   <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -1307,7 +1050,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingUp className="h-5 w-5 text-primary" /> Itens mais vendidos</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.topItems.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no período.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem vendas no perÃ­odo.</p>
                     ) : (
                       <div className="space-y-2">
                         {reportData.topItems.map((it, idx) => {
@@ -1337,7 +1080,7 @@ export default function AdminPage() {
                                         <span className="text-muted-foreground">{new Date(oc.orderDateTime).toLocaleString('pt-BR')}</span>
                                       </div>
                                       <div className="text-muted-foreground">
-                                        <span className="font-mono">#{oc.orderId}</span> í‚Â· {oc.customerPhone || '-'} í‚Â· <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
+                                        <span className="font-mono">#{oc.orderId}</span> Ã­â€šÃ‚Â· {oc.customerPhone || '-'} Ã­â€šÃ‚Â· <span className="font-bold text-primary">{oc.quantity}x</span> R$ {((oc.unitPrice || 0) * (oc.quantity || 0)).toFixed(2)}
                                       </div>
                                       {oc.addons?.length > 0 && (
                                         <div className="pl-2 text-[11px] text-muted-foreground mt-0.5">
@@ -1365,7 +1108,7 @@ export default function AdminPage() {
                   <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-primary" /> Clientes ({reportData.customers.length})</CardTitle></CardHeader>
                   <CardContent>
                     {reportData.customers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-6">Sem clientes no período.</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">Sem clientes no perÃ­odo.</p>
                     ) : (
                       <div className="space-y-2">
                         {reportData.customers.map((c) => {
@@ -1396,7 +1139,7 @@ export default function AdminPage() {
                                       o.status === 'received' ? 'Recebido' :
                                       o.status === 'ready' ? 'Pronto' :
                                       o.status === 'out_for_delivery' ? 'Saiu p/ entrega' :
-                                      o.status === 'delivered' ? 'ConcluíÂ­do' : o.status;
+                                      o.status === 'delivered' ? 'ConcluÃ­Ã‚Â­do' : o.status;
                                     const sColor =
                                       o.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
                                       o.status === 'received' ? 'bg-blue-100 text-blue-700 border-blue-300' :
@@ -1410,7 +1153,7 @@ export default function AdminPage() {
                                             <span className="text-xs font-mono font-bold text-muted-foreground">#{o.id}</span>
                                             <Badge className={`${sColor} border font-bold text-[10px] uppercase`}>{sLabel}</Badge>
                                             <Badge className="bg-slate-100 text-slate-700 border-slate-300 border font-bold text-[10px] uppercase">
-                                              {o.orderType === 'pickup' ? 'í°Å¸ÂÂª Retirada' : 'í°Å¸â€ºÂµ Entrega'}
+                                              {o.orderType === 'pickup' ? 'Ã­Â°Ã…Â¸Ã‚ÂÃ‚Âª Retirada' : 'Ã­Â°Ã…Â¸Ã¢â‚¬ÂºÃ‚Âµ Entrega'}
                                             </Badge>
                                           </div>
                                           <span className="text-xs text-muted-foreground">{new Date(o.orderDateTime).toLocaleString('pt-BR')}</span>
@@ -1474,9 +1217,9 @@ export default function AdminPage() {
         categories={categories || []} 
       />
       
-      <MarmitaModal 
+      <ProductModal 
         db={db} user={user} addons={addons || []} 
-        editingMarmita={editingMarmita} setEditingMarmita={setEditingMarmita} 
+        editingProduct={editingProduct} setEditingProduct={setEditingProduct} 
         categories={categories || []} 
       />
 
