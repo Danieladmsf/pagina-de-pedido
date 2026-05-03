@@ -506,7 +506,7 @@ export default function AdminPage() {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
         
         {activeTab === 'dashboard' && (
           <div className="text-center p-20 flex flex-col items-center gap-4 text-slate-400">
@@ -516,14 +516,16 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'delivery' && (
-          <DeliveryTab 
-            db={db}
-            orders={orders || []} 
-            updateOrderStatus={updateOrderStatus} 
-            registrarLancamento={registrarLancamento}
-            caixaAberto={!!caixaAberto}
-            storeProfile={storeProfile}
-          />
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <DeliveryTab 
+              db={db}
+              orders={orders || []} 
+              updateOrderStatus={updateOrderStatus} 
+              registrarLancamento={registrarLancamento}
+              caixaAberto={!!caixaAberto}
+              storeProfile={storeProfile}
+            />
+          </div>
         )}
 
         {activeTab === 'caixa' && (
@@ -536,6 +538,7 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'novo_pedido' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <NovoPedidoTab 
             categories={categories || []} 
             items={items || []} 
@@ -547,9 +550,11 @@ export default function AdminPage() {
             addons={addons || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
+          </div>
         )}
 
         {activeTab === 'mesas' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <MesasTab 
             orders={orders || []} 
             categories={categories || []}
@@ -561,10 +566,11 @@ export default function AdminPage() {
             addons={addons || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
           />
+          </div>
         )}
 
         {/* Módulo Administrativo Antigo */}
-        <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
+        <div className={activeTab === 'configuracoes' ? 'flex-1 overflow-y-auto custom-scrollbar' : 'hidden'}>
           <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
             <Tabs defaultValue="products" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">

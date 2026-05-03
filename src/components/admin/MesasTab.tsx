@@ -416,7 +416,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-140px)] overflow-hidden">
+    <div className="flex gap-4 flex-1 overflow-hidden">
       
       {/* Grade de Mesas */}
       {!selectedTable && (

@@ -305,7 +305,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   return (
     <>
-    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-140px)] overflow-hidden">
+    <div className="flex flex-col md:flex-row gap-4 flex-1 w-full overflow-hidden">
       {/* Coluna Esquerda: Lista de Pedidos */}
       <div className="w-full md:w-1/3 flex flex-col gap-3 bg-muted/30 p-2 rounded-xl border h-full">
         <div className="p-2 bg-white rounded-lg shadow-sm border flex gap-2">
@@ -348,12 +348,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
           )}
         </div>
         
-        <div className="bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center font-bold">
-          <div className="bg-red-500 text-white px-3 py-1.5 rounded-md">
+        <div className="bg-white p-2.5 rounded-lg shadow-sm border flex justify-between items-center font-bold text-base">
+          <div className="bg-red-500 text-white px-4 py-2 rounded-md">
             Total: R$ {filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toFixed(2)}
           </div>
-          <div className="bg-green-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2">
-            {onlineCount} Cliente{onlineCount !== 1 ? 's' : ''} online <Clock className="h-4 w-4" />
+          <div className="bg-green-500 text-white px-4 py-2 rounded-md flex items-center gap-2">
+            {onlineCount} Cliente{onlineCount !== 1 ? 's' : ''} online <Clock className="h-5 w-5" />
           </div>
         </div>
       </div>

@@ -368,7 +368,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   }
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 h-[calc(100vh-140px)] overflow-hidden">
+    <div className="flex flex-col md:flex-row gap-4 flex-1 w-full overflow-hidden">
       {/* Coluna Esquerda: Produtos e Filtros */}
       <div className="w-full md:w-2/3 flex flex-col h-full overflow-hidden bg-white rounded-xl shadow-sm border p-4">
         
@@ -465,18 +465,18 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           {/* Dados do Cliente e Tipo de Pedido */}
           <div className="space-y-2 bg-white p-2 rounded border border-slate-100 shadow-sm">
             <div className="flex bg-slate-100 p-0.5 rounded">
-              <button 
+              <button
                 onClick={() => {
                   setOrderType('pickup');
                   setDeliveryFeeInput('');
                   setDynamicFee(null);
                   setDistanceInfo(null);
                 }}
-                className={`flex-1 text-[10px] font-bold py-1 rounded transition-colors ${orderType === 'pickup' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'pickup' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 Balcão / Retirada
               </button>
-              <button 
+              <button
                 onClick={() => {
                   setOrderType('delivery');
                   if (addressObj.street) {
@@ -484,7 +484,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     calculateDeliveryFee(addr);
                   }
                 }}
-                className={`flex-1 text-[10px] font-bold py-1 rounded transition-colors ${orderType === 'delivery' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'delivery' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 Delivery
               </button>

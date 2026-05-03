@@ -659,20 +659,20 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       {view === 'caixa' && (caixaAberto || caixaSelecionadoId) && caixaAtual && (
         <>
           {/* ─── Header: Sessão + Ações ─── */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border">
-            <div className="flex items-center gap-3">
-              <div className={`p-3 rounded-xl ${isAberto ? 'bg-emerald-100' : 'bg-slate-100'}`}>
-                {isAberto ? <Unlock className="h-6 w-6 text-emerald-600" /> : <Lock className="h-6 w-6 text-slate-500" />}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border">
+            <div className="flex items-center gap-2">
+              <div className={`p-1.5 rounded-lg ${isAberto ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                {isAberto ? <Unlock className="h-4 w-4 text-emerald-600" /> : <Lock className="h-4 w-4 text-slate-500" />}
               </div>
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2">
+                <h2 className="text-base font-bold flex items-center gap-2 leading-tight">
                   {sessaoLabel}
                   <Badge className={`text-[10px] uppercase font-bold ${isAberto ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'} border`}>
                     {isAberto ? 'ABERTO' : 'FECHADO'}
                   </Badge>
                 </h2>
                 {caixaAtual && (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground leading-tight">
                     Aberto em {caixaAtual.dataAbertura?.toDate ? caixaAtual.dataAbertura.toDate().toLocaleString('pt-BR') : '—'}
                     {caixaAtual.dataFechamento?.toDate && ` · Fechado em ${caixaAtual.dataFechamento.toDate().toLocaleString('pt-BR')}`}
                   </p>
@@ -708,18 +708,18 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           </div>
 
           {/* ─── Filtros ─── */}
-          <div className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-2xl shadow-sm border">
+          <div className="flex flex-col md:flex-row gap-2 bg-white px-3 py-2 rounded-xl shadow-sm border">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Pesquisar por título, usuário..."
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                className="pl-9"
+                className="pl-9 h-8"
               />
             </div>
             <Select value={filterFormaPagamento} onValueChange={(v) => { setFilterFormaPagamento(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[200px] h-8">
                 <SelectValue placeholder="Formas de Pagamento" />
               </SelectTrigger>
               <SelectContent>
@@ -732,7 +732,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
               </SelectContent>
             </Select>
             <Select value={filterTipoOperacao} onValueChange={(v) => { setFilterTipoOperacao(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[200px] h-8">
                 <SelectValue placeholder="Tipo de Operação" />
               </SelectTrigger>
               <SelectContent>
@@ -1332,9 +1332,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 // ─── Componente SummaryCard ───
 function SummaryCard({ label, value, color, border }: { label: string; value: number; color: string; border?: boolean }) {
   return (
-    <div className={`${color} text-white rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm ${border ? 'ring-2 ring-white/50' : ''}`}>
-      <span className="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-90">{label}</span>
-      <span className="text-lg font-black whitespace-nowrap">R$ {value.toFixed(2).replace('-', '- ')}</span>
+    <div className={`${color} text-white rounded-xl px-3 py-2 flex flex-col justify-center items-center shadow-sm ${border ? 'ring-2 ring-white/50' : ''}`}>
+      <span className="text-[10px] uppercase tracking-wider font-bold opacity-90">{label}</span>
+      <span className="text-base font-black whitespace-nowrap leading-tight">R$ {value.toFixed(2).replace('-', '- ')}</span>
     </div>
   );
 }
