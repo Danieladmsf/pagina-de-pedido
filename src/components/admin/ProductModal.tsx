@@ -47,7 +47,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   }, [editingProduct, categories]);
 
   const handleAddGroup = () => {
-    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, max: 0 }]);
+    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], freeLimit: 1, max: 0 }]);
   };
 
   const handleRemoveGroup = (index: number) => {
