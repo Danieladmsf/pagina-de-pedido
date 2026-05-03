@@ -529,12 +529,14 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'caixa' && (
-          <CaixaTab 
-            storeProfile={storeProfile} 
-            orders={orders || []} 
-            autoOpenAbrirCaixa={autoOpenAbrirCaixa}
-            onModalOpened={() => setAutoOpenAbrirCaixa(false)}
-          />
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <CaixaTab 
+              storeProfile={storeProfile} 
+              orders={orders || []} 
+              autoOpenAbrirCaixa={autoOpenAbrirCaixa}
+              onModalOpened={() => setAutoOpenAbrirCaixa(false)}
+            />
+          </div>
         )}
 
         {activeTab === 'novo_pedido' && (

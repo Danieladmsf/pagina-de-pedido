@@ -653,13 +653,13 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col h-full gap-2 min-h-0">
 
 
       {view === 'caixa' && (caixaAberto || caixaSelecionadoId) && caixaAtual && (
         <>
           {/* ─── Header: Sessão + Ações ─── */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border shrink-0">
             <div className="flex items-center gap-2">
               <div className={`p-1.5 rounded-lg ${isAberto ? 'bg-emerald-100' : 'bg-slate-100'}`}>
                 {isAberto ? <Unlock className="h-4 w-4 text-emerald-600" /> : <Lock className="h-4 w-4 text-slate-500" />}
@@ -708,7 +708,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           </div>
 
           {/* ─── Filtros ─── */}
-          <div className="flex flex-col md:flex-row gap-2 bg-white px-3 py-2 rounded-xl shadow-sm border">
+          <div className="flex flex-col md:flex-row gap-2 bg-white px-3 py-2 rounded-xl shadow-sm border shrink-0">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -748,7 +748,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           </div>
 
           {/* ─── Cards Totalizadores (8 Cards) ─── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 shrink-0">
             <SummaryCard label="Saldo Inicial" value={totais.saldoInicial} color="bg-orange-400" />
             <SummaryCard label="Valor em Caixa" value={totais.valorEmCaixa} color="bg-blue-600" border />
             <SummaryCard label="Sangria" value={totais.totalSangria} color="bg-rose-500" />
@@ -760,8 +760,8 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           </div>
 
           {/* ─── Tabela de Lançamentos ─── */}
-          <Card className="border shadow-md rounded-2xl overflow-hidden">
-            <CardContent className="p-0">
+          <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+            <CardContent className="p-0 flex-1 overflow-y-auto custom-scrollbar">
               <Table>
                 <TableHeader className="bg-muted/30">
                   <TableRow>
@@ -822,7 +822,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           </Card>
 
           {/* ─── Paginação ─── */}
-          <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border text-sm text-muted-foreground">
+          <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border text-sm text-muted-foreground shrink-0">
             <span>
               Página {currentPage} de {totalPages}, mostrando {filteredLancamentos.length} resultado(s)
             </span>
