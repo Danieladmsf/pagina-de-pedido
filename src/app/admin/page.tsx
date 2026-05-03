@@ -560,7 +560,6 @@ export default function AdminPage() {
         
         <div className="flex items-center gap-4 h-full">
           <div className="flex items-center gap-2">
-            <MessageCircle className="h-4 w-4" />
             <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
               {caixaAberto ? 'Aberto' : 'Fechado'}
             </Badge>
