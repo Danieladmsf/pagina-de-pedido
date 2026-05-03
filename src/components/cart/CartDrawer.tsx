@@ -80,7 +80,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Taxa de entrega dinâmica
   const [dynamicFee, setDynamicFee] = useState<number | null>(null);
-  const [distanceInfo, setDistanceInfo] = useState<{ distanceText: string; durationText: string; distanceKm: number } | null>(null);
+  const [distanceInfo, setDistanceInfo] = useState<{ distanceText: string; durationText: string; distanceKm: number; originAddress?: string; destinationAddress?: string } | null>(null);
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [deliveryBlocked, setDeliveryBlocked] = useState(false);
 
@@ -160,6 +160,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
             distanceText: data.distanceText,
             durationText: data.durationText,
             distanceKm: data.distanceKm,
+            originAddress: data.originAddress,
+            destinationAddress: data.destinationAddress
           });
         }
       } else {
@@ -554,6 +556,17 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         <MapPin className="h-4 w-4" />
                         <span>Taxa de entrega: R$ {dynamicFee?.toFixed(2)}</span>
                       </div>
+                      
+                      {distanceInfo.originAddress && distanceInfo.destinationAddress && (
+                        <div className="mt-2 pt-2 border-t border-green-200/50 space-y-1">
+                          <p className="text-[10px] text-green-700/80 leading-tight">
+                            <strong>De:</strong> {distanceInfo.originAddress}
+                          </p>
+                          <p className="text-[10px] text-green-700/80 leading-tight">
+                            <strong>Para:</strong> {distanceInfo.destinationAddress}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
