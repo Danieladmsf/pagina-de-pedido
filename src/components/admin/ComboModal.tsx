@@ -101,21 +101,54 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Selecione os Produtos do Combo</Label>
-              <div className="border rounded-md p-2 h-[250px] overflow-y-auto space-y-1">
-                {items?.filter(i => !i.isCombo && !i.isMarmita).map((item) => (
-                  <div key={item.id} className="flex items-center space-x-2 p-1.5 hover:bg-slate-50 rounded">
-                    <Checkbox 
-                      id={`combo-item-${item.id}`} 
-                      checked={!!selectedItems.find(i => i.itemId === item.id)}
-                      onCheckedChange={() => handleToggleItem(item)}
-                    />
-                    <Label htmlFor={`combo-item-${item.id}`} className="flex-1 cursor-pointer font-normal text-sm">
-                      {item.name} <span className="text-muted-foreground ml-1">(R$ {item.price.toFixed(2)})</span>
-                    </Label>
-                  </div>
-                ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Selecione os Produtos do Combo</Label>
+                <div className="border rounded-md p-2 h-[200px] overflow-y-auto space-y-1">
+                  {items?.filter(i => !i.isCombo && !i.isMarmita).map((item) => (
+                    <div key={item.id} className="flex items-center space-x-2 p-1.5 hover:bg-slate-50 rounded">
+                      <Checkbox 
+                        id={`combo-item-${item.id}`} 
+                        checked={!!selectedItems.find(i => i.itemId === item.id)}
+                        onCheckedChange={() => handleToggleItem(item)}
+                      />
+                      <Label htmlFor={`combo-item-${item.id}`} className="flex-1 cursor-pointer font-normal text-sm">
+                        {item.name} <span className="text-muted-foreground ml-1">(R$ {item.price.toFixed(2)})</span>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center h-[20px] mt-1">
+                  <Label>Itens Selecionados ({selectedItems.length})</Label>
+                </div>
+                <div className="border rounded-md p-2 h-[200px] overflow-y-auto space-y-1 bg-slate-50">
+                  {selectedItems.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground italic text-center px-4">
+                      Nenhum item selecionado.<br/>Marque os produtos ao lado.
+                    </div>
+                  ) : (
+                    selectedItems.map((item) => (
+                      <div key={item.itemId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-100 shadow-sm">
+                        <span className="text-sm font-medium text-slate-700 truncate pr-2" title={item.name}>{item.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-muted-foreground font-medium">R$ {item.price.toFixed(2)}</span>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleToggleItem({ id: item.itemId, name: item.name, price: item.price } as any)}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 

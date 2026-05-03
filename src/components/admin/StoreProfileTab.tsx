@@ -18,13 +18,14 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 interface StoreProfileTabProps {
   db: any;
   user: any;
+  activeSection?: 'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos';
 }
 
 const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
-export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
+export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProps) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos'>('geral');
+  const activeTab = activeSection || 'geral';
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -237,20 +238,29 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
   }
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto space-y-3">
-      <div className="flex flex-col md:flex-row gap-2 border-b pb-3 overflow-x-auto whitespace-nowrap hide-scrollbar">
-        <button onClick={() => setActiveTab('geral')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'geral' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Store className="w-3.5 h-3.5"/> Dados e Contato</button>
-        <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'taxas' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Settings className="w-3.5 h-3.5"/> Taxas, Prazos e KM</button>
-        <button onClick={() => setActiveTab('horarios')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'horarios' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Clock className="w-3.5 h-3.5"/> Horários</button>
-        <button onClick={() => setActiveTab('motoboys')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'motoboys' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Truck className="w-3.5 h-3.5"/> Motoboys / Freelancers</button>
-        <button onClick={() => setActiveTab('pagamentos')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'pagamentos' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'}`}><Wallet className="w-3.5 h-3.5"/> Formas de Pagamento</button>
+    <div className="w-full max-w-[1400px] mx-auto space-y-6 pt-4 pb-12">
+      
+      <div className="mb-6 px-2">
+        <h1 className="text-3xl font-black tracking-tight text-slate-800">
+          {activeTab === 'geral' && 'Dados e Contato'}
+          {activeTab === 'taxas' && 'Taxas, Prazos e KM'}
+          {activeTab === 'horarios' && 'Horários de Funcionamento'}
+          {activeTab === 'motoboys' && 'Motoboys e Freelancers'}
+          {activeTab === 'pagamentos' && 'Formas de Pagamento'}
+        </h1>
+        <p className="text-muted-foreground mt-1 font-medium">
+          {activeTab === 'geral' && 'Gerencie as informações básicas de contato e endereço do seu negócio.'}
+          {activeTab === 'taxas' && 'Configure taxas de entrega por KM, tempo de preparo e cidades atendidas.'}
+          {activeTab === 'horarios' && 'Defina os horários em que seu estabelecimento aceita pedidos.'}
+          {activeTab === 'motoboys' && 'Gerencie sua frota de entregadores, taxas pagas e escalas.'}
+          {activeTab === 'pagamentos' && 'Configure as formas de pagamento aceitas no seu Delivery, Retirada e Salão.'}
+        </p>
       </div>
 
-      <div className="bg-white p-3 rounded-xl shadow-sm border">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border">
         {activeTab === 'geral' && (
-          <div className="space-y-1">
-            <h2 className="text-sm font-bold">Dados da Empresa</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2 gap-y-1">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               <div className="space-y-0.5">
                 <Label>Nome da Empresa</Label>
                 <Input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Minha Lanchonete" />
@@ -268,15 +278,15 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
                 <Input name="whatsapp" value={formData.whatsapp} onChange={(e) => setFormData({...formData, whatsapp: formatPhone(e.target.value)})} placeholder="(00) 90000-0000" maxLength={15} />
               </div>
             </div>
-            <div className="space-y-0.5">
-              <Label>Endereço Completo</Label>
+            <div className="space-y-2 mt-4">
+              <Label className="font-semibold text-slate-700">Endereço Completo</Label>
               <AddressAutocomplete 
                 value={formData.address} 
                 onChange={(val) => setFormData({...formData, address: val})} 
                 placeholder="Busque o endereço do estabelecimento..."
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2 gap-y-1 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mt-4">
               <div className="space-y-0.5">
                 <Label>Número</Label>
                 <Input name="addressNumber" value={formData.addressNumber} onChange={handleChange} placeholder="Ex: 123" />
@@ -290,10 +300,9 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'taxas' && (
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold">Taxas, Prazos e Área de Entrega</h2>
+          <div className="space-y-6">
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
               {/* Coluna Esquerda */}
               <div className="space-y-2">
                 <div className="space-y-0.5">
@@ -495,9 +504,9 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           return (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Left: Compact Weekly Schedule */}
-              <div className="space-y-2">
-                <h2 className="text-sm font-bold">Horário Semanal</h2>
-                <div className="space-y-0.5">
+              <div className="space-y-3">
+                <h3 className="text-lg font-bold text-slate-800 pb-2 border-b">Horário Fixo da Semana</h3>
+                <div className="space-y-1">
                   {workingHours.map((wh, idx) => (
                     <div key={wh.day} className={`flex items-center gap-2 py-1.5 px-2 rounded border text-xs ${wh.isClosed ? 'bg-red-50/50 border-red-100' : 'bg-slate-50/50'}`}>
                       <div className="w-14 font-semibold truncate">{wh.day.substring(0, 3)}</div>
@@ -615,11 +624,11 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         })()}
 
         {activeTab === 'motoboys' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <h2 className="text-sm font-bold">Motoboys</h2>
-                <Button onClick={addMotoboy} size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1"/> Adicionar</Button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b">
+                <h3 className="text-lg font-bold text-slate-800">Frota Própria</h3>
+                <Button onClick={addMotoboy} size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"><Plus className="w-4 h-4 mr-1"/> Adicionar Motoboy</Button>
               </div>
               
               {motoboys.length === 0 ? (
@@ -653,10 +662,10 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <h2 className="text-sm font-bold">Freelancers</h2>
-                <Button onClick={addFreelancer} size="sm" className="h-7 text-xs"><Plus className="w-3 h-3 mr-1"/> Adicionar</Button>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b">
+                <h3 className="text-lg font-bold text-slate-800">Freelancers Diaristas</h3>
+                <Button onClick={addFreelancer} size="sm" className="h-8 text-xs bg-purple-600 hover:bg-purple-700"><Plus className="w-4 h-4 mr-1"/> Adicionar Freelancer</Button>
               </div>
               
               {freelancers.length === 0 ? (
@@ -702,11 +711,10 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
         )}
 
         {activeTab === 'pagamentos' && (
-          <div className="space-y-2">
+          <div className="space-y-6">
             <div className="flex justify-between items-center">
               <div>
-                <h2 className="text-sm font-bold">Formas de Pagamento</h2>
-                <p className="text-xs text-muted-foreground">Escolha quais métodos estarão disponíveis para seus clientes e no PDV.</p>
+                <p className="text-sm text-muted-foreground font-medium">Escolha quais métodos estarão disponíveis para seus clientes e no PDV.</p>
               </div>
               <Button onClick={() => setPaymentMethods([...paymentMethods, { id: 'novo_'+Date.now(), label: 'Nova Forma', icon: '💳', active: true }])} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 h-8 text-xs">
                 <Plus className="w-3 h-3" /> Novo Método
@@ -763,9 +771,9 @@ export function StoreProfileTab({ db, user }: StoreProfileTabProps) {
           </div>
         )}
 
-        <div className="pt-3 mt-3 border-t flex justify-end">
-          <Button size="default" className="w-full md:w-auto bg-green-600 hover:bg-green-700 h-8 text-xs px-4" onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+        <div className="pt-6 mt-6 border-t flex justify-end">
+          <Button size="lg" className="w-full md:w-auto bg-green-600 hover:bg-green-700 h-10 px-8 font-bold" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : null}
             Salvar Configurações
           </Button>
         </div>

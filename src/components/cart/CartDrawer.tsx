@@ -63,6 +63,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [step, setStep] = useState<Step>('cart');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerBirthDate, setCustomerBirthDate] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>('delivery');
   
   // Pagamento
@@ -107,6 +108,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           const d = snap.data();
           setCustomerName(d.name || '');
           setCustomerPhone(d.phone || '');
+          if (d.birthDate) setCustomerBirthDate(d.birthDate);
           // Carregar endereço salvo
           if (d.cep) setCep(d.cep);
           if (d.street) { setStreet(d.street); setSavedStreet(d.street); }
@@ -306,6 +308,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         uid: user.uid,
         name: customerName,
         phone: customerPhone,
+        birthDate: customerBirthDate,
         address: fullDeliveryAddress,
         cep, street, number, neighborhood, complement, city,
         updatedAt: new Date().toISOString(),
@@ -342,6 +345,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         ownerId: effectiveStoreOwnerId,
         customerName,
         customerPhone,
+        customerBirthDate,
         customerEmail: user.email || '',
         deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
         orderDateTime: new Date().toISOString(),
@@ -499,9 +503,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 <Label htmlFor="cust_name">Nome Completo</Label>
                 <Input id="cust_name" autoComplete="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
-                <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
+                  <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cust_birth">Data de Nasc. (Opcional)</Label>
+                  <Input id="cust_birth" placeholder="DD/MM/AAAA" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(e.target.value)} />
+                </div>
               </div>
               {orderType === 'delivery' && (
                 <>

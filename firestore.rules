@@ -77,6 +77,14 @@ service cloud.firestore {
       );
     }
 
+    match /clientes/{clienteId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+    }
+
     match /store_profiles/{profileId} {
       allow get, list: if true;
       allow create, update, delete: if isAdmin() && request.auth.uid == profileId;

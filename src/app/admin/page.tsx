@@ -18,27 +18,31 @@ import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, 
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
+import confetti from 'canvas-confetti';
 import { Badge } from '@/components/ui/badge';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DeliveryTab } from '@/components/admin/DeliveryTab';
 import { NovoPedidoTab } from '@/components/admin/NovoPedidoTab';
 import { MesasTab } from '@/components/admin/MesasTab';
+import { ClientesTab } from '@/components/admin/ClientesTab';
 import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
+import { SidebarNav } from '@/components/admin/SidebarNav';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
-import { Settings, MessageCircle, MapPinned, Box, Component } from 'lucide-react';
+import { Settings, MessageCircle, MapPinned, Box, Component, Menu } from 'lucide-react';
 
 export default function AdminPage() {
   const db = useFirestore();
   const auth = useAuth();
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'caixa' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -46,6 +50,8 @@ export default function AdminPage() {
   // Estados para configuração de disponibilidade da categoria
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [isCategoryConfigModalOpen, setIsCategoryConfigModalOpen] = useState(false);
+  const [isCelebrating, setIsCelebrating] = useState(false);
+  const newClientToastIdRef = useRef<string | null>(null);
   
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
@@ -201,30 +207,125 @@ export default function AdminPage() {
   }, [playLoudAudio]);
 
   useEffect(() => {
-    if (!ordersRaw) return;
+    if (!ordersRaw || !db || !user) return;
     const currentIds = new Set((ordersRaw as any[]).map(o => o.id));
     if (seenOrderIdsRef.current === null) {
       seenOrderIdsRef.current = currentIds;
       return;
     }
-    const newOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id) && o.status === 'pending' && o.orderType !== 'dine_in');
-    if (newOnes.length > 0) {
+    
+    // Todos os pedidos novos que entraram agora
+    const allNewOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id));
+    
+    // Filtro para apitar: apenas pendentes e que não sejam de mesa
+    const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending' && o.orderType !== 'dine_in');
+    
+    if (pendingNewOnes.length > 0) {
       playNewOrderBeep();
-      toast({ title: `Novo pedido recebido!`, description: `${newOnes.length} pedido(s) aguardando confirmação.` });
+      toast({ title: `Novo pedido recebido!`, description: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
       try {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Novo pedido!', { body: `${newOnes.length} pedido(s) aguardando confirmação.` });
+          new Notification('Novo pedido!', { body: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
         }
       } catch {}
     }
+
+    // Lógica para cadastrar clientes e disparar confetes
+    allNewOnes.forEach(async (order) => {
+      const telefone = (order.customerPhone || '').trim();
+      const nome = (order.customerName || '').trim();
+      
+      if (telefone || nome) {
+        const clientesRef = collection(db, 'clientes');
+        let q;
+        if (telefone) {
+          q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', '==', telefone));
+        } else {
+          q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
+        }
+        
+        try {
+          const snap = await getDocs(q);
+          if (snap.empty) {
+            // É um CLIENTE NOVO!
+            const hoje = new Date().toLocaleDateString('pt-BR');
+            const newRef = doc(clientesRef);
+            await setDoc(newRef, {
+              id: newRef.id,
+              ownerId: user.uid,
+              nome: nome,
+              celular: telefone,
+              logradouro: order.address?.street || '',
+              logradouroNumero: order.address?.number || '',
+              complemento: order.address?.complement || '',
+              bairro: order.address?.neighborhood || '',
+              cidade: order.address?.city || '',
+              dataNascimento: order.customerBirthDate || '',
+              clienteDesde: hoje,
+              ultimoPedido: hoje,
+              totalPedidos: 0, // Será incrementado quando o pedido for entregue
+              totalPontos: 0,
+              ticketMedio: 0
+            });
+            
+            // Comemorar cliente novo no delivery!
+            if (order.orderType === 'delivery') {
+              setIsCelebrating(true);
+              const { id } = toast({ 
+                title: "🎉 CLIENTE NOVO!", 
+                description: `${nome} acabou de fazer o primeiro pedido!`,
+                className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
+                duration: 999999
+              });
+              newClientToastIdRef.current = id;
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao verificar/cadastrar cliente automático:", err);
+        }
+      }
+    });
+
     seenOrderIdsRef.current = currentIds;
-  }, [ordersRaw, playNewOrderBeep, toast]);
+  }, [ordersRaw, playNewOrderBeep, toast, db, user]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
+
+  // Efeito do confete contínuo e limpeza da notificação
+  useEffect(() => {
+    if (activeTab === 'delivery' && newClientToastIdRef.current) {
+      dismiss(newClientToastIdRef.current);
+      newClientToastIdRef.current = null;
+    }
+
+    if (!isCelebrating) return;
+
+    let duration = activeTab === 'delivery' ? 4000 : 9999999;
+    let animationEnd = Date.now() + duration;
+
+    const interval = setInterval(() => {
+      let timeLeft = animationEnd - Date.now();
+      if (timeLeft <= 0) {
+        clearInterval(interval);
+        setIsCelebrating(false);
+        return;
+      }
+
+      confetti({
+        particleCount: 15,
+        spread: 360,
+        startVelocity: 30,
+        origin: { x: Math.random(), y: Math.random() - 0.2 },
+        colors: ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6']
+      });
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [isCelebrating, activeTab]);
 
   const handleDragEndCategory = async (result: DropResult) => {
     if (!result.destination || !db || !categories) return;
@@ -390,12 +491,81 @@ export default function AdminPage() {
   };
 
   const updateOrderStatus = async (orderId: string, statusOrUpdates: string | any) => {
-    if (!db) return;
+    if (!db || !user) return;
     try {
       const updates = typeof statusOrUpdates === 'string' ? { status: statusOrUpdates } : statusOrUpdates;
+      
+      // Sincronização de Cliente se o pedido for movido para 'delivered'
+      if (updates.status === 'delivered') {
+        const order = (ordersRaw as any[])?.find(o => o.id === orderId);
+        // Só sincroniza se o pedido existe e não estava como entregue antes
+        if (order && order.status !== 'delivered') {
+          const telefone = (order.customerPhone || '').trim();
+          const nome = (order.customerName || '').trim();
+          const hoje = new Date().toLocaleDateString('pt-BR');
+          const valor = order.totalAmount || 0;
+
+          if (telefone || nome) {
+            const clientesRef = collection(db, 'clientes');
+            let q;
+            if (telefone) {
+              q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', '==', telefone));
+            } else {
+              q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
+            }
+            
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              const docRef = snap.docs[0].ref;
+              const data = snap.docs[0].data();
+              const oldPedidos = data.totalPedidos || 0;
+              const oldTicket = data.ticketMedio || 0;
+              const oldBirth = data.dataNascimento || '';
+              
+              const totalGastoAnterior = oldPedidos * oldTicket;
+              const novoTotalPedidos = oldPedidos + 1;
+              const novoTicket = (totalGastoAnterior + valor) / novoTotalPedidos;
+              
+              const updateData: any = {
+                totalPedidos: novoTotalPedidos,
+                ticketMedio: novoTicket,
+                ultimoPedido: hoje
+              };
+
+              // Atualiza data de nascimento se o cliente informou agora e antes não tinha
+              if (order.customerBirthDate && !oldBirth) {
+                updateData.dataNascimento = order.customerBirthDate;
+              }
+
+              await updateDoc(docRef, updateData);
+            } else {
+              const newRef = doc(clientesRef);
+              await setDoc(newRef, {
+                id: newRef.id,
+                ownerId: user.uid,
+                nome: nome,
+                celular: telefone,
+                logradouro: order.address?.street || '',
+                logradouroNumero: order.address?.number || '',
+                complemento: order.address?.complement || '',
+                bairro: order.address?.neighborhood || '',
+                cidade: order.address?.city || '',
+                dataNascimento: order.customerBirthDate || '',
+                clienteDesde: hoje,
+                ultimoPedido: hoje,
+                totalPedidos: 1,
+                totalPontos: 0,
+                ticketMedio: valor
+              });
+            }
+          }
+        }
+      }
+
       await updateDoc(doc(db, 'orders', orderId), updates);
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
     } catch (err) {
+      console.error(err);
       toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
     }
   };
@@ -450,20 +620,22 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
-    <div className="admin-scale h-screen bg-slate-100 flex flex-col overflow-hidden">
-      {/* Dark Top Navigation Bar */}
-      <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center px-4 shrink-0 shadow-sm z-10">
-        <div className="flex h-full">
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-          >
-            Dashboard
-          </button>
-          <button 
-            onClick={() => setActiveTab('caixa')}
-            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-          >
+    <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
+      <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
+        {/* Dark Top Navigation Bar */}
+        <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
+          <div className="flex h-full items-center">
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+            >
+              Dashboard
+            </button>
+            <button 
+              onClick={() => setActiveTab('caixa')}
+              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+            >
             Caixa
           </button>
           <button 
@@ -495,12 +667,6 @@ export default function AdminPage() {
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
           <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
              Sair
-          </button>
-          <button 
-            onClick={() => setActiveTab('configuracoes')}
-            className={`p-2 hover:text-white transition-colors rounded ${activeTab === 'configuracoes' ? 'bg-white/10 text-white' : ''}`}
-          >
-            <Settings className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -571,44 +737,46 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Módulo Administrativo Antigo */}
-        <div className={activeTab === 'configuracoes' ? 'flex-1 overflow-y-auto custom-scrollbar' : 'hidden'}>
-          <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
-            <Tabs defaultValue="products" className="w-full">
-          <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
-            <TabsTrigger value="products" className="rounded-lg px-6 flex gap-2">
-              <Utensils className="h-4 w-4" /> Produtos
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="rounded-lg px-6 flex gap-2">
-              <Tag className="h-4 w-4" /> Categorias
-            </TabsTrigger>
-            <TabsTrigger value="addons" className="rounded-lg px-6 flex gap-2">
-              <Plus className="h-4 w-4" /> Adicionais
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="rounded-lg px-6 flex gap-2">
-              <Store className="h-4 w-4" /> Perfil da Empresa
-            </TabsTrigger>
-          </TabsList>
+        {/* Módulo Administrativo (Nova Gestão) */}
+        <div className={
+          activeTab === 'produtos'
+            ? 'flex-1 overflow-hidden flex flex-col min-h-0'
+            : ['categorias', 'addons', 'clientes'].includes(activeTab) || activeTab.startsWith('perfil_')
+              ? 'flex-1 overflow-y-auto custom-scrollbar'
+              : 'hidden'
+        }>
+          <div className={
+            activeTab === 'produtos'
+              ? 'max-w-[1600px] w-full mx-auto px-2 relative mt-4 flex-1 flex flex-col min-h-0'
+              : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
+          }>
 
-
-          <TabsContent value="products" className="mt-6">
+          {activeTab === 'produtos' && (
+            <div className="mt-6 flex-1 flex flex-col min-h-0">
+              <div className="mb-6 px-2 shrink-0">
+                <h1 className="text-3xl font-black tracking-tight text-slate-800">Produtos e Combos</h1>
+                <p className="text-muted-foreground mt-1 font-medium">Gerencie seu cardápio, crie combos promocionais e monte produtos personalizados (Marmitas).</p>
+              </div>
             {editingProduct !== null ? (
-              <ProductModal 
-                db={db} user={user} addons={addons || []} 
-                editingProduct={editingProduct} setEditingProduct={setEditingProduct} 
-                categories={categories || []} 
-              />
+              <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
+                <ProductModal
+                  db={db} user={user} addons={addons || []}
+                  editingProduct={editingProduct} setEditingProduct={setEditingProduct}
+                  categories={categories || []}
+                />
+              </div>
             ) : editingCombo !== null ? (
-              <ComboModal 
-                db={db} user={user} items={items || []} 
-                editingCombo={editingCombo} setEditingCombo={setEditingCombo} 
-                categories={categories || []} 
-              />
+              <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
+                <ComboModal
+                  db={db} user={user} items={items || []}
+                  editingCombo={editingCombo} setEditingCombo={setEditingCombo}
+                  categories={categories || []}
+                />
+              </div>
             ) : (
-            <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Gerenciar Cardápio</CardTitle>
-                <div className="flex gap-2">
+            <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4 shrink-0">
+                <div className="flex gap-2 flex-wrap">
                   <Button onClick={async () => {
                     if (!db || !user) return;
                     if (!confirm("Isso apagará o cardápio atual e reimportará a NOVA BASE extraída do Bysell (300+ itens). Tem certeza?")) return;
@@ -690,9 +858,9 @@ export default function AdminPage() {
                 </Button>
               </div>
             </CardHeader>
-              <CardContent className="p-0">
-                <div className="p-4 border-b bg-slate-50 flex flex-col md:flex-row gap-4 items-center">
-                  <select 
+              <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
+                <div className="p-4 border-b bg-slate-50 flex flex-col md:flex-row gap-4 items-center shrink-0">
+                  <select
                     className="h-10 px-3 py-2 rounded-md border border-input bg-background text-sm min-w-[200px]"
                     value={productCategoryFilter}
                     onChange={(e) => setProductCategoryFilter(e.target.value)}
@@ -702,13 +870,14 @@ export default function AdminPage() {
                       <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
-                  <Input 
-                    placeholder="Procurar por..." 
+                  <Input
+                    placeholder="Procurar por..."
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     className="w-full"
                   />
                 </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
@@ -791,15 +960,21 @@ export default function AdminPage() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="categories" className="mt-6">
-            <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Categorias</CardTitle>
+          {activeTab === 'categorias' && (
+            <div className="mt-6">
+              <div className="mb-6 px-2">
+                <h1 className="text-3xl font-black tracking-tight text-slate-800">Categorias do Cardápio</h1>
+                <p className="text-muted-foreground mt-1 font-medium">Organize os seus produtos, defina a ordem de exibição e limite horários de disponibilidade.</p>
+              </div>
+              <Card className="border shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4">
                 <Dialog open={isCategoryModalOpen} onOpenChange={(open) => {
                   setIsCategoryModalOpen(open);
                   if (!open) setNewCategoryName('');
@@ -1046,12 +1221,17 @@ export default function AdminPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="addons" className="mt-6">
-            <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between border-b bg-white">
-                <CardTitle className="text-lg">Adicionais Disponíveis</CardTitle>
+          {activeTab === 'addons' && (
+            <div className="mt-6">
+              <div className="mb-6 px-2">
+                <h1 className="text-3xl font-black tracking-tight text-slate-800">Grupos de Adicionais</h1>
+                <p className="text-muted-foreground mt-1 font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
+              </div>
+              <Card className="border shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4">
                 <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
                   <DialogTrigger asChild>
                     <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
@@ -1117,11 +1297,13 @@ export default function AdminPage() {
                 </Table>
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="reports" className="mt-6 space-y-6">
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
+          {activeTab === 'dashboard' && (
+            <div className="mt-6 space-y-6">
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
                 {([['today', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias'], ['all', 'Tudo'], ['custom', 'Personalizado']] as const).map(([val, label]) => (
                   <Button
                     key={val}
@@ -1362,16 +1544,25 @@ export default function AdminPage() {
                 </Card>
               </>
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="profile" className="mt-6">
-            <StoreProfileTab db={db} user={user} />
-          </TabsContent>
-        </Tabs>
+          {activeTab.startsWith('perfil_') && (
+            <div className="mt-6">
+              <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
+            </div>
+          )}
+
+          {activeTab === 'clientes' && (
+            <div className="mt-6">
+              <ClientesTab db={db} user={user} />
+            </div>
+          )}
           </div>
         </div>
       </div>
 
+      </div>
     </div>
   );
 }
