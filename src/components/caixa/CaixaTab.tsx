@@ -1331,7 +1331,12 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             
           </div>
           <DialogFooter className="border-t pt-3 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-row gap-2">
-            <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
+              <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrint}>
+                <Printer className="h-4 w-4 mr-1" /> Imprimir prévia
+              </Button>
+            </div>
             <Button 
               className="bg-red-600 hover:bg-red-700 text-white font-bold w-full sm:w-auto px-8"
               onClick={confirmarFechamento} 
