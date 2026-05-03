@@ -18,7 +18,9 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
         </h1>
         {!isKitchen && <p>Pedido: #{order.id?.substring(0, 5)} ({order.id})</p>}
         <p>Data: {new Date(order.orderDateTime || Date.now()).toLocaleDateString('pt-BR')} {new Date(order.orderDateTime || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-        <p>Previsão: {new Date(Date.now() + 50 * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+        {!['delivered', 'canceled', 'completed', 'awaiting_payment'].includes(order.status) && order.orderType === 'delivery' && (
+          <p>Previsão: {new Date((order.orderDateTime || Date.now()) + 50 * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+        )}
       </div>
 
       {/* Tipo de Pedido */}
@@ -92,7 +94,7 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
           </div>
         )}
         <div className="flex justify-between font-bold text-sm mt-2 pt-2 border-t border-black">
-          <span>Cobrar do Cliente</span>
+          <span>Total</span>
           <span>R$ {(order.totalAmount || 0).toFixed(2)}</span>
         </div>
       </div>
