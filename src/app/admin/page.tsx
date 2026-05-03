@@ -533,6 +533,12 @@ export default function AdminPage() {
             Dashboard
           </button>
           <button 
+            onClick={() => setActiveTab('caixa')}
+            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+          >
+            Caixa
+          </button>
+          <button 
             onClick={() => setActiveTab('delivery')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'delivery' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
@@ -559,14 +565,6 @@ export default function AdminPage() {
               {caixaAberto ? 'Aberto' : 'Fechado'}
             </Badge>
           </div>
-          <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
-          <button 
-            onClick={() => setActiveTab('configuracoes')}
-            className={`flex items-center gap-2 transition-colors ${activeTab === 'configuracoes' ? 'text-white' : 'hover:text-white'}`}
-          >
-            <div className={`w-2 h-2 rounded-full ${caixaAberto ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-            <span className="text-sm font-medium">Caixa / Admin</span>
-          </button>
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
           <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
              Sair
@@ -601,6 +599,15 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'caixa' && (
+          <CaixaTab 
+            storeProfile={storeProfile} 
+            orders={orders || []} 
+            autoOpenAbrirCaixa={autoOpenAbrirCaixa}
+            onModalOpened={() => setAutoOpenAbrirCaixa(false)}
+          />
+        )}
+
         {activeTab === 'novo_pedido' && (
           <NovoPedidoTab 
             categories={categories || []} 
@@ -632,11 +639,8 @@ export default function AdminPage() {
         {/* Módulo Administrativo Antigo */}
         <div className={activeTab === 'configuracoes' ? 'block' : 'hidden'}>
           <div className="max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4">
-            <Tabs defaultValue="caixa" className="w-full">
+            <Tabs defaultValue="products" className="w-full">
           <TabsList className="bg-white border shadow-sm p-1 rounded-xl h-12">
-            <TabsTrigger value="caixa" className="rounded-lg px-6 flex gap-2">
-              <Wallet className="h-4 w-4" /> Caixa
-            </TabsTrigger>
             <TabsTrigger value="products" className="rounded-lg px-6 flex gap-2">
               <Utensils className="h-4 w-4" /> Produtos
             </TabsTrigger>
@@ -1456,14 +1460,7 @@ export default function AdminPage() {
               </>
             )}
           </TabsContent>
-          <TabsContent value="caixa" className="mt-6">
-            <CaixaTab 
-              storeProfile={storeProfile} 
-              orders={orders || []} 
-              autoOpenAbrirCaixa={autoOpenAbrirCaixa}
-              onModalOpened={() => setAutoOpenAbrirCaixa(false)}
-            />
-          </TabsContent>
+
           <TabsContent value="profile" className="mt-6">
             <StoreProfileTab db={db} user={user} />
           </TabsContent>
