@@ -986,7 +986,14 @@ export default function AdminPage() {
                                       <div {...provided.dragHandleProps} className="cursor-grab hover:text-primary active:cursor-grabbing p-1">
                                         <GripVertical className="h-5 w-5 text-muted-foreground" />
                                       </div>
-                                      {cat.name}
+                                      <div>
+                                        {cat.name}
+                                        {cat.availability?.enabled && (
+                                          <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                            {cat.availability.days?.map((d: string) => d.substring(0, 3)).join(', ')} ({cat.availability.startTime || '00:00'} às {cat.availability.endTime || '23:59'})
+                                          </p>
+                                        )}
+                                      </div>
                                     </div>
                                   </TableCell>
                                   <TableCell className="text-right pr-6">
