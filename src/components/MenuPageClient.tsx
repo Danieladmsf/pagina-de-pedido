@@ -122,6 +122,32 @@ export function MenuPageClient() {
     };
   }, [db, storeId]);
 
+  const visibleCategories = useMemo(() => {
+    if (!categories) return [];
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 is Sunday
+    const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const currentDayName = daysMap[dayOfWeek];
+    const currentHour = today.getHours();
+    const currentMin = today.getMinutes();
+    const currentMins = currentHour * 60 + currentMin;
+
+    return categories.filter((cat: any) => {
+      if (!cat.availability?.enabled) return true;
+      
+      const { days, startTime, endTime } = cat.availability;
+      if (days && !days.includes(currentDayName)) return false;
+      
+      const [openHour, openMin] = (startTime || '00:00').split(':').map(Number);
+      const [closeHour, closeMin] = (endTime || '23:59').split(':').map(Number);
+      
+      const openMins = openHour * 60 + openMin;
+      const closeMins = closeHour * 60 + closeMin;
+      
+      return currentMins >= openMins && currentMins <= closeMins;
+    }).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  }, [categories]);
+
   useEffect(() => {
     const el = categoryScrollRef.current;
     if (!el) return;
@@ -133,18 +159,24 @@ export function MenuPageClient() {
       el.removeEventListener('scroll', checkScrollButtons);
       ro.disconnect();
     };
-  }, [checkScrollButtons, categories]);
+  }, [checkScrollButtons, visibleCategories]);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
+    
+    // Only show items whose category is visible
+    const visibleCategoryIds = new Set(visibleCategories.map(c => c.id));
+
     return items.filter(item => {
       if (item.isAvailable === false) return false;
+      if (!visibleCategoryIds.has(item.categoryId)) return false;
+      
       const matchesCategory = activeCategoryId === 'all' || item.categoryId === activeCategoryId;
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategoryId, searchQuery, items]);
+  }, [activeCategoryId, searchQuery, items, visibleCategories]);
 
   const isStoreOpenRightNow = useMemo(() => {
     if (!storeProfile) return { isOpen: true, reason: '' };
@@ -285,7 +317,7 @@ export function MenuPageClient() {
               >
                 Todos
               </Button>
-              {categories?.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((cat) => (
+              {visibleCategories.map((cat) => (
                 <Button
                   key={cat.id}
                   variant={activeCategoryId === cat.id ? 'default' : 'outline'}

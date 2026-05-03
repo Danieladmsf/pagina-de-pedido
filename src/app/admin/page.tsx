@@ -43,6 +43,10 @@ export default function AdminPage() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   
+  // Estados para configuração de disponibilidade da categoria
+  const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [isCategoryConfigModalOpen, setIsCategoryConfigModalOpen] = useState(false);
+  
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
@@ -854,6 +858,107 @@ export default function AdminPage() {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+
+                {/* Modal de Configuração da Categoria (Disponibilidade) */}
+                <Dialog open={isCategoryConfigModalOpen} onOpenChange={setIsCategoryConfigModalOpen}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Configurar Categoria: {editingCategory?.name}</DialogTitle>
+                    </DialogHeader>
+                    {editingCategory && (
+                      <div className="py-4 space-y-6">
+                        <div className="flex items-center justify-between">
+                          <Label className="font-bold flex items-center gap-2 text-base">
+                            <Clock className="w-4 h-4 text-primary" /> 
+                            Limitar Disponibilidade
+                          </Label>
+                          <Switch 
+                            checked={editingCategory.availability?.enabled || false}
+                            onCheckedChange={(checked) => setEditingCategory({
+                              ...editingCategory,
+                              availability: { ...editingCategory.availability, enabled: checked, days: editingCategory.availability?.days || ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'], startTime: editingCategory.availability?.startTime || '00:00', endTime: editingCategory.availability?.endTime || '23:59' }
+                            })}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground -mt-4">
+                          Se ativado, esta categoria só aparecerá para o cliente nos dias e horários selecionados abaixo.
+                        </p>
+
+                        {editingCategory.availability?.enabled && (
+                          <div className="space-y-4 pt-2 border-t">
+                            <div className="space-y-2">
+                              <Label className="text-sm">Dias da Semana</Label>
+                              <div className="flex flex-wrap gap-2">
+                                {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map(d => {
+                                  const isSelected = editingCategory.availability?.days?.includes(d);
+                                  return (
+                                    <Badge 
+                                      key={d} 
+                                      variant={isSelected ? 'default' : 'outline'}
+                                      className="cursor-pointer"
+                                      onClick={() => {
+                                        const currentDays = editingCategory.availability?.days || [];
+                                        const newDays = isSelected ? currentDays.filter((x: string) => x !== d) : [...currentDays, d];
+                                        setEditingCategory({
+                                          ...editingCategory,
+                                          availability: { ...editingCategory.availability, days: newDays }
+                                        });
+                                      }}
+                                    >
+                                      {d.substring(0, 3)}
+                                    </Badge>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Horário Inicial</Label>
+                                <Input 
+                                  type="time" 
+                                  value={editingCategory.availability?.startTime || '00:00'}
+                                  onChange={(e) => setEditingCategory({
+                                    ...editingCategory,
+                                    availability: { ...editingCategory.availability, startTime: e.target.value }
+                                  })}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Horário Final</Label>
+                                <Input 
+                                  type="time" 
+                                  value={editingCategory.availability?.endTime || '23:59'}
+                                  onChange={(e) => setEditingCategory({
+                                    ...editingCategory,
+                                    availability: { ...editingCategory.availability, endTime: e.target.value }
+                                  })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsCategoryConfigModalOpen(false)}>Cancelar</Button>
+                      <Button onClick={async () => {
+                        if (!db || !editingCategory) return;
+                        try {
+                          await updateDoc(doc(db, 'categories', editingCategory.id), {
+                            availability: editingCategory.availability || null
+                          });
+                          setIsCategoryConfigModalOpen(false);
+                          toast({ title: 'Configurações salvas!' });
+                        } catch (err: any) {
+                          toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message });
+                        }
+                      }} className="bg-primary text-white">
+                        Salvar Configurações
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="max-h-[65vh] overflow-y-auto">
@@ -885,12 +990,20 @@ export default function AdminPage() {
                                     </div>
                                   </TableCell>
                                   <TableCell className="text-right pr-6">
-                                    <Button variant="ghost" size="icon" onClick={async () => {
-                                      if (!db) return;
-                                      if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
-                                    }}>
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button variant="ghost" size="icon" onClick={() => {
+                                        setEditingCategory(cat);
+                                        setIsCategoryConfigModalOpen(true);
+                                      }} className={cat.availability?.enabled ? 'text-primary' : 'text-muted-foreground'}>
+                                        <Clock className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" onClick={async () => {
+                                        if (!db) return;
+                                        if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
+                                      }}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               )}
