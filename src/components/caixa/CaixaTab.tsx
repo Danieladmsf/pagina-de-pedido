@@ -769,14 +769,13 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <TableHead>Título</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Forma de Pagamento</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="pr-6">Usuário</TableHead>
+                    <TableHead className="pr-6">Tipo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedLancamentos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
+                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
                     </TableRow>
                   ) : (
                     paginatedLancamentos.map((lanc) => {
@@ -810,10 +809,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                             {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
                           </TableCell>
                           <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento}</TableCell>
-                          <TableCell>
+                          <TableCell className="pr-6">
                             <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
                           </TableCell>
-                          <TableCell className="pr-6 text-muted-foreground">{lanc.usuario}</TableCell>
                         </TableRow>
                       );
                     })
