@@ -32,7 +32,12 @@
   * {
     @apply border-border;
   }
-  html { zoom: 0.9; }
+  html { 
+    /* Escala o projeto todo em 90% ajustando a base do rem (Tailwind) */
+    font-size: 90%; 
+    /* Fallback de zoom para navegadores antigos/casos específicos */
+    zoom: 0.9; 
+  }
   body {
     @apply bg-background text-foreground font-body;
   }
