@@ -1270,8 +1270,8 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <Label className="text-xs text-muted-foreground font-bold">Total contado em Dinheiro</Label>
                     <div className="flex items-center gap-2 mt-1">
                       <CurrencyInput
-                        value={dinheiroApurado}
-                        onChange={(e) => setDinheiroApurado(e.target.value)}
+                        value={dinheiroApurado !== '' ? Number(dinheiroApurado) : undefined}
+                        onChange={(val) => setDinheiroApurado(val.toString())}
                         placeholder="R$ 0,00"
                         className="font-bold text-lg h-10 w-full"
                       />
