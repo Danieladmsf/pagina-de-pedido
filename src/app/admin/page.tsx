@@ -740,25 +740,25 @@ export default function AdminPage() {
         {/* Módulo Administrativo (Nova Gestão) */}
         <div className={
           activeTab === 'produtos'
-            ? 'flex-1 overflow-hidden flex flex-col min-h-0'
+            ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
             : ['categorias', 'addons', 'clientes'].includes(activeTab) || activeTab.startsWith('perfil_')
-              ? 'flex-1 overflow-y-auto custom-scrollbar'
+              ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
           <div className={
             activeTab === 'produtos'
-              ? 'max-w-[1600px] w-full mx-auto px-2 relative mt-4 flex-1 flex flex-col min-h-0'
+              ? 'max-w-[1600px] w-full mx-auto px-2 mt-4 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
 
           {activeTab === 'produtos' && (
-            <div className="mt-6 flex-1 flex flex-col min-h-0">
+            <div className="mt-6 flex-1 min-h-0 flex flex-col">
               <div className="mb-6 px-2 shrink-0">
                 <h1 className="text-3xl font-black tracking-tight text-slate-800">Produtos e Combos</h1>
                 <p className="text-muted-foreground mt-1 font-medium">Gerencie seu cardápio, crie combos promocionais e monte produtos personalizados (Marmitas).</p>
               </div>
             {editingProduct !== null ? (
-              <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-4 pr-1">
                 <ProductModal
                   db={db} user={user} addons={addons || []}
                   editingProduct={editingProduct} setEditingProduct={setEditingProduct}
@@ -766,7 +766,7 @@ export default function AdminPage() {
                 />
               </div>
             ) : editingCombo !== null ? (
-              <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-4 pr-1">
                 <ComboModal
                   db={db} user={user} items={items || []}
                   editingCombo={editingCombo} setEditingCombo={setEditingCombo}
@@ -877,7 +877,7 @@ export default function AdminPage() {
                     className="w-full"
                   />
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
