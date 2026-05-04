@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
+import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import confetti from 'canvas-confetti';
@@ -626,13 +627,7 @@ export default function AdminPage() {
         {/* Dark Top Navigation Bar */}
         <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
           <div className="flex h-full items-center">
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-            >
-              Dashboard
-            </button>
-            <button 
+            <button
               onClick={() => setActiveTab('caixa')}
               className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
             >
@@ -675,9 +670,15 @@ export default function AdminPage() {
       <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
         
         {activeTab === 'dashboard' && (
-          <div className="text-center p-20 flex flex-col items-center gap-4 text-slate-400">
-            <LayoutDashboard className="h-16 w-16 opacity-50" />
-            <p className="text-xl font-medium">Dashboard Estatístico em Desenvolvimento...</p>
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <DashboardTab
+              db={db}
+              user={user}
+              orders={ordersRaw || []}
+              items={items || []}
+              categories={categories || []}
+              storeProfile={storeProfile}
+            />
           </div>
         )}
 
