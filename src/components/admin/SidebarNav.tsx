@@ -21,9 +21,11 @@ interface SidebarNavProps {
   setActiveTab: (tab: string) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  storeName?: string;
+  storeLogo?: string;
 }
 
-export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen }: SidebarNavProps) {
+export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo }: SidebarNavProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const navItems = [
@@ -42,6 +44,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen }: Sideb
     { id: 'perfil_pagamentos', label: 'Pagamentos', icon: Wallet },
   ];
 
+  const displayName = storeName || 'Minha Loja';
+  const initials = displayName.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
   return (
     <>
       <div 
@@ -52,6 +57,23 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen }: Sideb
           setIsProfileOpen(false); // opcional, fecha o acordeão de perfil
         }}
       >
+        {/* Logo e Nome da Empresa */}
+        <div className="px-4 pt-5 pb-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-3">
+            {storeLogo ? (
+              <img src={storeLogo} alt={displayName} className="w-10 h-10 rounded-xl object-cover ring-2 ring-emerald-500/30 shrink-0" />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-sm ring-2 ring-emerald-500/30 shrink-0">
+                {initials}
+              </div>
+            )}
+            <div className="min-w-0 overflow-hidden">
+              <p className="text-sm font-bold text-white truncate leading-tight">{displayName}</p>
+              <p className="text-[11px] text-emerald-400/80 font-medium truncate">Painel Administrativo</p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-2 custom-scrollbar">
         {navItems.map((item) => {
           const Icon = item.icon;

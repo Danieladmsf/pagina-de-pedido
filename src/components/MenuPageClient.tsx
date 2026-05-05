@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -27,6 +27,7 @@ export function MenuPageClient() {
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [showStoreInfo, setShowStoreInfo] = useState(false);
 
   const checkScrollButtons = useCallback(() => {
     const el = categoryScrollRef.current;
@@ -240,6 +241,204 @@ export function MenuPageClient() {
 
   return (
     <div className="min-h-screen pb-24 relative">
+      {showStoreInfo && (
+        <div className="min-h-screen bg-[#FAFAF7]">
+          {/* Header */}
+          <div className="bg-white sticky top-0 z-30 shadow-sm border-b">
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+              <button onClick={() => setShowStoreInfo(false)} className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+                <ArrowLeft className="h-5 w-5 text-slate-700" />
+              </button>
+              <h1 className="text-lg font-bold text-slate-800">Informações da Loja</h1>
+            </div>
+          </div>
+
+          <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+            {/* Logo + Nome */}
+            <div className="bg-white rounded-2xl shadow-sm border p-6 flex items-center gap-4">
+              {storeProfile?.general?.logoUrl ? (
+                <img src={storeProfile.general.logoUrl} alt="Logo" className="w-16 h-16 rounded-2xl object-cover ring-2 ring-primary/20 shadow" />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-emerald-700 flex items-center justify-center text-white font-black text-xl ring-2 ring-primary/20 shadow">
+                  {(storeProfile?.general?.name || 'L').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-black text-slate-800">{storeProfile?.general?.name || 'Minha Loja'}</h2>
+                <p className="text-sm text-muted-foreground">Cardápio Digital</p>
+              </div>
+            </div>
+
+            {/* Mais Informações */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/15 to-emerald-500/15 border border-primary/20 flex items-center justify-center">
+                  <Truck className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Mais Informações</h2>
+                  <p className="text-xs text-muted-foreground">Regras de entrega e retirada.</p>
+                </div>
+              </header>
+              <div className="p-6 space-y-3 text-sm">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                  <span className="text-muted-foreground">Pedido mínimo de:</span>
+                  <span className="font-bold text-slate-700">R$ {(storeProfile?.fees?.minOrderValue || 0).toFixed(2)}</span>
+                </div>
+                {(() => {
+                  const rules = storeProfile?.fees?.feeRules || storeProfile?.feeRules || [];
+                  const fixedFee = storeProfile?.fees?.deliveryFee || 0;
+                  if (rules.length > 0) {
+                    const fees = rules.map((r: any) => r.fee).sort((a: number, b: number) => a - b);
+                    return (
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                        <span className="text-muted-foreground">Taxa de entrega:</span>
+                        <span className="font-bold text-slate-700">R$ {fees[0].toFixed(2)} a R$ {fees[fees.length - 1].toFixed(2)}</span>
+                      </div>
+                    );
+                  } else if (fixedFee > 0) {
+                    return (
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                        <span className="text-muted-foreground">Taxa de entrega:</span>
+                        <span className="font-bold text-slate-700">R$ {fixedFee.toFixed(2)}</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                  <span className="text-muted-foreground">Tempo de entrega:</span>
+                  <span className="font-bold text-slate-700">{storeProfile?.fees?.deliveryTime || '00:50'}</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
+                  <span className="text-muted-foreground">Aceita retirada no local:</span>
+                  <span className="font-bold text-emerald-600">Sim</span>
+                </div>
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="text-muted-foreground">Tempo de retirada:</span>
+                  <span className="font-bold text-slate-700">{storeProfile?.fees?.pickupTime || '00:30'}</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Contato */}
+            {(storeProfile?.general?.phone || storeProfile?.general?.whatsapp) && (
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/15 to-cyan-500/15 border border-blue-500/20 flex items-center justify-center">
+                    <Phone className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Contato</h2>
+                    <p className="text-xs text-muted-foreground">Fale conosco por telefone ou WhatsApp.</p>
+                  </div>
+                </header>
+                <div className="p-6 space-y-2 text-sm">
+                  {storeProfile?.general?.phone && (
+                    <a href={`tel:${storeProfile.general.phone.replace(/\D/g, '')}`} className="flex items-center gap-3 text-slate-700 hover:text-primary transition-colors p-2 rounded-lg hover:bg-primary/5">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{storeProfile.general.phone}</span>
+                    </a>
+                  )}
+                  {storeProfile?.general?.whatsapp && (
+                    <a href={`https://wa.me/55${storeProfile.general.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-emerald-600 transition-colors p-2 rounded-lg hover:bg-emerald-50">
+                      <span className="text-lg">📱</span>
+                      <span className="font-medium">{storeProfile.general.whatsapp}</span>
+                      <span className="text-xs text-emerald-600 font-bold ml-auto">WhatsApp →</span>
+                    </a>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Endereço */}
+            {storeProfile?.general?.address && (
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500/15 to-pink-500/15 border border-purple-500/20 flex items-center justify-center">
+                    <MapPin className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Endereço</h2>
+                    <p className="text-xs text-muted-foreground">Onde estamos localizados.</p>
+                  </div>
+                </header>
+                <div className="p-6">
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    {storeProfile.general.address}{storeProfile.general.addressNumber ? `, ${storeProfile.general.addressNumber}` : ''}{storeProfile.general.addressComplement ? ` - ${storeProfile.general.addressComplement}` : ''}
+                  </p>
+                </div>
+              </section>
+            )}
+
+            {/* Horários */}
+            {storeProfile?.workingHours && storeProfile.workingHours.length > 0 && (
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/15 to-orange-500/15 border border-amber-500/20 flex items-center justify-center">
+                    <ClockIcon className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Horário de Funcionamento</h2>
+                    <p className="text-xs text-muted-foreground">Confira quando estamos abertos.</p>
+                  </div>
+                </header>
+                <div className="p-6 space-y-0">
+                  {storeProfile.workingHours.map((wh: any, i: number) => {
+                    const today = new Date();
+                    const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+                    const isToday = wh.day === daysMap[today.getDay()];
+                    return (
+                      <div key={i} className={`flex justify-between items-center py-2.5 text-sm ${i < storeProfile.workingHours.length - 1 ? 'border-b border-slate-50' : ''} ${isToday ? 'bg-primary/5 -mx-2 px-2 rounded-lg' : ''}`}>
+                        <span className={`font-medium ${isToday ? 'text-primary font-bold' : 'text-slate-600'}`}>
+                          {wh.day}{isToday ? ' (Hoje)' : ''}
+                        </span>
+                        {wh.isClosed ? (
+                          <span className="text-red-500 font-bold text-xs uppercase">Fechado</span>
+                        ) : (
+                          <span className={`font-bold ${isToday ? 'text-primary' : 'text-slate-700'}`}>{wh.open} - {wh.close}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Formas de Pagamento */}
+            {storeProfile?.paymentMethods && storeProfile.paymentMethods.filter((p: any) => p.active).length > 0 && (
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
+                    <CreditCard className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Formas de Pagamento</h2>
+                    <p className="text-xs text-muted-foreground">Opções de pagamento no estabelecimento.</p>
+                  </div>
+                </header>
+                <div className="p-6">
+                  <div className="flex flex-wrap gap-2">
+                    {storeProfile.paymentMethods.filter((p: any) => p.active).map((pm: any) => (
+                      <span key={pm.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-full text-sm font-medium text-slate-700 border border-slate-100">
+                        <span>{pm.icon}</span> {pm.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Botão Voltar ao Cardápio */}
+            <div className="pt-4 pb-8">
+              <Button onClick={() => setShowStoreInfo(false)} className="w-full h-12 rounded-2xl font-bold text-base">
+                ← Voltar ao Cardápio
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!showStoreInfo && (<>
       {!isStoreOpenRightNow.isOpen && (
         <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
           {isStoreOpenRightNow.reason === 'hours_closed' 
@@ -255,6 +454,13 @@ export function MenuPageClient() {
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
+            <button
+              onClick={() => setShowStoreInfo(true)}
+              className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur shadow-md border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all"
+              aria-label="Informações da loja"
+            >
+              <Info className="h-5 w-5" />
+            </button>
             {/* 🔍 DEBUG */}
             {(() => {
               console.log('[MenuPageClient] storeProfile para CartDrawer:', {
@@ -416,9 +622,9 @@ export function MenuPageClient() {
         allAddons={addons || []}
         isStoreOpen={isStoreOpenRightNow.isOpen}
       />
-      
-      <Toaster />
       </div>
+      </>)}
+      <Toaster />
     </div>
   );
 }

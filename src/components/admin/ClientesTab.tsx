@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info } from 'lucide-react';
 
 interface ClientesTabProps {
   db: any;
@@ -284,74 +284,74 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-[1400px] mx-auto space-y-5 pt-4 pb-12">
       <div className="mb-6 px-2">
         <h1 className="text-3xl font-black tracking-tight text-slate-800">Base de Clientes</h1>
         <p className="text-muted-foreground mt-1 font-medium">Cadastre, gerencie e acompanhe o histórico de pedidos da sua carteira de clientes.</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="rounded-2xl border shadow-sm">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 bg-blue-100 rounded-xl">
-              <Users className="h-5 w-5 text-blue-600" />
-            </div>
+      {/* SEÇÃO 1 — Resumo */}
+      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+        <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/15 to-indigo-500/15 border border-blue-500/20 flex items-center justify-center">
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-bold text-slate-800">Resumo da carteira</h2>
+            <p className="text-xs text-muted-foreground">Indicadores gerais da sua base de clientes.</p>
+          </div>
+          {stats.total > 0 && (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+              <CheckCircle2 className="h-3 w-3" /> {stats.total} cliente{stats.total !== 1 ? 's' : ''}
+            </Badge>
+          )}
+        </header>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/60 border border-blue-100">
+            <div className="p-2.5 bg-blue-100 rounded-xl"><Users className="h-5 w-5 text-blue-600" /></div>
             <div>
-              <p className="text-2xl font-black text-slate-800">{stats.total}</p>
-              <p className="text-xs text-muted-foreground font-medium">Total de Clientes</p>
+              <p className="text-2xl font-black text-blue-700">{stats.total}</p>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total de Clientes</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl border shadow-sm">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-100 rounded-xl">
-              <Phone className="h-5 w-5 text-emerald-600" />
-            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+            <div className="p-2.5 bg-emerald-100 rounded-xl"><Phone className="h-5 w-5 text-emerald-600" /></div>
             <div>
-              <p className="text-2xl font-black text-slate-800">{stats.comTelefone}</p>
-              <p className="text-xs text-muted-foreground font-medium">Com Telefone</p>
+              <p className="text-2xl font-black text-emerald-700">{stats.comTelefone}</p>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Com Telefone</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl border shadow-sm">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 bg-amber-100 rounded-xl">
-              <Gift className="h-5 w-5 text-amber-600" />
-            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
+            <div className="p-2.5 bg-amber-100 rounded-xl"><Gift className="h-5 w-5 text-amber-600" /></div>
             <div>
-              <p className="text-2xl font-black text-slate-800">{stats.aniversariantes}</p>
-              <p className="text-xs text-muted-foreground font-medium">Aniversariantes do Mês</p>
+              <p className="text-2xl font-black text-amber-700">{stats.aniversariantes}</p>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Aniversariantes do Mês</p>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
 
-      {/* Toolbar */}
-      <Card className="border shadow-md rounded-2xl overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-end border-b bg-white py-3">
+      {/* SEÇÃO 2 — Tabela de Clientes */}
+      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+        <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
+            <Users className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-bold text-slate-800">Cadastro de clientes</h2>
+            <p className="text-xs text-muted-foreground">Consulte, edite ou importe sua base de clientes.</p>
+          </div>
           <div className="flex gap-2">
-            <input
-              type="file"
-              accept=".csv"
-              ref={fileInputRef}
-              onChange={handleImportCSV}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isImporting}
-              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-            >
-              {isImporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCSV} className="hidden" />
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 text-xs">
+              {isImporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
               Importar CSV
             </Button>
-            <Button onClick={openNewForm} className="bg-primary text-white">
-              <Plus className="h-4 w-4 mr-2" /> Novo Cliente
+            <Button onClick={openNewForm} className="bg-primary text-white h-8 text-xs">
+              <Plus className="h-4 w-4 mr-1.5" /> Novo Cliente
             </Button>
           </div>
-        </CardHeader>
+        </header>
 
         {/* Search */}
         <div className="p-3 border-b bg-muted/20">
@@ -366,67 +366,68 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
           </div>
         </div>
 
-        <CardContent className="p-0">
-          <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
-            <Table>
-              <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
+        <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
+          <Table>
+            <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
+              <TableRow>
+                <TableHead className="pl-4">Nome</TableHead>
+                <TableHead>Celular</TableHead>
+                <TableHead>Bairro</TableHead>
+                <TableHead>Cidade</TableHead>
+                <TableHead className="text-center">Pedidos</TableHead>
+                <TableHead className="text-center">Ticket Médio</TableHead>
+                <TableHead>Último Pedido</TableHead>
+                <TableHead className="text-right pr-4">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginated.length === 0 ? (
                 <TableRow>
-                  <TableHead className="pl-4">Nome</TableHead>
-                  <TableHead>Celular</TableHead>
-                  <TableHead>Bairro</TableHead>
-                  <TableHead>Cidade</TableHead>
-                  <TableHead className="text-center">Pedidos</TableHead>
-                  <TableHead className="text-center">Ticket Médio</TableHead>
-                  <TableHead>Último Pedido</TableHead>
-                  <TableHead className="text-right pr-4">Ações</TableHead>
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                    {clientes.length === 0 ? 'Nenhum cliente cadastrado. Importe um CSV ou cadastre manualmente.' : 'Nenhum resultado encontrado.'}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginated.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                      {clientes.length === 0 ? 'Nenhum cliente cadastrado. Importe um CSV ou cadastre manualmente.' : 'Nenhum resultado encontrado.'}
+              ) : (
+                paginated.map(c => (
+                  <TableRow key={c.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setViewingCliente(c)}>
+                    <TableCell className="pl-4 font-semibold text-slate-700">{c.nome}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{c.celular || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{c.bairro || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{c.cidade || '-'}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline" className="font-bold">{c.totalPedidos || 0}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-emerald-600 text-sm">
+                      {c.ticketMedio ? `R$ ${c.ticketMedio.toFixed(2)}` : '-'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
+                    <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)}>
+                          <Eye className="h-3.5 w-3.5 text-blue-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)}>
+                          <Pencil className="h-3.5 w-3.5 text-amber-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  paginated.map(c => (
-                    <TableRow key={c.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setViewingCliente(c)}>
-                      <TableCell className="pl-4 font-semibold text-slate-700">{c.nome}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{c.celular || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{c.bairro || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{c.cidade || '-'}</TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="outline" className="font-bold">{c.totalPedidos || 0}</Badge>
-                      </TableCell>
-                      <TableCell className="text-center font-bold text-emerald-600 text-sm">
-                        {c.ticketMedio ? `R$ ${c.ticketMedio.toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
-                      <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)}>
-                            <Eye className="h-3.5 w-3.5 text-blue-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)}>
-                            <Pencil className="h-3.5 w-3.5 text-amber-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border text-sm text-muted-foreground">
-        <span>Página {currentPage} de {totalPages}, mostrando {filtered.length} resultado(s)</span>
+      <div className="bg-white rounded-2xl shadow-sm border p-4 flex items-center justify-between sticky bottom-2 z-10">
+        <p className="text-xs text-muted-foreground flex items-center gap-2">
+          <Info className="h-3.5 w-3.5 text-slate-400" />
+          Página {currentPage} de {totalPages} — {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+        </p>
         <div className="flex gap-1">
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
             <ChevronLeft className="h-4 w-4" />

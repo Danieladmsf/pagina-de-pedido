@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +8,13 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { uploadImage } from '@/lib/upload';
 
 interface StoreProfileTabProps {
   db: any;
@@ -38,6 +39,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     address: '',
     addressNumber: '',
     addressComplement: '',
+    logoUrl: '',
     deliveryCities: [] as string[],
     cityInput: '', // temporário
     deliveryFee: 0,
@@ -49,6 +51,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     pickupTime: '00:30',
     maxDeliveryRadius: 0,
   });
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [workingHours, setWorkingHours] = useState(
     DAYS_OF_WEEK.map(day => ({ day, open: '09:00', close: '16:00', isClosed: false }))
@@ -126,6 +130,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           address: formData.address,
           addressNumber: formData.addressNumber,
           addressComplement: formData.addressComplement,
+          logoUrl: formData.logoUrl,
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -257,56 +262,259 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         </p>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border">
+      <div className="space-y-5">
         {activeTab === 'geral' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-              <div className="space-y-0.5">
-                <Label>Nome da Empresa</Label>
-                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Minha Lanchonete" />
+          <>
+            {/* SEÇÃO 1 — Identidade Visual */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-cyan-500/15 border border-emerald-500/20 flex items-center justify-center">
+                  <ImageIcon className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Identidade visual</h2>
+                  <p className="text-xs text-muted-foreground">Logo que aparece no cardápio digital, painel e cupons.</p>
+                </div>
+                {formData.logoUrl && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Configurado
+                  </Badge>
+                )}
+              </header>
+              <div className="p-6">
+                <div className="flex flex-col md:flex-row items-start gap-6">
+                  <div className="relative group shrink-0">
+                    {formData.logoUrl ? (
+                      <div className="relative">
+                        <img src={formData.logoUrl} alt="Logo" className="w-28 h-28 rounded-2xl object-cover ring-2 ring-emerald-500/30 shadow-md" />
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, logoUrl: '' })}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer bg-slate-50/50"
+                      >
+                        {isUploadingLogo ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
+                        <span className="text-[11px] font-semibold">{isUploadingLogo ? 'Enviando...' : 'Enviar logo'}</span>
+                      </button>
+                    )}
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploadingLogo(true);
+                        try {
+                          const url = await uploadImage(file);
+                          setFormData(prev => ({ ...prev, logoUrl: url }));
+                          toast({ title: 'Logo enviada com sucesso!' });
+                        } catch (err: any) {
+                          toast({ variant: 'destructive', title: 'Erro ao enviar logo', description: err.message });
+                        } finally {
+                          setIsUploadingLogo(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex-1 space-y-3 min-w-0">
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2">
+                      <div className="flex items-start gap-2 text-xs text-slate-600">
+                        <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-700 mb-1">Recomendações para a logo</p>
+                          <ul className="space-y-0.5 text-[11px] leading-relaxed text-slate-500">
+                            <li>• Formato quadrado (proporção 1:1)</li>
+                            <li>• Mínimo 512×512 pixels</li>
+                            <li>• Fundo transparente ou branco em PNG</li>
+                            <li>• Tamanho máximo: 2 MB</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    {formData.logoUrl && (
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => logoInputRef.current?.click()}>
+                        <Camera className="w-3.5 h-3.5 mr-1.5" /> Trocar imagem
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <Label>CNPJ</Label>
-                <Input name="cnpj" value={formData.cnpj} onChange={(e) => setFormData({...formData, cnpj: formatCNPJ(e.target.value)})} placeholder="00.000.000/0000-00" maxLength={18} />
+            </section>
+
+            {/* SEÇÃO 2 — Dados da empresa */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/15 to-cyan-500/15 border border-blue-500/20 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Dados da empresa</h2>
+                  <p className="text-xs text-muted-foreground">Informações cadastrais que serão exibidas em cupons e notas.</p>
+                </div>
+              </header>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Store className="h-3.5 w-3.5 text-slate-400" /> Nome da empresa
+                    <span className="text-rose-500">*</span>
+                  </Label>
+                  <Input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Restaurante Sabor & Arte" className="h-11" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Hash className="h-3.5 w-3.5 text-slate-400" /> CNPJ
+                  </Label>
+                  <Input
+                    name="cnpj"
+                    value={formData.cnpj}
+                    onChange={(e) => setFormData({ ...formData, cnpj: formatCNPJ(e.target.value) })}
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
+                    className="h-11 font-mono"
+                    inputMode="numeric"
+                  />
+                  <p className="text-[10px] text-slate-400">Opcional. Aparece no cupom não-fiscal.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 text-slate-400" /> Telefone fixo
+                  </Label>
+                  <Input
+                    name="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
+                    placeholder="(00) 0000-0000"
+                    maxLength={15}
+                    className="h-11"
+                    inputMode="tel"
+                  />
+                  <p className="text-[10px] text-slate-400">Opcional.</p>
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <Label>Telefone (Opcional)</Label>
-                <Input name="phone" value={formData.phone} onChange={(e) => setFormData({...formData, phone: formatPhone(e.target.value)})} placeholder="(00) 0000-0000" maxLength={15} />
+            </section>
+
+            {/* SEÇÃO 3 — Contato com o cliente */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-green-500/15 to-emerald-500/15 border border-green-500/20 flex items-center justify-center">
+                  <MessageCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Canal de atendimento</h2>
+                  <p className="text-xs text-muted-foreground">WhatsApp usado para confirmação de pedidos e suporte ao cliente.</p>
+                </div>
+                {formData.whatsapp && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Conectado
+                  </Badge>
+                )}
+              </header>
+              <div className="p-6">
+                <div className="space-y-1.5 max-w-md">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <MessageCircle className="h-3.5 w-3.5 text-green-500" /> WhatsApp
+                    <span className="text-rose-500">*</span>
+                  </Label>
+                  <Input
+                    name="whatsapp"
+                    value={formData.whatsapp}
+                    onChange={(e) => setFormData({ ...formData, whatsapp: formatPhone(e.target.value) })}
+                    placeholder="(00) 90000-0000"
+                    maxLength={15}
+                    className="h-11"
+                    inputMode="tel"
+                  />
+                  <p className="text-[10px] text-slate-400">Inclua o DDD. Esse número recebe novos pedidos e é mostrado ao cliente.</p>
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <Label>WhatsApp</Label>
-                <Input name="whatsapp" value={formData.whatsapp} onChange={(e) => setFormData({...formData, whatsapp: formatPhone(e.target.value)})} placeholder="(00) 90000-0000" maxLength={15} />
+            </section>
+
+            {/* SEÇÃO 4 — Endereço */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-rose-500/15 to-orange-500/15 border border-rose-500/20 flex items-center justify-center">
+                  <MapPin className="h-5 w-5 text-rose-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Endereço do estabelecimento</h2>
+                  <p className="text-xs text-muted-foreground">Usado como ponto de partida para o cálculo da taxa de entrega.</p>
+                </div>
+                {formData.address && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Localizado
+                  </Badge>
+                )}
+              </header>
+              <div className="p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400" /> Logradouro
+                    <span className="text-rose-500">*</span>
+                  </Label>
+                  <AddressAutocomplete
+                    value={formData.address}
+                    onChange={(val) => setFormData({ ...formData, address: val })}
+                    placeholder="Comece a digitar a rua, avenida..."
+                  />
+                  <p className="text-[10px] text-slate-400">Selecione um endereço da lista para que o cálculo de distância funcione corretamente.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Hash className="h-3.5 w-3.5 text-slate-400" /> Número
+                      <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input name="addressNumber" value={formData.addressNumber} onChange={handleChange} placeholder="123" className="h-11" />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Complemento
+                    </Label>
+                    <Input name="addressComplement" value={formData.addressComplement} onChange={handleChange} placeholder="Sala 2, Bloco B, em frente à praça..." className="h-11" />
+                    <p className="text-[10px] text-slate-400">Opcional.</p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2 mt-4">
-              <Label className="font-semibold text-slate-700">Endereço Completo</Label>
-              <AddressAutocomplete 
-                value={formData.address} 
-                onChange={(val) => setFormData({...formData, address: val})} 
-                placeholder="Busque o endereço do estabelecimento..."
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mt-4">
-              <div className="space-y-0.5">
-                <Label>Número</Label>
-                <Input name="addressNumber" value={formData.addressNumber} onChange={handleChange} placeholder="Ex: 123" />
-              </div>
-              <div className="space-y-0.5">
-                <Label>Complemento (Opcional)</Label>
-                <Input name="addressComplement" value={formData.addressComplement} onChange={handleChange} placeholder="Ex: Sala 2, Loja B" />
-              </div>
-            </div>
-          </div>
+            </section>
+          </>
         )}
 
         {activeTab === 'taxas' && (
-          <div className="space-y-6">
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-              {/* Coluna Esquerda */}
-              <div className="space-y-2">
-                <div className="space-y-0.5">
-                  <Label>Área de Atuação (Cidades atendidas)</Label>
+          <>
+            {/* SEÇÃO 1 — Área de Atuação */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-blue-500/15 border border-indigo-500/20 flex items-center justify-center">
+                  <MapPin className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Área de atuação</h2>
+                  <p className="text-xs text-muted-foreground">Cidades atendidas e regras de taxa por distância.</p>
+                </div>
+                {formData.deliveryCities.length > 0 && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> {formData.deliveryCities.length} cidade{formData.deliveryCities.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </header>
+              <div className="p-6 space-y-5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400" /> Cidades atendidas
+                  </Label>
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <AddressAutocomplete 
@@ -319,7 +527,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                         types="(cities)"
                       />
                     </div>
-                    <Button onClick={addCity} type="button" className="h-9">Adicionar</Button>
+                    <Button onClick={addCity} type="button" className="h-11">Adicionar</Button>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {formData.deliveryCities.map((c, i) => (
@@ -362,28 +570,47 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     )}
                   </div>
                 </div>
+              </div>
+            </section>
 
-                <div className="space-y-1">
-                  <Label className="flex items-center gap-2">
-                    Taxa de Entrega Padrão (R$)
-                    {formData.deliveryFee > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Regra Aplicada</Badge>}
+            {/* SEÇÃO 2 — Taxas e Valores */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/15 to-orange-500/15 border border-amber-500/20 flex items-center justify-center">
+                  <Wallet className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Taxas e valores</h2>
+                  <p className="text-xs text-muted-foreground">Taxa padrão de entrega, frete grátis e taxa de serviço de mesa.</p>
+                </div>
+              </header>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5 text-slate-400" /> Taxa de Entrega Padrão (R$)
+                    {formData.deliveryFee > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ativa</Badge>}
                   </Label>
                   <CurrencyInput name="deliveryFee" value={formData.deliveryFee} onChange={(val) => setFormData({...formData, deliveryFee: val})} />
                 </div>
                 
-                <div className="space-y-1">
-                  <Label className="flex items-center gap-2">
-                    Frete Grátis em pedidos acima de (R$)
-                    {formData.freeDeliveryOver > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Regra Aplicada</Badge>}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    Frete Grátis acima de (R$)
+                    {formData.freeDeliveryOver > 0 && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ativa</Badge>}
                   </Label>
                   <CurrencyInput name="freeDeliveryOver" value={formData.freeDeliveryOver} onChange={(val) => setFormData({...formData, freeDeliveryOver: val})} />
                 </div>
-                
 
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    Valor Mínimo do Pedido (R$)
+                  </Label>
+                  <CurrencyInput name="minOrderValue" value={formData.minOrderValue} onChange={(val) => setFormData({...formData, minOrderValue: val})} />
+                </div>
 
-                <div className="space-y-1 pt-2 border-t">
+                <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <Label>Taxa do Garçom / Serviço de Mesa</Label>
+                    <Label className="text-xs font-bold uppercase tracking-wider text-slate-600">Taxa do Garçom / Serviço de Mesa</Label>
                     <div className="flex bg-slate-100 rounded-md p-1 border">
                       <button 
                         type="button"
@@ -403,7 +630,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   </div>
                   {formData.tableServiceFeeType === 'percentage' ? (
                     <div className="flex relative items-center">
-                      <Input type="number" step="0.1" name="tableServiceFee" value={formData.tableServiceFee} onChange={handleNumberChange} className="pr-10" />
+                      <Input type="number" step="0.1" name="tableServiceFee" value={formData.tableServiceFee} onChange={handleNumberChange} className="pr-10 h-11" />
                       <span className="absolute right-4 text-muted-foreground text-sm font-bold">%</span>
                     </div>
                   ) : (
@@ -411,35 +638,49 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   )}
                 </div>
               </div>
+            </section>
 
-              {/* Coluna Direita */}
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label>Valor Mínimo do Pedido (R$)</Label>
-                  <CurrencyInput name="minOrderValue" value={formData.minOrderValue} onChange={(val) => setFormData({...formData, minOrderValue: val})} />
+            {/* SEÇÃO 3 — Tempos e Limites */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500/15 to-teal-500/15 border border-cyan-500/20 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-cyan-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Tempos e limites</h2>
+                  <p className="text-xs text-muted-foreground">Estimativas de preparo, entrega e raio máximo de atuação.</p>
+                </div>
+              </header>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5 text-slate-400" /> Tempo de Entrega
+                  </Label>
+                  <Input type="time" name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} className="h-11" />
+                  <p className="text-[10px] text-slate-400">Estimativa exibida ao cliente.</p>
                 </div>
                 
-                <div className="space-y-1">
-                  <Label>Tempo Médio de Entrega (Motoboy)</Label>
-                  <Input type="time" name="deliveryTime" value={formData.deliveryTime} onChange={handleChange} />
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-slate-400" /> Tempo de Retirada
+                  </Label>
+                  <Input type="time" name="pickupTime" value={formData.pickupTime} onChange={handleChange} className="h-11" />
+                  <p className="text-[10px] text-slate-400">Para pedidos "Retirar no Local".</p>
                 </div>
                 
-                <div className="space-y-1">
-                  <Label>Tempo Médio para Retirar no Local</Label>
-                  <Input type="time" name="pickupTime" value={formData.pickupTime} onChange={handleChange} />
-                </div>
-                
-                <div className="space-y-1">
-                  <Label>Limitar Entregas pelo Mapa (Raio em KM)</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400" /> Raio Máximo (KM)
+                  </Label>
                   <div className="flex relative items-center">
-                    <Input type="number" name="maxDeliveryRadius" value={formData.maxDeliveryRadius} onChange={handleNumberChange} className="pr-12" />
+                    <Input type="number" name="maxDeliveryRadius" value={formData.maxDeliveryRadius} onChange={handleNumberChange} className="pr-12 h-11" />
                     <span className="absolute right-4 text-muted-foreground text-sm font-bold">KM</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Deixe 0 ou vazio para desabilitar a restrição de distância.</p>
+                  <p className="text-[10px] text-slate-400">0 = sem limite de distância.</p>
                 </div>
               </div>
-            </div>
-          </div>
+            </section>
+          </>
         )}
 
         {activeTab === 'horarios' && (() => {
@@ -502,279 +743,352 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
           return (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Left: Compact Weekly Schedule */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-bold text-slate-800 pb-2 border-b">Horário Fixo da Semana</h3>
-                <div className="space-y-1">
-                  {workingHours.map((wh, idx) => (
-                    <div key={wh.day} className={`flex items-center gap-2 py-1.5 px-2 rounded border text-xs ${wh.isClosed ? 'bg-red-50/50 border-red-100' : 'bg-slate-50/50'}`}>
-                      <div className="w-14 font-semibold truncate">{wh.day.substring(0, 3)}</div>
-                      <Switch 
-                        id={`closed-${idx}`} 
-                        checked={wh.isClosed} 
-                        onCheckedChange={(checked) => {
-                          const newWH = [...workingHours];
-                          newWH[idx].isClosed = checked;
-                          setWorkingHours(newWH);
-                        }} 
-                        className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500 scale-75"
-                      />
-                      {!wh.isClosed ? (
-                        <div className="flex items-center gap-1 flex-1 justify-end">
-                          <Input type="time" value={wh.open} onChange={(e) => {
+            <>
+              {/* SEÇÃO 1 — Horário Semanal */}
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/15 to-purple-500/15 border border-violet-500/20 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-violet-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Horário fixo da semana</h2>
+                    <p className="text-xs text-muted-foreground">Defina os horários de abertura e fechamento para cada dia da semana.</p>
+                  </div>
+                  {workingHours.some(wh => !wh.isClosed) && (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> Configurado
+                    </Badge>
+                  )}
+                </header>
+                <div className="p-6">
+                  <div className="space-y-1">
+                    {workingHours.map((wh, idx) => (
+                      <div key={wh.day} className={`flex items-center gap-2 py-1.5 px-2 rounded border text-xs ${wh.isClosed ? 'bg-red-50/50 border-red-100' : 'bg-slate-50/50'}`}>
+                        <div className="w-14 font-semibold truncate">{wh.day.substring(0, 3)}</div>
+                        <Switch 
+                          id={`closed-${idx}`} 
+                          checked={wh.isClosed} 
+                          onCheckedChange={(checked) => {
                             const newWH = [...workingHours];
-                            newWH[idx].open = e.target.value;
+                            newWH[idx].isClosed = checked;
                             setWorkingHours(newWH);
-                          }} className="w-20 h-6 text-[11px] px-1" />
-                          <span className="text-muted-foreground">-</span>
-                          <Input type="time" value={wh.close} onChange={(e) => {
-                            const newWH = [...workingHours];
-                            newWH[idx].close = e.target.value;
-                            setWorkingHours(newWH);
-                          }} className="w-20 h-6 text-[11px] px-1" />
-                        </div>
-                      ) : (
-                        <span className="flex-1 text-right text-muted-foreground italic">Fechado</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted-foreground leading-tight pt-1">
-                  Use o calendário ao lado para desligar dias específicos (feriados, folgas). Dias cinza já estão fechados pelo horário semanal.
-                </p>
-              </div>
-
-              {/* Right: Interactive Calendar */}
-              <div className="space-y-2">
-                {(() => {
-                  const { year, month } = calMonth;
-                  const days = getCalendarDays(year, month);
-                  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
-                  return (
-                    <div className="border rounded-xl overflow-hidden">
-                      <div className="bg-slate-100 px-4 py-2 flex items-center justify-between">
-                        <button type="button" onClick={goToPrevMonth} disabled={isCurrentMonth} className={`p-1 rounded hover:bg-slate-200 transition-colors ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : ''}`}>
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <span className="font-bold text-sm capitalize">{monthNames[month]} {year}</span>
-                        <button type="button" onClick={goToNextMonth} className="p-1 rounded hover:bg-slate-200 transition-colors">
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                          }} 
+                          className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-green-500 scale-75"
+                        />
+                        {!wh.isClosed ? (
+                          <div className="flex items-center gap-1 flex-1 justify-end">
+                            <Input type="time" value={wh.open} onChange={(e) => {
+                              const newWH = [...workingHours];
+                              newWH[idx].open = e.target.value;
+                              setWorkingHours(newWH);
+                            }} className="w-20 h-6 text-[11px] px-1" />
+                            <span className="text-muted-foreground">-</span>
+                            <Input type="time" value={wh.close} onChange={(e) => {
+                              const newWH = [...workingHours];
+                              newWH[idx].close = e.target.value;
+                              setWorkingHours(newWH);
+                            }} className="w-20 h-6 text-[11px] px-1" />
+                          </div>
+                        ) : (
+                          <span className="flex-1 text-right text-muted-foreground italic">Fechado</span>
+                        )}
                       </div>
-                      <div className="p-3">
-                        {/* Header */}
-                        <div className="grid grid-cols-7 gap-1 mb-1">
-                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
-                            <div key={d} className="text-center text-[10px] font-bold text-muted-foreground uppercase py-1">{d}</div>
-                          ))}
-                        </div>
-                        {/* Days grid */}
-                        <div className="grid grid-cols-7 gap-1">
-                          {days.map((day, i) => {
-                            if (day === null) return <div key={`empty-${i}`} />;
-                            
-                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            const isPast = dateStr < todayStr;
-                            const isToday = dateStr === todayStr;
-                            const openBySchedule = isDayOpenBySchedule(dateStr);
-                            const closedByPlan = isPlannedClosure(dateStr);
-                            const isOpen = isDayOpen(dateStr);
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight pt-2">
+                    Use o calendário abaixo para desligar dias específicos (feriados, folgas). Dias cinza já estão fechados pelo horário semanal.
+                  </p>
+                </div>
+              </section>
 
-                            return (
-                              <div 
-                                key={dateStr}
-                                className={`relative flex flex-col items-center justify-center py-1.5 rounded-lg border transition-all
-                                  ${isPast ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:shadow-sm'}
-                                  ${isToday ? 'ring-2 ring-primary/50' : ''}
-                                  ${!openBySchedule && !closedByPlan ? 'bg-slate-100 border-slate-200' : ''}
-                                  ${closedByPlan ? 'bg-red-50 border-red-200' : ''}
-                                  ${isOpen && !isToday ? 'bg-green-50/50 border-green-200/50' : ''}
-                                `}
-                                onClick={() => !isPast && toggleDay(dateStr)}
-                              >
-                                <span className={`text-xs font-semibold ${isToday ? 'text-primary' : isOpen ? 'text-slate-700' : 'text-red-400'}`}>
-                                  {day}
-                                </span>
-                                <Switch
-                                  checked={isOpen}
-                                  onCheckedChange={() => !isPast && toggleDay(dateStr)}
-                                  disabled={isPast || !openBySchedule}
-                                  className="scale-[0.45] mt-0.5 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-400 disabled:opacity-50"
-                                />
-                              </div>
-                            );
-                          })}
+              {/* SEÇÃO 2 — Calendário de Folgas */}
+              <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-rose-500/15 to-pink-500/15 border border-rose-500/20 flex items-center justify-center">
+                    <CalendarOff className="h-5 w-5 text-rose-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-bold text-slate-800">Calendário de folgas e feriados</h2>
+                    <p className="text-xs text-muted-foreground">Clique nos dias para marcar ou desmarcar fechamentos pontuais.</p>
+                  </div>
+                  {plannedClosures.length > 0 && (
+                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] gap-1">
+                      {plannedClosures.length} folga{plannedClosures.length > 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </header>
+                <div className="p-6 space-y-3">
+                  {(() => {
+                    const { year, month } = calMonth;
+                    const days = getCalendarDays(year, month);
+                    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+                    return (
+                      <div className="border rounded-xl overflow-hidden">
+                        <div className="bg-slate-100 px-4 py-2 flex items-center justify-between">
+                          <button type="button" onClick={goToPrevMonth} disabled={isCurrentMonth} className={`p-1 rounded hover:bg-slate-200 transition-colors ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="font-bold text-sm capitalize">{monthNames[month]} {year}</span>
+                          <button type="button" onClick={goToNextMonth} className="p-1 rounded hover:bg-slate-200 transition-colors">
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="p-3">
+                          {/* Header */}
+                          <div className="grid grid-cols-7 gap-1 mb-1">
+                            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                              <div key={d} className="text-center text-[10px] font-bold text-muted-foreground uppercase py-1">{d}</div>
+                            ))}
+                          </div>
+                          {/* Days grid */}
+                          <div className="grid grid-cols-7 gap-1">
+                            {days.map((day, i) => {
+                              if (day === null) return <div key={`empty-${i}`} />;
+                              
+                              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                              const isPast = dateStr < todayStr;
+                              const isToday = dateStr === todayStr;
+                              const openBySchedule = isDayOpenBySchedule(dateStr);
+                              const closedByPlan = isPlannedClosure(dateStr);
+                              const isOpen = isDayOpen(dateStr);
+
+                              return (
+                                <div 
+                                  key={dateStr}
+                                  className={`relative flex flex-col items-center justify-center py-1.5 rounded-lg border transition-all
+                                    ${isPast ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:shadow-sm'}
+                                    ${isToday ? 'ring-2 ring-primary/50' : ''}
+                                    ${!openBySchedule && !closedByPlan ? 'bg-slate-100 border-slate-200' : ''}
+                                    ${closedByPlan ? 'bg-red-50 border-red-200' : ''}
+                                    ${isOpen && !isToday ? 'bg-green-50/50 border-green-200/50' : ''}
+                                  `}
+                                  onClick={() => !isPast && toggleDay(dateStr)}
+                                >
+                                  <span className={`text-xs font-semibold ${isToday ? 'text-primary' : isOpen ? 'text-slate-700' : 'text-red-400'}`}>
+                                    {day}
+                                  </span>
+                                  <Switch
+                                    checked={isOpen}
+                                    onCheckedChange={() => !isPast && toggleDay(dateStr)}
+                                    disabled={isPast || !openBySchedule}
+                                    className="scale-[0.45] mt-0.5 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-400 disabled:opacity-50"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
-                {/* Legend */}
-                <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground px-1">
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-50 border border-green-200" /> Aberto</div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border border-red-200" /> Fechado (feriado/folga)</div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> Fechado (horário semanal)</div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-primary/50" /> Hoje</div>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground px-1">
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-50 border border-green-200" /> Aberto</div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border border-red-200" /> Fechado (feriado/folga)</div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> Fechado (horário semanal)</div>
+                    <div className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-primary/50" /> Hoje</div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </section>
+            </>
           );
         })()}
 
         {activeTab === 'motoboys' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center pb-2 border-b">
-                <h3 className="text-lg font-bold text-slate-800">Frota Própria</h3>
-                <Button onClick={addMotoboy} size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"><Plus className="w-4 h-4 mr-1"/> Adicionar Motoboy</Button>
-              </div>
-              
-              {motoboys.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum motoboy cadastrado.</div>
-              ) : (
-                <div className="space-y-1.5">
-                  {motoboys.map((m, idx) => (
-                    <div key={m.id} className="flex items-center gap-2 py-1.5 px-3 rounded-md border bg-slate-50/50">
-                      <div className="grid grid-cols-4 gap-2 flex-1">
-                        <div className="space-y-0.5">
-                          <Label>Nome</Label>
-                          <Input value={m.name} onChange={(e) => updateMotoboy(m.id, 'name', e.target.value)} placeholder="João" className="h-7 text-xs" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label>WhatsApp</Label>
-                          <Input value={m.phone} onChange={(e) => updateMotoboy(m.id, 'phone', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label>Placa</Label>
-                          <Input value={m.licensePlate} onChange={(e) => updateMotoboy(m.id, 'licensePlate', e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} className="h-7 text-xs" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label>Taxa (R$)</Label>
-                          <CurrencyInput value={m.fee} onChange={(val) => updateMotoboy(m.id, 'fee', val)} />
-                        </div>
-                      </div>
-                      <Button variant="ghost" onClick={() => removeMotoboy(m.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
-                    </div>
-                  ))}
+          <>
+            {/* SEÇÃO 1 — Frota Própria */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
+                  <Bike className="h-5 w-5 text-emerald-600" />
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex justify-between items-center pb-2 border-b">
-                <h3 className="text-lg font-bold text-slate-800">Freelancers Diaristas</h3>
-                <Button onClick={addFreelancer} size="sm" className="h-8 text-xs bg-purple-600 hover:bg-purple-700"><Plus className="w-4 h-4 mr-1"/> Adicionar Freelancer</Button>
-              </div>
-              
-              {freelancers.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum freelancer cadastrado.</div>
-              ) : (
-                <div className="space-y-1.5">
-                  {freelancers.map((f, idx) => (
-                    <div key={f.id} className="py-2 px-3 rounded-md border bg-purple-50/50 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Switch checked={f.active} onCheckedChange={(checked) => updateFreelancer(f.id, 'active', checked)} className="data-[state=checked]:bg-green-500 scale-90" />
-                        <Label className="text-[10px] font-bold text-slate-700 flex-1">{f.active ? 'Ativo' : 'Inativo'}</Label>
-                        <Button variant="ghost" onClick={() => removeFreelancer(f.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="space-y-0.5">
-                          <Label>Nome</Label>
-                          <Input value={f.name} onChange={(e) => updateFreelancer(f.id, 'name', e.target.value)} placeholder="Pedro" className="h-7 text-xs" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label>WhatsApp</Label>
-                          <Input value={f.whatsapp} onChange={(e) => updateFreelancer(f.id, 'whatsapp', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label>Valor (R$)</Label>
-                          <CurrencyInput value={f.dailyRate} onChange={(val) => updateFreelancer(f.id, 'dailyRate', val)} />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 pt-1 border-t border-purple-200/30">
-                        <Label className="text-[10px] uppercase font-bold text-slate-500 shrink-0">Dias:</Label>
-                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(day => (
-                          <div key={day} className="flex items-center space-x-0.5 bg-white px-1.5 py-0.5 rounded border text-[10px]">
-                            <Checkbox id={`day-${f.id}-${day}`} checked={f.workDays?.includes(day)} onCheckedChange={() => toggleFreelancerDay(f.id, day)} className="h-3 w-3" />
-                            <Label htmlFor={`day-${f.id}-${day}`} className="text-[10px] cursor-pointer">{day}</Label>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Frota própria</h2>
+                  <p className="text-xs text-muted-foreground">Motoboys fixos da sua equipe com taxa e dados de contato.</p>
+                </div>
+                {motoboys.length > 0 && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> {motoboys.length} motoboy{motoboys.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+                <Button onClick={addMotoboy} size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"><Plus className="w-4 h-4 mr-1"/> Adicionar</Button>
+              </header>
+              <div className="p-6">
+                {motoboys.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum motoboy cadastrado. Clique em "Adicionar" para começar.</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {motoboys.map((m, idx) => (
+                      <div key={m.id} className="flex items-center gap-2 py-1.5 px-3 rounded-md border bg-slate-50/50">
+                        <div className="grid grid-cols-4 gap-2 flex-1">
+                          <div className="space-y-0.5">
+                            <Label>Nome</Label>
+                            <Input value={m.name} onChange={(e) => updateMotoboy(m.id, 'name', e.target.value)} placeholder="João" className="h-7 text-xs" />
                           </div>
-                        ))}
+                          <div className="space-y-0.5">
+                            <Label>WhatsApp</Label>
+                            <Input value={m.phone} onChange={(e) => updateMotoboy(m.id, 'phone', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <Label>Placa</Label>
+                            <Input value={m.licensePlate} onChange={(e) => updateMotoboy(m.id, 'licensePlate', e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} className="h-7 text-xs" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <Label>Taxa (R$)</Label>
+                            <CurrencyInput value={m.fee} onChange={(val) => updateMotoboy(m.id, 'fee', val)} />
+                          </div>
+                        </div>
+                        <Button variant="ghost" onClick={() => removeMotoboy(m.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* SEÇÃO 2 — Freelancers */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500/15 to-fuchsia-500/15 border border-purple-500/20 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-purple-600" />
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Freelancers diaristas</h2>
+                  <p className="text-xs text-muted-foreground">Entregadores avulsos com diária fixa e escala de dias da semana.</p>
+                </div>
+                {freelancers.length > 0 && (
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] gap-1">
+                    {freelancers.filter(f => f.active).length} ativo{freelancers.filter(f => f.active).length !== 1 ? 's' : ''}
+                  </Badge>
+                )}
+                <Button onClick={addFreelancer} size="sm" className="h-8 text-xs bg-purple-600 hover:bg-purple-700"><Plus className="w-4 h-4 mr-1"/> Adicionar</Button>
+              </header>
+              <div className="p-6">
+                {freelancers.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum freelancer cadastrado. Clique em "Adicionar" para começar.</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {freelancers.map((f, idx) => (
+                      <div key={f.id} className="py-2 px-3 rounded-md border bg-purple-50/50 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Switch checked={f.active} onCheckedChange={(checked) => updateFreelancer(f.id, 'active', checked)} className="data-[state=checked]:bg-green-500 scale-90" />
+                          <Label className="text-[10px] font-bold text-slate-700 flex-1">{f.active ? 'Ativo' : 'Inativo'}</Label>
+                          <Button variant="ghost" onClick={() => removeFreelancer(f.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-0.5">
+                            <Label>Nome</Label>
+                            <Input value={f.name} onChange={(e) => updateFreelancer(f.id, 'name', e.target.value)} placeholder="Pedro" className="h-7 text-xs" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <Label>WhatsApp</Label>
+                            <Input value={f.whatsapp} onChange={(e) => updateFreelancer(f.id, 'whatsapp', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <Label>Valor (R$)</Label>
+                            <CurrencyInput value={f.dailyRate} onChange={(val) => updateFreelancer(f.id, 'dailyRate', val)} />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-purple-200/30">
+                          <Label className="text-[10px] uppercase font-bold text-slate-500 shrink-0">Dias:</Label>
+                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(day => (
+                            <div key={day} className="flex items-center space-x-0.5 bg-white px-1.5 py-0.5 rounded border text-[10px]">
+                              <Checkbox id={`day-${f.id}-${day}`} checked={f.workDays?.includes(day)} onCheckedChange={() => toggleFreelancerDay(f.id, day)} className="h-3 w-3" />
+                              <Label htmlFor={`day-${f.id}-${day}`} className="text-[10px] cursor-pointer">{day}</Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
         {activeTab === 'pagamentos' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Escolha quais métodos estarão disponíveis para seus clientes e no PDV.</p>
+          <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+            <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-teal-500/15 to-emerald-500/15 border border-teal-500/20 flex items-center justify-center">
+                <Wallet className="h-5 w-5 text-teal-600" />
               </div>
+              <div className="flex-1">
+                <h2 className="text-base font-bold text-slate-800">Métodos aceitos</h2>
+                <p className="text-xs text-muted-foreground">Escolha quais formas de pagamento estarão disponíveis no Delivery, Retirada e Salão.</p>
+              </div>
+              {paymentMethods.filter(m => m.active).length > 0 && (
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> {paymentMethods.filter(m => m.active).length} ativo{paymentMethods.filter(m => m.active).length !== 1 ? 's' : ''}
+                </Badge>
+              )}
               <Button onClick={() => setPaymentMethods([...paymentMethods, { id: 'novo_'+Date.now(), label: 'Nova Forma', icon: '💳', active: true }])} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 h-8 text-xs">
                 <Plus className="w-3 h-3" /> Novo Método
               </Button>
-            </div>
-            
-            <div className="space-y-1.5">
-              {paymentMethods.map((method, index) => (
-                <div key={method.id} className="flex items-center gap-2 py-1 px-3 border rounded-md bg-white hover:bg-slate-50 transition-colors">
-                  <Input 
-                    value={method.icon} 
-                    onChange={(e) => {
-                      const newMethods = [...paymentMethods];
-                      newMethods[index].icon = e.target.value;
-                      setPaymentMethods(newMethods);
-                    }}
-                    className="w-12 h-8 text-center text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20"
-                    placeholder="🔷"
-                  />
-                  <Input 
-                    value={method.label} 
-                    onChange={(e) => {
-                      const newMethods = [...paymentMethods];
-                      newMethods[index].label = e.target.value;
-                      if (!['dinheiro', 'pix', 'debito', 'credito'].includes(newMethods[index].id)) {
-                         newMethods[index].id = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
-                      }
-                      setPaymentMethods(newMethods);
-                    }}
-                    className="font-semibold flex-1 h-8 text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 px-1"
-                    placeholder="Nome do método"
-                  />
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Switch 
-                      checked={method.active} 
-                      onCheckedChange={(checked) => {
+            </header>
+            <div className="p-6">
+              <div className="space-y-1.5">
+                {paymentMethods.map((method, index) => (
+                  <div key={method.id} className="flex items-center gap-2 py-1 px-3 border rounded-md bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                    <Input 
+                      value={method.icon} 
+                      onChange={(e) => {
                         const newMethods = [...paymentMethods];
-                        newMethods[index].active = checked;
+                        newMethods[index].icon = e.target.value;
                         setPaymentMethods(newMethods);
                       }}
-                      className="scale-90"
+                      className="w-12 h-8 text-center text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20"
+                      placeholder="🔷"
                     />
-                    <Label className="w-12 text-xs font-semibold">{method.active ? 'Ativo' : 'Inativo'}</Label>
+                    <Input 
+                      value={method.label} 
+                      onChange={(e) => {
+                        const newMethods = [...paymentMethods];
+                        newMethods[index].label = e.target.value;
+                        if (!['dinheiro', 'pix', 'debito', 'credito'].includes(newMethods[index].id)) {
+                           newMethods[index].id = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                        }
+                        setPaymentMethods(newMethods);
+                      }}
+                      className="font-semibold flex-1 h-8 text-sm border-0 bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 px-1"
+                      placeholder="Nome do método"
+                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Switch 
+                        checked={method.active} 
+                        onCheckedChange={(checked) => {
+                          const newMethods = [...paymentMethods];
+                          newMethods[index].active = checked;
+                          setPaymentMethods(newMethods);
+                        }}
+                        className="scale-90"
+                      />
+                      <Label className="w-12 text-xs font-semibold">{method.active ? 'Ativo' : 'Inativo'}</Label>
+                    </div>
+                    <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 shrink-0" onClick={() => setPaymentMethods(paymentMethods.filter((_, i) => i !== index))}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 shrink-0" onClick={() => setPaymentMethods(paymentMethods.filter((_, i) => i !== index))}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
-              {paymentMethods.length === 0 && (
-                <p className="text-center text-muted-foreground py-4 text-sm">Nenhuma forma de pagamento configurada.</p>
-              )}
+                ))}
+                {paymentMethods.length === 0 && (
+                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
+                    Nenhuma forma de pagamento configurada. Clique em "Novo Método" para começar.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </section>
         )}
 
-        <div className="pt-6 mt-6 border-t flex justify-end">
-          <Button size="lg" className="w-full md:w-auto bg-green-600 hover:bg-green-700 h-10 px-8 font-bold" onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : null}
-            Salvar Configurações
+        <div className="bg-white rounded-2xl shadow-sm border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 sticky bottom-2 z-10">
+          <p className="text-xs text-muted-foreground flex items-center gap-2">
+            <Info className="h-3.5 w-3.5 text-slate-400" />
+            Lembre-se de salvar as alterações antes de sair desta página.
+          </p>
+          <Button size="lg" className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 h-11 px-8 font-bold shadow-lg shadow-emerald-500/20" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            {isSaving ? 'Salvando...' : 'Salvar configurações'}
           </Button>
         </div>
       </div>

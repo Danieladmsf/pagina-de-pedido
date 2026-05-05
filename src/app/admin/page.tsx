@@ -622,7 +622,7 @@ export default function AdminPage() {
 
   return (
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
-      <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} />
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
         {/* Dark Top Navigation Bar */}
         <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
@@ -1549,15 +1549,11 @@ export default function AdminPage() {
           )}
 
           {activeTab.startsWith('perfil_') && (
-            <div className="mt-6">
-              <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
-            </div>
+            <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
           )}
 
           {activeTab === 'clientes' && (
-            <div className="mt-6">
-              <ClientesTab db={db} user={user} />
-            </div>
+            <ClientesTab db={db} user={user} />
           )}
           </div>
         </div>
