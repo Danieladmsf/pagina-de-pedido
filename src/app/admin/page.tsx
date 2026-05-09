@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, increment } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical, Search } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -97,6 +97,11 @@ export default function AdminPage() {
     return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
   }, [db, isRealUser]);
 
+  const addonCategoriesQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return query(collection(db, 'addonCategories'), where('ownerId', '==', user!.uid));
+  }, [db, isRealUser]);
+
   const storeProfileRef = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return doc(db, 'store_profiles', user!.uid);
@@ -105,6 +110,7 @@ export default function AdminPage() {
   const { data: storeProfile } = useDoc(storeProfileRef);
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
+  const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
   const orders = React.useMemo(() => {
@@ -387,6 +393,16 @@ export default function AdminPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);
+  const [addonSearchTerm, setAddonSearchTerm] = useState('');
+  const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
+  const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
+  const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
+  const [bulkCategoryName, setBulkCategoryName] = useState('');
+  const [isAddonCategoryModalOpen, setIsAddonCategoryModalOpen] = useState(false);
+  const [newAddonCategoryName, setNewAddonCategoryName] = useState('');
+  const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryNewName, setEditCategoryNewName] = useState('');
   const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('30d');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
@@ -567,6 +583,23 @@ export default function AdminPage() {
         }
       }
 
+      if (updates.status === 'canceled' && order && order.status !== 'canceled') {
+        if (storeProfile?.general?.enableInventory) {
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'orders', orderId), updates);
+          for (const item of order.items || []) {
+            if (item.id) {
+               batch.update(doc(db, 'menuItems', item.id), {
+                 stockQuantity: increment(item.quantity)
+               });
+            }
+          }
+          await batch.commit();
+          toast({ title: "Status Atualizado", description: "O pedido foi cancelado e o estoque foi retornado." });
+          return;
+        }
+      }
+
       await updateDoc(doc(db, 'orders', orderId), updates);
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
     } catch (err) {
@@ -582,6 +615,7 @@ export default function AdminPage() {
     const addonData = {
       name: formData.get('addonName') as string,
       price: parseFloat(formData.get('addonPrice') as string),
+      group: formData.get('addonGroup') as string || 'Geral',
       ownerId: user.uid,
     };
     try {
@@ -896,6 +930,7 @@ export default function AdminPage() {
                       <TableHead className="w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
                         <div className="flex items-center">Valor {sortConfig?.key === 'price' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
+                      <TableHead className="w-[100px] text-center">Estoque</TableHead>
                       <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
@@ -932,6 +967,21 @@ export default function AdminPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">R$ {(item.price || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center">
+                            <Input 
+                              type="number" 
+                              className="w-20 text-center mx-auto h-8 text-sm" 
+                              value={item.stockQuantity ?? ''} 
+                              placeholder="∞"
+                              onChange={async (e) => {
+                                if (!db) return;
+                                const val = e.target.value;
+                                await updateDoc(doc(db, 'menuItems', item.id), { 
+                                  stockQuantity: val === '' ? null : parseInt(val) || 0 
+                                });
+                              }}
+                            />
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
                             <Switch 
@@ -1229,60 +1279,357 @@ export default function AdminPage() {
             </div>
           )}
 
-          {activeTab === 'addons' && (
+          {activeTab === 'addons' && (() => {
+            const explicitGroups = (addonCategories || []).map((c: any) => c.name);
+            const implicitGroups = (addons || []).map((a: any) => a.group || 'Geral');
+            const allGroups = Array.from(new Set([...explicitGroups, ...implicitGroups])).sort() as string[];
+            const filteredAddons = (addons || []).filter((addon: any) => {
+              if (addonSearchTerm && !addon.name.toLowerCase().includes(addonSearchTerm.toLowerCase())) return false;
+              const g = addon.group || 'Geral';
+              if (addonCategoryFilter !== 'all' && g !== addonCategoryFilter) return false;
+              return true;
+            });
+
+            return (
             <div className="mt-6">
               <div className="mb-6 px-2">
                 <h1 className="text-3xl font-black tracking-tight text-slate-800">Grupos de Adicionais</h1>
                 <p className="text-muted-foreground mt-1 font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
               </div>
               <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4">
-                <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
-                  <DialogTrigger asChild>
-                    <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
-                      <Plus className="mr-2 h-4 w-4" /> Novo Adicional
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-white p-4 gap-4 flex-wrap">
+                <div className="w-full flex flex-col md:flex-row items-start md:items-center justify-between border-b mb-4 pb-2 gap-4">
+                  <div className="flex items-center gap-2 overflow-x-auto flex-1 w-full md:w-auto">
+                    <Button 
+                      variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
+                      onClick={() => setAddonCategoryFilter('all')}
+                      size="sm"
+                      className="whitespace-nowrap rounded-full"
+                    >
+                      Todas as Categorias
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[400px]">
-                    <DialogHeader>
-                      <DialogTitle>{editingAddon?.id ? 'Editar Adicional' : 'Novo Adicional'}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSaveAddon} className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="addonName">Nome</Label>
-                        <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addonPrice">Preço (R$)</Label>
-                        <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
+                    {allGroups.map(g => (
+                      <Button 
+                        key={g}
+                        variant={addonCategoryFilter === g ? 'default' : 'outline'}
+                        onClick={() => setAddonCategoryFilter(g)}
+                        size="sm"
+                        className="whitespace-nowrap rounded-full flex items-center group"
+                      >
+                        {g}
+                        {addonCategoryFilter === g && (
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditCategoryName(g);
+                              setEditCategoryNewName(g);
+                              setIsEditCategoryModalOpen(true);
+                            }}
+                            className="ml-2 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
+                            title="Editar Categoria"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </div>
+                        )}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Dialog open={isAddonCategoryModalOpen} onOpenChange={(open) => {
+                      setIsAddonCategoryModalOpen(open);
+                      if (!open) setNewAddonCategoryName('');
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="whitespace-nowrap rounded-full border-dashed text-primary border-primary/50 hover:bg-primary/10">
+                          <Plus className="mr-1 h-3 w-3" /> Nova Categoria
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Nova Categoria de Adicionais</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4 space-y-2">
+                          <Label>Nome da Categoria</Label>
+                          <Input 
+                            autoFocus
+                            value={newAddonCategoryName} 
+                            onChange={(e) => setNewAddonCategoryName(e.target.value)} 
+                            placeholder="Ex: Opções PF, Bebidas..." 
+                          />
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setIsAddonCategoryModalOpen(false)}>Cancelar</Button>
+                          <Button onClick={async () => {
+                            if (!db || !user || !newAddonCategoryName.trim()) return;
+                            try {
+                              const newDoc = doc(collection(db, 'addonCategories'));
+                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid });
+                              toast({ title: 'Categoria criada com sucesso!' });
+                              setIsAddonCategoryModalOpen(false);
+                              setNewAddonCategoryName('');
+                            } catch (err: any) {
+                              toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                            }
+                          }} className="bg-primary text-white">
+                            Salvar
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isEditCategoryModalOpen} onOpenChange={(open) => {
+                      setIsEditCategoryModalOpen(open);
+                      if (!open) {
+                        setEditCategoryName('');
+                        setEditCategoryNewName('');
+                      }
+                    }}>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Editar Categoria: {editCategoryName}</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4 space-y-4">
+                          <div className="space-y-2">
+                            <Label>Nome da Categoria</Label>
+                            <Input 
+                              autoFocus
+                              value={editCategoryNewName} 
+                              onChange={(e) => setEditCategoryNewName(e.target.value)} 
+                              placeholder="Digite o novo nome..." 
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter className="flex flex-row items-center justify-between w-full sm:justify-between">
+                          <Button 
+                            variant="destructive" 
+                            className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
+                            onClick={async () => {
+                            if (!db || !user || !editCategoryName) return;
+                            if (!confirm(`Tem certeza que deseja EXCLUIR a categoria "${editCategoryName}"?\n\nTodos os adicionais que estão nela ficarão sem categoria (Geral).`)) return;
+                            try {
+                              const batch = writeBatch(db);
+                              const oldName = editCategoryName.trim();
+                              
+                              // 1. Delete the category document if it exists explicitly
+                              const catDocs = addonCategories?.filter((c: any) => c.name.trim() === oldName);
+                              catDocs?.forEach((catDoc: any) => {
+                                batch.delete(doc(db, 'addonCategories', catDoc.id));
+                              });
+
+                              // 2. Update all addons that belong to the old category
+                              const addonsToUpdate = addons?.filter((a: any) => (a.group || 'Geral').trim() === oldName) || [];
+                              addonsToUpdate.forEach((addon: any) => {
+                                batch.update(doc(db, 'addons', addon.id), { group: 'Geral' });
+                              });
+
+                              await batch.commit();
+                              toast({ title: 'Categoria excluída com sucesso!' });
+                              setIsEditCategoryModalOpen(false);
+                              if (addonCategoryFilter === oldName) {
+                                setAddonCategoryFilter('all');
+                              }
+                            } catch (err: any) {
+                              toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                            }
+                          }}>
+                            <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                          </Button>
+                          <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsEditCategoryModalOpen(false)}>Cancelar</Button>
+                            <Button onClick={async () => {
+                              if (!db || !user || !editCategoryName || !editCategoryNewName.trim() || editCategoryName === editCategoryNewName.trim()) return;
+                              try {
+                                const batch = writeBatch(db);
+                                const newName = editCategoryNewName.trim();
+                                const oldName = editCategoryName.trim();
+                                
+                                // 1. Rename the category document if it exists explicitly
+                                const catDoc = addonCategories?.find((c: any) => c.name.trim() === oldName);
+                                if (catDoc) {
+                                  batch.update(doc(db, 'addonCategories', catDoc.id), { name: newName });
+                                } else {
+                                  // It was an implicit category, let's create it explicitly with the new name
+                                  const newDoc = doc(collection(db, 'addonCategories'));
+                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid });
+                                }
+
+                                // 2. Update all addons that belong to the old category
+                                const addonsToUpdate = addons?.filter((a: any) => (a.group || 'Geral').trim() === oldName) || [];
+                                addonsToUpdate.forEach((addon: any) => {
+                                  batch.update(doc(db, 'addons', addon.id), { group: newName });
+                                });
+
+                                await batch.commit();
+                                toast({ title: 'Categoria renomeada com sucesso!' });
+                                setIsEditCategoryModalOpen(false);
+                                if (addonCategoryFilter === oldName) {
+                                  setAddonCategoryFilter(newName);
+                                }
+                              } catch (err: any) {
+                                toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                              }
+                            }} className="bg-primary text-white">
+                              Salvar
+                            </Button>
+                          </div>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                </div>
+                </div>
+                
+                <div className="flex gap-2 flex-1 min-w-[300px]">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {selectedAddonIds.size > 0 && (
+                    <Button 
+                      onClick={() => setIsBulkCategoryModalOpen(true)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <Tag className="mr-2 h-4 w-4" /> 
+                      Categorizar Selecionados ({selectedAddonIds.size})
+                    </Button>
+                  )}
+                  <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
+                    <DialogTrigger asChild>
+                      <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
+                        <Plus className="mr-2 h-4 w-4" /> Novo Adicional
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[400px]">
+                      <DialogHeader>
+                        <DialogTitle>{editingAddon?.id ? 'Editar Adicional' : 'Novo Adicional'}</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={handleSaveAddon} className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="addonName">Nome</Label>
+                          <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="addonGroup">Categoria</Label>
+                          <select 
+                            id="addonGroup" 
+                            name="addonGroup" 
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            defaultValue={editingAddon?.group || ''}
+                            required
+                          >
+                            <option value="">Selecione uma categoria...</option>
+                            {allGroups.map(g => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="addonPrice">Preço (R$)</Label>
+                          <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
+                        </div>
+                        <DialogFooter>
+                          <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                  <Dialog open={isBulkCategoryModalOpen} onOpenChange={(open) => {
+                    setIsBulkCategoryModalOpen(open);
+                    if (!open) setBulkCategoryName('');
+                  }}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Categorizar {selectedAddonIds.size} itens</DialogTitle>
+                      </DialogHeader>
+                      <div className="py-4 space-y-2">
+                        <Label>Nova Categoria</Label>
+                        <select
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          value={bulkCategoryName}
+                          onChange={(e) => setBulkCategoryName(e.target.value)}
+                        >
+                          <option value="">Selecione a categoria...</option>
+                          {allGroups.map(g => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
                       </div>
                       <DialogFooter>
-                        <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
+                        <Button variant="outline" onClick={() => setIsBulkCategoryModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={async () => {
+                          if (!db || !bulkCategoryName || selectedAddonIds.size === 0) return;
+                          try {
+                            const batch = writeBatch(db);
+                            selectedAddonIds.forEach(id => {
+                              batch.update(doc(db, 'addons', id), { group: bulkCategoryName });
+                            });
+                            await batch.commit();
+                            toast({ title: 'Adicionais categorizados com sucesso!' });
+                            setIsBulkCategoryModalOpen(false);
+                            setSelectedAddonIds(new Set());
+                            setBulkCategoryName('');
+                          } catch (err: any) {
+                            toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                          }
+                        }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                          Aplicar Categoria
+                        </Button>
                       </DialogFooter>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="pl-6">Nome</TableHead>
+                      <TableHead className="w-[50px] pl-6">
+                        <input 
+                          type="checkbox" 
+                          className="h-4 w-4 rounded border-gray-300"
+                          checked={filteredAddons.length > 0 && selectedAddonIds.size === filteredAddons.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAddonIds(new Set(filteredAddons.map((a: any) => a.id)));
+                            } else {
+                              setSelectedAddonIds(new Set());
+                            }
+                          }}
+                        />
+                      </TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Categoria</TableHead>
                       <TableHead>Preço</TableHead>
                       <TableHead className="text-right pr-6">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {!addons || addons.length === 0 ? (
+                    {filteredAddons.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
-                          Nenhum adicional cadastrado. Crie opções como "Bacon", "Queijo", "Molho Picante" para usar nos produtos.
+                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                          {addons?.length === 0 ? 'Nenhum adicional cadastrado.' : 'Nenhum adicional encontrado na busca.'}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      addons.map((addon) => (
-                        <TableRow key={addon.id}>
-                          <TableCell className="font-bold pl-6">{addon.name}</TableCell>
+                      filteredAddons.map((addon: any) => (
+                        <TableRow key={addon.id} className={selectedAddonIds.has(addon.id) ? 'bg-emerald-50/30' : ''}>
+                          <TableCell className="pl-6">
+                            <input 
+                              type="checkbox" 
+                              className="h-4 w-4 rounded border-gray-300"
+                              checked={selectedAddonIds.has(addon.id)}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedAddonIds);
+                                if (e.target.checked) newSet.add(addon.id);
+                                else newSet.delete(addon.id);
+                                setSelectedAddonIds(newSet);
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="font-bold">{addon.name}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{addon.group || 'Geral'}</TableCell>
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6 space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
@@ -1303,7 +1650,8 @@ export default function AdminPage() {
               </CardContent>
             </Card>
             </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'dashboard' && (
             <div className="mt-6 space-y-6">

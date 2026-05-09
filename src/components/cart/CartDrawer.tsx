@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
-import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch, increment } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -33,6 +33,7 @@ interface CartDrawerProps {
   paymentMethods?: PaymentMethodConfig[]; // Formas de pagamento configuradas pela loja
   isStoreOpen?: boolean;
   menuItems?: any[];
+  enableInventory?: boolean;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
@@ -44,7 +45,7 @@ const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
 
 type Step = 'cart' | 'info';
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [] }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false }: CartDrawerProps) {
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
     storeAddress: storeAddress?.substring(0, 30),
@@ -110,19 +111,41 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'customers', user.uid));
+        let d: any = {};
         if (snap.exists()) {
-          const d = snap.data();
-          setCustomerName(d.name || '');
-          setCustomerPhone(d.phone || '');
-          if (d.birthDate) setCustomerBirthDate(d.birthDate);
-          // Carregar endereço salvo
-          if (d.cep) setCep(d.cep);
-          if (d.street) { setStreet(d.street); setSavedStreet(d.street); }
-          if (d.number) { setNumber(d.number); setSavedNumber(d.number); }
-          if (d.neighborhood) setNeighborhood(d.neighborhood);
-          if (d.complement) setComplement(d.complement);
-          if (d.city) setCity(d.city);
+          d = snap.data();
         }
+        
+        // Fallback local caso o Firebase esteja vazio (ex: nova sessão anônima)
+        let localProfile: any = {};
+        try {
+          const savedStr = localStorage.getItem('customer_profile');
+          if (savedStr) localProfile = JSON.parse(savedStr);
+        } catch {}
+
+        setCustomerName(d.name || localProfile.name || '');
+        setCustomerPhone(d.phone || localProfile.phone || localStorage.getItem('customer_phone') || '');
+        if (d.birthDate || localProfile.birthDate) setCustomerBirthDate(d.birthDate || localProfile.birthDate || '');
+        
+        // Carregar endereço salvo
+        const cepToSet = d.cep || localProfile.cep;
+        if (cepToSet) setCep(cepToSet);
+        
+        const streetToSet = d.street || localProfile.street;
+        if (streetToSet) { setStreet(streetToSet); setSavedStreet(streetToSet); }
+        
+        const numberToSet = d.number || localProfile.number;
+        if (numberToSet) { setNumber(numberToSet); setSavedNumber(numberToSet); }
+        
+        const neighborhoodToSet = d.neighborhood || localProfile.neighborhood;
+        if (neighborhoodToSet) setNeighborhood(neighborhoodToSet);
+        
+        const complementToSet = d.complement || localProfile.complement;
+        if (complementToSet) setComplement(complementToSet);
+        
+        const cityToSet = d.city || localProfile.city;
+        if (cityToSet) setCity(cityToSet);
+
         setProfileLoaded(true);
       } catch (e) {
         console.warn('load customer profile failed', e);
@@ -245,8 +268,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           });
         }
       } else {
-        console.error('Erro no cálculo da taxa:', data.error);
-        toast({ variant: 'destructive', title: 'Erro na taxa', description: data.error || 'Não foi possível calcular.' });
+        console.warn('[CartDrawer] API taxa indisponível, usando taxa fixa. Motivo:', data.error);
+        // Fallback silencioso para a taxa fixa configurada
         setDynamicFee(null);
         setDistanceInfo(null);
         setDeliveryBlocked(false);
@@ -381,7 +404,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
     setIsSubmitting(true);
     try {
-      // Salva/atualiza perfil do cliente
+      // Salva/atualiza perfil do cliente no Firebase
       await setDoc(doc(db, 'customers', user.uid), {
         uid: user.uid,
         name: customerName,
@@ -392,8 +415,41 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
+      // Salva em localStorage como fallback de robustez (Sessões anônimas)
+      try {
+        localStorage.setItem('customer_profile', JSON.stringify({
+          name: customerName,
+          phone: customerPhone,
+          birthDate: customerBirthDate,
+          address: fullDeliveryAddress,
+          cep, street, number, neighborhood, complement, city,
+        }));
+      } catch (e) {
+        console.warn('Erro ao salvar local profile fallback', e);
+      }
+
       const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
       const orderRef = doc(collection(db, 'orders'), orderId);
+
+      // Validação de estoque antes de enviar
+      if (enableInventory) {
+        const stockByItem: Record<string, number> = {};
+        cart.forEach(item => {
+          stockByItem[item.id] = (stockByItem[item.id] || 0) + item.quantity;
+        });
+        for (const [itemId, requestedQty] of Object.entries(stockByItem)) {
+          const itemDoc = await getDoc(doc(db, 'menuItems', itemId));
+          if (itemDoc.exists()) {
+            const currentStock = itemDoc.data().stockQuantity;
+            if (typeof currentStock === 'number' && requestedQty > currentStock) {
+              const itemName = itemDoc.data().name || itemId;
+              toast({ variant: "destructive", title: "Estoque insuficiente", description: `"${itemName}" tem apenas ${currentStock} unidade(s) disponível(is).` });
+              setIsSubmitting(false);
+              return;
+            }
+          }
+        }
+      }
 
       // Validação de Preço Segura (Cruza com menuItems oficial se disponível)
       let safeSubtotal = 0;
@@ -408,6 +464,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         safeSubtotal += safeUnitPrice * item.quantity;
         
         return {
+          id: item.id,
           name: officialItem ? officialItem.name : item.name,
           quantity: item.quantity,
           unitPrice: safeUnitPrice,
@@ -442,7 +499,19 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         items: safeItems
       };
 
-      await setDoc(orderRef, orderData);
+      const batch = writeBatch(db);
+      batch.set(orderRef, orderData);
+
+      if (enableInventory) {
+        cart.forEach((item) => {
+          const itemRef = doc(db, 'menuItems', item.id);
+          batch.update(itemRef, {
+            stockQuantity: increment(-item.quantity)
+          });
+        });
+      }
+
+      await batch.commit();
 
       toast({ title: "Pedido Enviado!", description: `Pedido #${orderId} foi recebido.` });
 
@@ -526,7 +595,19 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     <div className="flex items-center gap-3">
                       <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)} className="border rounded-md p-1"><Minus className="h-3 w-3" /></button>
                       <span className="text-sm font-bold">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
+                      <button onClick={() => {
+                        if (enableInventory) {
+                          const menuItem = menuItems.find(m => m.id === item.id);
+                          if (menuItem && typeof menuItem.stockQuantity === 'number') {
+                            const currentTotal = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+                            if (currentTotal + 1 > menuItem.stockQuantity) {
+                              toast({ title: "Estoque insuficiente", description: `Temos apenas ${menuItem.stockQuantity} unidades disponíveis no momento.`, variant: "destructive" });
+                              return;
+                            }
+                          }
+                        }
+                        updateQuantity(item.cartId, item.quantity + 1);
+                      }} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
                       <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={() => removeFromCart(item.cartId)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -691,19 +772,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       onClick={() => { 
                         setPaymentMethod(method.id); 
                         setCashChange(''); 
-                        if (method.id === 'dinheiro') {
-                          setTimeout(() => {
-                            const el = document.getElementById('troco-input');
-                            if (el) {
-                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              el.focus();
-                            }
-                          }, 150);
-                        } else {
-                          setTimeout(() => {
-                            document.getElementById('btn-finalizar')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }, 150);
-                        }
+                        // Apenas rolar suavemente para o fim, sem forçar o foco/teclado que "prende" o usuário no mobile
+                        setTimeout(() => {
+                          document.getElementById('btn-finalizar')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 150);
                       }}
                       className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${paymentMethod === method.id ? 'border-primary bg-primary/10 text-primary scale-105' : 'border-muted text-muted-foreground'}`}
                     >
@@ -715,7 +787,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
                 {paymentMethod === 'dinheiro' && (
                   <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-2 space-y-2">
-                    <Label htmlFor="troco-input" className="text-amber-800">Precisa de troco para quanto?</Label>
+                    <Label htmlFor="troco-input" className="text-amber-800 flex flex-col gap-1">
+                      <span>Precisa de troco para quanto?</span>
+                      <span className="text-xs font-normal opacity-80">(Opcional. Deixe em branco se não precisar de troco)</span>
+                    </Label>
                     <Input 
                       id="troco-input"
                       type="text"

@@ -7,7 +7,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, query, where, getDocs, updateDoc, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, query, where, getDocs, updateDoc, increment, writeBatch } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -311,7 +311,20 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         orderDateTime: new Date().toISOString(),
       };
 
-      await setDoc(newOrderRef, orderData);
+      const batch = writeBatch(db);
+      batch.set(newOrderRef, orderData);
+
+      if (storeProfile?.general?.enableInventory) {
+        cart.forEach((item) => {
+          if (item.id) {
+            batch.update(doc(db, 'menuItems', item.id), {
+              stockQuantity: increment(-item.quantity)
+            });
+          }
+        });
+      }
+
+      await batch.commit();
 
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
       for (const split of splitsToProcess) {

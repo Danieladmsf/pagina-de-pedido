@@ -482,6 +482,7 @@ export function MenuPageClient() {
               paymentMethods={storeProfile?.paymentMethods}
               isStoreOpen={isStoreOpenRightNow.isOpen}
               menuItems={items || []}
+              enableInventory={storeProfile?.general?.enableInventory || false}
             />
           </div>
         </div>
@@ -557,11 +558,17 @@ export function MenuPageClient() {
       <ActiveOrdersBanner />
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filteredItems.map((item) => (
+        {filteredItems.map((item) => {
+          const rawStock = item.stockQuantity;
+          const hasStockControl = rawStock !== null && rawStock !== undefined && rawStock !== '';
+          const currentStock = hasStockControl ? Number(rawStock) : null;
+          const isOutOfStock = storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && currentStock <= 0;
+          
+          return (
           <Card 
             key={item.id} 
-            className="group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-3xl bg-white flex flex-col"
-            onClick={() => setSelectedItem(item)}
+            className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-3xl bg-white flex flex-col ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''}`}
+            onClick={() => !isOutOfStock && setSelectedItem(item)}
           >
             <div className="relative h-56 w-full">
               <Image 
@@ -573,6 +580,11 @@ export function MenuPageClient() {
               <Badge className="absolute top-4 right-4 bg-accent text-white font-black border-none shadow-lg px-3 py-1 text-base">
                 R$ {item.price.toFixed(2)}
               </Badge>
+              {storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && (
+                <Badge className={`absolute bottom-4 right-4 font-bold border-none shadow-lg px-2.5 py-1 text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
+                  {isOutOfStock ? 'Esgotado' : `Estoque: ${currentStock}`}
+                </Badge>
+              )}
             </div>
             <CardContent className="p-6 flex flex-col flex-1">
               <div className="flex-1 space-y-2 mb-4">
@@ -585,13 +597,13 @@ export function MenuPageClient() {
                 <span className="text-xs font-black text-primary/40 uppercase tracking-widest">
                   {categories?.find(c => c.id === item.categoryId)?.name}
                 </span>
-                <Button size="sm" className="bg-primary hover:bg-accent text-white h-10 w-10 p-0 rounded-xl shadow-md transition-colors">
+                <Button disabled={isOutOfStock} size="sm" className={`text-white h-10 w-10 p-0 rounded-xl shadow-md transition-colors ${isOutOfStock ? 'bg-slate-300' : 'bg-primary hover:bg-accent'}`}>
                   <Plus className="h-6 w-6" />
                 </Button>
               </div>
             </CardContent>
           </Card>
-        ))}
+        )})}
       </div>
 
       {filteredItems.length === 0 && (

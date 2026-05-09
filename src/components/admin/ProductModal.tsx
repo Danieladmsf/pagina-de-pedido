@@ -121,6 +121,9 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
     const name = formData.get('name') as string;
     const priceStr = formData.get('price') as string;
     const price = parseFloat(priceStr) || 0;
+    
+    const stockQuantityStr = formData.get('stockQuantity') as string;
+    const stockQuantity = stockQuantityStr ? parseInt(stockQuantityStr, 10) : null;
 
     let imageUrl = editingProduct?.imageUrl || '';
     
@@ -137,6 +140,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
       const data = {
         name,
         price,
+        stockQuantity,
         categoryId,
         description,
         ownerId: user.uid,
@@ -207,12 +211,16 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                   ))}
                 </select>
               </div>
-              <div className="col-span-6 md:col-span-2 space-y-1.5">
+              <div className="col-span-4 md:col-span-2 space-y-1.5">
                 <Label htmlFor="price" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço (R$)</Label>
                 <CurrencyInput id="price" name="price" defaultValue={editingProduct?.price} required placeholder="0,00" />
               </div>
+              <div className="col-span-4 md:col-span-2 space-y-1.5">
+                <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
+                <Input id="stockQuantity" name="stockQuantity" type="number" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
+              </div>
               {!isMarmita && (
-                <div className="col-span-6 md:col-span-2 space-y-1.5">
+                <div className="col-span-4 md:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
                   <div className="flex items-center gap-2">
                     {imagePreview && (

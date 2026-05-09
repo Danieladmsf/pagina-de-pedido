@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users, ShoppingBag, Box } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -50,6 +50,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     deliveryTime: '00:50',
     pickupTime: '00:30',
     maxDeliveryRadius: 0,
+    enableInventory: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -136,6 +137,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           addressNumber: formData.addressNumber,
           addressComplement: formData.addressComplement,
           logoUrl: formData.logoUrl,
+          enableInventory: formData.enableInventory,
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -449,6 +451,25 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
               </div>
             </section>
 
+            {/* SEÇÃO EXTRA — Controle de Estoque */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-blue-500/15 border border-indigo-500/20 flex items-center justify-center">
+                    <ShoppingBag className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">Controle de Estoque</h2>
+                    <p className="text-xs text-muted-foreground">Exibir quantidade disponível e bloquear vendas de produtos esgotados.</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={formData.enableInventory}
+                  onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
+                />
+              </header>
+            </section>
+
             {/* SEÇÃO 4 — Endereço */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
               <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
@@ -493,6 +514,37 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     <Input name="addressComplement" value={formData.addressComplement} onChange={handleChange} placeholder="Sala 2, Bloco B, em frente à praça..." className="h-11" />
                     <p className="text-[10px] text-slate-400">Opcional.</p>
                   </div>
+                </div>
+              </div>
+            </section>
+
+            {/* SEÇÃO 5 — Configurações de Vendas & Estoque */}
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
+                  <Box className="h-5 w-5 text-violet-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Vendas & Estoque</h2>
+                  <p className="text-xs text-muted-foreground">Configurações globais sobre como o cardápio opera.</p>
+                </div>
+              </header>
+              <div className="p-6 space-y-5">
+                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Controle de Estoque
+                      {formData.enableInventory && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ativo</Badge>}
+                    </Label>
+                    <p className="text-[11px] text-slate-500 max-w-md">
+                      Ao ligar, os produtos exibirão a quantidade disponível no App do Cliente. O sistema impedirá vendas se o estoque zerar e fará o abatimento automático.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={formData.enableInventory}
+                    onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
+                    className="data-[state=checked]:bg-violet-600"
+                  />
                 </div>
               </div>
             </section>

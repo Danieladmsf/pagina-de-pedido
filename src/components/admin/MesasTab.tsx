@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment, writeBatch } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -154,7 +154,24 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     
     try {
       if (activeOrderId) {
-        await updateDoc(doc(db, 'orders', activeOrderId), { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 });
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'orders', activeOrderId), { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 });
+
+        if (storeInfo?.general?.enableInventory) {
+          const stockRestore: Record<string, number> = {};
+          cart.forEach(item => {
+            if (item.id) {
+              stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
+            }
+          });
+          Object.entries(stockRestore).forEach(([itemId, qty]) => {
+            batch.update(doc(db, 'menuItems', itemId), {
+              stockQuantity: increment(qty)
+            });
+          });
+        }
+
+        await batch.commit();
       }
       setCart([]);
       setOriginalCart([]);
@@ -172,28 +189,40 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     if (!db || !user || !selectedTable || cart.length === 0) return;
     setIsSubmitting(true);
     
-    // Calcula diferença para impressão da cozinha
+    // Calcula diferença para impressão da cozinha e controle de estoque
     const newItemsToPrint: any[] = [];
+    const stockDiffs: Record<string, number> = {};
+
     cart.forEach(item => {
       const originalItem = originalCart.find(oi => (oi.cartItemId || oi.id) === (item.cartItemId || item.id));
       const diffQty = item.quantity - (originalItem ? originalItem.quantity : 0);
       if (diffQty > 0) {
         newItemsToPrint.push({ ...item, quantity: diffQty });
       }
+      if (diffQty !== 0 && item.id) {
+        stockDiffs[item.id] = (stockDiffs[item.id] || 0) + diffQty;
+      }
+    });
+
+    originalCart.forEach(oi => {
+      if (!cart.find(item => (item.cartItemId || item.id) === (oi.cartItemId || oi.id))) {
+        if (oi.id) stockDiffs[oi.id] = (stockDiffs[oi.id] || 0) - oi.quantity;
+      }
     });
 
     try {
       let finalOrderId = activeOrderId;
+      const batch = writeBatch(db);
       
       if (activeOrderId) {
-        await updateDoc(doc(db, 'orders', activeOrderId), {
+        batch.update(doc(db, 'orders', activeOrderId), {
           items: cart,
           totalAmount: cartTotal,
           subtotal: cartTotal,
         });
       } else {
         finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
-        await setDoc(doc(db, 'orders', finalOrderId), {
+        batch.set(doc(db, 'orders', finalOrderId), {
           id: finalOrderId,
           ownerId: user.uid,
           customerName: `Mesa ${selectedTable}`,
@@ -208,6 +237,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           createdAt: new Date(),
         });
       }
+
+      if (storeInfo?.general?.enableInventory) {
+        Object.entries(stockDiffs).forEach(([itemId, diff]) => {
+          if (diff !== 0) {
+            batch.update(doc(db, 'menuItems', itemId), {
+              stockQuantity: increment(-diff)
+            });
+          }
+        });
+      }
+
+      await batch.commit();
 
       setOriginalCart(cart);
 
