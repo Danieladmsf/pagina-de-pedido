@@ -132,23 +132,47 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Verificar Conta da Casa quando o telefone muda
   useEffect(() => {
+    console.log('[CartDrawer] 🔍 Conta da Casa check:', { db: !!db, effectiveStoreOwnerId, customerPhone, phoneLen: customerPhone.length });
     if (!db || !effectiveStoreOwnerId || customerPhone.length < 10) {
+      console.log('[CartDrawer] ❌ Conta da Casa ABORTADA:', { db: !!db, ownerId: effectiveStoreOwnerId, phoneLen: customerPhone.length });
       setContaCasaEnabled(false);
       return;
     }
     const checkCredit = async () => {
       try {
+        // Normalizar telefone: remover espaços, traços, parênteses
+        const normalizedPhone = customerPhone.replace(/[\s\-\(\)]/g, '');
+        console.log('[CartDrawer] 📞 Buscando crédito para:', { ownerId: effectiveStoreOwnerId, celular: normalizedPhone, originalPhone: customerPhone });
         const q = query(
           collection(db, 'clientes'),
           where('ownerId', '==', effectiveStoreOwnerId),
-          where('celular', '==', customerPhone)
+          where('celular', '==', normalizedPhone)
         );
         const snap = await getDocs(q);
+        console.log('[CartDrawer] 📊 Resultado query clientes:', { found: !snap.empty, count: snap.size });
         if (!snap.empty) {
           const clientData = snap.docs[0].data();
+          console.log('[CartDrawer] 👤 Cliente encontrado:', { celular: clientData.celular, creditEnabled: clientData.creditEnabled, nome: clientData.nome });
           if (clientData.creditEnabled) {
             setContaCasaEnabled(true);
             return;
+          }
+        } else {
+          // Tentar buscar sem normalização (caso já esteja salvo com formatação)
+          console.log('[CartDrawer] 🔄 Tentando busca com telefone original:', customerPhone);
+          const q2 = query(
+            collection(db, 'clientes'),
+            where('ownerId', '==', effectiveStoreOwnerId),
+            where('celular', '==', customerPhone)
+          );
+          const snap2 = await getDocs(q2);
+          console.log('[CartDrawer] 📊 Resultado 2ª tentativa:', { found: !snap2.empty, count: snap2.size });
+          if (!snap2.empty) {
+            const clientData = snap2.docs[0].data();
+            if (clientData.creditEnabled) {
+              setContaCasaEnabled(true);
+              return;
+            }
           }
         }
         setContaCasaEnabled(false);
