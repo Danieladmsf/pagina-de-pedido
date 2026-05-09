@@ -132,55 +132,72 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Verificar Conta da Casa quando o telefone muda
   useEffect(() => {
-    console.log('[CartDrawer] 🔍 Conta da Casa check:', { db: !!db, effectiveStoreOwnerId, customerPhone, phoneLen: customerPhone.length });
     if (!db || !effectiveStoreOwnerId || customerPhone.length < 10) {
-      console.log('[CartDrawer] ❌ Conta da Casa ABORTADA:', { db: !!db, ownerId: effectiveStoreOwnerId, phoneLen: customerPhone.length });
       setContaCasaEnabled(false);
       return;
     }
     const checkCredit = async () => {
       try {
-        // Normalizar telefone: remover espaços, traços, parênteses
-        const normalizedPhone = customerPhone.replace(/[\s\-\(\)]/g, '');
-        console.log('[CartDrawer] 📞 Buscando crédito para:', { ownerId: effectiveStoreOwnerId, celular: normalizedPhone, originalPhone: customerPhone });
+        // Normalizar telefone: remover espaços, traços, parênteses e +55
+        const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
+        
+        // Buscar TODOS os documentos do cliente (pode haver duplicatas)
         const q = query(
           collection(db, 'clientes'),
           where('ownerId', '==', effectiveStoreOwnerId),
           where('celular', '==', normalizedPhone)
         );
         const snap = await getDocs(q);
-        console.log('[CartDrawer] 📊 Resultado query clientes:', { found: !snap.empty, count: snap.size });
+        
+        // Verificar se QUALQUER documento tem creditEnabled
         if (!snap.empty) {
-          const clientData = snap.docs[0].data();
-          console.log('[CartDrawer] 👤 Cliente encontrado:', { celular: clientData.celular, creditEnabled: clientData.creditEnabled, nome: clientData.nome });
-          if (clientData.creditEnabled) {
+          const hasCredit = snap.docs.some(d => d.data().creditEnabled === true);
+          if (hasCredit) {
             setContaCasaEnabled(true);
             return;
           }
-        } else {
-          // Tentar buscar sem normalização (caso já esteja salvo com formatação)
-          console.log('[CartDrawer] 🔄 Tentando busca com telefone original:', customerPhone);
+        }
+        
+        // Fallback: tentar com telefone original (caso salvo com formatação diferente)
+        if (normalizedPhone !== customerPhone) {
           const q2 = query(
             collection(db, 'clientes'),
             where('ownerId', '==', effectiveStoreOwnerId),
             where('celular', '==', customerPhone)
           );
           const snap2 = await getDocs(q2);
-          console.log('[CartDrawer] 📊 Resultado 2ª tentativa:', { found: !snap2.empty, count: snap2.size });
           if (!snap2.empty) {
-            const clientData = snap2.docs[0].data();
-            if (clientData.creditEnabled) {
+            const hasCredit = snap2.docs.some(d => d.data().creditEnabled === true);
+            if (hasCredit) {
               setContaCasaEnabled(true);
               return;
             }
           }
         }
+
+        // Fallback 2: tentar com +55 prefixo
+        const withPrefix = '+55' + normalizedPhone;
+        if (withPrefix !== customerPhone && withPrefix !== normalizedPhone) {
+          const q3 = query(
+            collection(db, 'clientes'),
+            where('ownerId', '==', effectiveStoreOwnerId),
+            where('celular', '==', withPrefix)
+          );
+          const snap3 = await getDocs(q3);
+          if (!snap3.empty) {
+            const hasCredit = snap3.docs.some(d => d.data().creditEnabled === true);
+            if (hasCredit) {
+              setContaCasaEnabled(true);
+              return;
+            }
+          }
+        }
+        
         setContaCasaEnabled(false);
       } catch (err) {
         console.warn('Erro ao verificar Conta da Casa:', err);
       }
     };
-    // Debounce simple para evitar muitas chamadas enquanto digita
     const timer = setTimeout(checkCredit, 500);
     return () => clearTimeout(timer);
   }, [customerPhone, db, effectiveStoreOwnerId]);
