@@ -38,8 +38,14 @@ export async function POST(req: NextRequest) {
     const response = await fetch(url.toString());
     const data = await response.json();
 
+    console.log('[API delivery-fee] Google Maps response status:', data.status, 'error_message:', data.error_message || 'N/A');
+    console.log('[API delivery-fee] Full Google response:', JSON.stringify(data, null, 2));
+
     if (data.status !== 'OK') {
-      return NextResponse.json({ error: 'Erro ao consultar Google Maps.', details: data }, { status: 500 });
+      const errorMsg = data.error_message 
+        ? `Google Maps: ${data.error_message}` 
+        : `Google Maps retornou status: ${data.status}`;
+      return NextResponse.json({ error: errorMsg, details: data }, { status: 500 });
     }
 
     const element = data.rows?.[0]?.elements?.[0];
