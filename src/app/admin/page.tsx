@@ -233,7 +233,9 @@ export default function AdminPage() {
 
     // Lógica para cadastrar clientes e disparar confetes
     allNewOnes.forEach(async (order) => {
-      const telefone = (order.customerPhone || '').trim();
+      const rawTelefone = (order.customerPhone || '').trim();
+      // Normalizar telefone: remover +55, espaços, traços, parênteses
+      const telefone = rawTelefone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
       const nome = (order.customerName || '').trim();
       
       if (telefone || nome) {
@@ -501,7 +503,9 @@ export default function AdminPage() {
         const order = (ordersRaw as any[])?.find(o => o.id === orderId);
         // Só sincroniza se o pedido existe e não estava como entregue antes
         if (order && order.status !== 'delivered') {
-          const telefone = (order.customerPhone || '').trim();
+          const rawTelefone = (order.customerPhone || '').trim();
+          // Normalizar telefone: remover +55, espaços, traços, parênteses
+          const telefone = rawTelefone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
           const nome = (order.customerName || '').trim();
           const hoje = new Date().toLocaleDateString('pt-BR');
           const valor = order.totalAmount || 0;

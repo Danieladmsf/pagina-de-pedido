@@ -417,12 +417,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       });
       const safeGrandTotal = safeSubtotal + appliedDeliveryFee;
 
+      // Normalizar telefone: remover +55, espaços, traços, parênteses
+      const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
+
       const orderData = {
         id: orderId,
-        customerIdentifier: customerPhone,
+        customerIdentifier: normalizedPhone,
         ownerId: effectiveStoreOwnerId,
         customerName,
-        customerPhone,
+        customerPhone: normalizedPhone,
         customerBirthDate,
         customerEmail: user.email || '',
         deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
