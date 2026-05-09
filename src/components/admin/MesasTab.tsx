@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
+import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -35,7 +36,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
 ];
 
 export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [] }: MesasTabProps) {
-  const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
+  const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active && m.id !== 'conta_casa');
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [searchTable, setSearchTable] = useState('');
@@ -64,6 +65,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const [paymentSplits, setPaymentSplits] = useState<{methodId: string, label: string, amount: number, received?: number}[]>([]);
   const [selectedPayment, setSelectedPayment] = useState('');
   const [valorRecebido, setValorRecebido] = useState<string>('');
+  const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Derivando mesas
@@ -310,7 +312,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             change = valRec - cartTotal;
           }
         }
-        const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+        let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+        if (selectedPayment === 'conta_casa') label = 'Prazo';
         paymentString = selectedPayment === 'dinheiro' && change > 0 
            ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
            : label;
@@ -331,7 +334,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             }
           }
           if (amount > 0) {
-             const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+             let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+             if (selectedPayment === 'conta_casa') label = 'Prazo';
              splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
           }
         }
@@ -343,18 +347,56 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         }
       }
 
+      const ownerId = storeInfo?.id || user?.uid || 'default';
+      const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
+      if (hasContaCasa) {
+          const phone = ''; // Mesa usually doesn't have phone attached
+          if (!phone || phone.length < 10) {
+             setIsSubmitting(false);
+             setQuickRegisterModal({ isOpen: true, name: `Cliente Mesa ${selectedTable}`, phone: '', address: '' });
+             return;
+          }
+          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
+          const snap = await getDocs(q);
+          if (snap.empty) {
+             setIsSubmitting(false);
+             setQuickRegisterModal({ isOpen: true, name: `Cliente Mesa ${selectedTable}`, phone, address: '' });
+             return;
+          }
+      }
+
       await updateDoc(doc(db, 'orders', activeOrderId), {
         status: 'delivered',
         paymentMethod: paymentString,
       });
 
       for (const split of splitsToProcess) {
-        await registrarLancamento?.({
-          tipo: 'venda',
-          titulo: `Mesa ${selectedTable} - Finalizada`,
-          valor: split.amount,
-          formaPagamento: split.methodId,
-        });
+        if (split.methodId === 'conta_casa') {
+             const ownerId = storeInfo?.id || user?.uid || 'default';
+             const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', quickRegisterModal?.phone || ''));
+             const snap = await getDocs(q);
+             if (!snap.empty) {
+                const cId = snap.docs[0].id;
+                const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
+                await setDoc(newTrans, {
+                   id: newTrans.id,
+                   type: 'debit',
+                   amount: split.amount,
+                   date: new Date().toISOString(),
+                   description: `Mesa ${selectedTable}`
+                });
+                await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+             } else {
+                toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
+             }
+        } else {
+            await registrarLancamento?.({
+              tipo: 'venda',
+              titulo: `Mesa ${selectedTable} - Finalizada`,
+              valor: split.amount,
+              formaPagamento: split.methodId,
+            });
+        }
       }
 
       toast({ title: 'Sucesso', description: splitsToProcess.length > 1 ? `Mesa finalizada em ${splitsToProcess.length} partes!` : 'Mesa finalizada!' });
@@ -385,7 +427,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     
     if (amount <= 0) return;
     
-    const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+    let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+    if (selectedPayment === 'conta_casa') label = 'Prazo';
     setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
     setSelectedPayment('');
     setValorRecebido('');
@@ -660,9 +703,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     <button
                       type="button"
                       onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
-                      className={`col-span-4 flex items-center justify-center gap-2 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
                     >
-                      <span className="text-lg">🔀</span> Múltiplos Pagamentos
+                      <span className="text-lg">🔀</span>
+                      Múltiplos
                     </button>
                   </div>
 
@@ -754,7 +798,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
                       {selectedPayment && (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 space-y-1.5">
-                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {FORMAS_PAGAMENTO.find((f:any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
+                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {selectedPayment === 'conta_casa' ? 'Prazo' : FORMAS_PAGAMENTO.find((f:any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
                           <div className="flex gap-2">
                             <Input
                               type="text"
@@ -833,6 +877,21 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         allAddons={addons}
         onAddToCart={handleDialogAddToCart}
       />
+      {quickRegisterModal && (
+        <QuickRegisterClientModal
+          isOpen={quickRegisterModal.isOpen}
+          onClose={() => setQuickRegisterModal(null)}
+          onSuccess={() => {
+            setQuickRegisterModal(null);
+            handleConfirmPayment();
+          }}
+          db={db}
+          ownerId={storeInfo?.id || user?.uid || 'default'}
+          initialName={quickRegisterModal.name}
+          initialPhone={quickRegisterModal.phone}
+          initialAddress={quickRegisterModal.address}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PrintReceipt } from './PrintReceipt';
+import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -30,6 +31,9 @@ const DEFAULT_FORMAS_PAGAMENTO = [
 
 export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
+  if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
+    FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
+  }
   // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
   // Mostrar todos os pedidos de delivery, além de pedidos do App de outros tipos
   const onlyDeliveryAppOrders = orders?.filter(o => {
@@ -49,6 +53,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [showMotoboyModal, setShowMotoboyModal] = useState<any>(null);
   const [selectedMotoboyId, setSelectedMotoboyId] = useState<string>('');
   const [valorRecebido, setValorRecebido] = useState<string>('');
+  const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   const { toast } = useToast();
   
   // Clientes Online
@@ -176,7 +181,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
              change = valRec - paymentModalOrder.totalAmount;
            }
         }
-        const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+        let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+        if (selectedPayment === 'conta_casa') label = 'Prazo';
         paymentString = selectedPayment === 'dinheiro' && change > 0 
            ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
            : label;
@@ -198,7 +204,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             }
           }
           if (amount > 0) {
-             const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+             let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+             if (selectedPayment === 'conta_casa') label = 'Prazo';
              splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
           }
         }
@@ -210,18 +217,56 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         }
       }
 
+      const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
+      const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
+      if (hasContaCasa) {
+          const phone = paymentModalOrder.customerPhone || '';
+          if (!phone || phone.length < 10) {
+             setIsProcessing(false);
+             setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone: '', address: paymentModalOrder.deliveryAddress || '' });
+             return;
+          }
+          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
+          const snap = await getDocs(q);
+          if (snap.empty) {
+             setIsProcessing(false);
+             setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone, address: paymentModalOrder.deliveryAddress || '' });
+             return;
+          }
+      }
+
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
       updateOrderStatus(paymentModalOrder.id, { status: 'delivered', paymentMethod: paymentString });
       
-      // 2. Registrar venda no caixa (se caixa estiver aberto)
-      if (registrarLancamento && caixaAberto) {
+      // 2. Registrar venda no caixa (se caixa estiver aberto) ou Conta da Casa
+      if (caixaAberto) {
         for (const split of splitsToProcess) {
-          await registrarLancamento({
-            tipo: 'venda',
-            titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
-            valor: split.amount,
-            formaPagamento: split.methodId,
-          });
+          if (split.methodId === 'conta_casa') {
+             const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
+             const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', paymentModalOrder.customerPhone || ''));
+             const snap = await getDocs(q);
+             if (!snap.empty) {
+                const cId = snap.docs[0].id;
+                const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
+                await setDoc(newTrans, {
+                   id: newTrans.id,
+                   type: 'debit',
+                   amount: split.amount,
+                   date: new Date().toISOString(),
+                   description: `Delivery #${paymentModalOrder.id.substring(0,5)}`
+                });
+                await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+             } else {
+                toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
+             }
+          } else if (registrarLancamento) {
+            await registrarLancamento({
+              tipo: 'venda',
+              titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
+              valor: split.amount,
+              formaPagamento: split.methodId,
+            });
+          }
         }
         toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${selectedPayment}).` });
       } else {
@@ -257,7 +302,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     
     if (amount <= 0) return;
     
-    const label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+    let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+    if (selectedPayment === 'conta_casa') label = 'Prazo';
     setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
     setSelectedPayment('');
     setValorRecebido('');
@@ -436,7 +482,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 R$ {selectedOrder.totalAmount?.toFixed(2)}
               </div>
               <div className="border px-3 py-1 rounded text-slate-700 font-medium whitespace-nowrap">
-                {selectedOrder.paymentMethod || 'Não definido'}
+                {selectedOrder.paymentMethod === 'conta_casa' ? 'Prazo' : (selectedOrder.paymentMethod || 'Não definido')}
               </div>
               {selectedOrder.orderType === 'delivery' && (
                 <div className="border border-teal-200 bg-teal-50 px-3 py-1 rounded text-teal-700 font-bold whitespace-nowrap">
@@ -528,9 +574,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                     <button
                       type="button"
                       onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
-                      className={`col-span-4 flex items-center justify-center gap-2 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
                     >
-                      <span className="text-lg">🔀</span> Múltiplos Pagamentos
+                      <span className="text-lg">🔀</span>
+                      Múltiplos
                     </button>
                   </div>
 
@@ -622,7 +669,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
                       {selectedPayment && (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 space-y-1.5">
-                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {FORMAS_PAGAMENTO.find((f: any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
+                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {selectedPayment === 'conta_casa' ? 'Prazo' : FORMAS_PAGAMENTO.find((f: any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
                           <div className="flex gap-2">
                             <Input
                               type="text"
@@ -707,6 +754,21 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       {/* Componente Invisível de Impressão */}
       {orderToPrint && (
         <PrintReceipt order={orderToPrint} storeInfo={storeProfile} />
+      )}
+      {quickRegisterModal && (
+        <QuickRegisterClientModal
+          isOpen={quickRegisterModal.isOpen}
+          onClose={() => setQuickRegisterModal(null)}
+          onSuccess={() => {
+            setQuickRegisterModal(null);
+            handleConfirmPayment();
+          }}
+          db={db}
+          ownerId={storeProfile?.id || (user as any)?.uid || 'default'}
+          initialName={quickRegisterModal.name}
+          initialPhone={quickRegisterModal.phone}
+          initialAddress={quickRegisterModal.address}
+        />
       )}
     </>
   );

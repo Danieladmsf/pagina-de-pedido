@@ -3,10 +3,10 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, getDoc, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw, Receipt, QrCode, Wallet, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -54,32 +54,30 @@ function OrderTimeline({ status, orderType }: { status: string; orderType: strin
   const steps = orderType === 'pickup' ? PICKUP_STEPS : DELIVERY_STEPS;
   const currentIdx = steps.findIndex(s => s.key === status);
   return (
-    <div className="bg-muted/30 rounded-xl p-3">
-      <div className="flex items-center justify-between">
-        {steps.map((step, i) => {
-          const done = i <= currentIdx && currentIdx >= 0;
-          const current = i === currentIdx;
-          return (
-            <React.Fragment key={step.key}>
-              <div className="flex flex-col items-center flex-shrink-0 w-14">
-                <div className={`h-7 w-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
-                  current ? 'bg-primary border-primary text-white animate-pulse scale-110' :
-                  done ? 'bg-green-500 border-green-500 text-white' :
-                  'bg-white border-muted text-muted-foreground'
-                }`}>
-                  {done && !current ? '✓' : i + 1}
-                </div>
-                <span className={`text-[9px] font-bold mt-1 text-center leading-tight ${current ? 'text-primary' : done ? 'text-green-700' : 'text-muted-foreground'}`}>
-                  {step.label}
-                </span>
+    <div className="flex items-center justify-between gap-0 py-1">
+      {steps.map((step, i) => {
+        const done = i <= currentIdx && currentIdx >= 0;
+        const current = i === currentIdx;
+        return (
+          <React.Fragment key={step.key}>
+            <div className="flex flex-col items-center flex-shrink-0" style={{width: '3rem'}}>
+              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center text-[9px] font-bold ${
+                current ? 'bg-primary border-primary text-white scale-110' :
+                done ? 'bg-green-500 border-green-500 text-white' :
+                'bg-white border-slate-300 text-slate-400'
+              }`}>
+                {done && !current ? '✓' : i + 1}
               </div>
-              {i < steps.length - 1 && (
-                <div className={`flex-1 h-0.5 mb-4 ${i < currentIdx ? 'bg-green-500' : 'bg-muted'}`} />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
+              <span className={`text-[8px] font-semibold mt-0.5 text-center leading-tight ${current ? 'text-primary' : done ? 'text-green-600' : 'text-slate-400'}`}>
+                {step.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`flex-1 h-[2px] mb-3 ${i < currentIdx ? 'bg-green-500' : 'bg-slate-200'}`} />
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -137,6 +135,50 @@ export default function MyOrdersPage() {
       setAddress((profile as any).address || '');
     }
   }, [profile]);
+
+  // Conta da Casa logic
+  const [contaCasaInfo, setContaCasaInfo] = useState<any>(null);
+  const [contaCasaStore, setContaCasaStore] = useState<any>(null);
+  const [contaCasaTransactions, setContaCasaTransactions] = useState<any[]>([]);
+  const [showExtrato, setShowExtrato] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pedidos' | 'prazo'>('pedidos');
+
+  useEffect(() => {
+    if (!ordersRaw || ordersRaw.length === 0 || !db || !customerPhone) return;
+    const ownerId = (ordersRaw as any)[0].ownerId;
+    if (!ownerId) return;
+
+    // Buscar loja
+    getDoc(doc(db, 'store_profiles', ownerId)).then(snap => {
+      if (snap.exists()) setContaCasaStore(snap.data());
+    });
+
+    // Buscar cliente com listener em tempo real
+    const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', customerPhone));
+    const unsubClient = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const cData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
+        if (cData.creditEnabled) {
+          setContaCasaInfo(cData);
+        }
+      }
+    });
+
+    // Buscar transações
+    getDocs(q).then(snap => {
+      if (!snap.empty) {
+        const cId = snap.docs[0].id;
+        const tq = query(collection(db, 'clientes', cId, 'credit_transactions'), orderBy('date', 'desc'));
+        onSnapshot(tq, (tsnap) => {
+          setContaCasaTransactions(tsnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+      }
+    });
+
+    return () => unsubClient();
+  }, [ordersRaw, db, customerPhone]);
+
+
 
   const orders = useMemo(() => {
     if (!ordersRaw) return ordersRaw;
@@ -269,137 +311,209 @@ export default function MyOrdersPage() {
     s === 'out_for_delivery' ? 'bg-purple-500 text-white' :
     'bg-gray-500 text-white';
 
+
   return (
-    <div className="min-h-screen bg-[#FAFAF7] p-4 md:p-8">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <header className="flex items-center gap-4">
+    <div className="min-h-screen bg-[#F5F5F0] p-3 md:p-6">
+      <div className="max-w-2xl mx-auto space-y-3">
+        <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Link href="/">
-              <Button variant="ghost" size="icon">
-                <ChevronLeft className="h-6 w-6" />
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <ChevronLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <h1 className="text-2xl font-bold">Meus Pedidos</h1>
+            <h1 className="text-lg font-bold">Meus Pedidos</h1>
           </div>
+          {contaCasaInfo && (
+            <div className="flex bg-slate-200 rounded-lg p-0.5 text-xs font-semibold">
+              <button onClick={() => setActiveTab('pedidos')} className={`px-3 py-1.5 rounded-md transition-all ${activeTab === 'pedidos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>📋 Pedidos</button>
+              <button onClick={() => setActiveTab('prazo')} className={`px-3 py-1.5 rounded-md transition-all ${activeTab === 'prazo' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>📝 Prazo</button>
+            </div>
+          )}
         </header>
 
-        <Card className="shadow-sm rounded-2xl overflow-hidden">
-          <CardHeader className="bg-white border-b py-4 flex-row items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <UserIcon className="h-4 w-4" /> Meus Dados
-            </CardTitle>
-            {!editingProfile ? (
-              <Button size="sm" variant="ghost" onClick={() => setEditingProfile(true)}>
-                <Pencil className="h-4 w-4 mr-1" /> Editar
-              </Button>
-            ) : (
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={() => setEditingProfile(false)}>Cancelar</Button>
-                <Button size="sm" onClick={handleSaveProfile} disabled={savingProfile}>
-                  {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" /> Salvar</>}
-                </Button>
-              </div>
-            )}
-          </CardHeader>
-          <CardContent className="p-4 bg-white space-y-3">
-            {editingProfile ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="p_name">Nome</Label>
-                  <Input id="p_name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="p_phone">Telefone</Label>
-                  <Input id="p_phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="p_addr">Endereço</Label>
-                  <Input id="p_addr" value={address} onChange={(e) => setAddress(e.target.value)} />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center gap-2"><UserIcon className="h-3 w-3 text-muted-foreground" /> {name || <span className="italic text-muted-foreground">Sem nome</span>}</div>
-                <div className="flex items-center gap-2"><Phone className="h-3 w-3 text-muted-foreground" /> {phone || <span className="italic text-muted-foreground">Sem telefone</span>}</div>
-                <div className="flex items-center gap-2"><MapPin className="h-3 w-3 text-muted-foreground" /> {address || <span className="italic text-muted-foreground">Sem endereço</span>}</div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="flex items-center gap-2">
-          <ShoppingBag className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-bold">Histórico de Pedidos</h2>
-        </div>
-
-        {loadingOrders ? (
-          <div className="py-10 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
-        ) : !orders || orders.length === 0 ? (
-          <div className="text-center py-20 space-y-4">
-            <ShoppingBag className="h-16 w-16 text-muted-foreground mx-auto opacity-20" />
-            <p className="text-muted-foreground">Você ainda não fez nenhum pedido.</p>
-            <Link href="/">
-              <Button>Ir para o Cardápio</Button>
-            </Link>
+        <div className="bg-white rounded-xl shadow-sm p-3 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">{(name || '?')[0]?.toUpperCase()}</div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">{name || 'Sem nome'}</p>
+              <p className="text-[11px] text-slate-500 truncate">{phone || customerPhone} · {address || 'Sem endereço'}</p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((order: any) => (
-              <Card key={order.id} className="border-none shadow-sm overflow-hidden">
-                <CardHeader className="bg-white border-b py-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle className="text-base">Pedido #{order.id}</CardTitle>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Clock className="h-3 w-3" /> {new Date(order.orderDateTime).toLocaleString('pt-BR')}
-                      </div>
+          <Button size="sm" variant="ghost" className="h-7 text-xs flex-shrink-0" onClick={() => setEditingProfile(!editingProfile)}>
+            <Pencil className="h-3 w-3 mr-1" />{editingProfile ? 'Fechar' : 'Editar'}
+          </Button>
+        </div>
+        {editingProfile && (
+          <div className="bg-white rounded-xl shadow-sm p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label className="text-[10px] font-semibold text-slate-500">Nome</Label><Input className="h-8 text-sm" value={name} onChange={e => setName(e.target.value)} /></div>
+              <div><Label className="text-[10px] font-semibold text-slate-500">Telefone</Label><Input className="h-8 text-sm" value={phone} onChange={e => setPhone(e.target.value)} /></div>
+            </div>
+            <div><Label className="text-[10px] font-semibold text-slate-500">Endereço</Label><Input className="h-8 text-sm" value={address} onChange={e => setAddress(e.target.value)} /></div>
+            <Button size="sm" className="w-full h-8 text-xs" onClick={handleSaveProfile} disabled={savingProfile}>
+              {savingProfile ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Save className="h-3 w-3 mr-1" /> Salvar</>}
+            </Button>
+          </div>
+        )}
+
+        {activeTab === 'prazo' && contaCasaInfo ? (
+          <div className="space-y-3">
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl p-4 shadow-md">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-sm font-bold"><Receipt className="h-4 w-4" /> Minha Conta (Prazo)</div>
+                <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 text-[10px]">Cliente VIP</Badge>
+              </div>
+              <div className="text-center py-2">
+                <p className="text-indigo-100 text-[11px]">Saldo Devedor</p>
+                <p className="text-3xl font-black">R$ {(contaCasaInfo.creditBalance || 0).toFixed(2)}</p>
+              </div>
+              {(contaCasaStore?.creditPixKey || contaCasaStore?.creditPixName) && (
+                <div className="bg-white/10 p-2.5 rounded-lg border border-white/20 space-y-1.5 mt-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-100"><QrCode className="h-3 w-3" /> Pague via PIX</div>
+                  {contaCasaStore.creditPixKey && (
+                    <div className="flex justify-between items-center bg-black/20 px-2 py-1.5 rounded text-[11px]">
+                      <span className="text-indigo-200">Chave:</span>
+                      <span className="font-mono font-bold truncate max-w-[160px]">{contaCasaStore.creditPixKey}</span>
                     </div>
-                    <Badge className={statusClass(order.status)}>
-                      {STATUS_LABELS[order.status] || order.status}
-                    </Badge>
+                  )}
+                  {contaCasaStore.creditPixName && (
+                    <div className="flex justify-between items-center bg-black/20 px-2 py-1.5 rounded text-[11px]">
+                      <span className="text-indigo-200">Titular:</span>
+                      <span className="font-bold truncate">{contaCasaStore.creditPixName}</span>
+                    </div>
+                  )}
+                  <p className="text-[9px] text-center text-indigo-200 mt-1">Envie o comprovante no WhatsApp da loja.</p>
+                </div>
+              )}
+            </div>
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3 py-2 border-b">
+                <span className="text-xs font-bold text-slate-700">Dados da Conta</span>
+              </div>
+              <div className="px-3 py-2 space-y-1.5">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-400">Titular</span>
+                  <span className="font-semibold text-slate-700">{contaCasaInfo.nome || name || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-400">Telefone</span>
+                  <span className="font-semibold text-slate-700">{contaCasaInfo.celular || customerPhone}</span>
+                </div>
+                {(contaCasaInfo.logradouro || contaCasaInfo.bairro) && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-400">Endereço</span>
+                    <span className="font-semibold text-slate-700 text-right max-w-[60%] truncate">{[contaCasaInfo.logradouro, contaCasaInfo.numero, contaCasaInfo.bairro, contaCasaInfo.cidade].filter(Boolean).join(', ')}</span>
                   </div>
-                </CardHeader>
-                <CardContent className="p-4 bg-white space-y-4">
-                  <OrderTimeline status={order.status} orderType={order.orderType || 'delivery'} />
-                  <div className="space-y-2">
-                    {order.items?.map((it: any, i: number) => (
-                      <div key={i} className="text-sm">
-                        <div className="flex justify-between">
-                          <span><span className="font-bold">{it.quantity}x</span> {it.name}</span>
-                          <span className="text-muted-foreground">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                )}
+                {contaCasaInfo.createdAt && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-400">Cliente desde</span>
+                    <span className="font-semibold text-slate-700">{new Date(contaCasaInfo.createdAt).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-400">Status</span>
+                  <span className="font-semibold text-emerald-600">✅ Prazo Ativo</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3 py-2 border-b flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700">Extrato</span>
+                <span className="text-[10px] text-slate-400">{contaCasaTransactions.length} lançamento(s)</span>
+              </div>
+              {contaCasaTransactions.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-400">Nenhuma transação.</div>
+              ) : (
+                <div className="divide-y max-h-[400px] overflow-y-auto custom-scrollbar">
+                  {contaCasaTransactions.map(t => {
+                    const descId = (t.description || '').replace(/^.*#/, '').trim();
+                    const matchedOrder = descId && orders ? (orders as any[]).find((o: any) => o.id?.startsWith(descId)) : null;
+                    return (
+                      <div key={t.id} className="px-3 py-2.5 hover:bg-slate-50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-700">{t.description || (t.type === 'debit' ? 'Compra' : 'Pagamento')}</p>
+                            <p className="text-[9px] text-slate-400">{new Date(t.date).toLocaleString('pt-BR')}</p>
+                          </div>
+                          <div className={`text-xs font-black ${t.type === 'debit' ? 'text-red-500' : 'text-emerald-600'}`}>
+                            {t.type === 'debit' ? '+' : '-'} R$ {(t.amount || 0).toFixed(2)}
+                          </div>
                         </div>
-                        {it.addons?.length > 0 && (
-                          <div className="text-xs text-muted-foreground pl-4">
-                            {it.addons.map((a: any, j: number) => <div key={j}>+ {a.name}</div>)}
+                        {matchedOrder && matchedOrder.items && (
+                          <div className="mt-1.5 bg-slate-50 rounded-md px-2 py-1.5 space-y-0.5">
+                            {matchedOrder.items.map((it: any, i: number) => (
+                              <div key={i} className="flex justify-between text-[10px] text-slate-600">
+                                <span>{it.quantity}x {it.name}{it.addons?.length > 0 ? ` (${it.addons.map((a:any) => a.name).join(', ')})` : ''}</span>
+                                <span className="text-slate-400">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                              </div>
+                            ))}
+                            {matchedOrder.deliveryFee > 0 && (
+                              <div className="flex justify-between text-[10px] text-slate-400 border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
+                                <span>Frete</span>
+                                <span>R$ {matchedOrder.deliveryFee.toFixed(2)}</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                  <Separator />
-                  {order.deliveryFee > 0 && (
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span>R$ {(order.subtotal ?? (order.totalAmount - order.deliveryFee)).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Taxa de entrega</span>
-                        <span>R$ {order.deliveryFee.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center font-bold">
-                    <span>Total</span>
-                    <span className="text-primary">R$ {order.totalAmount.toFixed(2)}</span>
-                  </div>
-                  <Button variant="outline" className="w-full" onClick={() => handleRepeatOrder(order)}>
-                    <RotateCcw className="h-4 w-4 mr-2" /> Repetir Pedido
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
+        ) : (
+          <>
+            {loadingOrders ? (
+              <div className="py-10 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></div>
+            ) : !orders || orders.length === 0 ? (
+              <div className="text-center py-16 space-y-3">
+                <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto" />
+                <p className="text-sm text-slate-400">Nenhum pedido encontrado.</p>
+                <Link href="/"><Button size="sm">Ir para o Cardápio</Button></Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {orders.map((order: any) => (
+                  <div key={order.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">#{order.id?.substring(0,8)}</span>
+                        <span className="text-[10px] text-slate-400">{new Date(order.orderDateTime).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                      <Badge className={`${statusClass(order.status)} text-[9px] px-1.5 py-0.5`}>
+                        {STATUS_LABELS[order.status] || order.status}
+                      </Badge>
+                    </div>
+                    <div className="px-3 py-2 space-y-1.5">
+                      <OrderTimeline status={order.status} orderType={order.orderType || 'delivery'} />
+                      <div className="space-y-0.5">
+                        {order.items?.map((it: any, i: number) => (
+                          <div key={i} className="flex justify-between text-[11px]">
+                            <span className="text-slate-700"><span className="font-bold">{it.quantity}x</span> {it.name}
+                              {it.addons?.length > 0 && <span className="text-slate-400"> ({it.addons.map((a:any) => a.name).join(', ')})</span>}
+                            </span>
+                            <span className="text-slate-500 flex-shrink-0">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-dashed">
+                        <div className="text-[10px] text-slate-400">
+                          {order.deliveryFee > 0 && <span>Frete: R$ {order.deliveryFee.toFixed(2)}</span>}
+                        </div>
+                        <span className="text-sm font-black text-primary">R$ {order.totalAmount.toFixed(2)}</span>
+                      </div>
+                      <button onClick={() => handleRepeatOrder(order)} className="w-full text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 flex items-center justify-center gap-1 py-1">
+                        <RotateCcw className="h-3 w-3" /> Repetir Pedido
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
       <Toaster />

@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
-import { collection, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -54,7 +54,13 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     freeDeliveryOver,
     rulesCount: deliveryFeeRules?.length || 0
   });
-  const activePaymentMethods = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).filter(m => m.active);
+  const [contaCasaEnabled, setContaCasaEnabled] = useState(false);
+  
+  const basePaymentMethods = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).filter(m => m.active);
+  const activePaymentMethods = contaCasaEnabled 
+    ? [...basePaymentMethods, { id: 'conta_casa', label: 'Sua conta (Prazo)', icon: '📝', active: true }]
+    : basePaymentMethods;
+    
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
   const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
@@ -123,6 +129,37 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       }
     })();
   }, [db, user, profileLoaded]);
+
+  // Verificar Conta da Casa quando o telefone muda
+  useEffect(() => {
+    if (!db || !effectiveStoreOwnerId || customerPhone.length < 10) {
+      setContaCasaEnabled(false);
+      return;
+    }
+    const checkCredit = async () => {
+      try {
+        const q = query(
+          collection(db, 'clientes'),
+          where('ownerId', '==', effectiveStoreOwnerId),
+          where('celular', '==', customerPhone)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const clientData = snap.docs[0].data();
+          if (clientData.creditEnabled) {
+            setContaCasaEnabled(true);
+            return;
+          }
+        }
+        setContaCasaEnabled(false);
+      } catch (err) {
+        console.warn('Erro ao verificar Conta da Casa:', err);
+      }
+    };
+    // Debounce simple para evitar muitas chamadas enquanto digita
+    const timer = setTimeout(checkCredit, 500);
+    return () => clearTimeout(timer);
+  }, [customerPhone, db, effectiveStoreOwnerId]);
 
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
   const calculateDeliveryFee = useCallback(async (customerAddress: string) => {

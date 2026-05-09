@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, writeBatch, onSnapshot, orderBy, increment } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,14 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
 
 interface ClientesTabProps {
   db: any;
   user: any;
+  registrarLancamento?: (params: { tipo: 'venda' | 'despesa'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  caixaAberto?: boolean;
 }
 
 interface Cliente {
@@ -34,6 +37,8 @@ interface Cliente {
   ticketMedio: number;
   ultimoPedido: string;
   ownerId: string;
+  creditEnabled?: boolean;
+  creditBalance?: number;
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -57,7 +62,7 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-export function ClientesTab({ db, user }: ClientesTabProps) {
+export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: ClientesTabProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +71,27 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
   const [isImporting, setIsImporting] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
   const [viewingCliente, setViewingCliente] = useState<any>(null);
+  const [contaCasaCliente, setContaCasaCliente] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [contaCasaTransactions, setContaCasaTransactions] = useState<any[]>([]);
+  const [contaCasaLoading, setContaCasaLoading] = useState(false);
+  const [contaCasaPaymentAmount, setContaCasaPaymentAmount] = useState('');
+  const [contaCasaPaymentMethod, setContaCasaPaymentMethod] = useState('pix');
+
+  React.useEffect(() => {
+    if (!contaCasaCliente || !db) return;
+    setContaCasaLoading(true);
+    const q = query(
+      collection(db, 'clientes', contaCasaCliente.id, 'credit_transactions'),
+      orderBy('date', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setContaCasaTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setContaCasaLoading(false);
+    });
+    return () => unsub();
+  }, [contaCasaCliente, db]);
 
   // Form fields
   const [formNome, setFormNome] = useState('');
@@ -77,6 +102,7 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
   const [formComplemento, setFormComplemento] = useState('');
   const [formBairro, setFormBairro] = useState('');
   const [formCidade, setFormCidade] = useState('');
+  const [formCreditEnabled, setFormCreditEnabled] = useState(false);
 
   // Query Firestore
   const clientesQuery = useMemoFirebase(() => {
@@ -127,6 +153,7 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
     setFormComplemento(c.complemento || '');
     setFormBairro(c.bairro || '');
     setFormCidade(c.cidade || '');
+    setFormCreditEnabled(c.creditEnabled || false);
     setEditingCliente(c);
   };
 
@@ -144,6 +171,7 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
         bairro: formBairro.trim(),
         cidade: formCidade.trim(),
         ownerId: user.uid,
+        creditEnabled: formCreditEnabled,
       };
 
       if (editingCliente?.id) {
@@ -157,6 +185,7 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
           totalPedidos: 0,
           totalPontos: 0,
           ticketMedio: 0,
+          creditBalance: 0,
           clienteDesde: new Date().toLocaleDateString('pt-BR'),
           ultimoPedido: '',
         });
@@ -177,6 +206,53 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
       toast({ title: 'Cliente excluído.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
+    }
+  };
+
+  const handleReceivePayment = async () => {
+    if (!contaCasaCliente || !db || !user) return;
+    const amount = Number(contaCasaPaymentAmount.replace(',', '.'));
+    if (isNaN(amount) || amount <= 0) {
+      toast({ variant: 'destructive', title: 'Valor inválido' });
+      return;
+    }
+    
+    if (caixaAberto === false) {
+       toast({ variant: 'destructive', title: 'Erro', description: 'Caixa fechado. Não é possível registrar o recebimento no sistema financeiro.' });
+       return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const transRef = doc(collection(db, 'clientes', contaCasaCliente.id, 'credit_transactions'));
+      await setDoc(transRef, {
+        id: transRef.id,
+        type: 'credit',
+        amount: amount,
+        date: new Date().toISOString(),
+        description: 'Pagamento de Dívida / Acerto'
+      });
+      
+      await updateDoc(doc(db, 'clientes', contaCasaCliente.id), {
+        creditBalance: increment(-amount)
+      });
+      
+      if (registrarLancamento) {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: `Acerto Conta da Casa - ${contaCasaCliente.nome}`,
+          valor: amount,
+          formaPagamento: contaCasaPaymentMethod
+        });
+      }
+      
+      toast({ title: 'Pagamento registrado com sucesso!' });
+      setContaCasaPaymentAmount('');
+      setContaCasaCliente((prev: any) => ({ ...prev, creditBalance: Math.max(0, (prev.creditBalance || 0) - amount) }));
+    } catch (err: any) {
+       toast({ variant: 'destructive', title: 'Erro', description: err.message });
+    } finally {
+       setIsSubmitting(false);
     }
   };
 
@@ -390,7 +466,10 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
               ) : (
                 paginated.map(c => (
                   <TableRow key={c.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setViewingCliente(c)}>
-                    <TableCell className="pl-4 font-semibold text-slate-700">{c.nome}</TableCell>
+                    <TableCell className="pl-4 font-semibold text-slate-700">
+                      {c.nome}
+                      {c.creditEnabled && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">Conta da Casa</Badge>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.celular || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.bairro || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.cidade || '-'}</TableCell>
@@ -403,13 +482,16 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
                     <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
                     <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setContaCasaCliente(c); }} title="Conta da Casa (Fiado)">
+                          <Receipt className="h-3.5 w-3.5 text-indigo-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)} title="Ver Detalhes">
                           <Eye className="h-3.5 w-3.5 text-blue-500" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)} title="Editar Cliente">
                           <Pencil className="h-3.5 w-3.5 text-amber-500" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -440,55 +522,88 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
 
       {/* ─── Modal: Novo/Editar Cliente ─── */}
       <Dialog open={editingCliente !== null} onOpenChange={(open) => { if (!open) setEditingCliente(null); }}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{editingCliente?.id ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
+        <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+          <DialogHeader className="bg-gradient-to-r from-slate-50 to-white px-4 py-2 border-b">
+            <DialogTitle className="text-base flex items-center gap-1.5 text-slate-800">
+              <Users className="h-3.5 w-3.5 text-emerald-600" />
+              {editingCliente?.id ? 'Editar Cliente' : 'Novo Cliente'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Nome completo" autoFocus />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Celular</Label>
-                <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" />
-              </div>
-              <div className="space-y-1">
-                <Label>Data de Nascimento</Label>
-                <Input value={formNascimento} onChange={(e) => setFormNascimento(e.target.value)} placeholder="DD/MM/AAAA" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2 space-y-1">
-                <Label>Logradouro</Label>
-                <Input value={formLogradouro} onChange={(e) => setFormLogradouro(e.target.value)} placeholder="Rua, Av..." />
-              </div>
-              <div className="space-y-1">
-                <Label>Nº</Label>
-                <Input value={formNumero} onChange={(e) => setFormNumero(e.target.value)} placeholder="123" />
+          
+          <div className="max-h-[85vh] overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+            {/* Informações Pessoais */}
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b pb-1">
+                <User className="h-3 w-3 text-slate-500" /> Informações Pessoais
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                <div className="space-y-0.5 md:col-span-2">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nome Completo *</Label>
+                  <Input value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Ex: João da Silva" className="bg-slate-50/50 h-7 text-xs px-2" autoFocus />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
+                  <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nascimento</Label>
+                  <Input value={formNascimento} onChange={(e) => setFormNascimento(e.target.value)} placeholder="DD/MM/AAAA" className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label>Complemento</Label>
-                <Input value={formComplemento} onChange={(e) => setFormComplemento(e.target.value)} placeholder="Apto, Casa..." />
+
+            {/* Endereço */}
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b pb-1">
+                <MapPin className="h-3 w-3 text-slate-500" /> Endereço de Entrega
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                <div className="space-y-0.5 md:col-span-2">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Logradouro</Label>
+                  <Input value={formLogradouro} onChange={(e) => setFormLogradouro(e.target.value)} placeholder="Rua, Av..." className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nº</Label>
+                  <Input value={formNumero} onChange={(e) => setFormNumero(e.target.value)} placeholder="123" className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Complemento</Label>
+                  <Input value={formComplemento} onChange={(e) => setFormComplemento(e.target.value)} placeholder="Apto..." className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
+                <div className="space-y-0.5 md:col-span-2">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Bairro</Label>
+                  <Input value={formBairro} onChange={(e) => setFormBairro(e.target.value)} placeholder="Bairro" className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
+                <div className="space-y-0.5 md:col-span-2">
+                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cidade</Label>
+                  <Input value={formCidade} onChange={(e) => setFormCidade(e.target.value)} placeholder="Cidade" className="bg-slate-50/50 h-7 text-xs px-2" />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label>Bairro</Label>
-                <Input value={formBairro} onChange={(e) => setFormBairro(e.target.value)} placeholder="Bairro" />
+            </div>
+            
+            {/* Conta da Casa */}
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded px-3 py-2 border border-indigo-100 flex items-center justify-between gap-3 shadow-inner">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-3.5 w-3.5 text-indigo-600" />
+                <div>
+                  <Label className="text-xs font-bold text-indigo-900 cursor-pointer mb-0 leading-none" htmlFor="toggle-conta-casa">Ativar Prazo</Label>
+                  <p className="text-[9px] text-indigo-700/80 leading-tight mt-0.5">Permite compras a prazo no app/painel.</p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label>Cidade</Label>
-                <Input value={formCidade} onChange={(e) => setFormCidade(e.target.value)} placeholder="Cidade" />
-              </div>
+              <Switch 
+                id="toggle-conta-casa"
+                checked={formCreditEnabled} 
+                onCheckedChange={setFormCreditEnabled}
+                className="data-[state=checked]:bg-indigo-600 scale-90 shrink-0"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingCliente(null)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSubmitting || !formNome.trim()} className="bg-primary text-white">
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Salvar
+          
+          <DialogFooter className="bg-slate-50 px-4 py-2 border-t flex sm:justify-between items-center w-full">
+            <Button variant="ghost" size="sm" onClick={() => setEditingCliente(null)} className="text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 h-7 text-xs px-3">Cancelar</Button>
+            <Button size="sm" onClick={handleSave} disabled={isSubmitting || !formNome.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-xs px-5 shadow-sm">
+              {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
+              Salvar Cliente
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -558,6 +673,20 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
               <div className="text-xs text-muted-foreground text-center pt-1">
                 Cliente desde: {viewingCliente.clienteDesde || '-'}
               </div>
+
+              {viewingCliente.creditEnabled && (
+                <div className="pt-2 border-t mt-2">
+                  <Button 
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold" 
+                    onClick={() => {
+                      setContaCasaCliente(viewingCliente);
+                      setViewingCliente(null);
+                    }}
+                  >
+                    <Receipt className="w-4 h-4 mr-2" /> Gerenciar Conta da Casa
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -566,6 +695,89 @@ export function ClientesTab({ db, user }: ClientesTabProps) {
               <Pencil className="h-4 w-4 mr-2" /> Editar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Modal: Conta da Casa (Gerenciamento) ─── */}
+      <Dialog open={contaCasaCliente !== null} onOpenChange={(open) => { if (!open) setContaCasaCliente(null); }}>
+        <DialogContent className="sm:max-w-[420px] max-h-[85vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
+          <DialogHeader className="px-4 py-2.5 border-b bg-slate-50">
+            <DialogTitle className="flex items-center gap-2 text-sm text-indigo-700">
+              <Receipt className="h-4 w-4" /> Prazo — {contaCasaCliente?.nome}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 px-4 py-3 rounded-lg text-center shadow-sm">
+              <p className="text-[10px] text-indigo-200 font-medium">Saldo Devedor</p>
+              <p className="text-2xl font-black text-white">R$ {(contaCasaCliente?.creditBalance || 0).toFixed(2)}</p>
+            </div>
+            
+            <div className="border rounded-lg p-2.5 space-y-2 bg-white">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Registrar Pagamento</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px] text-slate-500">Valor (R$)</Label>
+                  <Input 
+                    className="h-8 text-sm"
+                    placeholder="0,00" 
+                    value={contaCasaPaymentAmount}
+                    onChange={(e) => setContaCasaPaymentAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-slate-500">Forma</Label>
+                  <select 
+                    className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={contaCasaPaymentMethod}
+                    onChange={(e) => setContaCasaPaymentMethod(e.target.value)}
+                  >
+                    <option value="pix">PIX</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="debito">Débito</option>
+                    <option value="credito">Crédito</option>
+                  </select>
+                </div>
+              </div>
+              <Button 
+                size="sm"
+                className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" 
+                onClick={handleReceivePayment}
+                disabled={isSubmitting || !contaCasaPaymentAmount}
+              >
+                {isSubmitting ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1.5" />}
+                Dar Baixa
+              </Button>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden bg-white">
+              <div className="px-2.5 py-1.5 border-b bg-slate-50 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Extrato</span>
+                <span className="text-[9px] text-slate-400">{contaCasaTransactions.length} registro(s)</span>
+              </div>
+              {contaCasaLoading ? (
+                <div className="p-4 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-indigo-500" /></div>
+              ) : contaCasaTransactions.length === 0 ? (
+                <div className="p-4 text-center text-[11px] text-slate-400">Nenhuma transa\u00e7\u00e3o.</div>
+              ) : (
+                <div className="divide-y max-h-48 overflow-y-auto custom-scrollbar">
+                  {contaCasaTransactions.map(t => (
+                    <div key={t.id} className="px-2.5 py-1.5 flex items-center justify-between hover:bg-slate-50">
+                      <div>
+                        <p className="text-[10px] font-semibold text-slate-700">{t.description || (t.type === 'debit' ? 'Compra' : 'Pagamento')}</p>
+                        <p className="text-[9px] text-slate-400">{new Date(t.date).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className={`text-[11px] font-black ${t.type === 'debit' ? 'text-red-500' : 'text-emerald-600'}`}>
+                        {t.type === 'debit' ? '+' : '-'} R$ {(t.amount || 0).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="px-4 py-2 border-t flex justify-end">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setContaCasaCliente(null)}>Fechar</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -7,10 +7,11 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, query, where, getDocs, updateDoc, increment } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
+import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -41,10 +42,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   addons = []
 }: NovoPedidoTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
+  if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
+    FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
+  }
   const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
+  const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   
   // Carrinho
   const [cart, setCart] = useState<any[]>([]);
@@ -222,7 +227,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
              change = valRec - finalTotal;
            }
         }
-        const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+        let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+        if (selectedPayment === 'conta_casa') label = 'Prazo';
         paymentString = selectedPayment === 'dinheiro' && change > 0 
            ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
            : label;
@@ -244,7 +250,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             }
           }
           if (amount > 0) {
-             const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+             let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+             if (selectedPayment === 'conta_casa') label = 'Prazo';
              splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
           }
         }
@@ -254,6 +261,26 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         if (totalReceived > finalTotal) {
            paymentString += ` (Troco para R$ ${totalReceived.toFixed(2)})`;
         }
+      }
+
+      const ownerId = storeProfile?.id || user?.uid || 'default';
+      const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
+      if (hasContaCasa) {
+          const phone = customerPhone || '';
+          const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
+          
+          if (!phone || phone.length < 10) {
+             setIsProcessing(false);
+             setQuickRegisterModal({ isOpen: true, name: customerName || '', phone: '', address: fullDeliveryAddress });
+             return;
+          }
+          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
+          const snap = await getDocs(q);
+          if (snap.empty) {
+             setIsProcessing(false);
+             setQuickRegisterModal({ isOpen: true, name: customerName || '', phone, address: fullDeliveryAddress });
+             return;
+          }
       }
 
       const newOrderRef = doc(collection(db, 'orders'));
@@ -286,14 +313,34 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       await setDoc(newOrderRef, orderData);
 
-      // Registrar venda no caixa (1 ou mais partes)
+      // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
       for (const split of splitsToProcess) {
-        await registrarLancamento?.({
-          tipo: 'venda',
-          titulo: `PDV #${newOrderRef.id.substring(0, 5)} - Balcão`,
-          valor: split.amount,
-          formaPagamento: split.methodId,
-        });
+        if (split.methodId === 'conta_casa') {
+           const ownerId = storeProfile?.id || user?.uid || 'default';
+           const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', customerPhone));
+           const snap = await getDocs(q);
+           if (!snap.empty) {
+              const cId = snap.docs[0].id;
+              const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
+              await setDoc(newTrans, {
+                 id: newTrans.id,
+                 type: 'debit',
+                 amount: split.amount,
+                 date: new Date().toISOString(),
+                 description: `PDV #${newOrderRef.id.substring(0,5)}`
+              });
+              await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+           } else {
+              toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
+           }
+        } else if (registrarLancamento) {
+          await registrarLancamento({
+            tipo: 'venda',
+            titulo: `PDV #${newOrderRef.id.substring(0, 5)} - Balcão`,
+            valor: split.amount,
+            formaPagamento: split.methodId,
+          });
+        }
       }
 
       toast({ title: '✅ Pedido finalizado!', description: `Venda R$ ${finalTotal.toFixed(2)} registrada em ${splitsToProcess.length} parte(s).` });
@@ -336,7 +383,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     
     if (amount <= 0) return;
     
-    const label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+    let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
+    if (selectedPayment === 'conta_casa') label = 'Prazo';
     setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
     setSelectedPayment('');
     setValorRecebido('');
@@ -670,9 +718,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     <button
                       type="button"
                       onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
-                      className={`col-span-4 flex items-center justify-center gap-2 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
                     >
-                      <span className="text-lg">🔀</span> Múltiplos Pagamentos
+                      <span className="text-lg">🔀</span>
+                      Múltiplos
                     </button>
                   </div>
 
@@ -764,7 +813,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
                       {selectedPayment && (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 space-y-1.5">
-                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {FORMAS_PAGAMENTO.find((f:any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
+                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {selectedPayment === 'conta_casa' ? 'Prazo' : FORMAS_PAGAMENTO.find((f:any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
                           <div className="flex gap-2">
                             <Input
                               type="text"
@@ -822,6 +871,21 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         allAddons={addons}
         onAddToCart={handleDialogAddToCart}
       />
+      {quickRegisterModal && (
+        <QuickRegisterClientModal
+          isOpen={quickRegisterModal.isOpen}
+          onClose={() => setQuickRegisterModal(null)}
+          onSuccess={() => {
+            setQuickRegisterModal(null);
+            handleFinalizarPedido();
+          }}
+          db={db}
+          ownerId={storeProfile?.id || user?.uid || 'default'}
+          initialName={quickRegisterModal.name}
+          initialPhone={quickRegisterModal.phone}
+          initialAddress={quickRegisterModal.address}
+        />
+      )}
     </div>
   );
 }

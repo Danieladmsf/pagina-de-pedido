@@ -249,7 +249,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       </div>
       <p class="sep">${sep}</p>
       <div class="section">
-        <div class="row"><span>Forma de Pgto.</span><span>${formaPagamento.toUpperCase()}</span></div>
+        <div class="row"><span>Forma de Pgto.</span><span>${(formaPagamento === 'conta_casa' ? 'Prazo' : formaPagamento).toUpperCase()}</span></div>
         <div class="row total-final"><span>${isSangria ? '(−) Valor' : 'Valor'}</span><span>R$ ${valor.toFixed(2)}</span></div>
       </div>
       <div class="footer">

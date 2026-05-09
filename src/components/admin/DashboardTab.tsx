@@ -218,7 +218,8 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
     const paymentCount: Record<string, number> = {};
     valid.forEach(o => {
       const raw = (o.paymentMethod || 'Não definido').toString();
-      const primary = raw.split(/[+,;]/)[0].trim().split('(')[0].trim() || 'Não definido';
+      let primary = raw.split(/[+,;]/)[0].trim().split('(')[0].trim() || 'Não definido';
+      if (primary === 'conta_casa') primary = 'Prazo';
       paymentCount[primary] = (paymentCount[primary] || 0) + (o.totalAmount || 0);
     });
     const paymentData = Object.entries(paymentCount)

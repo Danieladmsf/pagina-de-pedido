@@ -1553,7 +1553,7 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'clientes' && (
-            <ClientesTab db={db} user={user} />
+            <ClientesTab db={db} user={user} registrarLancamento={registrarLancamento} caixaAberto={caixaAberto} />
           )}
           </div>
         </div>

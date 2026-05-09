@@ -78,6 +78,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     { id: 'credito', label: 'Crédito', icon: '💳', active: true },
   ]);
 
+  const [creditPixKey, setCreditPixKey] = useState('');
+  const [creditPixName, setCreditPixName] = useState('');
+
   useEffect(() => {
     if (!db || !user?.uid) return;
     const fetchProfile = async () => {
@@ -107,6 +110,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           if (data.feeRules) setFeeRules(data.feeRules);
           if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
           if (data.plannedClosures) setPlannedClosures(data.plannedClosures);
+          if (data.creditPixKey) setCreditPixKey(data.creditPixKey);
+          if (data.creditPixName) setCreditPixName(data.creditPixName);
         }
       } catch (err) {
         console.error('Erro ao buscar perfil da loja', err);
@@ -148,6 +153,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         freelancers,
         feeRules: feeRules.sort((a, b) => a.maxKm - b.maxKm),
         paymentMethods,
+        creditPixKey,
+        creditPixName,
         plannedClosures: plannedClosures.filter(c => c.date >= new Date().toISOString().split('T')[0]),
         updatedAt: new Date().toISOString()
       }, { merge: true });
@@ -1009,6 +1016,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         )}
 
         {activeTab === 'pagamentos' && (
+          <>
           <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
             <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-teal-500/15 to-emerald-500/15 border border-teal-500/20 flex items-center justify-center">
@@ -1079,6 +1087,51 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
               </div>
             </div>
           </section>
+          
+          {/* Nova Configuração: Conta da Casa */}
+          <section className="bg-white rounded-2xl shadow-sm border overflow-hidden mt-6">
+            <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-purple-500/15 border border-indigo-500/20 flex items-center justify-center">
+                <span className="text-xl">📝</span>
+              </div>
+              <div className="flex-1">
+                <h2 className="text-base font-bold text-slate-800">Sua conta (Prazo)</h2>
+                <p className="text-xs text-muted-foreground">Configure os dados de recebimento (PIX) que aparecerão no extrato de cobrança do cliente.</p>
+              </div>
+            </header>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="credit_pix">Chave PIX para Pagamento da Conta</Label>
+                  <Input 
+                    id="credit_pix" 
+                    placeholder="CNPJ, Celular ou E-mail" 
+                    value={creditPixKey} 
+                    onChange={e => setCreditPixKey(e.target.value)} 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="credit_name">Nome do Titular da Conta</Label>
+                  <Input 
+                    id="credit_name" 
+                    placeholder="Nome que aparece ao transferir" 
+                    value={creditPixName} 
+                    onChange={e => setCreditPixName(e.target.value)} 
+                  />
+                </div>
+              </div>
+              <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-lg flex items-start gap-3">
+                <Info className="h-5 w-5 text-indigo-500 shrink-0 mt-0.5" />
+                <div className="text-sm text-indigo-800">
+                  <p className="font-bold mb-1">Como funciona a Conta da Casa?</p>
+                  <p>1. Ative o crédito individualmente para os clientes VIP na aba <strong>Clientes</strong>.</p>
+                  <p>2. Quando esse cliente inserir o celular no carrinho, a opção de pagamento <strong>"Conta da Casa"</strong> aparecerá para ele.</p>
+                  <p>3. A chave PIX acima será exibida no painel dele e no extrato de cobrança gerado para ele realizar o acerto da dívida.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+          </>
         )}
 
         <div className="bg-white rounded-2xl shadow-sm border p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 sticky bottom-2 z-10">
