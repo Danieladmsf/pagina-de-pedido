@@ -1,7 +1,7 @@
 
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
@@ -91,6 +91,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [distanceInfo, setDistanceInfo] = useState<{ distanceText: string; durationText: string; distanceKm: number; originAddress?: string; destinationAddress?: string } | null>(null);
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [deliveryBlocked, setDeliveryBlocked] = useState(false);
+  const lastAttemptedAddressRef = useRef<string>('');
 
   const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
   const appliedDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
@@ -339,16 +340,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
   useEffect(() => {
     if (orderType !== 'delivery') return;
-    if (street && street.length > 3 && city && city.length > 3) {
-      const timeout = setTimeout(() => {
-        if (dynamicFee === null && !calculatingFee) {
-          const fullAddr = [street, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
-          calculateDeliveryFee(fullAddr);
-        }
-      }, 1000); // 1 segundo de espera após o preenchimento para acionar
-      return () => clearTimeout(timeout);
-    }
-  }, [street, city, neighborhood, number, orderType, dynamicFee, calculatingFee, calculateDeliveryFee]);
+    if (!(street && street.length > 3 && city && city.length > 3)) return;
+    const fullAddr = [street, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
+    if (lastAttemptedAddressRef.current === fullAddr) return;
+    const timeout = setTimeout(() => {
+      lastAttemptedAddressRef.current = fullAddr;
+      calculateDeliveryFee(fullAddr);
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [street, city, neighborhood, number, orderType, calculateDeliveryFee]);
 
   const fullDeliveryAddress = [street, number, complement, neighborhood, city, cep].filter(Boolean).join(', ');
 

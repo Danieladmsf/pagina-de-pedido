@@ -192,16 +192,20 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         if (selectedPayment) {
           const remaining = Math.max(0, paymentModalOrder.totalAmount - splitsToProcess.reduce((sum, s) => sum + s.amount, 0));
           let amount = remaining;
-          let received = undefined;
-          if (selectedPayment === 'dinheiro' && valorRecebido) {
-            const valRec = Number(valorRecebido);
-            if (valRec >= remaining) {
-              received = valRec;
-              amount = remaining;
-            } else {
-              amount = valRec;
-              received = valRec;
+          let received: number | undefined = undefined;
+          const valRec = valorRecebido ? Number(valorRecebido) : 0;
+          if (selectedPayment === 'dinheiro') {
+            if (valRec > 0) {
+              if (valRec >= remaining) {
+                amount = remaining;
+                received = valRec;
+              } else {
+                amount = valRec;
+                received = valRec;
+              }
             }
+          } else if (valRec > 0) {
+            amount = Math.min(valRec, remaining);
           }
           if (amount > 0) {
              let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
@@ -288,20 +292,25 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     if (!selectedPayment || !paymentModalOrder) return;
     const remaining = Math.max(0, paymentModalOrder.totalAmount - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
     let amount = remaining;
-    let received = undefined;
-    if (selectedPayment === 'dinheiro' && valorRecebido) {
-      const valRec = Number(valorRecebido);
-      if (valRec >= remaining) {
-        received = valRec;
-        amount = remaining;
-      } else {
-        amount = valRec;
-        received = valRec;
+    let received: number | undefined = undefined;
+    const valRec = valorRecebido ? Number(valorRecebido) : 0;
+
+    if (selectedPayment === 'dinheiro') {
+      if (valRec > 0) {
+        if (valRec >= remaining) {
+          amount = remaining;
+          received = valRec;
+        } else {
+          amount = valRec;
+          received = valRec;
+        }
       }
+    } else if (valRec > 0) {
+      amount = Math.min(valRec, remaining);
     }
-    
+
     if (amount <= 0) return;
-    
+
     let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
     if (selectedPayment === 'conta_casa') label = 'Prazo';
     setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
