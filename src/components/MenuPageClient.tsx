@@ -487,7 +487,20 @@ export function MenuPageClient() {
           />
         </div>
 
-        <div className="relative z-20 max-w-7xl mx-auto px-3 py-3 flex justify-end md:px-8 md:py-4">
+        <div className="relative z-20 max-w-7xl mx-auto px-3 py-3 flex items-start justify-between md:px-8 md:py-4">
+          <div className="inline-flex rounded-2xl border border-white/35 bg-white/20 p-1.5 shadow-2xl shadow-slate-950/25 backdrop-blur-md">
+            {storeProfile?.general?.logoUrl ? (
+              <img
+                src={storeProfile.general.logoUrl}
+                alt="Logo"
+                className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-white/90 shadow-lg md:h-20 md:w-20 md:rounded-2xl"
+              />
+            ) : (
+              <div className="h-14 w-14 shrink-0 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-2xl font-black shadow-lg ring-2 ring-white/90 md:h-20 md:w-20 md:rounded-2xl md:text-3xl">
+                {(storeProfile?.general?.name || storeInfo?.storeName || 'G').charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
             <button
@@ -523,21 +536,7 @@ export function MenuPageClient() {
             />
           </div>
         </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-3 pt-24 sm:pt-32 md:px-8 md:pb-8 md:pt-56">
-          <div className="inline-flex rounded-2xl border border-white/35 bg-white/20 p-1.5 shadow-2xl shadow-slate-950/25 backdrop-blur-md">
-            {storeProfile?.general?.logoUrl ? (
-              <img
-                src={storeProfile.general.logoUrl}
-                alt="Logo"
-                className="h-14 w-14 shrink-0 rounded-xl object-cover ring-2 ring-white/90 shadow-lg md:h-20 md:w-20 md:rounded-2xl"
-              />
-            ) : (
-              <div className="h-14 w-14 shrink-0 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-2xl font-black shadow-lg ring-2 ring-white/90 md:h-20 md:w-20 md:rounded-2xl md:text-3xl">
-                {(storeProfile?.general?.name || storeInfo?.storeName || 'G').charAt(0).toUpperCase()}
-              </div>
-            )}
-          </div>
-        </div>
+        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-3 pt-24 sm:pt-32 md:px-8 md:pb-8 md:pt-56" />
       </section>
 
       <div className="relative z-20 max-w-7xl mx-auto px-3 pt-2 md:px-8 md:pt-3">
