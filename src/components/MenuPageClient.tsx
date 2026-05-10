@@ -259,7 +259,7 @@ export function MenuPageClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24 relative" style={themeToCssVars(theme)}>
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden pb-24 relative" style={themeToCssVars(theme)}>
       {showStoreInfo && (
         <div className="min-h-screen bg-[#FAFAF7]">
           {/* Header */}
@@ -457,7 +457,7 @@ export function MenuPageClient() {
           </div>
         </div>
       )}
-      {!showStoreInfo && (<>
+      {!showStoreInfo && (<div className="w-full max-w-full overflow-x-hidden">
       {!isStoreOpenRightNow.isOpen && (
         <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
           {isStoreOpenRightNow.reason === 'hours_closed' 
@@ -551,8 +551,8 @@ export function MenuPageClient() {
 
       <div className="relative z-20 max-w-7xl mx-auto px-3 pt-3 md:px-8 md:pt-5">
         <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
-            <div className="relative">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
+            <div className="relative min-w-0">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/55 md:left-4 md:h-5 md:w-5" />
               <Input
                 placeholder="O que você quer saborear hoje?"
@@ -562,7 +562,7 @@ export function MenuPageClient() {
               />
             </div>
 
-            <div className="relative group/cats">
+            <div className="relative min-w-0 max-w-full group/cats">
               {/* Left fade gradient */}
               <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
 
@@ -578,7 +578,7 @@ export function MenuPageClient() {
               {/* Category buttons */}
               <div
                 ref={categoryScrollRef}
-                className="flex flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x md:mx-11"
+                className="flex max-w-full min-w-0 flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x md:mx-11"
               >
                 <Button
                   variant={activeCategoryId === 'all' ? 'default' : 'outline'}
@@ -623,7 +623,7 @@ export function MenuPageClient() {
         </div>
       </div>
       <ActiveOrdersBanner />
-      <div className="max-w-7xl mx-auto px-3 pt-5 md:px-8 md:pt-6">
+      <div className="max-w-7xl mx-auto w-full overflow-x-hidden px-3 pt-5 md:px-8 md:pt-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
         {filteredItems.map((item) => {
           const rawStock = item.stockQuantity;
@@ -704,7 +704,7 @@ export function MenuPageClient() {
         isStoreOpen={isStoreOpenRightNow.isOpen}
       />
       </div>
-      </>)}
+      </div>)}
       <Toaster />
     </div>
   );
