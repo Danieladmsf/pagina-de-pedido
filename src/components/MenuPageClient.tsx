@@ -96,6 +96,7 @@ export function MenuPageClient() {
   const bannerMobileUrl = (storeProfile as any)?.general?.bannerMobileUrl as string | undefined;
   const bannerImageUrl = bannerDesktopUrl || bannerMobileUrl;
   const hasBanner = Boolean(bannerImageUrl);
+  const hasDedicatedMobileBanner = Boolean(bannerMobileUrl);
   const heroThemeBackground = theme.bgPattern || `linear-gradient(135deg, ${theme.colors.bg} 0%, ${theme.colors.surface} 100%)`;
 
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
@@ -464,12 +465,13 @@ export function MenuPageClient() {
             : '⚠️ Abriremos em breve! O sistema está sendo preparado.'}
         </div>
       )}
-      <section className={`relative w-full overflow-hidden ${hasBanner ? 'min-h-[330px] md:min-h-[430px]' : 'min-h-[280px] md:min-h-[340px]'}`}>
+      <section className={`relative w-full overflow-hidden ${hasBanner ? 'min-h-[255px] sm:min-h-[330px] md:min-h-[430px]' : 'min-h-[235px] sm:min-h-[280px] md:min-h-[340px]'}`}>
         <div className="absolute inset-0">
+          <div className="absolute inset-0" style={{ background: heroThemeBackground }} />
           {hasBanner ? (
             <>
               <div
-                className="absolute inset-0 bg-cover bg-center md:hidden"
+                className={`absolute inset-0 md:hidden ${hasDedicatedMobileBanner ? 'bg-cover bg-center' : 'bg-contain bg-top bg-no-repeat'}`}
                 style={{ backgroundImage: `url("${bannerMobileUrl || bannerImageUrl}")` }}
               />
               <div
@@ -477,9 +479,7 @@ export function MenuPageClient() {
                 style={{ backgroundImage: `url("${bannerDesktopUrl || bannerImageUrl}")` }}
               />
             </>
-          ) : (
-            <div className="absolute inset-0" style={{ background: heroThemeBackground }} />
-          )}
+          ) : null}
           <div className={hasBanner ? "absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.34),rgba(15,23,42,0.04)_46%,rgba(15,23,42,0.16)),linear-gradient(180deg,rgba(15,23,42,0.18),transparent_36%,rgba(15,23,42,0.38))]" : "absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.76),transparent_34%),linear-gradient(90deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08)_52%,rgba(255,255,255,0.28))]"} />
           <div
             className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
@@ -487,7 +487,7 @@ export function MenuPageClient() {
           />
         </div>
 
-        <div className="relative z-20 max-w-7xl mx-auto px-4 md:px-8 py-4 flex justify-end">
+        <div className="relative z-20 max-w-7xl mx-auto px-3 py-3 flex justify-end md:px-8 md:py-4">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
             <button
@@ -523,23 +523,23 @@ export function MenuPageClient() {
             />
           </div>
         </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-8 pb-10 pt-24 md:pb-14 md:pt-44">
-          <div className="inline-flex max-w-[min(92vw,620px)] items-center gap-3 rounded-3xl border border-white/25 bg-slate-950/25 px-3 py-3 pr-5 text-white shadow-2xl shadow-slate-950/25 backdrop-blur-md">
+        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-5 pt-16 sm:pt-24 md:px-8 md:pb-14 md:pt-44">
+          <div className="inline-flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-2xl border border-white/25 bg-slate-950/25 px-2.5 py-2 text-white shadow-2xl shadow-slate-950/25 backdrop-blur-md sm:max-w-[min(92vw,620px)] sm:gap-3 sm:rounded-3xl sm:px-3 sm:py-3 sm:pr-5">
             {storeProfile?.general?.logoUrl ? (
               <img
                 src={storeProfile.general.logoUrl}
                 alt="Logo"
-                className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-white/80 shadow-lg"
+                className="h-10 w-10 shrink-0 rounded-xl object-cover ring-2 ring-white/80 shadow-lg sm:h-14 sm:w-14 sm:rounded-2xl"
               />
             ) : (
-              <div className="h-14 w-14 shrink-0 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center text-2xl font-black shadow-lg ring-2 ring-white/80">
+              <div className="h-10 w-10 shrink-0 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-lg font-black shadow-lg ring-2 ring-white/80 sm:h-14 sm:w-14 sm:rounded-2xl sm:text-2xl">
                 {(storeProfile?.general?.name || storeInfo?.storeName || 'G').charAt(0).toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/80">Cardápio digital</p>
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/80 sm:text-[11px] sm:tracking-[0.28em]">Cardápio digital</p>
               <h1
-                className="truncate text-2xl font-black leading-tight text-white drop-shadow-lg md:text-4xl"
+                className="truncate text-lg font-black leading-tight text-white drop-shadow-lg sm:text-2xl md:text-4xl"
                 style={{ fontFamily: theme.fonts.heading }}
               >
                 {storeProfile?.general?.name || storeInfo?.storeName || 'Minha Loja'}
@@ -549,14 +549,14 @@ export function MenuPageClient() {
         </div>
       </section>
 
-      <div className="relative z-20 max-w-7xl mx-auto px-4 md:px-8 pt-5">
-        <div className="rounded-[1.75rem] border border-primary/10 bg-white/95 p-3 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:p-4">
+      <div className="relative z-20 max-w-7xl mx-auto px-3 pt-3 md:px-8 md:pt-5">
+        <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/55" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/55 md:left-4 md:h-5 md:w-5" />
               <Input
                 placeholder="O que você quer saborear hoje?"
-                className="h-14 rounded-2xl border-white/70 bg-white pl-11 text-base shadow-md focus:ring-accent"
+                className="h-12 rounded-xl border-white/70 bg-white pl-10 text-sm shadow-md focus:ring-accent md:h-14 md:rounded-2xl md:pl-11 md:text-base"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -582,7 +582,7 @@ export function MenuPageClient() {
               >
                 <Button
                   variant={activeCategoryId === 'all' ? 'default' : 'outline'}
-                  className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                  className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
                     activeCategoryId === 'all'
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
@@ -595,7 +595,7 @@ export function MenuPageClient() {
                   <Button
                     key={cat.id}
                     variant={activeCategoryId === cat.id ? 'default' : 'outline'}
-                    className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
                       activeCategoryId === cat.id
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
@@ -623,8 +623,8 @@ export function MenuPageClient() {
         </div>
       </div>
       <ActiveOrdersBanner />
-      <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="max-w-7xl mx-auto px-3 pt-5 md:px-8 md:pt-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
         {filteredItems.map((item) => {
           const rawStock = item.stockQuantity;
           const hasStockControl = rawStock !== null && rawStock !== undefined && rawStock !== '';
@@ -634,40 +634,40 @@ export function MenuPageClient() {
           return (
           <Card 
             key={item.id} 
-            className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-3xl bg-white flex flex-col ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''}`}
+            className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''}`}
             onClick={() => !isOutOfStock && setSelectedItem(item)}
           >
-            <div className="relative h-56 w-full">
+            <div className="relative h-44 w-full md:h-56">
               <Image 
                 src={item.imageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
                 alt={item.name} 
                 fill 
                 className="object-cover group-hover:scale-105 transition-transform duration-700"
               />
-              <Badge className="absolute top-4 right-4 bg-accent text-white font-black border-none shadow-lg px-3 py-1 text-base">
+              <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
                 R$ {item.price.toFixed(2)}
               </Badge>
               {storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && (
-                <Badge className={`absolute bottom-4 right-4 font-bold border-none shadow-lg px-2.5 py-1 text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
+                <Badge className={`absolute bottom-3 right-3 font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
                   {isOutOfStock ? 'Esgotado' : `Estoque: ${currentStock}`}
                 </Badge>
               )}
             </div>
-            <CardContent className="p-6 flex flex-col flex-1">
+            <CardContent className="p-4 flex flex-col flex-1 md:p-6">
               <div className="flex-1 space-y-2 mb-4">
-                <h3 className="min-h-[3.25rem] text-[1.05rem] md:text-lg font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors">
+                <h3 className="min-h-[2.5rem] text-base font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors md:min-h-[3.25rem] md:text-lg">
                   {item.name}
                 </h3>
-                <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
                   {item.description}
                 </p>
               </div>
               <div className="flex items-center justify-between pt-4 border-t border-muted">
-                <span className="text-xs font-black text-primary/40 uppercase tracking-widest">
+                <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
                   {categories?.find(c => c.id === item.categoryId)?.name}
                 </span>
-                <Button disabled={isOutOfStock} size="sm" className={`text-white h-10 w-10 p-0 rounded-xl shadow-md transition-colors ${isOutOfStock ? 'bg-slate-300' : 'bg-primary hover:bg-accent'}`}>
-                  <Plus className="h-6 w-6" />
+                <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : 'bg-primary hover:bg-accent'}`}>
+                  <Plus className="h-5 w-5 md:h-6 md:w-6" />
                 </Button>
               </div>
             </CardContent>
