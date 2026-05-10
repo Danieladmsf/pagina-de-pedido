@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Box, 
-  Tag, 
-  PlusCircle, 
-  Users, 
-  Store, 
+import {
+  LayoutDashboard,
+  Box,
+  Tag,
+  PlusCircle,
+  Users,
+  Store,
   ChevronDown,
   ChevronRight,
   Contact,
@@ -13,6 +13,7 @@ import {
   Clock,
   Bike,
   Wallet,
+  Palette,
   Menu
 } from 'lucide-react';
 
@@ -42,6 +43,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_horarios', label: 'Horários', icon: Clock },
     { id: 'perfil_motoboys', label: 'Motoboys', icon: Bike },
     { id: 'perfil_pagamentos', label: 'Pagamentos', icon: Wallet },
+    { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },
   ];
 
   const displayName = storeName || 'Minha Loja';

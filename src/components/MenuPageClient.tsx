@@ -17,6 +17,7 @@ import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRig
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 
 export function MenuPageClient() {
   const db = useFirestore();
@@ -85,6 +86,10 @@ export function MenuPageClient() {
   }, [db, storeId]);
 
   const { data: storeProfile } = useDoc(storeProfileRef);
+
+  const theme = getTheme((storeProfile as any)?.theme);
+
+  useEffect(() => { ensureBrandFontsLoaded(); }, []);
 
   // 🔍 DEBUG: Ver storeId e storeProfile completo
   if (storeProfile) {
@@ -240,7 +245,7 @@ export function MenuPageClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24 relative">
+    <div className="min-h-screen pb-24 relative" style={themeToCssVars(theme)}>
       {showStoreInfo && (
         <div className="min-h-screen bg-[#FAFAF7]">
           {/* Header */}
@@ -447,10 +452,22 @@ export function MenuPageClient() {
         </div>
       )}
       <section
-        className="relative w-full bg-no-repeat bg-top bg-[length:100%_auto] md:bg-[length:100%_100%] md:aspect-[1832/560] bg-[image:url('/lima-limao-bg-mobile.png')] md:bg-[image:url('/lima-limao-bg.png')]"
+        className={(storeProfile as any)?.general?.bannerUrl ? 'relative w-full md:aspect-[1832/560]' : 'relative w-full'}
       >
-        <div className="absolute inset-0 bg-white/25" />
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-white pointer-events-none" />
+        {(storeProfile as any)?.general?.bannerUrl && (
+          <>
+            <div
+              className="md:hidden absolute inset-0 bg-no-repeat bg-top bg-[length:100%_auto]"
+              style={{ backgroundImage: `url('${(storeProfile as any).general.bannerMobileUrl || (storeProfile as any).general.bannerUrl}')` }}
+            />
+            <div
+              className="hidden md:block absolute inset-0 bg-no-repeat bg-center bg-cover"
+              style={{ backgroundImage: `url('${(storeProfile as any).general.bannerUrl}')` }}
+            />
+            <div className="absolute inset-0 bg-white/25" />
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-white pointer-events-none" />
+          </>
+        )}
         <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
@@ -473,9 +490,9 @@ export function MenuPageClient() {
               });
               return null;
             })()}
-            <CartDrawer 
-              storeOwnerId={storeId} 
-              deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0} 
+            <CartDrawer
+              storeOwnerId={storeId}
+              deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0}
               storeAddress={storeProfile?.general?.address || (storeInfo as any)?.storeAddress || ''}
               deliveryFeeRules={storeProfile?.fees?.feeRules || storeProfile?.feeRules || (storeInfo as any)?.deliveryFeeRules || []}
               maxDeliveryRadius={storeProfile?.fees?.maxDeliveryRadius || 0}
@@ -483,6 +500,7 @@ export function MenuPageClient() {
               isStoreOpen={isStoreOpenRightNow.isOpen}
               menuItems={items || []}
               enableInventory={storeProfile?.general?.enableInventory || false}
+              themeId={(storeProfile as any)?.theme}
             />
           </div>
         </div>

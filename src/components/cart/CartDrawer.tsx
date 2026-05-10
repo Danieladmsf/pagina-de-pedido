@@ -15,6 +15,7 @@ import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
+import { getTheme, themeToCssVars } from '@/lib/themes';
 
 interface PaymentMethodConfig {
   id: string;
@@ -34,6 +35,7 @@ interface CartDrawerProps {
   isStoreOpen?: boolean;
   menuItems?: any[];
   enableInventory?: boolean;
+  themeId?: string | null;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
@@ -45,7 +47,8 @@ const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
 
 type Step = 'cart' | 'info';
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
+  const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
     storeAddress: storeAddress?.substring(0, 30),
@@ -606,7 +609,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           )}
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-md flex flex-col h-full bg-[#FAFAF7]">
+      <SheetContent className="w-full sm:max-w-md flex flex-col h-full" style={themeToCssVars(cartTheme)}>
         <SheetHeader className="pb-2">
           <SheetTitle className="text-base font-bold flex items-center gap-2">
             {headerTitle}

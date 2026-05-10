@@ -28,6 +28,8 @@ import { MesasTab } from '@/components/admin/MesasTab';
 import { ClientesTab } from '@/components/admin/ClientesTab';
 import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
 import { SidebarNav } from '@/components/admin/SidebarNav';
+import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
+import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
@@ -44,6 +46,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'caixa' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -107,7 +110,7 @@ export default function AdminPage() {
     return doc(db, 'store_profiles', user!.uid);
   }, [db, isRealUser]);
 
-  const { data: storeProfile } = useDoc(storeProfileRef);
+  const { data: storeProfile, isLoading: storeProfileLoading } = useDoc(storeProfileRef);
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
@@ -659,6 +662,7 @@ export default function AdminPage() {
   const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/?s=${user?.uid}` : '';
 
   return (
+    <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
       <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} />
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
@@ -1900,7 +1904,10 @@ export default function AdminPage() {
             </div>
           )}
 
-          {activeTab.startsWith('perfil_') && (
+          {activeTab === 'perfil_aparencia' && (
+            <AppearanceTab db={db} user={user} storeProfile={storeProfile} />
+          )}
+          {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && (
             <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
           )}
 
@@ -1913,5 +1920,15 @@ export default function AdminPage() {
 
       </div>
     </div>
+
+    {db && isRealUser && !storeProfileLoading && !wizardDismissed && !storeProfile?.onboardingCompleted && (
+      <WelcomeWizard
+        db={db}
+        userId={user!.uid}
+        storeName={storeProfile?.general?.name}
+        onComplete={() => setWizardDismissed(true)}
+      />
+    )}
+    </>
   );
 }
