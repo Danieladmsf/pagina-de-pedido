@@ -523,7 +523,7 @@ export function MenuPageClient() {
             />
           </div>
         </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-5 pt-16 sm:pt-24 md:px-8 md:pb-14 md:pt-44">
+        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-2 pt-20 sm:pt-28 md:px-8 md:pb-6 md:pt-52">
           <div className="inline-flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-2xl border border-white/25 bg-slate-950/25 px-2.5 py-2 text-white shadow-2xl shadow-slate-950/25 backdrop-blur-md sm:max-w-[min(92vw,620px)] sm:gap-3 sm:rounded-3xl sm:px-3 sm:py-3 sm:pr-5">
             {storeProfile?.general?.logoUrl ? (
               <img
@@ -549,7 +549,7 @@ export function MenuPageClient() {
         </div>
       </section>
 
-      <div className="relative z-20 max-w-7xl mx-auto px-3 pt-3 md:px-8 md:pt-5">
+      <div className="relative z-20 max-w-7xl mx-auto px-3 pt-2 md:px-8 md:pt-3">
         <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
           <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
             <div className="relative min-w-0">
