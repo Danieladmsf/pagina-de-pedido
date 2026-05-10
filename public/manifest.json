@@ -1,6 +1,6 @@
 {
-  "name": "Lima Limão - Cardápio Digital",
-  "short_name": "Lima Limão",
+  "name": "Cardápio Digital",
+  "short_name": "Cardápio",
   "description": "Cardápio digital e gestão de pedidos",
   "start_url": "/admin",
   "display": "standalone",

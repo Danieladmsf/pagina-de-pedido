@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-Process *)",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "PowerShell($key = \"AIzaSyAVes6z9Na9FpGkxtq-1HyD9ufrkumHYtA\"; $url = \"https://maps.googleapis.com/maps/api/distancematrix/json?origins=R.+Antonio+Pizzi,+Cravinhos,+SP&destinations=R.+Jose+Marques+204,+Cravinhos,+SP&mode=driving&language=pt-BR&key=$key\"; $resp = Invoke-RestMethod -Uri $url; \"Status: $\\($resp.status\\)\"; if \\($resp.status -ne 'OK'\\) { \"Error: $\\($resp.error_message\\)\" } else { \"Origem: $\\($resp.origin_addresses -join ', '\\)\"; \"Destino: $\\($resp.destination_addresses -join ', '\\)\"; $el = $resp.rows[0].elements[0]; \"Distancia: $\\($el.distance.text\\)\"; \"Tempo: $\\($el.duration.text\\)\" })",
+      "PowerShell($key = \"AIzaSyAVes6z9Na9FpGkxtq-1HyD9ufrkumHYtA\"; $url = \"https://maps.googleapis.com/maps/api/distancematrix/json?origins=R.+Antonio+Pizzi,+Cravinhos,+SP&destinations=R.+Jose+Marques+204,+Cravinhos,+SP&mode=driving&language=pt-BR&key=$key\"; $resp = Invoke-RestMethod -Uri $url; \"Status: $\\($resp.status\\)\"; if \\($resp.status -ne 'OK'\\) { \"Error: $\\($resp.error_message\\)\" } else { \"Origem: $\\($resp.origin_addresses -join ', '\\)\"; \"Destino: $\\($resp.destination_addresses -join ', '\\)\"; $el = $resp.rows[0].elements[0]; \"Element status: $\\($el.status\\)\"; if \\($el.status -eq 'OK'\\) { \"Distancia: $\\($el.distance.text\\) \\($\\($el.distance.value\\) m\\)\"; \"Tempo: $\\($el.duration.text\\)\" } })"
     ]
   }
 }

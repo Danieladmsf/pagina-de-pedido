@@ -34,6 +34,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const [formData, setFormData] = useState({
     name: '',
     cnpj: '',
+    foundedYear: '',
     phone: '',
     whatsapp: '',
     address: '',
@@ -131,6 +132,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         general: {
           name: formData.name,
           cnpj: formData.cnpj,
+          foundedYear: formData.foundedYear,
           phone: formData.phone,
           whatsapp: formData.whatsapp,
           address: formData.address,
@@ -381,6 +383,23 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     <span className="text-rose-500">*</span>
                   </Label>
                   <Input name="name" value={formData.name} onChange={handleChange} placeholder="Ex: Restaurante Sabor & Arte" className="h-11" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <CalendarOff className="h-3.5 w-3.5 text-slate-400" /> Ano de fundaÃ§Ã£o
+                  </Label>
+                  <Input
+                    type="number"
+                    name="foundedYear"
+                    value={formData.foundedYear}
+                    onChange={handleChange}
+                    placeholder="Ex: 2020"
+                    min={1800}
+                    max={new Date().getFullYear()}
+                    className="h-11"
+                    inputMode="numeric"
+                  />
+                  <p className="text-[10px] text-slate-400">Usado no rodapÃ© do cardÃ¡pio pÃºblico.</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">

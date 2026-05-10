@@ -88,8 +88,21 @@ export function MenuPageClient() {
   const { data: storeProfile } = useDoc(storeProfileRef);
 
   const theme = getTheme((storeProfile as any)?.theme);
+  const storeDisplayName = storeProfile?.general?.name || storeInfo?.storeName || '';
+  const currentYear = new Date().getFullYear();
+  const foundedYear = Number((storeProfile as any)?.general?.foundedYear);
+  const footerYear = Number.isInteger(foundedYear) && foundedYear >= 1800 && foundedYear <= currentYear ? foundedYear : currentYear;
+  const bannerDesktopUrl = (storeProfile as any)?.general?.bannerUrl as string | undefined;
+  const bannerMobileUrl = (storeProfile as any)?.general?.bannerMobileUrl as string | undefined;
+  const bannerImageUrl = bannerDesktopUrl || bannerMobileUrl;
+  const hasBanner = Boolean(bannerImageUrl);
+  const heroThemeBackground = theme.bgPattern || `linear-gradient(135deg, ${theme.colors.bg} 0%, ${theme.colors.surface} 100%)`;
 
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
+
+  useEffect(() => {
+    document.title = storeDisplayName ? `${storeDisplayName} - Cardápio Digital` : 'Cardápio Digital';
+  }, [storeDisplayName]);
 
   // 🔍 DEBUG: Ver storeId e storeProfile completo
   if (storeProfile) {
@@ -451,24 +464,30 @@ export function MenuPageClient() {
             : '⚠️ Abriremos em breve! O sistema está sendo preparado.'}
         </div>
       )}
-      <section
-        className={(storeProfile as any)?.general?.bannerUrl ? 'relative w-full md:aspect-[1832/560]' : 'relative w-full'}
-      >
-        {(storeProfile as any)?.general?.bannerUrl && (
-          <>
-            <div
-              className="md:hidden absolute inset-0 bg-no-repeat bg-top bg-[length:100%_auto]"
-              style={{ backgroundImage: `url('${(storeProfile as any).general.bannerMobileUrl || (storeProfile as any).general.bannerUrl}')` }}
-            />
-            <div
-              className="hidden md:block absolute inset-0 bg-no-repeat bg-center bg-cover"
-              style={{ backgroundImage: `url('${(storeProfile as any).general.bannerUrl}')` }}
-            />
-            <div className="absolute inset-0 bg-white/25" />
-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-b from-transparent to-white pointer-events-none" />
-          </>
-        )}
-        <div className="relative max-w-7xl mx-auto px-4 md:px-8 py-6 flex justify-end">
+      <section className={`relative w-full overflow-hidden ${hasBanner ? 'min-h-[330px] md:min-h-[430px]' : 'min-h-[280px] md:min-h-[340px]'}`}>
+        <div className="absolute inset-0">
+          {hasBanner ? (
+            <>
+              <div
+                className="absolute inset-0 bg-cover bg-center md:hidden"
+                style={{ backgroundImage: `url("${bannerMobileUrl || bannerImageUrl}")` }}
+              />
+              <div
+                className="absolute inset-0 hidden bg-cover bg-center md:block"
+                style={{ backgroundImage: `url("${bannerDesktopUrl || bannerImageUrl}")` }}
+              />
+            </>
+          ) : (
+            <div className="absolute inset-0" style={{ background: heroThemeBackground }} />
+          )}
+          <div className={hasBanner ? "absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.34),rgba(15,23,42,0.04)_46%,rgba(15,23,42,0.16)),linear-gradient(180deg,rgba(15,23,42,0.18),transparent_36%,rgba(15,23,42,0.38))]" : "absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.76),transparent_34%),linear-gradient(90deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08)_52%,rgba(255,255,255,0.28))]"} />
+          <div
+            className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
+            style={{ background: `linear-gradient(to bottom, transparent, ${theme.colors.bg})` }}
+          />
+        </div>
+
+        <div className="relative z-20 max-w-7xl mx-auto px-4 md:px-8 py-4 flex justify-end">
           <div className="flex items-center gap-2">
             <CustomerAccountButton />
             <button
@@ -504,75 +523,105 @@ export function MenuPageClient() {
             />
           </div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 md:px-8 pt-[78px] md:pt-[186px] pb-6 space-y-5">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input
-              placeholder="O que você quer saborear hoje?"
-              className="pl-10 h-12 bg-white border-primary/10 rounded-2xl shadow-md focus:ring-accent"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="relative group/cats">
-            {/* Left fade gradient */}
-            <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white/80 to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
-
-            {/* Left scroll arrow - desktop only */}
-            <button
-              onClick={() => scrollCategories('left')}
-              className={`hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/90 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              aria-label="Scroll categorias esquerda"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
-            {/* Category buttons */}
-            <div
-              ref={categoryScrollRef}
-              className="flex flex-row gap-2 overflow-x-auto pb-4 md:pb-2 hide-scrollbar snap-x md:mx-11"
-            >
-              <Button
-                variant={activeCategoryId === 'all' ? 'default' : 'outline'}
-                className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
-                  activeCategoryId === 'all'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-                }`}
-                onClick={() => setActiveCategoryId('all')}
+        <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-8 pb-10 pt-24 md:pb-14 md:pt-44">
+          <div className="inline-flex max-w-[min(92vw,620px)] items-center gap-3 rounded-3xl border border-white/25 bg-slate-950/25 px-3 py-3 pr-5 text-white shadow-2xl shadow-slate-950/25 backdrop-blur-md">
+            {storeProfile?.general?.logoUrl ? (
+              <img
+                src={storeProfile.general.logoUrl}
+                alt="Logo"
+                className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-2 ring-white/80 shadow-lg"
+              />
+            ) : (
+              <div className="h-14 w-14 shrink-0 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center text-2xl font-black shadow-lg ring-2 ring-white/80">
+                {(storeProfile?.general?.name || storeInfo?.storeName || 'G').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/80">Cardápio digital</p>
+              <h1
+                className="truncate text-2xl font-black leading-tight text-white drop-shadow-lg md:text-4xl"
+                style={{ fontFamily: theme.fonts.heading }}
               >
-                Todos
-              </Button>
-              {visibleCategories.map((cat) => (
-                <Button
-                  key={cat.id}
-                  variant={activeCategoryId === cat.id ? 'default' : 'outline'}
-                  className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
-                    activeCategoryId === cat.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-                  }`}
-                  onClick={() => setActiveCategoryId(cat.id)}
-                >
-                  {cat.name}
-                </Button>
-              ))}
+                {storeProfile?.general?.name || storeInfo?.storeName || 'Minha Loja'}
+              </h1>
             </div>
-
-            {/* Right fade gradient */}
-            <div className={`hidden md:block absolute right-10 top-0 bottom-0 w-8 bg-gradient-to-l from-white/80 to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0'}`} />
-
-            {/* Right scroll arrow - desktop only */}
-            <button
-              onClick={() => scrollCategories('right')}
-              className={`hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/90 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              aria-label="Scroll categorias direita"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
           </div>
         </div>
       </section>
+
+      <div className="relative z-20 max-w-7xl mx-auto px-4 md:px-8 pt-5">
+        <div className="rounded-[1.75rem] border border-primary/10 bg-white/95 p-3 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:p-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/55" />
+              <Input
+                placeholder="O que você quer saborear hoje?"
+                className="h-14 rounded-2xl border-white/70 bg-white pl-11 text-base shadow-md focus:ring-accent"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="relative group/cats">
+              {/* Left fade gradient */}
+              <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
+
+              {/* Left scroll arrow - desktop only */}
+              <button
+                onClick={() => scrollCategories('left')}
+                className={`hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                aria-label="Scroll categorias esquerda"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              {/* Category buttons */}
+              <div
+                ref={categoryScrollRef}
+                className="flex flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x md:mx-11"
+              >
+                <Button
+                  variant={activeCategoryId === 'all' ? 'default' : 'outline'}
+                  className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                    activeCategoryId === 'all'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+                  }`}
+                  onClick={() => setActiveCategoryId('all')}
+                >
+                  Todos
+                </Button>
+                {visibleCategories.map((cat) => (
+                  <Button
+                    key={cat.id}
+                    variant={activeCategoryId === cat.id ? 'default' : 'outline'}
+                    className={`rounded-full px-6 whitespace-nowrap h-11 text-sm font-bold transition-all shadow-sm flex-shrink-0 ${
+                      activeCategoryId === cat.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
+                    }`}
+                    onClick={() => setActiveCategoryId(cat.id)}
+                  >
+                    {cat.name}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Right fade gradient */}
+              <div className={`hidden md:block absolute right-10 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0'}`} />
+
+              {/* Right scroll arrow - desktop only */}
+              <button
+                onClick={() => scrollCategories('right')}
+                className={`hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                aria-label="Scroll categorias direita"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       <ActiveOrdersBanner />
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -632,8 +681,8 @@ export function MenuPageClient() {
 
       <footer className="mt-20 pt-10 border-t border-primary/10 text-center text-muted-foreground text-sm space-y-4">
         <div>
-          <p className="font-bold">© 2024 {storeProfile?.general?.name || storeInfo?.storeName || 'Lima Limão'}</p>
-          <p>{storeId ? 'Cardápio Digital Profissional' : 'O verdadeiro sabor da fruta!'}</p>
+          <p className="font-bold">© {footerYear} {storeDisplayName || 'Minha Loja'}</p>
+          <p>{storeId ? 'Cardápio Digital Profissional' : 'Faça seu pedido online'}</p>
         </div>
         <div className="pt-4 flex justify-center gap-4">
           <Link href="/admin" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">

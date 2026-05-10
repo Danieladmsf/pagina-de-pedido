@@ -8,13 +8,13 @@ import { Toaster } from '@/components/ui/toaster';
 
 
 export const metadata = {
-  title: 'Lima Limão - Cardápio Digital',
-  description: 'O verdadeiro sabor da fruta!',
+  title: 'Cardápio Digital',
+  description: 'Cardápio digital e gestão de pedidos',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Lima Limão',
+    title: 'Cardápio Digital',
   },
 };
 

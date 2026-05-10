@@ -10,7 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, useAuth } from '@/firebase';
+import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch, increment } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -105,23 +106,23 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   console.log('[CartDrawer] Taxa:', { orderType, dynamicFee, deliveryFee, appliedDeliveryFee, isFreeDelivery, grandTotal });
 
   const db = useFirestore();
+  const auth = useAuth();
   const { user } = useUser();
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [savedStreet, setSavedStreet] = useState('');
   const [savedNumber, setSavedNumber] = useState('');
   useEffect(() => {
-    if (!db || !user) { setProfileLoaded(false); return; }
     if (profileLoaded) return;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'customers', user.uid));
         let d: any = {};
-        if (snap.exists()) {
-          d = snap.data();
+        if (db && user) {
+          const snap = await getDoc(doc(db, 'customers', user.uid));
+          if (snap.exists()) d = snap.data();
         }
-        
-        // Fallback local caso o Firebase esteja vazio (ex: nova sessão anônima)
+
+        // Fallback local: se o user ainda não foi criado (visitante novo) ou se o doc estiver vazio
         let localProfile: any = {};
         try {
           const savedStr = localStorage.getItem('customer_profile');
@@ -413,8 +414,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
 
   const handleCheckout = async () => {
-    if (!user || !db) {
-      toast({ variant: "destructive", title: "Erro", description: "Usuário não autenticado." });
+    if (!db || !auth) {
+      toast({ variant: "destructive", title: "Erro", description: "Sistema indisponível. Recarregue a página." });
       return;
     }
     if (!customerName || !customerPhone) {
@@ -454,9 +455,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
     setIsSubmitting(true);
     try {
+      const authUser = await ensureAuthenticated(auth);
+      console.log('[CartDrawer] 🚀 Enviando pedido com uid:', authUser.uid, authUser.isAnonymous ? '(anônimo)' : `(email: ${authUser.email})`);
       // Salva/atualiza perfil do cliente no Firebase
-      await setDoc(doc(db, 'customers', user.uid), {
-        uid: user.uid,
+      await setDoc(doc(db, 'customers', authUser.uid), {
+        uid: authUser.uid,
         name: customerName,
         phone: customerPhone,
         birthDate: customerBirthDate,
@@ -534,7 +537,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         customerName,
         customerPhone: normalizedPhone,
         customerBirthDate,
-        customerEmail: user.email || '',
+        customerEmail: authUser.email || '',
         deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),

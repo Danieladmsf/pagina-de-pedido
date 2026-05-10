@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { Loader2, Check, ExternalLink, Upload, Download, Trash2, ImageIcon } from 'lucide-react';
+import { Loader2, Check, ExternalLink, Upload, Download, Trash2, ImageIcon, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { THEME_LIST, themeToCssVars, getTheme, ensureBrandFontsLoaded } from '@/lib/themes';
@@ -13,6 +13,36 @@ interface AppearanceTabProps {
   user: any;
   storeProfile: any;
 }
+
+const DESKTOP_BANNER_PROMPT = `Crie um banner horizontal para header web.
+
+Tamanho: 1832 x 560 px.
+Use area segura interna obrigatoria:
+- 70 px no topo
+- 70 px na base
+- 90 px nas laterais
+
+Nenhum texto, logo ou elemento importante pode tocar ou ultrapassar essa area segura.
+A logo deve ocupar no maximo 55% da altura util interna, com altura aproximada entre 260 e 320 px.
+
+Evite cortes no topo, cortes inferiores, textos nas bordas e zoom excessivo.
+Considere cortes responsivos de header web.
+Safe area for responsive crop.`;
+
+const MOBILE_BANNER_PROMPT = `Crie um banner vertical para header mobile.
+
+Tamanho: 768 x 800 px.
+Use area segura interna obrigatoria:
+- 60 px no topo
+- 60 px na base
+- 50 px nas laterais
+
+Nenhum texto, logo ou elemento importante pode tocar ou ultrapassar essa area segura.
+A logo deve ficar proporcionalmente menor, com altura aproximada entre 280 e 360 px.
+
+Evite zoom excessivo e mantenha espacamento visual confortavel em todos os lados.
+Considere cortes responsivos.
+Safe area for responsive crop.`;
 
 export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
   const { toast } = useToast();
@@ -73,6 +103,15 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao remover.' });
     } finally {
       setUploadingTarget(null);
+    }
+  };
+
+  const handleCopyPrompt = async (label: string, prompt: string) => {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      toast({ title: 'Prompt copiado', description: `${label} pronto para colar na IA.` });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao copiar', description: err?.message || 'Copie o texto manualmente.' });
     }
   };
 
@@ -173,6 +212,39 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
             <br />
             <span className="text-[11px] opacity-80">Se você não enviar a versão mobile, a versão desktop será usada também no celular.</span>
           </p>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h4 className="text-sm font-black text-amber-950">Prompt para gerar banner sem cortes</h4>
+              <p className="text-xs text-amber-900/75 mt-1">
+                Copie e cole na IA que vai criar a imagem. Regra principal: texto, logo e elementos importantes devem ficar dentro da area segura.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" className="h-8 bg-white/80 text-xs" onClick={() => handleCopyPrompt('Desktop', DESKTOP_BANNER_PROMPT)}>
+                <Copy className="w-3.5 h-3.5 mr-1.5" /> Desktop
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="h-8 bg-white/80 text-xs" onClick={() => handleCopyPrompt('Mobile', MOBILE_BANNER_PROMPT)}>
+                <Copy className="w-3.5 h-3.5 mr-1.5" /> Mobile
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div className="rounded-xl bg-white/80 border border-amber-100 p-3">
+              <p className="text-[11px] font-black uppercase tracking-wider text-amber-700">Horizontal 1832 x 560</p>
+              <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                Area segura: 70 px topo/base e 90 px laterais. Area util: 1652 x 420 px. Logo ideal: 260 a 320 px de altura.
+              </p>
+            </div>
+            <div className="rounded-xl bg-white/80 border border-amber-100 p-3">
+              <p className="text-[11px] font-black uppercase tracking-wider text-amber-700">Mobile 768 x 800</p>
+              <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                Area segura: 60 px topo/base e 50 px laterais. Area util: 668 x 680 px. Logo ideal: 280 a 360 px de altura.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">

@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+const MIN_SEARCH_LENGTH = 2;
+
+export const dynamic = 'force-dynamic';
 
 /**
- * Proxy para o Google Places Autocomplete API.
+ * Proxy para o Google Places API (New) Autocomplete.
  * Recebe a query do usuário e retorna sugestões de endereços.
  */
 export async function GET(req: NextRequest) {
   try {
-    const input = req.nextUrl.searchParams.get('input');
-    if (!input || input.length < 3) {
+    const input = req.nextUrl.searchParams.get('input')?.trim();
+    if (!input || input.length < MIN_SEARCH_LENGTH) {
       return NextResponse.json({ predictions: [] });
     }
 
@@ -17,28 +20,54 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chave do Google Maps não configurada.' }, { status: 500 });
     }
 
-    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
-    url.searchParams.set('input', input);
-    url.searchParams.set('language', 'pt-BR');
-    url.searchParams.set('components', 'country:br');
     const types = req.nextUrl.searchParams.get('types') || 'address';
-    url.searchParams.set('types', types);
-    url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
+    const body: Record<string, any> = {
+      input,
+      languageCode: 'pt-BR',
+      regionCode: 'br',
+      includedRegionCodes: ['br'],
+    };
 
-    const response = await fetch(url.toString());
-    const data = await response.json();
-
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      return NextResponse.json({ error: data.error_message || data.status }, { status: 500 });
+    // Places API (New) aceita coleções especiais como "(cities)".
+    // Para endereços, deixar sem filtro de tipo evita bloquear ruas/avenidas.
+    if (types === '(cities)' || types === '(regions)') {
+      body.includedPrimaryTypes = [types];
     }
 
-    const predictions = (data.predictions || []).map((p: any) => ({
-      description: p.description,
-      placeId: p.place_id,
-    }));
+    const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text.text',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
 
-    return NextResponse.json({ predictions });
+    if (!response.ok) {
+      const googleMessage = data?.error?.message || response.statusText;
+      const isBlockedMethod = /AutocompletePlaces|blocked/i.test(googleMessage);
+      return NextResponse.json({
+        error: isBlockedMethod
+          ? 'A chave do Google Maps esta bloqueando o metodo AutocompletePlaces. Use uma chave de servidor em GOOGLE_MAPS_SERVER_API_KEY ou, nessa chave, permita Places API (New) e desative bloqueios de Browser/Firebase App Check para chamadas server-side.'
+          : googleMessage,
+        googleMessage,
+      }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    }
+
+    const predictions = (data.suggestions || [])
+      .map((suggestion: any) => suggestion.placePrediction)
+      .filter(Boolean)
+      .map((prediction: any) => ({
+        description: prediction.text?.text || '',
+        placeId: prediction.placeId,
+      }))
+      .filter((prediction: any) => prediction.description && prediction.placeId);
+
+    return NextResponse.json({ predictions }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }

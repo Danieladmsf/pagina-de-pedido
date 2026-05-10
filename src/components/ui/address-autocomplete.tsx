@@ -22,10 +22,13 @@ interface Prediction {
   placeId: string;
 }
 
+const MIN_SEARCH_LENGTH = 2;
+
 export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types, onBlur, forceClose, disableSearch }: AddressAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -49,17 +52,35 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
   }, [forceClose]);
 
   const fetchSuggestions = async (input: string) => {
-    if (disableSearch || input.length < 3) {
+    const query = input.trim();
+    const hasAddressContext = /\b(rua|r\.|avenida|av\.|av|rodovia|travessa|alameda|estrada|pra[çc]a)\b/i.test(query);
+    if (disableSearch || query.length < MIN_SEARCH_LENGTH) {
       setSuggestions([]);
       setIsOpen(false);
+      setErrorMessage('');
+      return;
+    }
+
+    if (!types && !hasAddressContext && query.length < 4) {
+      setSuggestions([]);
+      setIsOpen(false);
+      setErrorMessage('');
       return;
     }
 
     setLoading(true);
+    setErrorMessage('');
     try {
       const typesParam = types ? `&types=${encodeURIComponent(types)}` : '';
-      const res = await fetch(`/api/places-autocomplete?input=${encodeURIComponent(input)}${typesParam}`);
+      const res = await fetch(`/api/places-autocomplete?input=${encodeURIComponent(query)}${typesParam}`);
       const data = await res.json();
+      if (!res.ok) {
+        console.warn('[AddressAutocomplete] API retornou erro:', data?.error || res.statusText);
+        setSuggestions([]);
+        setIsOpen(false);
+        setErrorMessage(data?.error || 'Nao foi possivel buscar enderecos. Verifique a API Places no Google Cloud.');
+        return;
+      }
       if (data.predictions && data.predictions.length > 0) {
         setSuggestions(data.predictions);
         setIsOpen(true);
@@ -68,8 +89,9 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
         setIsOpen(false);
       }
     } catch (error) {
-      console.error('[AddressAutocomplete] Erro na API:', error);
+      console.warn('[AddressAutocomplete] Erro na API:', error);
       setSuggestions([]);
+      setErrorMessage('Nao foi possivel buscar enderecos agora.');
     } finally {
       setLoading(false);
     }
@@ -78,6 +100,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     onChange(val);
+    setErrorMessage('');
 
     // Debounce de 400ms para não fazer muitas requisições
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -128,6 +151,12 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
           <div className="px-3 py-1.5 text-[10px] text-muted-foreground text-right bg-slate-50">
             Powered by Google
           </div>
+        </div>
+      )}
+
+      {!isOpen && errorMessage && (
+        <div className="absolute z-50 w-full mt-1 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700 shadow">
+          {errorMessage}
         </div>
       )}
     </div>
