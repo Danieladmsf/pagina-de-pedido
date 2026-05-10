@@ -655,7 +655,9 @@ export function MenuPageClient() {
             </div>
             <CardContent className="p-6 flex flex-col flex-1">
               <div className="flex-1 space-y-2 mb-4">
-                <h3 className="text-xl font-black text-primary group-hover:text-accent transition-colors">{item.name}</h3>
+                <h3 className="min-h-[3.25rem] text-[1.05rem] md:text-lg font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors">
+                  {item.name}
+                </h3>
                 <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
                   {item.description}
                 </p>
