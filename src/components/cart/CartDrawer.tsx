@@ -68,6 +68,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<Step>('cart');
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerBirthDate, setCustomerBirthDate] = useState('');
@@ -358,6 +359,52 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       return;
     }
     setStep('info');
+    setCheckoutStep(1);
+  };
+
+  const validateStep = (s: 1 | 2 | 3): string | null => {
+    if (s === 1) {
+      if (!customerName.trim()) return 'Informe seu nome.';
+      if (!customerPhone.trim() || customerPhone.replace(/\D/g, '').length < 10) return 'Informe um telefone válido.';
+      return null;
+    }
+    if (s === 2) {
+      if (orderType !== 'delivery') return null;
+      if (!street.trim()) return 'Informe a rua.';
+      if (!number.trim()) return 'Informe o número.';
+      if (!neighborhood.trim()) return 'Informe o bairro.';
+      if (!city.trim()) return 'Informe a cidade.';
+      if (deliveryBlocked) return 'Endereço fora da área de entrega.';
+      return null;
+    }
+    if (s === 3) {
+      if (!paymentMethod) return 'Selecione uma forma de pagamento.';
+      return null;
+    }
+    return null;
+  };
+
+  const goNextStep = () => {
+    const err = validateStep(checkoutStep);
+    if (err) {
+      toast({ variant: 'destructive', title: 'Atenção', description: err });
+      return;
+    }
+    if (checkoutStep === 1) {
+      setCheckoutStep(orderType === 'delivery' ? 2 : 3);
+    } else if (checkoutStep === 2) {
+      setCheckoutStep(3);
+    }
+  };
+
+  const goPrevStep = () => {
+    if (checkoutStep === 1) {
+      setStep('cart');
+    } else if (checkoutStep === 2) {
+      setCheckoutStep(1);
+    } else if (checkoutStep === 3) {
+      setCheckoutStep(orderType === 'delivery' ? 2 : 1);
+    }
   };
 
 
@@ -535,12 +582,19 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   };
 
-  const headerTitle = step === 'cart' ? 'Meu Pedido' : 'Dados de Entrega';
+  const stepLabels: Record<1 | 2 | 3, string> = {
+    1: orderType === 'delivery' ? 'Entrega e contato' : orderType === 'pickup' ? 'Retirada e contato' : 'Mesa e contato',
+    2: 'Endereço de entrega',
+    3: 'Pagamento',
+  };
+  const totalSteps = orderType === 'delivery' ? 3 : 2;
+  const visualStep = checkoutStep === 3 && orderType !== 'delivery' ? 2 : checkoutStep;
+  const headerTitle = step === 'cart' ? 'Meu Pedido' : stepLabels[checkoutStep];
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
       setIsOpen(open);
-      if (!open) setStep('cart');
+      if (!open) { setStep('cart'); setCheckoutStep(1); }
     }}>
       <SheetTrigger asChild>
         <Button variant="outline" size="icon" className="relative bg-white border-primary/20 text-primary hover:bg-primary/5 rounded-full h-12 w-12 shadow-md">
@@ -553,11 +607,38 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         </Button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-md flex flex-col h-full bg-[#FAFAF7]">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="text-xl font-bold flex items-center gap-2">
+        <SheetHeader className="pb-2">
+          <SheetTitle className="text-base font-bold flex items-center gap-2">
             {headerTitle}
-            {step === 'cart' && <span className="text-muted-foreground font-normal">({totalItems})</span>}
+            {step === 'cart' && <span className="text-muted-foreground font-normal text-sm">({totalItems})</span>}
           </SheetTitle>
+          {step === 'info' && (
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-1 flex-1">
+                {Array.from({ length: totalSteps }, (_, i) => i + 1).map((n) => {
+                  const done = n < visualStep;
+                  const current = n === visualStep;
+                  return (
+                    <React.Fragment key={n}>
+                      <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+                        done ? 'bg-primary text-white' :
+                        current ? 'bg-primary/15 text-primary ring-2 ring-primary' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {done ? '✓' : n}
+                      </div>
+                      {n < totalSteps && (
+                        <div className={`flex-1 h-0.5 rounded-full ${n < visualStep ? 'bg-primary' : 'bg-muted'}`} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider whitespace-nowrap">
+                {visualStep}/{totalSteps}
+              </span>
+            </div>
+          )}
         </SheetHeader>
 
         <Separator />
@@ -618,70 +699,61 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
             </div>
           </ScrollArea>
         ) : (
-          <ScrollArea className="flex-1 -mx-6 px-6 py-4">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Como você quer receber?</Label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { 
-                      setOrderType('delivery'); 
-                      setDynamicFee(null); 
-                      setDistanceInfo(null); 
-                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-                    }}
-                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
-                  >
-                    🛵 Entrega
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { 
-                      setOrderType('pickup'); 
-                      setDynamicFee(null); 
-                      setDistanceInfo(null); 
-                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-                    }}
-                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'pickup' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
-                  >
-                    🏪 Retirar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { 
-                      setOrderType('dine_in'); 
-                      setDynamicFee(null); 
-                      setDistanceInfo(null); 
-                      setTimeout(() => document.getElementById('cust_name')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-                    }}
-                    className={`border-2 rounded-xl p-3 text-center font-bold text-sm transition-all ${orderType === 'dine_in' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
-                  >
-                    🍽️ Local
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cust_name">Nome Completo</Label>
-                <Input id="cust_name" autoComplete="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cust_phone">Telefone / WhatsApp</Label>
-                  <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cust_birth">Data de Nasc. (Opcional)</Label>
-                  <Input id="cust_birth" placeholder="DD/MM/AAAA" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(e.target.value)} />
-                </div>
-              </div>
-              {orderType === 'delivery' && (
+          <ScrollArea className="flex-1 -mx-6 px-6 py-3">
+            <div className="space-y-3">
+              {checkoutStep === 1 && (
                 <>
-                  <div className="space-y-2">
-                    <Label>Endereço de Entrega</Label>
-                    <AddressAutocomplete 
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Como você quer receber?</Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setOrderType('delivery'); setDynamicFee(null); setDistanceInfo(null); }}
+                        className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                      >
+                        🛵 Entrega
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setOrderType('pickup'); setDynamicFee(null); setDistanceInfo(null); }}
+                        className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'pickup' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                      >
+                        🏪 Retirar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setOrderType('dine_in'); setDynamicFee(null); setDistanceInfo(null); }}
+                        className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'dine_in' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                      >
+                        🍽️ Local
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="cust_name" className="text-xs font-bold">Nome Completo</Label>
+                    <Input id="cust_name" autoComplete="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-9 text-sm" placeholder="Seu nome" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_phone" className="text-xs font-bold">Telefone / WhatsApp</Label>
+                      <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="h-9 text-sm" placeholder="(00) 90000-0000" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_birth" className="text-xs font-bold">Nascimento <span className="font-normal opacity-60">(opcional)</span></Label>
+                      <Input id="cust_birth" placeholder="DD/MM/AAAA" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(e.target.value)} className="h-9 text-sm" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {checkoutStep === 2 && orderType === 'delivery' && (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold">Endereço</Label>
+                    <AddressAutocomplete
                       id="cust_street"
-                      value={street} 
+                      value={street}
                       onChange={(val) => {
                         setStreet(val);
                         if (dynamicFee !== null) {
@@ -700,129 +772,122 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       disableSearch={!!city && !!neighborhood}
                       placeholder="Digite rua, bairro ou cidade..."
                     />
-                    {/* Hack para o navegador reconhecer o campo como rua no autofill */}
                     <input type="hidden" autoComplete="street-address" value={street} onChange={() => {}} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="cust_number">Número</Label>
-                      <Input id="cust_number" autoComplete="address-line2" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" />
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_number" className="text-xs font-bold">Número</Label>
+                      <Input id="cust_number" autoComplete="address-line2" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" className="h-9 text-sm" />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cust_comp">Complemento</Label>
-                      <Input id="cust_comp" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto, Bloco..." />
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_comp" className="text-xs font-bold">Complemento</Label>
+                      <Input id="cust_comp" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto, Bloco..." className="h-9 text-sm" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="cust_neighborhood">Bairro</Label>
-                      <Input id="cust_neighborhood" autoComplete="address-level3" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_neighborhood" className="text-xs font-bold">Bairro</Label>
+                      <Input id="cust_neighborhood" autoComplete="address-level3" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" className="h-9 text-sm" />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cust_city">Cidade</Label>
-                      <Input id="cust_city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Sua Cidade - SP" />
+                    <div className="space-y-1">
+                      <Label htmlFor="cust_city" className="text-xs font-bold">Cidade</Label>
+                      <Input id="cust_city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Sua Cidade - SP" className="h-9 text-sm" />
                     </div>
                   </div>
-                  
-                  {/* Informações de distância e taxa */}
+
                   {calculatingFee && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 p-3 rounded-xl border border-blue-100 animate-pulse">
-                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-blue-50 p-2 rounded-lg border border-blue-100 animate-pulse">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
                       <span>Calculando taxa de entrega...</span>
                     </div>
                   )}
                   {distanceInfo && !calculatingFee && (
-                    <div className="bg-green-50 p-3 rounded-xl border border-green-200 space-y-1.5">
-                      <div className="flex items-center gap-2 text-sm font-medium text-green-700">
-                        <Navigation className="h-4 w-4" />
-                        <span>Distância: {distanceInfo.distanceText}</span>
+                    <div className="bg-green-50 p-2.5 rounded-lg border border-green-200 space-y-1">
+                      <div className="flex items-center justify-between text-xs font-medium text-green-700">
+                        <span className="flex items-center gap-1.5">
+                          <Navigation className="h-3.5 w-3.5" />
+                          {distanceInfo.distanceText} <span className="opacity-70">· {distanceInfo.durationText}</span>
+                        </span>
+                        <span className="font-bold text-green-800">R$ {dynamicFee?.toFixed(2)}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-green-600">
-                        <Clock className="h-4 w-4" />
-                        <span>Tempo estimado: {distanceInfo.durationText}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm font-bold text-green-800">
-                        <MapPin className="h-4 w-4" />
-                        <span>Taxa de entrega: R$ {dynamicFee?.toFixed(2)}</span>
-                      </div>
-                      
-                      {distanceInfo.originAddress && distanceInfo.destinationAddress && (
-                        <div className="mt-2 pt-2 border-t border-green-200/50 space-y-1">
-                          <p className="text-[10px] text-green-700/80 leading-tight">
-                            <strong>De:</strong> {distanceInfo.originAddress}
-                          </p>
-                          <p className="text-[10px] text-green-700/80 leading-tight">
-                            <strong>Para:</strong> {distanceInfo.destinationAddress}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </>
               )}
 
-              {/* Forma de Pagamento */}
-              <div className="space-y-3 pt-4 border-t mt-4">
-                <Label>Como você vai pagar?</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {activePaymentMethods.map(method => (
-                    <button
-                      key={method.id}
-                      type="button"
-                      onClick={() => { 
-                        setPaymentMethod(method.id); 
-                        setCashChange(''); 
-                        // Apenas rolar suavemente para o fim, sem forçar o foco/teclado que "prende" o usuário no mobile
-                        setTimeout(() => {
-                          document.getElementById('btn-finalizar')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 150);
-                      }}
-                      className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${paymentMethod === method.id ? 'border-primary bg-primary/10 text-primary scale-105' : 'border-muted text-muted-foreground'}`}
-                    >
-                      <span className="text-xl mb-1">{method.icon}</span>
-                      <span className="font-bold text-sm">{method.label}</span>
-                    </button>
-                  ))}
-                </div>
+              {checkoutStep === 3 && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Como você vai pagar?</Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {activePaymentMethods.map(method => (
+                        <button
+                          key={method.id}
+                          type="button"
+                          onClick={() => { setPaymentMethod(method.id); setCashChange(''); }}
+                          className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${paymentMethod === method.id ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                        >
+                          <span className="text-base leading-none mb-0.5">{method.icon}</span>
+                          <span className="font-bold text-[11px] leading-tight text-center">{method.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                {paymentMethod === 'dinheiro' && (
-                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-2 space-y-2">
-                    <Label htmlFor="troco-input" className="text-amber-800 flex flex-col gap-1">
-                      <span>Precisa de troco para quanto?</span>
-                      <span className="text-xs font-normal opacity-80">(Opcional. Deixe em branco se não precisar de troco)</span>
-                    </Label>
-                    <Input 
-                      id="troco-input"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="R$ 0,00"
-                      value={cashChange ? `R$ ${cashChange.replace('.', ',')}` : ''}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\D/g, '');
-                        if (!val) setCashChange('');
-                        else setCashChange((Number(val) / 100).toFixed(2));
-                      }}
-                      className="bg-white border-amber-300 text-lg font-bold"
-                    />
-                    {Number(cashChange) > 0 && (
-                      <div className={`text-sm font-bold mt-1 ${Number(cashChange) >= grandTotal ? 'text-green-600' : 'text-red-500'}`}>
-                        {Number(cashChange) >= grandTotal 
-                          ? `Seu troco será: R$ ${(Number(cashChange) - grandTotal).toFixed(2)}` 
-                          : `Falta R$ ${(grandTotal - Number(cashChange)).toFixed(2)} para completar o pedido`}
+                  {paymentMethod === 'dinheiro' && (
+                    <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
+                      <Label htmlFor="troco-input" className="text-amber-800 text-xs font-bold flex flex-col gap-0.5">
+                        <span>Precisa de troco para quanto?</span>
+                        <span className="text-[10px] font-normal opacity-80">(Opcional)</span>
+                      </Label>
+                      <Input
+                        id="troco-input"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={cashChange ? `R$ ${cashChange.replace('.', ',')}` : ''}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, '');
+                          if (!val) setCashChange('');
+                          else setCashChange((Number(val) / 100).toFixed(2));
+                        }}
+                        className="bg-white border-amber-300 h-9 text-sm font-bold"
+                      />
+                      {Number(cashChange) > 0 && (
+                        <div className={`text-xs font-bold ${Number(cashChange) >= grandTotal ? 'text-green-600' : 'text-red-500'}`}>
+                          {Number(cashChange) >= grandTotal
+                            ? `Troco: R$ ${(Number(cashChange) - grandTotal).toFixed(2)}`
+                            : `Falta R$ ${(grandTotal - Number(cashChange)).toFixed(2)}`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resumo do pedido */}
+                  <div className="bg-slate-50 rounded-lg border border-slate-200 p-2.5 space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Resumo do pedido</p>
+                    <div className="text-xs text-slate-600 flex justify-between">
+                      <span>{customerName || '—'}</span>
+                      <span>{customerPhone || '—'}</span>
+                    </div>
+                    {orderType === 'delivery' && (
+                      <div className="text-xs text-slate-600 leading-tight">
+                        📍 {[street, number, neighborhood, city].filter(Boolean).join(', ') || '—'}
                       </div>
                     )}
+                    {orderType === 'pickup' && <div className="text-xs text-slate-600">🏪 Retirada no local</div>}
+                    {orderType === 'dine_in' && <div className="text-xs text-slate-600">🍽️ Consumo no local</div>}
                   </div>
-                )}
-              </div>
-
+                </>
+              )}
             </div>
           </ScrollArea>
         )}
 
         {cart.length > 0 && (
-          <div className="pt-6 border-t space-y-4">
+          <div className="pt-3 border-t space-y-2">
             {orderType === 'delivery' && step !== 'cart' && (
-              <div className="space-y-1 text-sm">
+              <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
                   <span>R$ {totalPrice.toFixed(2)}</span>
@@ -837,32 +902,44 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 </div>
               </div>
             )}
-            <div className="flex justify-between items-center text-lg">
-              <span className="font-medium">Total</span>
-              <span className="font-bold text-2xl text-primary">R$ {grandTotal.toFixed(2)}</span>
+            <div className="flex justify-between items-center">
+              <span className="font-medium text-sm">Total</span>
+              <span className="font-bold text-xl text-primary">R$ {grandTotal.toFixed(2)}</span>
             </div>
 
             {step === 'cart' ? (
-              <Button className="w-full h-14 bg-primary text-white font-bold" onClick={goToCheckout}>
+              <Button className="w-full h-11 bg-primary text-white font-bold" onClick={goToCheckout}>
                 Continuar
               </Button>
             ) : (
-              <div className="flex flex-col gap-2">
-                {deliveryBlocked && orderType === 'delivery' && (
-                  <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-200 text-center mb-2">
-                    Desculpe, este endereço está fora da nossa área de entrega (máx. {maxDeliveryRadius}km).
+              <div className="flex flex-col gap-1.5">
+                {deliveryBlocked && orderType === 'delivery' && checkoutStep === 2 && (
+                  <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-medium border border-red-200 text-center">
+                    Endereço fora da área de entrega (máx. {maxDeliveryRadius}km).
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 h-14" onClick={() => setStep('cart')}>Voltar</Button>
-                  <Button 
-                    id="btn-finalizar"
-                    className="flex-[2] h-14 bg-accent text-white font-bold" 
-                    onClick={handleCheckout} 
-                    disabled={isSubmitting || calculatingFee || (orderType === 'delivery' && deliveryBlocked)}
-                  >
-                    {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Finalizar Pedido'}
+                  <Button variant="outline" className="flex-1 h-11" onClick={goPrevStep}>
+                    {checkoutStep === 1 ? 'Voltar' : '← Voltar'}
                   </Button>
+                  {checkoutStep === 3 ? (
+                    <Button
+                      id="btn-finalizar"
+                      className="flex-[2] h-11 bg-accent text-white font-bold"
+                      onClick={handleCheckout}
+                      disabled={isSubmitting || calculatingFee || (orderType === 'delivery' && deliveryBlocked)}
+                    >
+                      {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Finalizar Pedido'}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-[2] h-11 bg-primary text-white font-bold"
+                      onClick={goNextStep}
+                      disabled={checkoutStep === 2 && (calculatingFee || deliveryBlocked)}
+                    >
+                      Continuar →
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
