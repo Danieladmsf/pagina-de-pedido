@@ -30,6 +30,7 @@ import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
 import { SidebarNav } from '@/components/admin/SidebarNav';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
+import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
@@ -43,7 +44,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'caixa' | 'delivery' | 'novo_pedido' | 'mesas' | 'configuracoes'>('delivery');
+  const [activeTab, setActiveTab] = useState<string>('delivery');
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
@@ -512,14 +513,50 @@ export default function AdminPage() {
     }
   };
 
+  const sendOrderWhatsAppNotification = async (order: any, status: string) => {
+    if (!user || !order?.customerPhone) return;
+    if (!['received', 'out_for_delivery'].includes(status)) return;
+
+    const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'nossa loja';
+    const customerName = order.customerName ? `, ${order.customerName}` : '';
+    const total = typeof order.totalAmount === 'number' ? `\nTotal: R$ ${order.totalAmount.toFixed(2)}` : '';
+    const message = status === 'received'
+      ? `Ola${customerName}! Seu pedido #${order.id} foi recebido pela ${storeName}.${total}\n\nVamos te avisar por aqui quando sair para entrega.`
+      : `Ola${customerName}! Seu pedido #${order.id} saiu para entrega.\n\nEm breve chegara ate voce.`;
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/wapi/send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          empresaId: user.uid,
+          phone: order.customerPhone,
+          message,
+          type: status === 'received' ? 'order_created' : 'delivery_out',
+          orderId: order.id,
+        }),
+      });
+      if (!response.ok) {
+        console.warn('[WhatsApp] API recusou notificacao do pedido:', await response.text());
+      }
+    } catch (error) {
+      console.warn('[WhatsApp] Falha ao enviar notificacao do pedido:', error);
+    }
+  };
+
   const updateOrderStatus = async (orderId: string, statusOrUpdates: string | any) => {
     if (!db || !user) return;
     try {
       const updates = typeof statusOrUpdates === 'string' ? { status: statusOrUpdates } : statusOrUpdates;
+      const currentOrder = (ordersRaw as any[])?.find(o => o.id === orderId);
       
       // Sincronização de Cliente se o pedido for movido para 'delivered'
       if (updates.status === 'delivered') {
-        const order = (ordersRaw as any[])?.find(o => o.id === orderId);
+        const order = currentOrder;
         // Só sincroniza se o pedido existe e não estava como entregue antes
         if (order && order.status !== 'delivered') {
           const rawTelefone = (order.customerPhone || '').trim();
@@ -586,11 +623,11 @@ export default function AdminPage() {
         }
       }
 
-      if (updates.status === 'canceled' && order && order.status !== 'canceled') {
+      if (updates.status === 'canceled' && currentOrder && currentOrder.status !== 'canceled') {
         if (storeProfile?.general?.enableInventory) {
           const batch = writeBatch(db);
           batch.update(doc(db, 'orders', orderId), updates);
-          for (const item of order.items || []) {
+          for (const item of currentOrder.items || []) {
             if (item.id) {
                batch.update(doc(db, 'menuItems', item.id), {
                  stockQuantity: increment(item.quantity)
@@ -605,6 +642,9 @@ export default function AdminPage() {
 
       await updateDoc(doc(db, 'orders', orderId), updates);
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
+      if (updates.status && currentOrder?.status !== updates.status) {
+        void sendOrderWhatsAppNotification(currentOrder, updates.status);
+      }
     } catch (err) {
       console.error(err);
       toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
@@ -781,6 +821,12 @@ export default function AdminPage() {
         )}
 
         {/* Módulo Administrativo (Nova Gestão) */}
+        {activeTab === 'whatsapp' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <WhatsAppTab user={user} storeProfile={storeProfile} />
+          </div>
+        )}
+
         <div className={
           activeTab === 'produtos'
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'

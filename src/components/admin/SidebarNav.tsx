@@ -14,7 +14,8 @@ import {
   Bike,
   Wallet,
   Palette,
-  Menu
+  Menu,
+  MessageCircle
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -35,6 +36,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'categorias', label: 'Categorias', icon: Tag },
     { id: 'addons', label: 'Adicionais', icon: PlusCircle },
     { id: 'clientes', label: 'Clientes', icon: Users },
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   ];
 
   const profileItems = [
