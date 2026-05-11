@@ -23,16 +23,30 @@ export function requireEmpresa(user: AuthenticatedFirebaseUser, empresaId?: stri
   }
 }
 
+// TEMPORÁRIO: Token da instância trial para fallback se a descriptografia falhar
+const TRIAL_INSTANCE_ID = 'LITE-JMDANG-I3824S';
+const TRIAL_INSTANCE_TOKEN = 'OrO1JglDjZBmsgQk2C8fnYQ4soclm228O';
+
 export async function requireIntegration(empresaId: string, idToken: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
   const integration = await getWhatsAppIntegration(empresaId, idToken);
   if (!integration?.wapiInstanceId || !integration?.wapiTokenEncrypted) {
     throw new ApiError(404, 'WhatsApp ainda nao configurado para esta empresa.');
   }
 
-  return {
-    integration,
-    token: decryptWapiToken(integration),
-  };
+  let token: string;
+  try {
+    token = decryptWapiToken(integration);
+  } catch (err) {
+    // Se a descriptografia falhar e for a instância trial, usa o token hardcoded
+    if (integration.wapiInstanceId === TRIAL_INSTANCE_ID) {
+      console.warn('[W-API] Fallback: usando token trial hardcoded (chave de criptografia pode ter mudado entre ambientes).');
+      token = TRIAL_INSTANCE_TOKEN;
+    } else {
+      throw new ApiError(500, 'Erro ao descriptografar o token da instancia. Tente desconectar e reconectar.');
+    }
+  }
+
+  return { integration, token };
 }
 
 export function getWebhookUrl(request: Request) {
