@@ -92,6 +92,15 @@ export async function saveWhatsAppMessageLog(
   }, idToken);
 }
 
+export async function deleteWhatsAppIntegration(empresaId: string, idToken: string) {
+  await patchFirestoreDocumentFields(
+    `${ADMIN_COLLECTION}/${empresaId}`,
+    { [INTEGRATION_FIELD]: null },
+    [INTEGRATION_FIELD],
+    idToken,
+  );
+}
+
 export function statusFromWapi(connected: boolean): WapiConnectionStatus {
   return connected ? 'connected' : 'pending_qr';
 }

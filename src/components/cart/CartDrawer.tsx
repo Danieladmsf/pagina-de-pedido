@@ -455,6 +455,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
     setIsSubmitting(true);
     try {
+      const cashRegisterSnap = await getDocs(query(
+        collection(db, 'cash_registers'),
+        where('ownerId', '==', effectiveStoreOwnerId)
+      ));
+      const hasOpenCashRegister = cashRegisterSnap.docs.some((cashRegister) => cashRegister.data().status === 'aberto');
+      if (!hasOpenCashRegister) {
+        toast({ variant: "destructive", title: "Caixa Fechado", description: "Abra o caixa antes de aceitar pedidos pelo cardapio." });
+        return;
+      }
+
       const authUser = await ensureAuthenticated(auth);
       console.log('[CartDrawer] 🚀 Enviando pedido com uid:', authUser.uid, authUser.isAnonymous ? '(anônimo)' : `(email: ${authUser.email})`);
       // Salva/atualiza perfil do cliente no Firebase

@@ -85,7 +85,18 @@ export function MenuPageClient() {
     return doc(db, 'store_profiles', storeId);
   }, [db, storeId]);
 
+  const cashRegistersQuery = useMemoFirebase(() => {
+    if (!db || !storeId) return null;
+    return query(collection(db, 'cash_registers'), where('ownerId', '==', storeId));
+  }, [db, storeId]);
+
   const { data: storeProfile } = useDoc(storeProfileRef);
+  const { data: cashRegisters, isLoading: loadingCashRegisters } = useCollection(cashRegistersQuery);
+
+  const hasOpenCashRegister = useMemo(() => {
+    if (!storeId || loadingCashRegisters) return null;
+    return (cashRegisters || []).some((cashRegister: any) => cashRegister.status === 'aberto');
+  }, [storeId, loadingCashRegisters, cashRegisters]);
 
   const theme = getTheme((storeProfile as any)?.theme);
   const storeDisplayName = storeProfile?.general?.name || storeInfo?.storeName || '';
@@ -200,9 +211,13 @@ export function MenuPageClient() {
   }, [activeCategoryId, searchQuery, items, visibleCategories]);
 
   const isStoreOpenRightNow = useMemo(() => {
+    if (storeId && (loadingCashRegisters || hasOpenCashRegister !== true)) {
+      return { isOpen: false, reason: 'caixa_closed' };
+    }
+
     if (!storeProfile) return { isOpen: true, reason: '' };
 
-    // Check caixa
+    // Compatibilidade com perfis antigos: se o perfil marcar fechado, respeita tambem.
     if (storeProfile.isCaixaAberto === false) {
       return { isOpen: false, reason: 'caixa_closed' };
     }
@@ -245,7 +260,7 @@ export function MenuPageClient() {
     }
 
     return { isOpen: true, reason: '' };
-  }, [storeProfile]);
+  }, [storeId, loadingCashRegisters, hasOpenCashRegister, storeProfile]);
 
   if (!db || loadingCats || loadingItems) {
     return (

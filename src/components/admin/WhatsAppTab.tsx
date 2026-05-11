@@ -5,14 +5,18 @@ import type { User } from 'firebase/auth';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronRight,
+  Copy,
   Loader2,
   MessageCircle,
+  Phone,
   Power,
   QrCode,
   RefreshCw,
   Send,
   ShieldCheck,
   Smartphone,
+  Wifi,
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
@@ -53,13 +58,23 @@ function statusLabel(status?: IntegrationStatus) {
   }
 }
 
-function statusClass(status?: IntegrationStatus) {
+function statusDotClass(status?: IntegrationStatus) {
   switch (status) {
-    case 'connected': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'pending_qr': return 'bg-amber-100 text-amber-700 border-amber-200';
-    case 'disconnected': return 'bg-slate-100 text-slate-700 border-slate-200';
-    case 'error': return 'bg-red-100 text-red-700 border-red-200';
-    default: return 'bg-slate-100 text-slate-600 border-slate-200';
+    case 'connected': return 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]';
+    case 'pending_qr': return 'bg-amber-500 shadow-[0_0_0_4px_rgba(245,158,11,0.18)] animate-pulse';
+    case 'disconnected': return 'bg-slate-400 shadow-[0_0_0_4px_rgba(148,163,184,0.18)]';
+    case 'error': return 'bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.18)]';
+    default: return 'bg-slate-300 shadow-[0_0_0_4px_rgba(148,163,184,0.15)]';
+  }
+}
+
+function statusBadgeClass(status?: IntegrationStatus) {
+  switch (status) {
+    case 'connected': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'pending_qr': return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'disconnected': return 'bg-slate-50 text-slate-700 border-slate-200';
+    case 'error': return 'bg-red-50 text-red-700 border-red-200';
+    default: return 'bg-slate-50 text-slate-600 border-slate-200';
   }
 }
 
@@ -69,6 +84,7 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
 
@@ -94,7 +110,10 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
   }
 
   const loadStatus = React.useCallback(async (silent = false) => {
-    if (!empresaId) return;
+    if (!empresaId) {
+      setInitialLoading(false);
+      return;
+    }
     if (!silent) setLoadingStatus(true);
     try {
       const data = await apiFetch(`/wapi/status/${empresaId}`);
@@ -107,6 +126,7 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
       setIntegration(null);
     } finally {
       if (!silent) setLoadingStatus(false);
+      setInitialLoading(false);
     }
   }, [empresaId, user]);
 
@@ -169,16 +189,16 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
   }
 
   async function disconnect() {
-    if (!confirm('Desconectar este WhatsApp da loja?')) return;
+    if (!confirm('Desconectar e remover esta instancia WhatsApp? Voce podera criar uma nova depois.')) return;
     setLoading(true);
     try {
-      const data = await apiFetch('/wapi/disconnect', {
+      await apiFetch('/wapi/disconnect', {
         method: 'POST',
         body: JSON.stringify({ empresaId }),
       });
-      setIntegration(data.integration);
+      setIntegration(null);
       setQrCode('');
-      toast({ title: 'WhatsApp desconectado' });
+      toast({ title: 'WhatsApp desconectado', description: 'Clique em Criar instancia para conectar novamente.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao desconectar', description: error.message });
     } finally {
@@ -206,28 +226,63 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
     }
   }
 
+  async function copyInstanceId() {
+    if (!integration?.wapiInstanceId) return;
+    try {
+      await navigator.clipboard.writeText(integration.wapiInstanceId);
+      toast({ title: 'ID copiado', description: 'Identificador da instancia copiado para a area de transferencia.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Nao foi possivel copiar', description: 'Selecione e copie manualmente.' });
+    }
+  }
+
   const isConnected = integration?.connected || integration?.status === 'connected';
+  const status = integration?.status;
 
   return (
-    <div className="max-w-[1500px] w-full mx-auto p-4 md:p-6 space-y-5 overflow-y-auto custom-scrollbar">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold uppercase tracking-wider mb-3">
-            <MessageCircle className="h-3.5 w-3.5" />
-            WhatsApp
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Conectar WhatsApp</h1>
-          <p className="text-muted-foreground mt-1 font-medium">
-            Cada loja tem uma instancia W-API isolada, com QR Code e status proprios.
-          </p>
-        </div>
+    <div className="max-w-[1500px] w-full mx-auto p-4 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+      {/* HERO */}
+      <div className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white p-6 md:p-8">
+        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-emerald-100/60 blur-3xl pointer-events-none" />
 
-        <Badge className={`border font-bold px-3 py-1.5 ${statusClass(integration?.status)}`}>
-          {statusLabel(integration?.status)}
-        </Badge>
+        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+          <div className="flex items-start gap-4">
+            <div className="hidden md:flex h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+              <MessageCircle className="h-7 w-7 text-white" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider mb-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Integracao WhatsApp Business
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Conectar WhatsApp</h1>
+              <p className="text-slate-600 mt-1 text-sm md:text-[15px] max-w-2xl">
+                Cada loja tem uma instancia W-API isolada, com QR Code e status proprios.
+                As notificacoes de pedidos sao enviadas automaticamente por esse numero.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-start md:items-end gap-2">
+            {initialLoading ? (
+              <Skeleton className="h-9 w-44 rounded-full" />
+            ) : (
+              <div className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border ${statusBadgeClass(status)}`}>
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${statusDotClass(status)}`} />
+                <span className="text-sm font-bold">{statusLabel(status)}</span>
+              </div>
+            )}
+            {!initialLoading && integration?.lastStatusAt && (
+              <p className="text-[11px] text-slate-500">
+                Verificado em {new Date(integration.lastStatusAt).toLocaleString('pt-BR')}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
-      <Alert className="border-emerald-200 bg-emerald-50/80">
+      <Alert className="border-emerald-200 bg-emerald-50/60">
         <ShieldCheck className="h-4 w-4 text-emerald-700" />
         <AlertTitle className="text-emerald-900">Tokens protegidos</AlertTitle>
         <AlertDescription className="text-emerald-800">
@@ -235,144 +290,336 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
         </AlertDescription>
       </Alert>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-5">
-        <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
-          <CardHeader className="border-b bg-white">
-            <CardTitle className="flex items-center gap-2">
-              <QrCode className="h-5 w-5 text-emerald-600" />
-              Instancia da loja
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 space-y-5">
-            {!integration ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-                <Smartphone className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-                <h2 className="font-black text-slate-800">WhatsApp ainda nao conectado</h2>
-                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                  Clique para criar uma instancia exclusiva dessa empresa na W-API e gerar o QR Code.
-                </p>
-                <Button onClick={createInstance} disabled={loading || !user} className="mt-5 rounded-full bg-emerald-600 hover:bg-emerald-700">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
-                  Criar instancia e gerar QR Code
-                </Button>
+      {initialLoading ? (
+        <LoadingState />
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6">
+          {/* INSTANCE CARD */}
+          <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+            <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center gap-2">
+                  <QrCode className="h-5 w-5 text-emerald-600" />
+                  Instancia da loja
+                </span>
+                {integration && (
+                  <Badge variant="outline" className="font-mono text-[10px] font-bold">
+                    {integration.wapiInstanceId.slice(0, 12)}...
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 md:p-6 space-y-5">
+              {!integration ? (
+                <EmptyState onCreate={createInstance} loading={loading} disabled={!user} />
+              ) : (
+                <>
+                  <InfoGrid
+                    storeName={storeName}
+                    integration={integration}
+                    onCopyId={copyInstanceId}
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => loadStatus()}
+                      disabled={loadingStatus || loading}
+                      className="rounded-full h-9"
+                    >
+                      {loadingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                      Verificar status
+                    </Button>
+                    <Button variant="outline" onClick={refreshQrCode} disabled={loading} className="rounded-full h-9">
+                      <QrCode className="h-4 w-4 mr-2" />
+                      Atualizar QR
+                    </Button>
+                    <Button variant="outline" onClick={reconnect} disabled={loading} className="rounded-full h-9">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={disconnect}
+                      disabled={loading}
+                      className="rounded-full h-9 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                    >
+                      <Power className="h-4 w-4 mr-2" />
+                      Desconectar
+                    </Button>
+                  </div>
+
+                  {!isConnected ? (
+                    <QrSection qrCode={qrCode} status={status} />
+                  ) : (
+                    <ConnectedCard numero={integration.numeroWhatsapp} />
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* SEND TEST CARD */}
+          <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+            <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Send className="h-5 w-5 text-emerald-600" />
+                Enviar mensagem de teste
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 md:p-6 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-700">Telefone</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    value={testPhone}
+                    onChange={(event) => setTestPhone(event.target.value)}
+                    placeholder="Ex: 16999999999"
+                    className="pl-9 rounded-xl"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Use DDD + numero. Se nao tiver 55, o sistema adiciona automaticamente.</p>
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Empresa</p>
-                    <p className="font-bold text-slate-900 truncate">{storeName}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Instancia W-API</p>
-                    <p className="font-mono text-xs font-bold text-slate-900 truncate">{integration.wapiInstanceId}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Numero conectado</p>
-                    <p className="font-bold text-slate-900">{integration.numeroWhatsapp || '-'}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Ultima verificacao</p>
-                    <p className="font-bold text-slate-900">
-                      {integration.lastStatusAt ? new Date(integration.lastStatusAt).toLocaleString('pt-BR') : '-'}
-                    </p>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-700">Mensagem</Label>
+                <Textarea
+                  value={testMessage}
+                  onChange={(event) => setTestMessage(event.target.value)}
+                  className="min-h-[130px] rounded-xl resize-none"
+                />
+              </div>
+              <Button
+                onClick={sendTestMessage}
+                disabled={loading || !integration || !isConnected || !testPhone.trim() || !testMessage.trim()}
+                className="w-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-md shadow-emerald-500/20 h-11"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                Enviar teste
+              </Button>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => loadStatus()} disabled={loadingStatus || loading} className="rounded-full">
-                    {loadingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Verificar status
-                  </Button>
-                  <Button variant="outline" onClick={refreshQrCode} disabled={loading} className="rounded-full">
-                    <QrCode className="h-4 w-4 mr-2" />
-                    Atualizar QR
-                  </Button>
-                  <Button variant="outline" onClick={reconnect} disabled={loading} className="rounded-full">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Reconectar
-                  </Button>
-                  <Button variant="outline" onClick={disconnect} disabled={loading} className="rounded-full text-red-600 border-red-200 hover:bg-red-50">
-                    <Power className="h-4 w-4 mr-2" />
-                    Desconectar
-                  </Button>
-                </div>
+              {!integration && (
+                <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  Crie a instancia para liberar o envio de mensagens.
+                </p>
+              )}
+              {integration && !isConnected && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  Conecte o WhatsApp escaneando o QR Code antes de enviar mensagens.
+                </p>
+              )}
 
-                {!isConnected && (
-                  <div className="rounded-2xl border bg-white p-5 flex flex-col items-center justify-center min-h-[340px]">
-                    {qrCode ? (
-                      <>
-                        <img src={qrCode} alt="QR Code WhatsApp" className="w-64 h-64 object-contain rounded-xl border bg-white p-2" />
-                        <p className="text-sm text-muted-foreground mt-4 text-center max-w-sm">
-                          Abra o WhatsApp no celular da loja e escaneie o QR Code. O status atualiza automaticamente.
-                        </p>
-                      </>
-                    ) : (
-                      <div className="text-center">
-                        <AlertTriangle className="h-9 w-9 text-amber-500 mx-auto mb-3" />
-                        <p className="font-bold">QR Code indisponivel no momento.</p>
-                        <p className="text-sm text-muted-foreground">Clique em Atualizar QR ou Reconectar.</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+              {/* Help block */}
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Como funciona</p>
+                <ul className="text-xs text-slate-600 space-y-1.5">
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Cada empresa usa uma instancia W-API exclusiva.</li>
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />O QR Code expira em poucos minutos, gere um novo se precisar.</li>
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Mantenha o celular online para nao perder notificacoes.</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
 
-                {isConnected && (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 flex items-start gap-3">
-                    <CheckCircle2 className="h-6 w-6 text-emerald-600 mt-0.5" />
-                    <div>
-                      <p className="font-black text-emerald-900">WhatsApp conectado</p>
-                      <p className="text-sm text-emerald-800">
-                        As notificacoes desta loja serao enviadas por esta instancia.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+function LoadingState() {
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6">
+      <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="border-b py-4">
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-16 rounded-xl" />
+            <Skeleton className="h-16 rounded-xl" />
+            <Skeleton className="h-16 rounded-xl" />
+            <Skeleton className="h-16 rounded-xl" />
+          </div>
+          <Skeleton className="h-64 rounded-2xl" />
+        </CardContent>
+      </Card>
+      <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="border-b py-4">
+          <Skeleton className="h-5 w-56" />
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <Skeleton className="h-10 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-11 rounded-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-        <Card className="rounded-2xl border-slate-200 shadow-sm">
-          <CardHeader className="border-b bg-white">
-            <CardTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5 text-emerald-600" />
-              Enviar mensagem de teste
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 space-y-4">
-            <div className="space-y-2">
-              <Label>Telefone</Label>
-              <Input
-                value={testPhone}
-                onChange={(event) => setTestPhone(event.target.value)}
-                placeholder="Ex: 16999999999"
-              />
-              <p className="text-xs text-muted-foreground">Use DDD + numero. Se nao tiver 55, o sistema adiciona automaticamente.</p>
+function EmptyState({ onCreate, loading, disabled }: { onCreate: () => void; loading: boolean; disabled: boolean }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 p-8 md:p-10 text-center relative overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl pointer-events-none" />
+      <div className="relative">
+        <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4">
+          <Smartphone className="h-8 w-8 text-white" />
+        </div>
+        <h2 className="font-black text-lg text-slate-900">WhatsApp ainda nao conectado</h2>
+        <p className="text-sm text-slate-600 mt-1.5 max-w-md mx-auto">
+          Crie uma instancia exclusiva da W-API para esta loja e gere o QR Code para parear seu numero.
+        </p>
+
+        <Button
+          onClick={onCreate}
+          disabled={loading || disabled}
+          className="mt-6 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
+          Criar instancia e gerar QR Code
+        </Button>
+
+        <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
+          {[
+            { n: 1, t: 'Criar instancia', d: 'Geramos uma sessao W-API isolada para esta loja.' },
+            { n: 2, t: 'Escanear QR', d: 'Abra o WhatsApp do celular e leia o codigo gerado.' },
+            { n: 3, t: 'Pronto', d: 'Notificacoes comecam a ser enviadas automaticamente.' },
+          ].map((step) => (
+            <div key={step.n} className="rounded-xl border border-emerald-100 bg-white/80 backdrop-blur p-3">
+              <div className="h-6 w-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center mb-2">
+                {step.n}
+              </div>
+              <p className="text-xs font-bold text-slate-900">{step.t}</p>
+              <p className="text-[11px] text-slate-600 leading-snug mt-0.5">{step.d}</p>
             </div>
-            <div className="space-y-2">
-              <Label>Mensagem</Label>
-              <Textarea
-                value={testMessage}
-                onChange={(event) => setTestMessage(event.target.value)}
-                className="min-h-[130px]"
-              />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoGrid({
+  storeName,
+  integration,
+  onCopyId,
+}: {
+  storeName: string;
+  integration: Integration;
+  onCopyId: () => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="rounded-xl border bg-white p-3.5">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Empresa</p>
+        <p className="font-bold text-slate-900 truncate mt-0.5">{storeName}</p>
+      </div>
+      <div className="rounded-xl border bg-white p-3.5">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Instancia W-API</p>
+        <button
+          onClick={onCopyId}
+          className="group flex items-center gap-1.5 mt-0.5 hover:text-emerald-600 transition-colors"
+          title="Copiar ID"
+        >
+          <span className="font-mono text-xs font-bold text-slate-900 truncate group-hover:text-emerald-600">
+            {integration.wapiInstanceId}
+          </span>
+          <Copy className="h-3 w-3 text-slate-400 group-hover:text-emerald-600 shrink-0" />
+        </button>
+      </div>
+      <div className="rounded-xl border bg-white p-3.5">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Numero conectado</p>
+        <p className="font-bold text-slate-900 mt-0.5 flex items-center gap-1.5">
+          {integration.numeroWhatsapp ? (
+            <>
+              <Phone className="h-3.5 w-3.5 text-emerald-600" />
+              {integration.numeroWhatsapp}
+            </>
+          ) : (
+            <span className="text-slate-400 font-normal text-sm">Aguardando conexao</span>
+          )}
+        </p>
+      </div>
+      <div className="rounded-xl border bg-white p-3.5">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Ultima verificacao</p>
+        <p className="font-bold text-slate-900 text-sm mt-0.5">
+          {integration.lastStatusAt ? new Date(integration.lastStatusAt).toLocaleString('pt-BR') : '-'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationStatus }) {
+  return (
+    <div className="rounded-2xl border bg-gradient-to-br from-white via-emerald-50/30 to-white p-6 flex flex-col items-center justify-center min-h-[360px] relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.08),transparent_70%)] pointer-events-none" />
+
+      {qrCode ? (
+        <div className="relative flex flex-col items-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-2xl bg-emerald-400/20 blur-xl" />
+            <div className="relative rounded-2xl border-2 border-emerald-100 bg-white p-3 shadow-lg shadow-emerald-500/10">
+              <img src={qrCode} alt="QR Code WhatsApp" className="w-60 h-60 object-contain" />
             </div>
-            <Button
-              onClick={sendTestMessage}
-              disabled={loading || !integration || !isConnected || !testPhone.trim() || !testMessage.trim()}
-              className="w-full rounded-full bg-emerald-600 hover:bg-emerald-700"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-              Enviar teste
-            </Button>
-            {!isConnected && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                Conecte o WhatsApp antes de enviar mensagens.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            <div className="absolute -top-2 -right-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wider shadow-md">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Aguardando
+            </div>
+          </div>
+
+          <div className="mt-5 max-w-sm text-center">
+            <p className="font-bold text-slate-900 text-sm">Escaneie o QR Code com seu celular</p>
+            <ol className="text-xs text-slate-600 mt-2 space-y-1 text-left bg-white/80 backdrop-blur rounded-xl border border-slate-200 p-3">
+              <li><span className="font-bold text-emerald-700">1.</span> Abra o WhatsApp no celular da loja</li>
+              <li><span className="font-bold text-emerald-700">2.</span> Toque em <strong>Configuracoes &gt; Aparelhos conectados</strong></li>
+              <li><span className="font-bold text-emerald-700">3.</span> Selecione <strong>Conectar um aparelho</strong> e aponte para o codigo</li>
+            </ol>
+            <p className="text-[11px] text-slate-500 mt-2">O status atualiza automaticamente a cada 8 segundos.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center">
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-amber-100 flex items-center justify-center mb-3">
+            <AlertTriangle className="h-7 w-7 text-amber-600" />
+          </div>
+          <p className="font-bold text-slate-900">QR Code indisponivel no momento</p>
+          <p className="text-sm text-slate-600 mt-1">
+            {status === 'error' ? 'Houve um erro na instancia.' : 'Clique em Atualizar QR ou Reconectar para gerar um novo codigo.'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConnectedCard({ numero }: { numero?: string }) {
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white p-5 relative overflow-hidden">
+      <div className="absolute top-0 right-0 h-32 w-32 bg-emerald-200/30 blur-3xl rounded-full pointer-events-none" />
+      <div className="relative flex items-start gap-4">
+        <div className="h-12 w-12 rounded-2xl bg-emerald-600 flex items-center justify-center shadow-md shadow-emerald-500/30 shrink-0">
+          <CheckCircle2 className="h-6 w-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="font-black text-emerald-900 text-base">WhatsApp conectado</p>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-700 text-[10px] font-bold">
+              <Wifi className="h-3 w-3" />
+              Online
+            </span>
+          </div>
+          <p className="text-sm text-emerald-800 mt-1">
+            As notificacoes desta loja serao enviadas automaticamente por esta instancia.
+          </p>
+          {numero && (
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-emerald-200">
+              <Phone className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="font-mono text-sm font-bold text-slate-900">{numero}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
