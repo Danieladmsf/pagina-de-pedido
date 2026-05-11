@@ -89,22 +89,34 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
       }
     : {};
 
-  return requestWapi<CreateWapiInstanceResponse>('/integrator/create-instance', {
+  const apiKey = getWapiMainToken();
+  const baseUrl = (process.env.WAPI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+
+  return fetch(`${baseUrl}/client/create-instance`, {
     method: 'POST',
-    token: getWapiMainToken(),
-    body: {
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey,
       instanceName: input.instanceName,
+      lite: true,
       rejectCalls: true,
       callMessage: 'Nao estamos disponiveis para chamadas. Envie uma mensagem por texto.',
       ...webhookFields,
-    },
+    }),
+  }).then(async (response) => {
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.error === true) {
+      throw new ApiError(response.status || 500, data?.message || data?.error || 'Erro ao criar instancia na W-API.', data);
+    }
+    return data as CreateWapiInstanceResponse;
   });
 }
 
 export function getWapiQrCode(instanceId: string, token: string) {
   return requestWapi<WapiQrCodeResponse>('/instance/qr-code', {
     token,
-    query: { instanceId, image: 'enable', syncContacts: 'disable' },
+    query: { instanceId, syncContacts: 'disable' },
   });
 }
 

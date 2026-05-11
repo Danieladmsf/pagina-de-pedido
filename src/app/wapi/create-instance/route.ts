@@ -34,7 +34,15 @@ export async function POST(request: Request) {
       const now = new Date().toISOString();
       const webhookUrl = getWebhookUrl(request);
       const instanceName = String(body.instanceName || body.storeName || `Loja ${empresaId}`).slice(0, 80);
-      const created = await createWapiInstance({ instanceName, webhookUrl });
+      
+      // TEMPORÁRIO PARA TESTES: Usando a sua instância Trial Gratuita já existente
+      // Como a sua conta na W-API não tem pagamento ativo, criar novas instâncias não funciona (ficam com status PENDING).
+      // Quando você assinar um plano na W-API, basta voltar o código original aqui:
+      // const created = await createWapiInstance({ instanceName, webhookUrl });
+      const created = {
+        instanceId: 'LITE-JMDANG-I3824S',
+        token: 'OrO1JglDjZBmsgQk2C8fnYQ4soclm228O',
+      };
 
       await configureWapiWebhooks(created.instanceId, created.token, webhookUrl);
 

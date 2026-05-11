@@ -117,10 +117,16 @@ export default function AdminPage() {
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
-  const orders = React.useMemo(() => {
+
+  const ordersRawSorted = React.useMemo(() => {
     if (!ordersRaw) return [];
+    return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+  }, [ordersRaw]);
+
+  const orders = React.useMemo(() => {
+    if (!ordersRawSorted) return [];
     
-    let validOrders = [...ordersRaw];
+    let validOrders = [...ordersRawSorted];
     
     if (caixaAtual) {
       // Converter Timestamp para milissegundos
@@ -137,8 +143,20 @@ export default function AdminPage() {
       validOrders = [];
     }
 
-    return validOrders.sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-  }, [ordersRaw, caixaAtual]);
+    return validOrders;
+  }, [ordersRawSorted, caixaAtual]);
+
+  const deliveryOrders = React.useMemo(() => {
+    const merged = new Map<string, any>();
+    for (const order of orders) merged.set(order.id, order);
+    for (const order of ordersRawSorted) {
+      if (!['delivered', 'canceled'].includes(order.status)) {
+        merged.set(order.id, order);
+      }
+    }
+
+    return Array.from(merged.values()).sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+  }, [orders, ordersRawSorted]);
 
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
@@ -517,12 +535,31 @@ export default function AdminPage() {
     if (!user || !order?.customerPhone) return;
     if (!['received', 'out_for_delivery'].includes(status)) return;
 
-    const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'nossa loja';
-    const customerName = order.customerName ? `, ${order.customerName}` : '';
-    const total = typeof order.totalAmount === 'number' ? `\nTotal: R$ ${order.totalAmount.toFixed(2)}` : '';
-    const message = status === 'received'
-      ? `Ola${customerName}! Seu pedido #${order.id} foi recebido pela ${storeName}.${total}\n\nVamos te avisar por aqui quando sair para entrega.`
-      : `Ola${customerName}! Seu pedido #${order.id} saiu para entrega.\n\nEm breve chegara ate voce.`;
+    const firstName = order.customerName ? order.customerName.split(' ')[0] : 'Cliente';
+    const shortId = order.id ? order.id.slice(-6).toUpperCase() : '000000';
+    const totalStr = typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2).replace('.', ',') : '0,00';
+    
+    let itemsList = '';
+    if (order.items && Array.isArray(order.items)) {
+      itemsList = order.items.map((item: any) => {
+         const qty = item.quantity || 1;
+         const price = typeof item.unitPrice === 'number' ? (item.unitPrice * qty).toFixed(2).replace('.', ',') : '0,00';
+         return `${qty} x ${item.name} - ${price}`;
+      }).join('\n');
+    }
+    
+    let paymentText = order.paymentMethod || 'Dinheiro';
+    if (order.paymentMethod === 'credit_card') paymentText = 'Cartão de Crédito';
+    if (order.paymentMethod === 'debit_card') paymentText = 'Cartão de Débito';
+    if (order.paymentMethod === 'pix') paymentText = 'PIX';
+    if (order.paymentMethod === 'cash') paymentText = 'Dinheiro';
+
+    let message = '';
+    if (status === 'received') {
+      message = `Olá, ${firstName}! Tudo certo? 😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}\n\nAgradecemos pela preferência e esperamos que aproveite sua refeição ao máximo! 😋`;
+    } else {
+      message = `Olá, ${firstName}! Seu pedido nº #${shortId} saiu para entrega. 🛵\n\nEm breve chegará até você!`;
+    }
 
     try {
       const token = await user.getIdToken();
@@ -768,7 +805,7 @@ export default function AdminPage() {
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <DeliveryTab 
               db={db}
-              orders={orders || []} 
+              orders={deliveryOrders || []}
               updateOrderStatus={updateOrderStatus} 
               registrarLancamento={registrarLancamento}
               caixaAberto={!!caixaAberto}
