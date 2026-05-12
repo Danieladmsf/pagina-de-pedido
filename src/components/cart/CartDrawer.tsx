@@ -613,7 +613,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       if (!open) { setStep('cart'); setCheckoutStep(1); }
     }}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="icon" className="relative bg-white border-primary/20 text-primary hover:bg-primary/5 rounded-full h-12 w-12 shadow-md">
+        <Button data-cart-trigger variant="outline" size="icon" className="relative bg-white border-primary/20 text-primary hover:bg-primary/5 rounded-full h-12 w-12 shadow-md">
           <ShoppingCart className="h-6 w-6" />
           {totalItems > 0 && (
             <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground rounded-full w-6 h-6 flex items-center justify-center p-0 border-2 border-white">

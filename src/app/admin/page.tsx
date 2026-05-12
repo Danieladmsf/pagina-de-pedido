@@ -533,7 +533,7 @@ export default function AdminPage() {
 
   const sendOrderWhatsAppNotification = async (order: any, status: string) => {
     if (!user || !order?.customerPhone) return;
-    if (!['received', 'out_for_delivery'].includes(status)) return;
+    if (!['received', 'ready', 'out_for_delivery'].includes(status)) return;
 
     const firstName = order.customerName ? order.customerName.split(' ')[0] : 'Cliente';
     const shortId = order.id ? order.id.slice(-6).toUpperCase() : '000000';
@@ -555,11 +555,38 @@ export default function AdminPage() {
     if (order.paymentMethod === 'cash') paymentText = 'Dinheiro';
 
     let message = '';
+    let msgType = '';
+
     if (status === 'received') {
       message = `Olá, ${firstName}! Tudo certo? 😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}\n\nAgradecemos pela preferência e esperamos que aproveite sua refeição ao máximo! 😋`;
-    } else {
-      message = `Olá, ${firstName}! Seu pedido nº #${shortId} saiu para entrega. 🛵\n\nEm breve chegará até você!`;
+      msgType = 'order_created';
+    } else if (status === 'ready') {
+      // Notificação de preparo concluído
+      if (order.orderType === 'pickup') {
+        message = `Olá, ${firstName}! ✅\nSeu pedido nº #${shortId} está *pronto* e disponível para retirada! 🏪\n\nVenha buscar quando quiser. Estamos te esperando! 😊`;
+        msgType = 'order_ready_pickup';
+      } else if (order.orderType === 'dine_in') {
+        message = `Olá, ${firstName}! 🍽️\nSeu pedido nº #${shortId} está *pronto*!\n\nJá estamos levando até a sua mesa. Bom apetite! 😋`;
+        msgType = 'order_ready_dine_in';
+      } else {
+        message = `Olá, ${firstName}! ✅\nSeu pedido nº #${shortId} está sendo finalizado! Em breve sairá para entrega. 🛵`;
+        msgType = 'order_ready';
+      }
+    } else if (status === 'out_for_delivery') {
+      // Mensagem diferenciada por tipo de pedido
+      if (order.orderType === 'pickup') {
+        message = `Olá, ${firstName}! ✅🏪\nSeu pedido nº #${shortId} está *pronto para retirada*!\n\nPode vir buscar a qualquer momento. Obrigado pela preferência! 😊`;
+        msgType = 'pickup_ready';
+      } else if (order.orderType === 'dine_in') {
+        message = `Olá, ${firstName}! 🍽️✨\nSeu pedido nº #${shortId} está *disponível*!\n\nSeu prato já está pronto. Bom apetite! 😋`;
+        msgType = 'dine_in_ready';
+      } else {
+        message = `Olá, ${firstName}! Seu pedido nº #${shortId} saiu para entrega. 🛵\n\nEm breve chegará até você!`;
+        msgType = 'delivery_out';
+      }
     }
+
+    if (!message) return;
 
     try {
       const token = await user.getIdToken();
@@ -573,7 +600,7 @@ export default function AdminPage() {
           empresaId: user.uid,
           phone: order.customerPhone,
           message,
-          type: status === 'received' ? 'order_created' : 'delivery_out',
+          type: msgType,
           orderId: order.id,
         }),
       });

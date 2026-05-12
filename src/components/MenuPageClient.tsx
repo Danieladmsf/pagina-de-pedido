@@ -18,9 +18,11 @@ import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
+import { useCart } from '@/components/providers/CartProvider';
 
 export function MenuPageClient() {
   const db = useFirestore();
+  const { totalItems, totalPrice } = useCart();
   const searchParams = useSearchParams();
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -710,6 +712,29 @@ export function MenuPageClient() {
       />
       </div>
       </div>)}
+      {/* Botão flutuante - Finalizar Pedido */}
+      {totalItems > 0 && !showStoreInfo && (
+        <button
+          onClick={() => {
+            // Dispara clique no botão do carrinho para abrir o Sheet
+            const cartBtn = document.querySelector('[data-cart-trigger]') as HTMLElement;
+            if (cartBtn) cartBtn.click();
+          }}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-primary hover:bg-primary/90 text-white px-6 py-3.5 rounded-2xl shadow-2xl shadow-primary/30 transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in"
+          style={{ maxWidth: 'calc(100vw - 2rem)' }}
+        >
+          <span className="relative">
+            <ShoppingBag className="h-5 w-5" />
+            <span className="absolute -top-2 -right-2.5 bg-accent text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-primary">
+              {totalItems}
+            </span>
+          </span>
+          <span className="font-bold text-sm">Finalizar Pedido</span>
+          <span className="bg-white/20 px-3 py-0.5 rounded-full text-sm font-black">
+            R$ {totalPrice.toFixed(2)}
+          </span>
+        </button>
+      )}
       <Toaster />
     </div>
   );
