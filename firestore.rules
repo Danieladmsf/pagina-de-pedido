@@ -106,5 +106,13 @@ service cloud.firestore {
     match /active_sessions/{sessionId} {
       allow read, write: if true;
     }
+
+    match /whatsapp_messages/{messageId} {
+      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAdmin()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.empresaId == request.auth.uid;
+      allow update, delete: if false;
+    }
   }
 }

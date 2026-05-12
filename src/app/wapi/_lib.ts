@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ApiError, AuthenticatedFirebaseUser, jsonError, requireFirebaseUser } from '@/lib/firebase-auth-rest';
-import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration } from '@/lib/wapi/integration-store';
+import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
 
 export async function withAuth(
@@ -23,37 +23,32 @@ export function requireEmpresa(user: AuthenticatedFirebaseUser, empresaId?: stri
   }
 }
 
-// TEMPORÁRIO: Token da instância trial para fallback se a descriptografia falhar
-const TRIAL_INSTANCE_ID = 'LITE-JMDANG-I3824S';
-const TRIAL_INSTANCE_TOKEN = 'OrO1JglDjZBmsgQk2C8fnYQ4soclm228O';
-
 export async function requireIntegration(empresaId: string, idToken: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
   const integration = await getWhatsAppIntegration(empresaId, idToken);
   if (!integration?.wapiInstanceId || !integration?.wapiTokenEncrypted) {
     throw new ApiError(404, 'WhatsApp ainda nao configurado para esta empresa.');
   }
 
+  if (isBlockedSharedWapiInstance(integration.wapiInstanceId)) {
+    throw new ApiError(409, 'Esta empresa ainda aponta para uma instancia W-API compartilhada de testes. Crie uma nova instancia para isolar o WhatsApp da loja.');
+  }
+
   let token: string;
   try {
     token = decryptWapiToken(integration);
   } catch (err) {
-    // Se a descriptografia falhar e for a instância trial, usa o token hardcoded
-    if (integration.wapiInstanceId === TRIAL_INSTANCE_ID) {
-      console.warn('[W-API] Fallback: usando token trial hardcoded (chave de criptografia pode ter mudado entre ambientes).');
-      token = TRIAL_INSTANCE_TOKEN;
-    } else {
-      throw new ApiError(500, 'Erro ao descriptografar o token da instancia. Tente desconectar e reconectar.');
-    }
+    throw new ApiError(500, 'Erro ao descriptografar o token da instancia. Tente desconectar e reconectar.');
   }
 
   return { integration, token };
 }
 
-export function getWebhookUrl(request: Request) {
+export function getWebhookUrl(request: Request, empresaId?: string) {
   const baseUrl = process.env.WAPI_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
   const url = new URL('/webhooks/wapi', baseUrl);
   const secret = process.env.WAPI_WEBHOOK_SECRET;
   if (secret) url.searchParams.set('secret', secret);
+  if (empresaId) url.searchParams.set('empresaId', empresaId);
   return url.toString();
 }
 

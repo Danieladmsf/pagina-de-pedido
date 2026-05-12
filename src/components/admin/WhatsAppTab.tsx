@@ -157,6 +157,23 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
     }
   }
 
+  async function linkInstance(wapiInstanceId: string, token: string) {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/wapi/link-instance', {
+        method: 'POST',
+        body: JSON.stringify({ empresaId, instanceName: storeName, wapiInstanceId, token }),
+      });
+      setIntegration(data.integration);
+      setQrCode(data.qrCode || data.integration?.qrCode || '');
+      toast({ title: 'Instancia vinculada', description: 'A instancia foi vinculada a esta loja com sucesso.' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function refreshQrCode() {
     setLoading(true);
     try {
@@ -311,7 +328,7 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
             </CardHeader>
             <CardContent className="p-5 md:p-6 space-y-5">
               {!integration ? (
-                <EmptyState onCreate={createInstance} loading={loading} disabled={!user} />
+                <EmptyState onCreate={createInstance} onLink={linkInstance} loading={loading} disabled={!user} />
               ) : (
                 <>
                   <InfoGrid
@@ -458,7 +475,11 @@ function LoadingState() {
   );
 }
 
-function EmptyState({ onCreate, loading, disabled }: { onCreate: () => void; loading: boolean; disabled: boolean }) {
+function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => void; onLink: (id: string, token: string) => void; loading: boolean; disabled: boolean }) {
+  const [showManual, setShowManual] = useState(false);
+  const [manualId, setManualId] = useState('');
+  const [manualToken, setManualToken] = useState('');
+
   return (
     <div className="rounded-2xl border border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 p-8 md:p-10 text-center relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl pointer-events-none" />
@@ -471,18 +492,83 @@ function EmptyState({ onCreate, loading, disabled }: { onCreate: () => void; loa
           Crie uma instancia exclusiva da W-API para esta loja e gere o QR Code para parear seu numero.
         </p>
 
-        <Button
-          onClick={onCreate}
-          disabled={loading || disabled}
-          className="mt-6 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
-          Criar instancia e gerar QR Code
-        </Button>
+        {!showManual ? (
+          <>
+            <Button
+              onClick={onCreate}
+              disabled={loading || disabled}
+              className="mt-6 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6 w-full max-w-sm mx-auto"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
+              Criar instancia automaticamente
+            </Button>
+            
+            <div className="mt-4">
+              <button 
+                onClick={() => setShowManual(true)} 
+                className="text-xs text-emerald-700 font-medium hover:underline"
+              >
+                Ou vincular instancia W-API ja existente
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Vincular Instancia Manualmente</h3>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600">ID da Instancia</Label>
+                <Input 
+                  id="wapiInstanceId"
+                  name="wapiInstanceId"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  value={manualId} 
+                  onChange={(e) => setManualId(e.target.value)} 
+                  placeholder="Ex: LITE-HYYZ0N..." 
+                  className="text-xs h-9"
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-600">Token da Instancia</Label>
+                <Input 
+                  id="wapiToken"
+                  name="wapiToken"
+                  type="password"
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  value={manualToken} 
+                  onChange={(e) => setManualToken(e.target.value)} 
+                  placeholder="Cole o token aqui" 
+                  className="text-xs h-9"
+                  disabled={disabled}
+                />
+              </div>
+              <div className="pt-2 flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-9 text-xs" 
+                  onClick={() => setShowManual(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  className="flex-1 h-9 text-xs bg-emerald-600 hover:bg-emerald-700" 
+                  disabled={!manualId.trim() || !manualToken.trim() || loading || disabled}
+                  onClick={() => onLink(manualId.trim(), manualToken.trim())}
+                >
+                  {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
+                  Vincular e Gerar QR
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
           {[
-            { n: 1, t: 'Criar instancia', d: 'Geramos uma sessao W-API isolada para esta loja.' },
+            { n: 1, t: 'Criar/Vincular', d: 'Tenha uma sessao W-API exclusiva vinculada a esta loja.' },
             { n: 2, t: 'Escanear QR', d: 'Abra o WhatsApp do celular e leia o codigo gerado.' },
             { n: 3, t: 'Pronto', d: 'Notificacoes comecam a ser enviadas automaticamente.' },
           ].map((step) => (
