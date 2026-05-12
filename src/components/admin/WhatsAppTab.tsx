@@ -109,30 +109,52 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
     return data;
   }
 
-  const loadStatus = React.useCallback(async (silent = false) => {
+  // Carrega os dados salvos do Firestore (rapido, sem chamar W-API)
+  const loadSavedIntegration = React.useCallback(async () => {
     if (!empresaId) {
       setInitialLoading(false);
       return;
     }
+    try {
+      const data = await apiFetch(`/wapi/integration/${empresaId}`);
+      if (data.integration) {
+        setIntegration(data.integration);
+        if (data.integration.qrCode) setQrCode(data.integration.qrCode);
+      }
+    } catch {
+      // Sem dados salvos — mostra tela de criacao
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [empresaId, user]);
+
+  // Consulta status ao vivo na W-API e atualiza
+  const loadStatus = React.useCallback(async (silent = false) => {
+    if (!empresaId) return;
     if (!silent) setLoadingStatus(true);
     try {
       const data = await apiFetch(`/wapi/status/${empresaId}`);
       setIntegration(data.integration);
       if (data.integration?.qrCode) setQrCode(data.integration.qrCode);
     } catch (error: any) {
+      // Se falhar a checagem ao vivo, NAO apaga a integracao salva
       if (!/ainda nao configurado/i.test(error.message)) {
         if (!silent) toast({ variant: 'destructive', title: 'Erro no WhatsApp', description: error.message });
+      } else {
+        // Realmente nao tem integracao configurada
+        setIntegration(null);
       }
-      setIntegration(null);
     } finally {
       if (!silent) setLoadingStatus(false);
-      setInitialLoading(false);
     }
   }, [empresaId, user]);
 
   useEffect(() => {
-    loadStatus(true);
-  }, [loadStatus]);
+    loadSavedIntegration().then(() => {
+      // Depois de carregar do Firestore, faz checagem ao vivo em background
+      loadStatus(true);
+    });
+  }, [loadSavedIntegration, loadStatus]);
 
   useEffect(() => {
     if (!integration || integration.connected || !qrCode) return;
