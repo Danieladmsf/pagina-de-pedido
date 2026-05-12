@@ -31,10 +31,12 @@ service cloud.firestore {
 
     match /menuItems/{menuItemId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin() && (
+      allow create, delete: if isAdmin() && (
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
       );
+      allow update: if (isAdmin() && resource.data.ownerId == request.auth.uid) ||
+        (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity']));
     }
 
     match /addons/{addonId} {
