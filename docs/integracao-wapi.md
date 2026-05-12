@@ -9,6 +9,7 @@ WAPI_API_KEY=SUA_API_KEY_PRINCIPAL_DA_WAPI
 WAPI_BASE_URL=https://api.w-api.app/v1
 WAPI_PUBLIC_BASE_URL=https://seu-dominio.vercel.app
 WAPI_WEBHOOK_SECRET=um-segredo-interno
+WAPI_INSTANCE_PLAN=lite
 ```
 
 Opcional, para usar uma chave de criptografia separada:
@@ -19,12 +20,28 @@ WAPI_TOKEN_ENCRYPTION_KEY=uma-chave-forte
 
 Se `WAPI_TOKEN_ENCRYPTION_KEY` nao existir, o sistema usa `WAPI_API_KEY` para criptografar o token individual das instancias.
 
+O endpoint padrao de criacao de instancia e:
+
+```text
+POST /integrator/create-instance
+Authorization: Bearer WAPI_API_KEY
+```
+
+Variaveis opcionais para compatibilidade se a W-API alterar nomes de rotas:
+
+```env
+WAPI_CREATE_INSTANCE_PATH=/integrator/create-instance
+WAPI_QR_CODE_PATH=/instance/qrcode
+```
+
+Use `WAPI_INSTANCE_PLAN=pro` para solicitar criacao PRO quando o token/plano W-API permitir. Qualquer outro valor usa LITE.
+
 ## Fluxo implementado
 
 ```text
-1. Cliente acessa Admin > WhatsApp.
+1. Cliente cria uma conta ou acessa Admin > WhatsApp.
 2. Sistema chama POST /wapi/create-instance.
-3. Backend cria uma instancia na W-API.
+3. Backend cria uma instancia exclusiva na W-API usando `POST /integrator/create-instance`.
 4. Backend salva no Firestore em `roles_admin/{uid}.whatsappIntegration`:
    - ownerId
    - clienteId
@@ -65,7 +82,13 @@ POST /webhooks/wapi
 
 ## Observacao sobre webhook
 
-O handler `/webhooks/wapi` ja existe.
+O handler `/webhooks/wapi` ja existe e localiza a loja por:
+
+```text
+roles_admin/{uid}.whatsappIntegration.wapiInstanceId
+```
+
+Tambem e enviado `empresaId` na URL do webhook como redundancia de isolamento.
 
 Para persistir eventos recebidos e atualizar status automaticamente via webhook, configure tambem Firebase Admin no servidor com uma destas opcoes:
 
@@ -81,16 +104,21 @@ FIREBASE_PRIVATE_KEY=...
 FIREBASE_PROJECT_ID=studio-2243391254-75492
 ```
 
-Sem Firebase Admin, o webhook responde OK e registra log no servidor, mas nao consegue atualizar o Firestore em background.
+Sem Firebase Admin, o webhook responde OK e registra log no servidor, mas nao consegue persistir eventos nem atualizar o Firestore em background.
 
 ## Teste manual
 
 1. Entre no painel admin.
 2. Abra a aba WhatsApp.
-3. Clique em "Criar instancia e gerar QR Code".
+3. Se a conta foi criada antes da integracao automatica, clique em "Criar instancia e gerar QR Code".
 4. Escaneie o QR Code no celular da loja.
 5. Clique em "Verificar status".
 6. Envie uma mensagem de teste.
+
+## Isolamento por loja
+
+Cada loja deve ter um `wapiInstanceId` diferente salvo em `roles_admin/{uid}.whatsappIntegration`.
+Registros antigos que apontam para a instancia compartilhada de testes sao bloqueados para envio e substituidos quando `/wapi/create-instance` for chamado novamente.
 
 ## Notificacoes de pedido
 

@@ -66,6 +66,11 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      if (!auth || !db) {
+        toast({ variant: 'destructive', title: 'Erro no cadastro', description: 'Firebase ainda nao foi inicializado.' });
+        return;
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -85,7 +90,37 @@ export default function RegisterPage() {
         description: 'Categoria inicial',
       });
 
-      toast({ title: 'Conta criada!', description: 'Sua loja foi configurada.' });
+      let whatsappCreated = false;
+      let whatsappWarning = '';
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/wapi/create-instance', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            empresaId: user.uid,
+            instanceName: storeName.trim(),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.error) {
+          throw new Error(data?.error || 'Nao foi possivel criar a instancia WhatsApp.');
+        }
+        whatsappCreated = Boolean(data?.integration);
+      } catch (wapiError: any) {
+        console.warn('[W-API] Falha ao criar instancia inicial:', wapiError);
+        whatsappWarning = wapiError?.message || 'Conecte o WhatsApp pelo painel depois.';
+      }
+
+      toast({
+        title: 'Conta criada!',
+        description: whatsappCreated
+          ? 'Sua loja foi configurada. Abra a aba WhatsApp para escanear o QR Code.'
+          : `Sua loja foi configurada. WhatsApp: ${whatsappWarning}`,
+      });
       router.push('/admin');
     } catch (error: any) {
       let msg = error.message || 'Não foi possível criar sua conta.';

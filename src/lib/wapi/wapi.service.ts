@@ -1,9 +1,19 @@
 import { ApiError } from '@/lib/firebase-auth-rest';
 
 const DEFAULT_BASE_URL = 'https://api.w-api.app/v1';
+const DEFAULT_CREATE_INSTANCE_PATH = '/integrator/create-instance';
+const DEFAULT_QR_CODE_PATH = '/instance/qrcode';
 
 function getBaseUrl() {
   return (process.env.WAPI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+}
+
+function getCreateInstancePath() {
+  return process.env.WAPI_CREATE_INSTANCE_PATH || DEFAULT_CREATE_INSTANCE_PATH;
+}
+
+function getQrCodePath() {
+  return process.env.WAPI_QR_CODE_PATH || DEFAULT_QR_CODE_PATH;
 }
 
 export function getWapiMainToken() {
@@ -56,6 +66,7 @@ async function requestWapi<T>(
 export interface CreateWapiInstanceInput {
   instanceName: string;
   webhookUrl?: string;
+  lite?: boolean;
 }
 
 export interface CreateWapiInstanceResponse {
@@ -69,40 +80,110 @@ export interface WapiQrCodeResponse {
   error?: boolean;
   instanceId: string;
   qrcode?: string;
+  qrCode?: string;
+  qr_code?: string;
+  base64?: string;
+  image?: string;
+  data?: {
+    qrcode?: string;
+    qrCode?: string;
+    qr_code?: string;
+    base64?: string;
+    image?: string;
+  };
 }
 
 export interface WapiStatusResponse {
   instanceId: string;
-  connected: boolean;
+  connected?: boolean | string;
+  isConnected?: boolean | string;
+  status?: string;
+  state?: string;
+  connectionStatus?: string;
   connectedPhone?: string;
+  phone?: string;
+  number?: string;
+  instance?: {
+    connected?: boolean | string;
+    status?: string;
+    connectedPhone?: string;
+    phone?: string;
+    number?: string;
+  };
+}
+
+export function extractWapiQrCode(response: WapiQrCodeResponse | any) {
+  return (
+    response?.qrcode ||
+    response?.qrCode ||
+    response?.qr_code ||
+    response?.base64 ||
+    response?.image ||
+    response?.data?.qrcode ||
+    response?.data?.qrCode ||
+    response?.data?.qr_code ||
+    response?.data?.base64 ||
+    response?.data?.image ||
+    ''
+  );
+}
+
+function normalizeStatus(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function statusMeansConnected(value: unknown) {
+  const status = normalizeStatus(value);
+  return ['connected', 'open', 'online', 'ready'].includes(status);
+}
+
+export function isWapiConnectedStatus(response: WapiStatusResponse | any) {
+  const rawConnected = response?.connected ?? response?.isConnected ?? response?.instance?.connected;
+
+  if (typeof rawConnected === 'boolean') return rawConnected;
+  if (typeof rawConnected === 'string') return statusMeansConnected(rawConnected) || rawConnected.toLowerCase() === 'true';
+
+  return (
+    statusMeansConnected(response?.status) ||
+    statusMeansConnected(response?.state) ||
+    statusMeansConnected(response?.connectionStatus) ||
+    statusMeansConnected(response?.instance?.status)
+  );
+}
+
+export function getWapiConnectedPhone(response: WapiStatusResponse | any) {
+  return (
+    response?.connectedPhone ||
+    response?.phone ||
+    response?.number ||
+    response?.instance?.connectedPhone ||
+    response?.instance?.phone ||
+    response?.instance?.number ||
+    ''
+  );
 }
 
 export function createWapiInstance(input: CreateWapiInstanceInput) {
-  const webhookFields = input.webhookUrl
-    ? {
-        webhookConnectedUrl: input.webhookUrl,
-        webhookDeliveryUrl: input.webhookUrl,
-        webhookDisconnectedUrl: input.webhookUrl,
-        webhookStatusUrl: input.webhookUrl,
-        webhookPresenceUrl: input.webhookUrl,
-        webhookReceivedUrl: input.webhookUrl,
-      }
-    : {};
-
   const apiKey = getWapiMainToken();
-  const baseUrl = (process.env.WAPI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+  const instancePlan = (process.env.WAPI_INSTANCE_PLAN || '').trim().toLowerCase();
+  const lite = input.lite ?? instancePlan !== 'pro';
 
-  return fetch(`${baseUrl}/client/create-instance`, {
+  if (!apiKey) {
+    throw new ApiError(500, 'WAPI_API_KEY nao configurada no servidor.');
+  }
+
+  return fetch(`${getBaseUrl()}${getCreateInstancePath()}`, {
     method: 'POST',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
-      apiKey,
       instanceName: input.instanceName,
-      lite: true,
+      lite,
       rejectCalls: true,
       callMessage: 'Nao estamos disponiveis para chamadas. Envie uma mensagem por texto.',
-      ...webhookFields,
     }),
   }).then(async (response) => {
     const data = await response.json().catch(() => null);
@@ -114,7 +195,7 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
 }
 
 export function getWapiQrCode(instanceId: string, token: string) {
-  return requestWapi<WapiQrCodeResponse>('/instance/qr-code', {
+  return requestWapi<WapiQrCodeResponse>(getQrCodePath(), {
     token,
     query: { instanceId, syncContacts: 'disable' },
   });

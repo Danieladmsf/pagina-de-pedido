@@ -4,6 +4,13 @@ import { SanitizedWhatsAppIntegration, WhatsAppIntegration, WapiConnectionStatus
 
 const ADMIN_COLLECTION = 'roles_admin';
 const INTEGRATION_FIELD = 'whatsappIntegration';
+const LEGACY_SHARED_INSTANCE_IDS = new Set([
+  'LITE-JMDANG-I3824S',
+  ...(process.env.WAPI_BLOCKED_INSTANCE_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
+]);
 
 export function assertEmpresaOwner(uid: string, empresaId?: string) {
   const targetEmpresaId = empresaId || uid;
@@ -19,6 +26,10 @@ export function encryptWapiToken(token: string) {
 
 export function decryptWapiToken(integration: WhatsAppIntegration) {
   return decryptSecret(integration.wapiTokenEncrypted);
+}
+
+export function isBlockedSharedWapiInstance(instanceId?: string) {
+  return Boolean(instanceId && LEGACY_SHARED_INSTANCE_IDS.has(instanceId));
 }
 
 export function sanitizeIntegration(integration: WhatsAppIntegration): SanitizedWhatsAppIntegration {
