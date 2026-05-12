@@ -12,14 +12,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const { empresaId: rawEmpresaId } = await params;
       const empresaId = requireEmpresa(user, rawEmpresaId);
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
-      const rawStatus = await getWapiStatus(integration.wapiInstanceId, token);
-      const connected = isWapiConnectedStatus(rawStatus);
-      const connectedPhone = getWapiConnectedPhone(rawStatus);
+
+      let rawStatus: any = null;
+      let connected = integration.connected;
+      let connectedPhone = integration.numeroWhatsapp || '';
+
+      try {
+        rawStatus = await getWapiStatus(integration.wapiInstanceId, token);
+        connected = isWapiConnectedStatus(rawStatus);
+        connectedPhone = getWapiConnectedPhone(rawStatus) || integration.numeroWhatsapp || '';
+      } catch (wapiError: any) {
+        // Se a W-API nao respondeu, mantemos o status salvo em vez de marcar como desconectado
+        console.warn('[W-API status] Falha ao consultar status ao vivo, mantendo estado salvo:', wapiError?.message);
+        const updated = await patchWhatsAppIntegration(empresaId, {
+          lastError: `Falha ao consultar W-API: ${wapiError?.message || 'timeout'}`,
+          lastStatusAt: new Date().toISOString(),
+        }, user.idToken);
+        return ok({ integration: sanitizeIntegration(updated), raw: null, wapiError: wapiError?.message });
+      }
 
       const updated = await patchWhatsAppIntegration(empresaId, {
         connected,
         status: statusFromWapi(connected),
-        numeroWhatsapp: connectedPhone || integration.numeroWhatsapp || '',
+        numeroWhatsapp: connectedPhone,
         lastError: '',
         lastStatusAt: new Date().toISOString(),
       }, user.idToken);

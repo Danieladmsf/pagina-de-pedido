@@ -51,15 +51,32 @@ function stateTokens(payload: any, event: string) {
   });
 }
 
+// Eventos que realmente indicam mudanca de conexao
+const CONNECTION_EVENTS = new Set([
+  'status_change', 'connection_update', 'connection_status',
+  'disconnected', 'disconnect', 'logout', 'loggedout',
+  'connected', 'open', 'ready',
+  'qr_code', 'qrcode',
+]);
+
+function isConnectionEvent(event: string) {
+  const normalized = String(event || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return CONNECTION_EVENTS.has(normalized) || normalized.includes('status') || normalized.includes('connect');
+}
+
 function isDisconnectedEvent(payload: any, event: string) {
+  // Ignora eventos de mensagem/delivery para decisoes de conexao
+  if (!isConnectionEvent(event)) return false;
+
   const states = normalizedStateValues(payload, event);
   if (states.some((state) => state === 'not_connected' || state === 'false')) return true;
 
   const tokens = stateTokens(payload, event);
-  return tokens.some((token) => ['disconnected', 'disconnect', 'closed', 'close', 'logout', 'offline'].includes(token));
+  return tokens.some((token) => ['disconnected', 'disconnect', 'logout', 'loggedout', 'offline'].includes(token));
 }
 
 function isConnectedEvent(payload: any, event: string) {
+  if (!isConnectionEvent(event)) return false;
   if (isDisconnectedEvent(payload, event)) return false;
   const tokens = stateTokens(payload, event);
   return tokens.some((token) => ['connected', 'connect', 'open', 'online', 'ready'].includes(token));
@@ -109,24 +126,35 @@ export async function POST(request: Request) {
   });
 
   let integrationUpdated = false;
+  const connected = isConnectedEvent(payload, event);
+  const disconnected = isDisconnectedEvent(payload, event);
 
-  if (adminRef) {
+  console.log('[W-API webhook] processando:', { event, instanceId, empresaId, connected, disconnected, isConnEvt: isConnectionEvent(event) });
+
+  if (adminRef && (connected || disconnected)) {
     const patch: Record<string, unknown> = {
       'whatsappIntegration.updatedAt': now,
       'whatsappIntegration.lastStatusAt': now,
     };
 
-    if (isConnectedEvent(payload, event)) {
+    if (connected) {
       patch['whatsappIntegration.connected'] = true;
       patch['whatsappIntegration.status'] = 'connected';
       patch['whatsappIntegration.numeroWhatsapp'] = getConnectedPhone(payload);
       patch['whatsappIntegration.qrCode'] = '';
       patch['whatsappIntegration.lastError'] = '';
-    }
-
-    if (isDisconnectedEvent(payload, event)) {
-      patch['whatsappIntegration.connected'] = false;
-      patch['whatsappIntegration.status'] = 'disconnected';
+    } else if (disconnected) {
+      // Antes de marcar como desconectado, verifica se realmente estava conectado
+      // para evitar falsos positivos de eventos transitórios
+      const currentDoc = await adminRef.get();
+      const currentIntegration = currentDoc.data()?.whatsappIntegration;
+      if (currentIntegration?.connected) {
+        console.log('[W-API webhook] Marcando como desconectado:', { event, instanceId, empresaId });
+        patch['whatsappIntegration.connected'] = false;
+        patch['whatsappIntegration.status'] = 'disconnected';
+      } else {
+        console.log('[W-API webhook] Ignorando disconnect - ja estava desconectado:', { event, instanceId, empresaId });
+      }
     }
 
     try {
