@@ -103,6 +103,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [formBairro, setFormBairro] = useState('');
   const [formCidade, setFormCidade] = useState('');
   const [formCreditEnabled, setFormCreditEnabled] = useState(false);
+  const [formCreditLimit, setFormCreditLimit] = useState('');
+  const [formCreditPayDay, setFormCreditPayDay] = useState('');
 
   // Query Firestore
   const clientesQuery = useMemoFirebase(() => {
@@ -141,6 +143,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     setFormNome(''); setFormCelular(''); setFormNascimento('');
     setFormLogradouro(''); setFormNumero(''); setFormComplemento('');
     setFormBairro(''); setFormCidade('');
+    setFormCreditEnabled(false); setFormCreditLimit(''); setFormCreditPayDay('');
     setEditingCliente({});
   };
 
@@ -154,6 +157,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     setFormBairro(c.bairro || '');
     setFormCidade(c.cidade || '');
     setFormCreditEnabled(c.creditEnabled || false);
+    setFormCreditLimit(c.creditLimit ? c.creditLimit.toString() : '');
+    setFormCreditPayDay(c.creditPayDay ? c.creditPayDay.toString() : '');
     setEditingCliente(c);
   };
 
@@ -172,6 +177,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         cidade: formCidade.trim(),
         ownerId: user.uid,
         creditEnabled: formCreditEnabled,
+        creditLimit: Number(formCreditLimit) || 0,
+        creditPayDay: Number(formCreditPayDay) || 0,
       };
 
       if (editingCliente?.id) {
@@ -582,20 +589,48 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
             </div>
             
             {/* Conta da Casa */}
-            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded px-3 py-2 border border-indigo-100 flex items-center justify-between gap-3 shadow-inner">
-              <div className="flex items-center gap-2">
-                <Receipt className="h-3.5 w-3.5 text-indigo-600" />
-                <div>
-                  <Label className="text-xs font-bold text-indigo-900 cursor-pointer mb-0 leading-none" htmlFor="toggle-conta-casa">Ativar Prazo</Label>
-                  <p className="text-[9px] text-indigo-700/80 leading-tight mt-0.5">Permite compras a prazo no app/painel.</p>
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded px-3 py-2 border border-indigo-100 shadow-inner space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Receipt className="h-3.5 w-3.5 text-indigo-600" />
+                  <div>
+                    <Label className="text-xs font-bold text-indigo-900 cursor-pointer mb-0 leading-none" htmlFor="toggle-conta-casa">Ativar Prazo</Label>
+                    <p className="text-[9px] text-indigo-700/80 leading-tight mt-0.5">Permite compras a prazo no app/painel.</p>
+                  </div>
                 </div>
+                <Switch 
+                  id="toggle-conta-casa"
+                  checked={formCreditEnabled} 
+                  onCheckedChange={setFormCreditEnabled}
+                  className="data-[state=checked]:bg-indigo-600 scale-90 shrink-0"
+                />
               </div>
-              <Switch 
-                id="toggle-conta-casa"
-                checked={formCreditEnabled} 
-                onCheckedChange={setFormCreditEnabled}
-                className="data-[state=checked]:bg-indigo-600 scale-90 shrink-0"
-              />
+
+              {formCreditEnabled && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-indigo-100/50">
+                  <div className="space-y-0.5">
+                    <Label className="text-[10px] text-indigo-900 font-bold uppercase">Limite de Gastos (R$)</Label>
+                    <Input 
+                      value={formCreditLimit} 
+                      onChange={(e) => setFormCreditLimit(e.target.value.replace(/[^0-9.]/g, ''))} 
+                      placeholder="Ex: 500" 
+                      className="bg-white h-7 text-xs px-2 border-indigo-100" 
+                    />
+                    <p className="text-[8px] text-indigo-600">0 = sem limite</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[10px] text-indigo-900 font-bold uppercase">Dia de Pagamento</Label>
+                    <Input 
+                      value={formCreditPayDay} 
+                      onChange={(e) => setFormCreditPayDay(e.target.value.replace(/[^0-9]/g, ''))} 
+                      placeholder="Ex: 10" 
+                      className="bg-white h-7 text-xs px-2 border-indigo-100" 
+                      maxLength={2} 
+                    />
+                    <p className="text-[8px] text-indigo-600">Bloqueia no dia seguinte se houver dívida</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
