@@ -31,6 +31,7 @@ import { SidebarNav } from '@/components/admin/SidebarNav';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
+import { PromotionsTab } from '@/components/admin/PromotionsTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
@@ -896,6 +897,12 @@ export default function AdminPage() {
         {activeTab === 'whatsapp' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <WhatsAppTab user={user} storeProfile={storeProfile} />
+          </div>
+        )}
+
+        {activeTab === 'promocoes' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <PromotionsTab db={db} user={user} items={items || []} categories={categories || []} />
           </div>
         )}
 
