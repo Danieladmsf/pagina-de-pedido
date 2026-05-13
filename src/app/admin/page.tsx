@@ -565,7 +565,7 @@ export default function AdminPage() {
          tempoEstimado = `\n⏳ Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`;
       }
 
-      message = `Olá, ${firstName}! tudo bom? 😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}${tempoEstimado}\n\nAgradecemos pela preferência e esperamos que aproveite sua refeição ao máximo! 😋`;
+      message = `Olá, ${firstName}! tudo bem?😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}${tempoEstimado}\n\nAgradecemos pela preferência e esperamos que aproveite seu docinho ao máximo! 🤎`;
       msgType = 'order_created';
     } else if (status === 'ready') {
       // Notificação de preparo concluído
