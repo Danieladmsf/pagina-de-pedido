@@ -178,9 +178,31 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         );
         const snap = await getDocs(q);
         
+        const isCreditValid = (d) => {
+          const data = d.data();
+          if (!data.creditEnabled) return false;
+          
+          const balance = data.creditBalance || 0;
+          const limit = data.creditLimit || 0;
+          const payDay = data.creditPayDay || 0;
+          
+          // Bloqueia se o limite for atingido ou ultrapassado
+          if (limit > 0 && balance >= limit) return false;
+          
+          // Bloqueia se passou do dia do pagamento e há saldo devedor
+          if (payDay > 0 && balance > 0) {
+            const today = new Date().getDate();
+            if (today > payDay) {
+               return false; // Dívida em aberto após data limite
+            }
+          }
+          
+          return true;
+        };
+
         // Verificar se QUALQUER documento tem creditEnabled
         if (!snap.empty) {
-          const hasCredit = snap.docs.some(d => d.data().creditEnabled === true);
+          const hasCredit = snap.docs.some(isCreditValid);
           if (hasCredit) {
             setContaCasaEnabled(true);
             return;
@@ -196,7 +218,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           );
           const snap2 = await getDocs(q2);
           if (!snap2.empty) {
-            const hasCredit = snap2.docs.some(d => d.data().creditEnabled === true);
+            const hasCredit = snap2.docs.some(isCreditValid);
             if (hasCredit) {
               setContaCasaEnabled(true);
               return;
@@ -214,7 +236,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           );
           const snap3 = await getDocs(q3);
           if (!snap3.empty) {
-            const hasCredit = snap3.docs.some(d => d.data().creditEnabled === true);
+            const hasCredit = snap3.docs.some(isCreditValid);
             if (hasCredit) {
               setContaCasaEnabled(true);
               return;

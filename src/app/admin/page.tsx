@@ -558,7 +558,14 @@ export default function AdminPage() {
     let msgType = '';
 
     if (status === 'received') {
-      message = `Olá, ${firstName}! Tudo certo? 😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}\n\nAgradecemos pela preferência e esperamos que aproveite sua refeição ao máximo! 😋`;
+      let tempoEstimado = '';
+      if (order.orderType === 'delivery' && storeProfile?.fees?.deliveryTime) {
+         tempoEstimado = `\n⏳ Tempo estimado de entrega: ${storeProfile.fees.deliveryTime}`;
+      } else if (order.orderType === 'pickup' && storeProfile?.fees?.pickupTime) {
+         tempoEstimado = `\n⏳ Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`;
+      }
+
+      message = `Olá, ${firstName}! tudo bom? 😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}${tempoEstimado}\n\nAgradecemos pela preferência e esperamos que aproveite sua refeição ao máximo! 😋`;
       msgType = 'order_created';
     } else if (status === 'ready') {
       // Notificação de preparo concluído
