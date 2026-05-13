@@ -41,7 +41,9 @@ export function ActiveOrdersBanner() {
   // Busca pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !customerPhone) return null;
-    return query(collection(db, 'orders'), where('customerIdentifier', '==', customerPhone));
+    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
+    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
+    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
   }, [db, customerPhone]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 
