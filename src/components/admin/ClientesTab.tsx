@@ -6,6 +6,7 @@ import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -610,10 +611,10 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-indigo-100/50">
                   <div className="space-y-0.5">
                     <Label className="text-[10px] text-indigo-900 font-bold uppercase">Limite de Gastos (R$)</Label>
-                    <Input 
-                      value={formCreditLimit} 
-                      onChange={(e) => setFormCreditLimit(e.target.value.replace(/[^0-9.]/g, ''))} 
-                      placeholder="Ex: 500" 
+                    <CurrencyInput 
+                      value={Number(formCreditLimit) || 0} 
+                      onChange={(val) => setFormCreditLimit(val.toString())} 
+                      placeholder="0,00" 
                       className="bg-white h-7 text-xs px-2 border-indigo-100" 
                     />
                     <p className="text-[8px] text-indigo-600">0 = sem limite</p>
@@ -752,11 +753,11 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-[10px] text-slate-500">Valor (R$)</Label>
-                  <Input 
-                    className="h-8 text-sm"
+                  <CurrencyInput 
+                    className="h-8 text-sm bg-white"
                     placeholder="0,00" 
-                    value={contaCasaPaymentAmount}
-                    onChange={(e) => setContaCasaPaymentAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                    value={Number(contaCasaPaymentAmount.replace(',', '.')) || 0}
+                    onChange={(val) => setContaCasaPaymentAmount(val.toString())}
                   />
                 </div>
                 <div>
