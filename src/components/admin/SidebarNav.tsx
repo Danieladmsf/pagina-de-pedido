@@ -15,7 +15,8 @@ import {
   Wallet,
   Palette,
   Menu,
-  MessageCircle
+  MessageCircle,
+  Flame
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -36,6 +37,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'categorias', label: 'Categorias', icon: Tag },
     { id: 'addons', label: 'Adicionais', icon: PlusCircle },
     { id: 'clientes', label: 'Clientes', icon: Users },
+    { id: 'promocoes', label: 'Promoções', icon: Flame, highlight: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   ];
 
@@ -87,12 +89,12 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`flex items-center w-full rounded-lg transition-colors overflow-hidden shrink-0 ${
-                isActive ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-white/5 text-slate-300'
+                isActive ? 'bg-emerald-500/20 text-emerald-400' : (item as any).highlight ? 'hover:bg-orange-500/10 text-orange-400' : 'hover:bg-white/5 text-slate-300'
               }`}
               style={{ height: '44px' }}
             >
               <div className="w-12 h-full flex items-center justify-center shrink-0">
-                <Icon className="w-5 h-5" />
+                <Icon className={`w-5 h-5 ${(item as any).highlight && !isActive ? 'text-orange-400' : ''}`} />
               </div>
               <span className={`font-medium whitespace-nowrap transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
                 {item.label}
