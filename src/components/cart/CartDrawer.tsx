@@ -500,6 +500,42 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
+      // Sincroniza também com a coleção de clientes (Painel Admin)
+      try {
+        const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
+        const qClientes = query(collection(db, 'clientes'), where('ownerId', '==', effectiveStoreOwnerId), where('celular', '==', normalizedPhone));
+        const snapClientes = await getDocs(qClientes);
+        let clienteRef;
+        const clienteData: any = {
+          ownerId: effectiveStoreOwnerId,
+          nome: customerName,
+          celular: normalizedPhone,
+          dataNascimento: customerBirthDate,
+          logradouro: street,
+          logradouroNumero: number,
+          complemento: complement,
+          bairro: neighborhood,
+          cidade: city,
+          updatedAt: new Date().toISOString(),
+        };
+        
+        if (!snapClientes.empty) {
+          clienteRef = doc(db, 'clientes', snapClientes.docs[0].id);
+        } else {
+          clienteRef = doc(collection(db, 'clientes'));
+          clienteData.id = clienteRef.id;
+          clienteData.createdAt = new Date().toISOString();
+          clienteData.totalPedidos = 0;
+          clienteData.totalPontos = 0;
+          clienteData.ticketMedio = 0;
+          clienteData.creditBalance = 0;
+          clienteData.clienteDesde = new Date().toLocaleDateString('pt-BR');
+        }
+        await setDoc(clienteRef, clienteData, { merge: true });
+      } catch (err) {
+        console.warn('Erro ao sincronizar cliente para painel admin:', err);
+      }
+
       // Salva em localStorage como fallback de robustez (Sessões anônimas)
       try {
         localStorage.setItem('customer_profile', JSON.stringify({
