@@ -121,7 +121,7 @@ export default function RegisterPage() {
           ? 'Sua loja foi configurada. Abra a aba WhatsApp para escanear o QR Code.'
           : `Sua loja foi configurada. WhatsApp: ${whatsappWarning}`,
       });
-      router.push('/admin');
+      router.push('/');
     } catch (error: any) {
       let msg = error.message || 'Não foi possível criar sua conta.';
       if (error?.code === 'auth/email-already-in-use') msg = 'Este e-mail já está cadastrado.';

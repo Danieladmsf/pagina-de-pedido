@@ -132,7 +132,8 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const storeLink = typeof window !== 'undefined' && user?.uid ? `${window.location.origin}/?s=${user.uid}` : '';
+  const storeNameSlug = (storeProfile?.general?.name || storeProfile?.storeName || 'loja').replace(/\s+/g, '-').toLowerCase();
+  const storeLink = typeof window !== 'undefined' && user?.uid ? `${window.location.origin}/${storeNameSlug}-${user.uid}` : '';
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">

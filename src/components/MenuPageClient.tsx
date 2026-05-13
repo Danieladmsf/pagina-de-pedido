@@ -20,7 +20,7 @@ import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { useCart } from '@/components/providers/CartProvider';
 
-export function MenuPageClient() {
+export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const db = useFirestore();
   const { totalItems, totalPrice } = useCart();
   const searchParams = useSearchParams();
@@ -48,7 +48,9 @@ export function MenuPageClient() {
     el.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
   };
 
-  const storeIdFromUrl = searchParams.get('s');
+  const urlParam = searchParams.get('s');
+  const slugId = storeSlug ? storeSlug.split('-').pop() : null;
+  const storeIdFromUrl = slugId || urlParam;
 
   // Proteção: Só tenta criar a referência se o 'db' for válido
   const storeRef = useMemoFirebase(() => {
@@ -694,7 +696,7 @@ export function MenuPageClient() {
           <p>{storeId ? 'Cardápio Digital Profissional' : 'Faça seu pedido online'}</p>
         </div>
         <div className="pt-4 flex justify-center gap-4">
-          <Link href="/admin" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">
+          <Link href="/" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">
             <Lock className="h-3 w-3" /> Área Restrita
           </Link>
           <Link href="/register" className="inline-flex items-center gap-1 text-[10px] opacity-30 hover:opacity-100">
