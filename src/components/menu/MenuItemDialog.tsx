@@ -243,7 +243,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Observações</Label>
             <Textarea
-              placeholder="Ex: sem cebola, ponto da carne, etc."
+              placeholder="Ex: algum detalhe ou preferência, etc."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="resize-none min-h-[50px] text-xs"
