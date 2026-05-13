@@ -43,8 +43,8 @@ export function CustomerAccountButton() {
     return (myOrders as any[]).filter(o => ['pending', 'received', 'ready', 'out_for_delivery'].includes(o.status)).length;
   }, [myOrders]);
 
-  // Só mostra o botão se o cliente já fez algum pedido
-  if (!customerPhone || (!myOrders || myOrders.length === 0)) return null;
+  // O botão sempre aparece para que o cliente possa fazer login ou ver o histórico.
+  // if (!customerPhone || (!myOrders || myOrders.length === 0)) return null;
 
   return (
     <Link href="/my-orders">
