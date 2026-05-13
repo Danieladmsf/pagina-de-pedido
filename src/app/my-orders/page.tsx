@@ -108,7 +108,9 @@ export default function MyOrdersPage() {
   // Buscar pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !customerPhone) return null;
-    return query(collection(db, 'orders'), where('customerIdentifier', '==', customerPhone));
+    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
+    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
+    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
   }, [db, customerPhone]);
 
   const profileRef = useMemoFirebase(() => {
@@ -154,7 +156,9 @@ export default function MyOrdersPage() {
     });
 
     // Buscar cliente com listener em tempo real
-    const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', customerPhone));
+    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
+    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
+    const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', 'in', possiblePhones));
     const unsubClient = onSnapshot(q, (snap) => {
       if (!snap.empty) {
         const cData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
