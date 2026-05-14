@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { Loader2, Check, ExternalLink, Upload, Download, Trash2, ImageIcon, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -44,11 +44,36 @@ Evite zoom excessivo e mantenha espacamento visual confortavel em todos os lados
 Considere cortes responsivos.
 Safe area for responsive crop.`;
 
+function generateShortCode(length = 6): string {
+  const chars = 'abcdefghijkmnpqrstuvwxyz23456789'; // no confusing chars
+  let result = '';
+  for (let i = 0; i < length; i++) result += chars[Math.floor(Math.random() * chars.length)];
+  return result;
+}
+
 export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
   const { toast } = useToast();
   const currentThemeId = storeProfile?.theme || 'padrao';
   const [selectedId, setSelectedId] = useState<string>(currentThemeId);
   const [isSaving, setIsSaving] = useState(false);
+  const [shortSlug, setShortSlug] = useState<string>('');
+
+  // Generate or load short slug
+  useEffect(() => {
+    if (!db || !user?.uid) return;
+    const existing = storeProfile?.shortSlug;
+    if (existing) { setShortSlug(existing); return; }
+    // Generate a new one
+    const code = generateShortCode();
+    setShortSlug(code);
+    // Persist short slug
+    (async () => {
+      try {
+        await setDoc(doc(db, 'store_profiles', user.uid), { shortSlug: code }, { merge: true });
+        await setDoc(doc(db, 'store_slugs', code), { storeId: user.uid });
+      } catch (e) { console.warn('Failed to persist short slug:', e); }
+    })();
+  }, [db, user?.uid, storeProfile?.shortSlug]);
 
   useEffect(() => {
     setSelectedId(currentThemeId);
@@ -132,8 +157,13 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const storeNameSlug = (storeProfile?.general?.name || storeProfile?.storeName || 'loja').replace(/\s+/g, '-').toLowerCase();
-  const storeLink = typeof window !== 'undefined' && user?.uid ? `${window.location.origin}/${storeNameSlug}-${user.uid}` : '';
+  const storeNameSlug = (storeProfile?.general?.name || storeProfile?.storeName || 'loja')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
+    .replace(/[^a-zA-Z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase();
+  const slugId = shortSlug || user?.uid || '';
+  const storeLink = typeof window !== 'undefined' && slugId ? `${window.location.origin}/${storeNameSlug}-${slugId}` : '';
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">

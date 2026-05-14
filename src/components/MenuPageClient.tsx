@@ -79,7 +79,38 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
   const urlParam = searchParams.get('s');
   const slugId = storeSlug ? storeSlug.split('-').pop() : null;
-  const storeIdFromUrl = slugId || urlParam;
+  const rawStoreId = slugId || urlParam;
+
+  // Resolve short slugs (≤8 chars) to full store UIDs
+  const [resolvedStoreId, setResolvedStoreId] = useState<string | null>(null);
+  const [slugResolved, setSlugResolved] = useState(false);
+
+  useEffect(() => {
+    if (!db || !rawStoreId) { setSlugResolved(true); return; }
+    // If it looks like a full UID (>8 chars), use directly
+    if (rawStoreId.length > 8) {
+      setResolvedStoreId(rawStoreId);
+      setSlugResolved(true);
+      return;
+    }
+    // Short slug - look up in store_slugs collection
+    import('firebase/firestore').then(({ getDoc, doc: fbDoc }) => {
+      getDoc(fbDoc(db, 'store_slugs', rawStoreId)).then((snap: any) => {
+        if (snap.exists()) {
+          setResolvedStoreId(snap.data().storeId);
+        } else {
+          // Fallback: maybe it IS a short UID somehow
+          setResolvedStoreId(rawStoreId);
+        }
+        setSlugResolved(true);
+      }).catch(() => {
+        setResolvedStoreId(rawStoreId);
+        setSlugResolved(true);
+      });
+    });
+  }, [db, rawStoreId]);
+
+  const storeIdFromUrl = resolvedStoreId;
 
   // Proteção: Só tenta criar a referência se o 'db' for válido
   const storeRef = useMemoFirebase(() => {

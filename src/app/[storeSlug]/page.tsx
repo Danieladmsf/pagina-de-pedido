@@ -52,17 +52,36 @@ async function fetchStoreName(storeId: string) {
   }
 }
 
+async function fetchStoreIdFromSlug(shortSlug: string) {
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents/store_slugs/${shortSlug}`;
+    const res = await fetch(url, { next: { revalidate: 3600 } });
+    if (!res.ok) return null;
+    const doc = await res.json();
+    return doc.fields?.storeId?.stringValue || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({ params }: { params: { storeSlug: string } }): Promise<Metadata> {
   const slug = decodeURIComponent(params.storeSlug);
   const parts = slug.split('-');
-  const storeId = parts.pop() || '';
+  const rawStoreId = parts.pop() || '';
 
   const defaults: Metadata = {
     title: 'Cardápio Digital',
     description: 'Faça seu pedido online!',
   };
 
-  if (!storeId) return defaults;
+  if (!rawStoreId) return defaults;
+
+  // Resolve short slug to full storeId
+  let storeId = rawStoreId;
+  if (rawStoreId.length <= 8) {
+    const resolved = await fetchStoreIdFromSlug(rawStoreId);
+    if (resolved) storeId = resolved;
+  }
 
   const [profile, roleName] = await Promise.all([
     fetchStoreProfile(storeId),
