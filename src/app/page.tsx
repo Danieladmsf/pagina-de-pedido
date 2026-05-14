@@ -9,7 +9,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -62,6 +62,7 @@ export default function AdminPage() {
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
+  const [productManagementTab, setProductManagementTab] = useState<'produtos' | 'combos' | 'marmitas'>('produtos');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
   const handleSort = (key: string) => {
@@ -159,9 +160,30 @@ export default function AdminPage() {
     return Array.from(merged.values()).sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
   }, [orders, ordersRawSorted]);
 
+  const productTypeCounts = React.useMemo(() => {
+    const counts = { produtos: 0, combos: 0, marmitas: 0 };
+    for (const item of items || []) {
+      if (item.isCombo) {
+        counts.combos++;
+      } else if (item.isMarmita) {
+        counts.marmitas++;
+      } else {
+        counts.produtos++;
+      }
+    }
+    return counts;
+  }, [items]);
+
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
     let result = [...items];
+    if (productManagementTab === 'combos') {
+      result = result.filter(item => item.isCombo);
+    } else if (productManagementTab === 'marmitas') {
+      result = result.filter(item => !item.isCombo && item.isMarmita);
+    } else {
+      result = result.filter(item => !item.isCombo && !item.isMarmita);
+    }
     if (productCategoryFilter !== 'todas') {
       result = result.filter(item => item.categoryId === productCategoryFilter);
     }
@@ -187,7 +209,7 @@ export default function AdminPage() {
     }
     
     return result;
-  }, [items, productCategoryFilter, productSearch, sortConfig, categories]);
+  }, [items, productManagementTab, productCategoryFilter, productSearch, sortConfig, categories]);
 
   useEffect(() => {
     console.log('[admin] user:', user?.uid, 'isRealUser:', isRealUser);
@@ -943,20 +965,40 @@ export default function AdminPage() {
               </div>
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4 shrink-0">
-                <div className="flex gap-2 flex-wrap">
-                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
-                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                  </Button>
-
-                <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 flex gap-2">
-                  <Box className="h-4 w-4" /> Criar Combo
-                </Button>
-                
-                <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
-                  <Component className="h-4 w-4" /> Criar Marmita
-                </Button>
-              </div>
+              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0 lg:flex-row lg:items-center lg:justify-between">
+                <Tabs value={productManagementTab} onValueChange={(value) => setProductManagementTab(value as 'produtos' | 'combos' | 'marmitas')} className="w-full lg:w-auto">
+                  <TabsList className="grid h-auto w-full grid-cols-3 lg:w-auto">
+                    <TabsTrigger value="produtos" className="gap-2">
+                      Produtos
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.produtos}</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="combos" className="gap-2">
+                      Combos
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.combos}</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="marmitas" className="gap-2">
+                      Marmitas
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.marmitas}</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <div className="flex justify-end gap-2">
+                  {productManagementTab === 'produtos' && (
+                    <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
+                      <Plus className="mr-2 h-4 w-4" /> Novo Produto
+                    </Button>
+                  )}
+                  {productManagementTab === 'combos' && (
+                    <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 flex gap-2">
+                      <Box className="h-4 w-4" /> Criar Combo
+                    </Button>
+                  )}
+                  {productManagementTab === 'marmitas' && (
+                    <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
+                      <Component className="h-4 w-4" /> Criar Marmita
+                    </Button>
+                  )}
+                </div>
             </CardHeader>
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
                 <div className="p-4 border-b bg-slate-50 flex flex-col md:flex-row gap-4 items-center shrink-0">
@@ -971,7 +1013,7 @@ export default function AdminPage() {
                     ))}
                   </select>
                   <Input
-                    placeholder="Procurar por..."
+                    placeholder={productManagementTab === 'produtos' ? 'Procurar produto...' : productManagementTab === 'combos' ? 'Procurar combo...' : 'Procurar marmita...'}
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     className="w-full"
@@ -1000,7 +1042,13 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredItems?.map((item) => {
+                    {filteredItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="h-32 text-center text-sm text-muted-foreground">
+                          Nenhum item encontrado nesta aba.
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredItems.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
                       const isAvailable = item.isAvailable !== false; // Default is true se não estiver definido
@@ -1023,6 +1071,20 @@ export default function AdminPage() {
                               <div className="mt-1">
                                 <Badge className="text-[10px] bg-teal-500 hover:bg-teal-600 font-normal">
                                   Opções: {itemAddons.map(a => a.name).join('; ')}
+                                </Badge>
+                              </div>
+                            )}
+                            {item.isCombo && item.comboItems?.length > 0 && (
+                              <div className="mt-1">
+                                <Badge className="text-[10px] bg-purple-600 hover:bg-purple-700 font-normal">
+                                  Combo: {item.comboItems.length} itens
+                                </Badge>
+                              </div>
+                            )}
+                            {item.isMarmita && item.addonGroups?.length > 0 && (
+                              <div className="mt-1">
+                                <Badge className="text-[10px] bg-orange-600 hover:bg-orange-700 font-normal">
+                                  Etapas: {item.addonGroups.length}
                                 </Badge>
                               </div>
                             )}

@@ -114,33 +114,29 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
   // Proteção: Só tenta criar a referência se o 'db' for válido
   const storeRef = useMemoFirebase(() => {
-    if (!db || !storeIdFromUrl) return null;
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
     return doc(db, 'roles_admin', storeIdFromUrl);
-  }, [db, storeIdFromUrl]);
+  }, [db, slugResolved, storeIdFromUrl]);
 
   const categoriesQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeIdFromUrl) return query(collection(db, 'categories'), where('ownerId', '==', storeIdFromUrl));
-    return collection(db, 'categories');
-  }, [db, storeIdFromUrl]);
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
+    return query(collection(db, 'categories'), where('ownerId', '==', storeIdFromUrl));
+  }, [db, slugResolved, storeIdFromUrl]);
 
   const itemsQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeIdFromUrl) return query(collection(db, 'menuItems'), where('ownerId', '==', storeIdFromUrl));
-    return collection(db, 'menuItems');
-  }, [db, storeIdFromUrl]);
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
+    return query(collection(db, 'menuItems'), where('ownerId', '==', storeIdFromUrl));
+  }, [db, slugResolved, storeIdFromUrl]);
 
   const addonsQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeIdFromUrl) return query(collection(db, 'addons'), where('ownerId', '==', storeIdFromUrl));
-    return collection(db, 'addons');
-  }, [db, storeIdFromUrl]);
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
+    return query(collection(db, 'addons'), where('ownerId', '==', storeIdFromUrl));
+  }, [db, slugResolved, storeIdFromUrl]);
 
   const promotionsQuery = useMemoFirebase(() => {
-    if (!db) return null;
-    if (storeIdFromUrl) return query(collection(db, 'promotions'), where('ownerId', '==', storeIdFromUrl));
-    return null;
-  }, [db, storeIdFromUrl]);
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
+    return query(collection(db, 'promotions'), where('ownerId', '==', storeIdFromUrl));
+  }, [db, slugResolved, storeIdFromUrl]);
 
   const { data: storeInfo } = useDoc(storeRef);
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
@@ -377,7 +373,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return { isOpen: true, reason: '' };
   }, [storeId, loadingCashRegisters, hasOpenCashRegister, storeProfile]);
 
-  if (!db || loadingCats || loadingItems) {
+  if (!db || !slugResolved || loadingCats || loadingItems) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <div className="text-center space-y-4">
