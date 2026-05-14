@@ -48,6 +48,10 @@ const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
 
 type Step = 'cart' | 'info';
 
+const getManagedStock = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+};
+
 export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
@@ -553,6 +557,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const orderRef = doc(collection(db, 'orders'), orderId);
 
       // Validação de estoque antes de enviar
+      const managedStockItemIds = new Set<string>();
       if (enableInventory) {
         const stockByItem: Record<string, number> = {};
         cart.forEach(item => {
@@ -561,8 +566,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         for (const [itemId, requestedQty] of Object.entries(stockByItem)) {
           const itemDoc = await getDoc(doc(db, 'menuItems', itemId));
           if (itemDoc.exists()) {
-            const currentStock = itemDoc.data().stockQuantity;
-            if (typeof currentStock === 'number' && requestedQty > currentStock) {
+            const currentStock = getManagedStock(itemDoc.data().stockQuantity);
+            if (currentStock !== null) {
+              managedStockItemIds.add(itemId);
+            }
+            if (currentStock !== null && requestedQty > currentStock) {
               const itemName = itemDoc.data().name || itemId;
               toast({ variant: "destructive", title: "Estoque insuficiente", description: `"${itemName}" tem apenas ${currentStock} unidade(s) disponível(is).` });
               setIsSubmitting(false);
@@ -625,6 +633,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       if (enableInventory) {
         cart.forEach((item) => {
+          if (!managedStockItemIds.has(item.id)) return;
           const itemRef = doc(db, 'menuItems', item.id);
           batch.update(itemRef, {
             stockQuantity: increment(-item.quantity)
@@ -753,10 +762,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       <button onClick={() => {
                         if (enableInventory) {
                           const menuItem = menuItems.find(m => m.id === item.id);
-                          if (menuItem && typeof menuItem.stockQuantity === 'number') {
+                          const managedStock = menuItem ? getManagedStock(menuItem.stockQuantity) : null;
+                          if (managedStock !== null) {
                             const currentTotal = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
-                            if (currentTotal + 1 > menuItem.stockQuantity) {
-                              toast({ title: "Estoque insuficiente", description: `Temos apenas ${menuItem.stockQuantity} unidades disponíveis no momento.`, variant: "destructive" });
+                            if (currentTotal + 1 > managedStock) {
+                              toast({ title: "Estoque insuficiente", description: `Temos apenas ${managedStock} unidades disponíveis no momento.`, variant: "destructive" });
                               return;
                             }
                           }

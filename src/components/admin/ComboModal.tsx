@@ -47,6 +47,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
       name,
       price,
       categoryId,
+      prazo: formData.get('prazo') as string || '',
       description: `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
       ownerId: user.uid,
       isAvailable: true,
@@ -86,10 +87,14 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
       <Card className="border shadow-md rounded-2xl overflow-hidden">
         <CardContent className="p-6">
           <form onSubmit={handleSaveCombo} id="combo-form" className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome do Combo</Label>
                 <Input id="name" name="name" defaultValue={editingCombo?.name} placeholder="Ex: Combo X-Tudo" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prazo">Prazo (Opcional)</Label>
+                <Input id="prazo" name="prazo" defaultValue={editingCombo?.prazo} placeholder="Ex: 30 min ou 2 dias" />
               </div>
               <div className="space-y-2">
                 <Label>Categoria</Label>

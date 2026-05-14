@@ -146,6 +146,11 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
             {item.isCombo && <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Combo</span>}
           </DialogTitle>
           <p className="text-xs text-muted-foreground">{item.description}</p>
+          {item.prazo && (
+            <div className="mt-2 inline-block bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold w-fit">
+              Prazo: {item.prazo}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="space-y-6 py-4 flex-1 overflow-y-auto pr-2">
