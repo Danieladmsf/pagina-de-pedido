@@ -93,17 +93,19 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       setSlugResolved(true);
       return;
     }
-    // Short slug - look up in store_slugs collection
-    import('firebase/firestore').then(({ getDoc, doc: fbDoc }) => {
-      getDoc(fbDoc(db, 'store_slugs', rawStoreId)).then((snap: any) => {
-        if (snap.exists()) {
-          setResolvedStoreId(snap.data().storeId);
+    // Short slug - query store_profiles collection instead to avoid permission issues
+    import('firebase/firestore').then(({ collection, query, where, getDocs }) => {
+      const q = query(collection(db, 'store_profiles'), where('shortSlug', '==', rawStoreId));
+      getDocs(q).then((snap: any) => {
+        if (!snap.empty) {
+          setResolvedStoreId(snap.docs[0].id);
         } else {
           // Fallback: maybe it IS a short UID somehow
           setResolvedStoreId(rawStoreId);
         }
         setSlugResolved(true);
-      }).catch(() => {
+      }).catch((e) => {
+        console.error('Error resolving slug:', e);
         setResolvedStoreId(rawStoreId);
         setSlugResolved(true);
       });
@@ -799,9 +801,9 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                     R$ {item.price.toFixed(2)}
                   </Badge>
                 )}
-                {storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && (
-                  <Badge className={`absolute bottom-3 right-3 font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
-                    {isOutOfStock ? 'Esgotado' : `Estoque: ${currentStock}`}
+                {isOutOfStock && (
+                  <Badge className="absolute bottom-3 right-3 bg-red-600 text-white font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs">
+                    Esgotado
                   </Badge>
                 )}
               </div>

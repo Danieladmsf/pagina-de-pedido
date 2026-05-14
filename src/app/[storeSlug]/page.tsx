@@ -54,12 +54,36 @@ async function fetchStoreName(storeId: string) {
 
 async function fetchStoreIdFromSlug(shortSlug: string) {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents/store_slugs/${shortSlug}`;
-    const res = await fetch(url, { next: { revalidate: 3600 } });
+    const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents:runQuery`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: 'store_profiles' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'shortSlug' },
+            op: 'EQUAL',
+            value: { stringValue: shortSlug }
+          }
+        },
+        limit: 1
+      }
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      next: { revalidate: 3600 }
+    });
     if (!res.ok) return null;
-    const doc = await res.json();
-    return doc.fields?.storeId?.stringValue || null;
-  } catch {
+    const data = await res.json();
+    if (data && data[0] && data[0].document) {
+      const docPath = data[0].document.name;
+      const parts = docPath.split('/');
+      return parts[parts.length - 1];
+    }
+    return null;
+  } catch (err) {
+    console.error('Error in fetchStoreIdFromSlug:', err);
     return null;
   }
 }
