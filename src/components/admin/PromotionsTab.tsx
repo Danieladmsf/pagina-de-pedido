@@ -140,12 +140,15 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
 
   const addItemToPromo = (menuItem: any) => {
     if (formItems.find(fi => fi.menuItemId === menuItem.id)) return;
+    const price = menuItem.price || 0;
+    const defaultDiscount = 10;
+    const promoPrice = Math.round(price * (1 - defaultDiscount / 100) * 100) / 100;
     setFormItems(prev => [...prev, {
       menuItemId: menuItem.id,
-      originalPrice: menuItem.price || 0,
-      promoPrice: menuItem.price || 0,
+      originalPrice: price,
+      promoPrice,
       discountType: 'percentage' as const,
-      discountValue: 10,
+      discountValue: defaultDiscount,
       hideAfterPromo: false,
       promoOnly: false,
     }]);
@@ -180,6 +183,31 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
     if (!formName.trim()) { toast({ title: 'Erro', description: 'Dê um nome à promoção.' }); return; }
     if (formItems.length === 0) { toast({ title: 'Erro', description: 'Adicione pelo menos um produto.' }); return; }
     if (!formStartDate || !formEndDate) { toast({ title: 'Erro', description: 'Defina as datas.' }); return; }
+
+    // Check for duplicate products in other active/scheduled promotions
+    const newStart = new Date(formStartDate).getTime();
+    const newEnd = new Date(formEndDate).getTime();
+    const conflicts: string[] = [];
+    for (const fi of formItems) {
+      for (const other of promotions) {
+        if (editingPromo && other.id === editingPromo.id) continue;
+        if (!other.active) continue;
+        const otherStart = other.startDate?.toDate?.() ? other.startDate.toDate().getTime() : new Date(other.startDate).getTime();
+        const otherEnd = other.endDate?.toDate?.() ? other.endDate.toDate().getTime() : new Date(other.endDate).getTime();
+        // Check if date ranges overlap
+        if (newStart <= otherEnd && newEnd >= otherStart) {
+          const otherItems = (other.items || []).map((i: any) => i.menuItemId);
+          if (otherItems.includes(fi.menuItemId)) {
+            const itemName = itemsMap[fi.menuItemId]?.name || fi.menuItemId;
+            conflicts.push(`"${itemName}" já está na promoção "${other.name}"`);
+          }
+        }
+      }
+    }
+    if (conflicts.length > 0) {
+      toast({ title: '⚠️ Produto duplicado', description: conflicts.join('; ') });
+      return;
+    }
 
     const data: any = {
       ownerId: user.uid,
@@ -227,6 +255,22 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
     setFormItems(promo.items || []);
     setIsModalOpen(true);
   };
+
+  // Map of itemIds already in other active/scheduled promos (for visual indicator)
+  const itemsInOtherPromos = useMemo(() => {
+    const map: Record<string, string> = {}; // menuItemId -> promoName
+    const now = Date.now();
+    promotions.forEach((p: any) => {
+      if (editingPromo && p.id === editingPromo.id) return;
+      if (!p.active) return;
+      const end = p.endDate?.toDate?.() ? p.endDate.toDate().getTime() : new Date(p.endDate).getTime();
+      if (now > end) return; // expired
+      (p.items || []).forEach((pi: any) => {
+        map[pi.menuItemId] = p.name;
+      });
+    });
+    return map;
+  }, [promotions, editingPromo]);
 
   // Filter items not yet in the promotion
   const availableItems = useMemo(() => {
@@ -412,11 +456,13 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
                   {availableItems.length === 0 ? (
                     <p className="text-xs text-muted-foreground italic p-3 text-center">Nenhum produto encontrado.</p>
                   ) : (
-                    availableItems.slice(0, 10).map((item: any) => (
+                    availableItems.slice(0, 10).map((item: any) => {
+                      const alreadyInPromo = itemsInOtherPromos[item.id];
+                      return (
                       <button
                         key={item.id}
-                        onClick={() => { addItemToPromo(item); setItemSearchQuery(''); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-3 text-sm border-b last:border-0"
+                        onClick={() => { if (!alreadyInPromo) { addItemToPromo(item); setItemSearchQuery(''); } }}
+                        className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm border-b last:border-0 ${alreadyInPromo ? 'opacity-50 cursor-not-allowed bg-red-50' : 'hover:bg-slate-50'}`}
                       >
                         {item.imageUrl ? (
                           <Image src={item.imageUrl} alt="" width={32} height={32} className="rounded-md object-cover w-8 h-8" />
@@ -427,11 +473,19 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)}
+                            {alreadyInPromo && <span className="text-red-500 font-bold ml-1">• Já em "{alreadyInPromo}"</span>}
+                          </p>
                         </div>
-                        <Plus className="h-4 w-4 text-emerald-500 shrink-0" />
+                        {alreadyInPromo ? (
+                          <EyeOff className="h-4 w-4 text-red-400 shrink-0" />
+                        ) : (
+                          <Plus className="h-4 w-4 text-emerald-500 shrink-0" />
+                        )}
                       </button>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
