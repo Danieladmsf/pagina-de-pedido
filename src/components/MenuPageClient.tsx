@@ -13,12 +13,41 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { useCart } from '@/components/providers/CartProvider';
+
+function PromoCountdown({ endDate }: { endDate: Date }) {
+  const [timeLeft, setTimeLeft] = React.useState('');
+
+  React.useEffect(() => {
+    const update = () => {
+      const diff = endDate.getTime() - Date.now();
+      if (diff <= 0) { setTimeLeft('Encerrada'); return; }
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      if (days > 0) setTimeLeft(`${days}d ${hours}h`);
+      else if (hours > 0) setTimeLeft(`${hours}h ${mins}min`);
+      else setTimeLeft(`${mins}min`);
+    };
+    update();
+    const interval = setInterval(update, 60000);
+    return () => clearInterval(interval);
+  }, [endDate]);
+
+  if (timeLeft === 'Encerrada') return null;
+
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5 mb-3">
+      <Timer className="h-3.5 w-3.5" />
+      <span>Acaba em {timeLeft}</span>
+    </div>
+  );
+}
 
 export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const db = useFirestore();
@@ -76,10 +105,54 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return collection(db, 'addons');
   }, [db, storeIdFromUrl]);
 
+  const promotionsQuery = useMemoFirebase(() => {
+    if (!db) return null;
+    if (storeIdFromUrl) return query(collection(db, 'promotions'), where('ownerId', '==', storeIdFromUrl));
+    return null;
+  }, [db, storeIdFromUrl]);
+
   const { data: storeInfo } = useDoc(storeRef);
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: addons } = useCollection(addonsQuery);
+  const { data: promotionsRaw } = useCollection(promotionsQuery);
+
+  // Active promotions: active=true AND within date range
+  const activePromotions = useMemo(() => {
+    if (!promotionsRaw) return [];
+    const now = Date.now();
+    return promotionsRaw.filter((p: any) => {
+      if (!p.active) return false;
+      const start = p.startDate?.toDate?.() ? p.startDate.toDate().getTime() : new Date(p.startDate).getTime();
+      const end = p.endDate?.toDate?.() ? p.endDate.toDate().getTime() : new Date(p.endDate).getTime();
+      return now >= start && now <= end;
+    });
+  }, [promotionsRaw]);
+
+  // Map of menuItemId -> promoPrice for active promotions
+  const promoItemsMap = useMemo(() => {
+    const map: Record<string, { promoPrice: number; originalPrice: number; endDate: Date; promoName: string }> = {};
+    activePromotions.forEach((p: any) => {
+      const end = p.endDate?.toDate?.() ? p.endDate.toDate() : new Date(p.endDate);
+      (p.items || []).forEach((pi: any) => {
+        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, endDate: end, promoName: p.name };
+      });
+    });
+    return map;
+  }, [activePromotions]);
+
+  // Items that are promo-only (should only show in promo section)
+  const promoOnlyIds = useMemo(() => {
+    const ids = new Set<string>();
+    activePromotions.forEach((p: any) => {
+      (p.items || []).forEach((pi: any) => {
+        if (pi.promoOnly) ids.add(pi.menuItemId);
+      });
+    });
+    return ids;
+  }, [activePromotions]);
+
+  const hasActivePromos = Object.keys(promoItemsMap).length > 0;
 
   // Derivar storeId efetivo: do URL (?s=) ou do ownerId do primeiro item carregado
   const storeId = storeIdFromUrl || (items && items.length > 0 ? (items[0] as any).ownerId : null);
@@ -206,10 +279,17 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return items.filter(item => {
       if (item.isAvailable === false) return false;
       if (!visibleCategoryIds.has(item.categoryId)) return false;
+      // Hide promo-only items from regular categories
+      if (promoOnlyIds.has(item.id) && activeCategoryId !== '__promo__') return false;
       
-      const matchesCategory = activeCategoryId === 'all' || item.categoryId === activeCategoryId;
+      const matchesCategory = activeCategoryId === 'all' || activeCategoryId === '__promo__' || item.categoryId === activeCategoryId;
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // If promo category is selected, only show promo items
+      if (activeCategoryId === '__promo__') {
+        return promoItemsMap[item.id] && matchesSearch;
+      }
       return matchesCategory && matchesSearch;
     });
   }, [activeCategoryId, searchQuery, items, visibleCategories]);
@@ -600,6 +680,19 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                 >
                   Todos
                 </Button>
+                {hasActivePromos && (
+                  <Button
+                    variant={activeCategoryId === '__promo__' ? 'default' : 'outline'}
+                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
+                      activeCategoryId === '__promo__'
+                      ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-orange-500/30 shadow-lg'
+                      : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-50 animate-pulse'
+                    }`}
+                    onClick={() => setActiveCategoryId('__promo__')}
+                  >
+                    <Flame className="h-4 w-4" /> Promoções
+                  </Button>
+                )}
                 {visibleCategories.map((cat) => (
                   <Button
                     key={cat.id}
@@ -641,46 +734,74 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           const isOutOfStock = storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && currentStock <= 0;
           
           return (
-          <Card 
-            key={item.id} 
-            className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''}`}
-            onClick={() => !isOutOfStock && setSelectedItem(item)}
-          >
-            <div className="relative h-44 w-full md:h-56">
-              <Image 
-                src={item.imageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
-                alt={item.name} 
-                fill 
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-              />
-              <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
-                R$ {item.price.toFixed(2)}
-              </Badge>
-              {storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && (
-                <Badge className={`absolute bottom-3 right-3 font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
-                  {isOutOfStock ? 'Esgotado' : `Estoque: ${currentStock}`}
-                </Badge>
-              )}
-            </div>
-            <CardContent className="p-4 flex flex-col flex-1 md:p-6">
-              <div className="flex-1 space-y-2 mb-4">
-                <h3 className="min-h-[2.5rem] text-base font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors md:min-h-[3.25rem] md:text-lg">
-                  {item.name}
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
-                  {item.description}
-                </p>
+          (() => {
+            const promo = promoItemsMap[item.id];
+            const isPromoItem = !!promo;
+            const displayPrice = isPromoItem ? promo.promoPrice : item.price;
+            const discountPct = isPromoItem && promo.originalPrice > 0 ? Math.round((1 - promo.promoPrice / promo.originalPrice) * 100) : 0;
+
+            return (
+            <Card 
+              key={item.id} 
+              className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
+              onClick={() => !isOutOfStock && setSelectedItem(item)}
+            >
+              <div className="relative h-44 w-full md:h-56">
+                <Image 
+                  src={item.imageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
+                  alt={item.name} 
+                  fill 
+                  className="object-cover group-hover:scale-105 transition-transform duration-700"
+                />
+                {isPromoItem ? (
+                  <>
+                    <Badge className="absolute top-3 left-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:left-4 gap-1">
+                      <Flame className="h-3.5 w-3.5" /> -{discountPct}%
+                    </Badge>
+                    <div className="absolute top-3 right-3 md:top-4 md:right-4 flex flex-col items-end gap-1">
+                      <Badge className="bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:px-3 md:text-base">
+                        R$ {displayPrice.toFixed(2)}
+                      </Badge>
+                      <span className="text-[11px] font-bold text-white/90 line-through bg-black/40 backdrop-blur-sm rounded px-1.5 py-0.5">
+                        R$ {promo.originalPrice.toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
+                    R$ {item.price.toFixed(2)}
+                  </Badge>
+                )}
+                {storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && (
+                  <Badge className={`absolute bottom-3 right-3 font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs ${isOutOfStock ? 'bg-red-600 text-white' : currentStock <= 5 ? 'bg-amber-500/90 text-white backdrop-blur' : 'bg-white/90 text-emerald-700 backdrop-blur'}`}>
+                    {isOutOfStock ? 'Esgotado' : `Estoque: ${currentStock}`}
+                  </Badge>
+                )}
               </div>
-              <div className="flex items-center justify-between pt-4 border-t border-muted">
-                <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
-                  {categories?.find(c => c.id === item.categoryId)?.name}
-                </span>
-                <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : 'bg-primary hover:bg-accent'}`}>
-                  <Plus className="h-5 w-5 md:h-6 md:w-6" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              <CardContent className="p-4 flex flex-col flex-1 md:p-6">
+                <div className="flex-1 space-y-2 mb-4">
+                  <h3 className="min-h-[2.5rem] text-base font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors md:min-h-[3.25rem] md:text-lg">
+                    {item.name}
+                  </h3>
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
+                    {item.description}
+                  </p>
+                </div>
+                {isPromoItem && (
+                  <PromoCountdown endDate={promo.endDate} />
+                )}
+                <div className="flex items-center justify-between pt-4 border-t border-muted">
+                  <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
+                    {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
+                  </span>
+                  <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}>
+                    <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            );
+          })()
         )})}
       </div>
 

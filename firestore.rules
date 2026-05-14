@@ -109,6 +109,14 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /promotions/{promoId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
+    }
+
     match /whatsapp_messages/{messageId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin()
