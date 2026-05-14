@@ -39,6 +39,7 @@ export interface MenuItem {
   comboItems?: ComboItem[];
   comboPrice?: number;
   originalPrice?: number;
+  prazo?: string;
   // Marmita fields
   isMarmita?: boolean;
   fixedItems?: string[];       // ["Arroz", "Feijão", "Salada"]

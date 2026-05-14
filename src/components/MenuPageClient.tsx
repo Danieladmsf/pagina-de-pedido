@@ -299,6 +299,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     };
   }, [checkScrollButtons, visibleCategories]);
 
+  const hasCombos = useMemo(() => {
+    if (!items) return false;
+    return items.some(item => item.isCombo && item.isAvailable !== false);
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     if (!items) return [];
     
@@ -307,11 +312,15 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
     return items.filter(item => {
       if (item.isAvailable === false) return false;
-      if (!visibleCategoryIds.has(item.categoryId)) return false;
+      
+      // Allow combos to show if they don't have a category, or if their category is visible
+      const isVisibleCategory = item.categoryId ? visibleCategoryIds.has(item.categoryId) : item.isCombo;
+      if (!isVisibleCategory) return false;
+
       // Hide promo-only items from regular categories
       if (promoOnlyIds.has(item.id) && activeCategoryId !== '__promo__') return false;
       
-      const matchesCategory = activeCategoryId === 'all' || activeCategoryId === '__promo__' || item.categoryId === activeCategoryId;
+      const matchesCategory = activeCategoryId === 'all' || activeCategoryId === '__promo__' || activeCategoryId === '__combos__' || item.categoryId === activeCategoryId;
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
       
@@ -319,6 +328,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       if (activeCategoryId === '__promo__') {
         return promoItemsMap[item.id] && matchesSearch;
       }
+      
+      // If combos category is selected, only show combo items
+      if (activeCategoryId === '__combos__') {
+        return item.isCombo && matchesSearch;
+      }
+
       return matchesCategory && matchesSearch;
     });
   }, [activeCategoryId, searchQuery, items, visibleCategories]);
@@ -668,19 +683,19 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       </section>
 
       <div className="relative z-20 max-w-7xl mx-auto px-3 pt-2 md:px-8 md:pt-3">
-        <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
-          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-center">
-            <div className="relative min-w-0">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/55 md:left-4 md:h-5 md:w-5" />
-              <Input
-                placeholder="O que você quer saborear hoje?"
-                className="h-12 rounded-xl border-white/70 bg-white pl-10 text-sm shadow-md focus:ring-accent md:h-14 md:rounded-2xl md:pl-11 md:text-base"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+        {/* Barra de Pesquisa Separada */}
+        <div className="relative min-w-0 w-full mb-3 md:mb-5 lg:max-w-xl mx-auto">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/50 md:h-5 md:w-5" />
+          <Input
+            placeholder="O que você quer saborear hoje?"
+            className="h-14 w-full rounded-2xl border border-white/80 bg-white/90 shadow-md pl-12 text-sm backdrop-blur focus:bg-white focus:ring-accent md:h-16 md:rounded-[1.5rem] md:pl-12 md:text-base"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
 
-            <div className="relative min-w-0 max-w-full group/cats">
+        <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
+          <div className="relative min-w-0 max-w-full group/cats">
               {/* Left fade gradient */}
               <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
 
@@ -722,6 +737,19 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                     <Flame className="h-4 w-4" /> Promoções
                   </Button>
                 )}
+                {hasCombos && (
+                  <Button
+                    variant={activeCategoryId === '__combos__' ? 'default' : 'outline'}
+                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
+                      activeCategoryId === '__combos__'
+                      ? 'bg-purple-600 text-white border-0 shadow-purple-500/30 shadow-lg'
+                      : 'bg-white border-purple-300 text-purple-600 hover:bg-purple-50'
+                    }`}
+                    onClick={() => setActiveCategoryId('__combos__')}
+                  >
+                    Combos
+                  </Button>
+                )}
                 {visibleCategories.map((cat) => (
                   <Button
                     key={cat.id}
@@ -752,15 +780,13 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             </div>
           </div>
         </div>
-      </div>
       <ActiveOrdersBanner />
       <div className="max-w-7xl mx-auto w-full overflow-x-hidden px-3 pt-5 md:px-8 md:pt-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
         {filteredItems.map((item) => {
           const rawStock = item.stockQuantity;
-          const hasStockControl = rawStock !== null && rawStock !== undefined && rawStock !== '';
-          const currentStock = hasStockControl ? Number(rawStock) : null;
-          const isOutOfStock = storeProfile?.general?.enableInventory && hasStockControl && currentStock !== null && currentStock <= 0;
+          const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+          const isOutOfStock = storeProfile?.general?.enableInventory && currentStock === 0;
           
           return (
           (() => {
@@ -815,6 +841,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                   <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
                     {item.description}
                   </p>
+                  {item.prazo && (
+                    <span className="inline-block mt-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                      Prazo: {item.prazo}
+                    </span>
+                  )}
                 </div>
                 {isPromoItem && (
                   <PromoCountdown endDate={promo.endDate} />
