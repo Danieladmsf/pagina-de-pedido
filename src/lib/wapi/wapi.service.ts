@@ -151,16 +151,82 @@ export function isWapiConnectedStatus(response: WapiStatusResponse | any) {
   );
 }
 
+function normalizePhoneCandidate(value: unknown) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const jidMatch = raw.match(/(\d{10,15})(?=@|:|$)/);
+  const digits = (jidMatch?.[1] || raw.replace(/\D/g, '')).trim();
+  return digits.length >= 10 && digits.length <= 15 ? digits : '';
+}
+
 export function getWapiConnectedPhone(response: WapiStatusResponse | any) {
-  return (
-    response?.connectedPhone ||
-    response?.phone ||
-    response?.number ||
-    response?.instance?.connectedPhone ||
-    response?.instance?.phone ||
-    response?.instance?.number ||
-    ''
-  );
+  const candidates = [
+    response?.connectedPhone,
+    response?.phone,
+    response?.number,
+    response?.instance?.connectedPhone,
+    response?.instance?.phone,
+    response?.instance?.number,
+    response?.data?.connectedPhone,
+    response?.data?.phone,
+    response?.data?.number,
+    response?.data?.instance?.connectedPhone,
+    response?.data?.instance?.phone,
+    response?.data?.instance?.number,
+    response?.user?.id,
+    response?.user?.phone,
+    response?.me?.id,
+    response?.me?.jid,
+    response?.me?.user,
+    response?.profile?.id,
+    response?.profile?.phone,
+    response?.session?.wid,
+    response?.session?.user,
+    response?.account?.id,
+    response?.account?.phone,
+    response?.instance?.user?.id,
+    response?.instance?.user?.phone,
+    response?.instance?.me?.id,
+    response?.instance?.me?.jid,
+    response?.instance?.me?.user,
+    response?.instance?.profile?.id,
+    response?.instance?.profile?.phone,
+    response?.instance?.session?.wid,
+    response?.instance?.session?.user,
+    response?.instance?.account?.id,
+    response?.instance?.account?.phone,
+    response?.data?.user?.id,
+    response?.data?.user?.phone,
+    response?.data?.me?.id,
+    response?.data?.me?.jid,
+    response?.data?.me?.user,
+    response?.data?.profile?.id,
+    response?.data?.profile?.phone,
+    response?.data?.session?.wid,
+    response?.data?.session?.user,
+    response?.data?.account?.id,
+    response?.data?.account?.phone,
+    response?.data?.instance?.user?.id,
+    response?.data?.instance?.user?.phone,
+    response?.data?.instance?.me?.id,
+    response?.data?.instance?.me?.jid,
+    response?.data?.instance?.me?.user,
+    response?.data?.instance?.profile?.id,
+    response?.data?.instance?.profile?.phone,
+    response?.data?.instance?.session?.wid,
+    response?.data?.instance?.session?.user,
+    response?.data?.instance?.account?.id,
+    response?.data?.instance?.account?.phone,
+  ];
+
+  for (const candidate of candidates) {
+    const phone = normalizePhoneCandidate(candidate);
+    if (phone) return phone;
+  }
+
+  return '';
 }
 
 export function createWapiInstance(input: CreateWapiInstanceInput) {

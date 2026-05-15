@@ -799,13 +799,17 @@ function InfoGrid({
         <p className="font-bold text-slate-900 truncate mt-0.5">{storeName}</p>
       </div>
       <div className="rounded-xl border bg-white p-3.5">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Numero conectado</p>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
+          {integration.numeroWhatsapp ? 'Numero conectado' : 'Conexao'}
+        </p>
         <p className="font-bold text-slate-900 mt-0.5 flex items-center gap-1.5">
           {integration.numeroWhatsapp ? (
             <>
               <Phone className="h-3.5 w-3.5 text-emerald-600" />
               {integration.numeroWhatsapp}
             </>
+          ) : integration.connected || integration.status === 'connected' ? (
+            <span className="text-emerald-700 text-sm">WhatsApp conectado</span>
           ) : (
             <span className="text-slate-400 font-normal text-sm">Aguardando conexao</span>
           )}
