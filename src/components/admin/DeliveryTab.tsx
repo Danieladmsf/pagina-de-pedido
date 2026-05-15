@@ -15,7 +15,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 
 interface DeliveryTabProps {
   orders: any[];
-  updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => void;
+  updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
   registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
   caixaAberto?: boolean;
   storeProfile?: any;
@@ -240,7 +240,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       }
 
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
-      updateOrderStatus(paymentModalOrder.id, { status: 'delivered', paymentMethod: paymentString });
+      const statusUpdated = await updateOrderStatus(paymentModalOrder.id, { status: 'delivered', paymentMethod: paymentString });
+      if (statusUpdated === false) return;
       
       // 2. Registrar venda no caixa (se caixa estiver aberto) ou Conta da Casa
       if (caixaAberto) {

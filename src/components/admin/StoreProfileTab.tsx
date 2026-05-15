@@ -386,7 +386,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <CalendarOff className="h-3.5 w-3.5 text-slate-400" /> Ano de fundaÃ§Ã£o
+                    <CalendarOff className="h-3.5 w-3.5 text-slate-400" /> Ano de fundação
                   </Label>
                   <Input
                     type="number"
@@ -399,7 +399,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     className="h-11"
                     inputMode="numeric"
                   />
-                  <p className="text-[10px] text-slate-400">Usado no rodapÃ© do cardÃ¡pio pÃºblico.</p>
+                  <p className="text-[10px] text-slate-400">Usado no rodapé do cardápio público.</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
