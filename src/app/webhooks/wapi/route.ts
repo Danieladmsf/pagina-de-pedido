@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import { decryptSecret } from '@/lib/wapi/crypto';
+import { sendWapiTextMessage } from '@/lib/wapi/wapi.service';
+import {
+  buildStoreLink,
+  formatWorkingHours,
+  getStoreOpenState,
+  getWhatsAppMessages,
+  renderWhatsAppTemplate,
+} from '@/lib/whatsapp-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,6 +73,60 @@ function isConnectionEvent(event: string) {
   return CONNECTION_EVENTS.has(normalized) || normalized.includes('status') || normalized.includes('connect');
 }
 
+function normalizePhone(phone: string) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55')) return digits;
+  return `55${digits}`;
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function extractIncomingMessage(payload: any, event: string) {
+  const eventName = String(event || '').toLowerCase();
+  if (!eventName.includes('received') && !eventName.includes('message')) return null;
+
+  const data = payload?.data || payload?.message || payload;
+  const fromMe = Boolean(payload?.fromMe || data?.fromMe || data?.key?.fromMe || data?.message?.fromMe);
+  if (fromMe) return null;
+
+  const rawPhone = firstString(
+    payload?.phone,
+    payload?.from,
+    payload?.sender,
+    payload?.remoteJid,
+    data?.phone,
+    data?.from,
+    data?.sender,
+    data?.remoteJid,
+    data?.key?.remoteJid,
+  );
+
+  if (!rawPhone || rawPhone.includes('@g.us')) return null;
+
+  const text = firstString(
+    payload?.body,
+    payload?.text,
+    payload?.text?.message,
+    payload?.message?.text,
+    data?.body,
+    data?.text,
+    data?.text?.message,
+    data?.message?.conversation,
+    data?.message?.extendedTextMessage?.text,
+  );
+
+  return {
+    phone: normalizePhone(rawPhone),
+    text,
+  };
+}
+
 function isDisconnectedEvent(payload: any, event: string) {
   // Ignora eventos de mensagem/delivery para decisoes de conexao
   if (!isConnectionEvent(event)) return false;
@@ -80,6 +143,90 @@ function isConnectedEvent(payload: any, event: string) {
   if (isDisconnectedEvent(payload, event)) return false;
   const tokens = stateTokens(payload, event);
   return tokens.some((token) => ['connected', 'connect', 'open', 'online', 'ready'].includes(token));
+}
+
+async function maybeSendAutoReply(params: {
+  adminDb: any;
+  adminRef: any;
+  empresaId: string;
+  payload: any;
+  event: string;
+  requestOrigin: string;
+  now: string;
+}) {
+  const incoming = extractIncomingMessage(params.payload, params.event);
+  if (!incoming?.phone) return false;
+
+  const adminSnap = await params.adminRef.get();
+  const integration = adminSnap.data()?.whatsappIntegration;
+  if (!integration?.connected || !integration?.wapiInstanceId || !integration?.wapiTokenEncrypted) return false;
+
+  const storeSnap = await params.adminDb.collection('store_profiles').doc(params.empresaId).get();
+  const storeProfile = storeSnap.exists ? storeSnap.data() : {};
+  const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
+  const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja';
+  const storeLink = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
+  const openState = getStoreOpenState(storeProfile);
+  const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.phone}`);
+  const contactSnap = await contactRef.get();
+  const contactData = contactSnap.exists ? contactSnap.data() || {} : {};
+
+  let template = '';
+  let type = '';
+  const nowMs = Date.now();
+  const lastClosedReplyAt = contactData.lastClosedReplyAt ? new Date(contactData.lastClosedReplyAt).getTime() : 0;
+
+  if (!openState.isOpen && (!lastClosedReplyAt || nowMs - lastClosedReplyAt > 2 * 60 * 60 * 1000)) {
+    template = messages.storeClosed;
+    type = 'store_closed_auto_reply';
+  } else if (!contactData.firstContactSentAt) {
+    template = messages.firstContact;
+    type = 'first_contact_auto_reply';
+  }
+
+  if (!template || !type) return false;
+
+  const message = renderWhatsAppTemplate(template, {
+    loja: storeName,
+    link: storeLink,
+    horarios: formatWorkingHours(storeProfile?.workingHours),
+    cliente: '',
+    primeiro_nome: '',
+    pedido: '',
+    itens: '',
+    total: '',
+    pagamento: '',
+    tempo_estimado: '',
+  }).trim();
+
+  if (!message) return false;
+
+  const token = decryptSecret(integration.wapiTokenEncrypted);
+  const result = await sendWapiTextMessage(integration.wapiInstanceId, token, {
+    phone: incoming.phone,
+    message,
+    delayMessage: 2,
+  });
+
+  await contactRef.set({
+    empresaId: params.empresaId,
+    phone: incoming.phone,
+    ...(type === 'first_contact_auto_reply' ? { firstContactSentAt: params.now } : {}),
+    ...(type === 'store_closed_auto_reply' ? { lastClosedReplyAt: params.now } : {}),
+    updatedAt: params.now,
+  }, { merge: true });
+
+  await params.adminDb.collection('whatsapp_auto_replies').add({
+    empresaId: params.empresaId,
+    phone: incoming.phone,
+    type,
+    message: message.slice(0, 500),
+    providerMessageId: result?.messageId || result?.insertedId || '',
+    incomingText: incoming.text || '',
+    createdAt: params.now,
+  });
+
+  return true;
 }
 
 export async function POST(request: Request) {
@@ -170,5 +317,22 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, persisted: true, empresaId, integrationUpdated });
+  let autoReplySent = false;
+  if (adminRef && empresaId) {
+    try {
+      autoReplySent = await maybeSendAutoReply({
+        adminDb,
+        adminRef,
+        empresaId,
+        payload,
+        event,
+        requestOrigin: new URL(request.url).origin,
+        now,
+      });
+    } catch (error) {
+      console.warn('[W-API webhook] Falha ao enviar resposta automatica:', { event, empresaId, error });
+    }
+  }
+
+  return NextResponse.json({ ok: true, persisted: true, empresaId, integrationUpdated, autoReplySent });
 }

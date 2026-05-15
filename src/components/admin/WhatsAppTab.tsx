@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Power,
   QrCode,
   RefreshCw,
+  Save,
   Send,
   ShieldCheck,
   Smartphone,
@@ -25,13 +27,36 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import {
+  DEFAULT_WHATSAPP_MESSAGES,
+  WHATSAPP_MESSAGE_LABELS,
+  buildStoreLink,
+  formatWorkingHours,
+  getWhatsAppMessages,
+  renderWhatsAppTemplate,
+} from '@/lib/whatsapp-messages';
+import type { WhatsAppMessageKey, WhatsAppMessageTemplates } from '@/lib/whatsapp-messages';
 
 interface WhatsAppTabProps {
   user: User | null;
   storeProfile?: any;
+  db?: any;
 }
+
+const MESSAGE_KEYS: WhatsAppMessageKey[] = [
+  'firstContact',
+  'orderReceived',
+  'orderReadyDelivery',
+  'orderReadyPickup',
+  'orderReadyDineIn',
+  'orderOutForDelivery',
+  'orderPickupReady',
+  'orderDineInReady',
+  'storeClosed',
+];
 
 type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'disconnected' | 'error';
 
@@ -78,7 +103,7 @@ function statusBadgeClass(status?: IntegrationStatus) {
   }
 }
 
-export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
+export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const { toast } = useToast();
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [qrCode, setQrCode] = useState('');
@@ -87,9 +112,17 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
+  const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens'>('conexao');
+  const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
+  const [savingMessages, setSavingMessages] = useState(false);
 
   const empresaId = user?.uid || '';
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || user?.displayName || 'Minha loja';
+  const storeLink = empresaId && typeof window !== 'undefined' ? buildStoreLink(storeProfile, empresaId, window.location.origin) : '';
+
+  useEffect(() => {
+    setMessageTemplates(getWhatsAppMessages(storeProfile?.whatsappMessages));
+  }, [storeProfile?.whatsappMessages]);
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     if (!user) throw new Error('Usuario nao autenticado.');
@@ -265,6 +298,26 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
     }
   }
 
+  async function saveMessageTemplates() {
+    if (!db || !empresaId) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Usuario ou banco de dados indisponivel.' });
+      return;
+    }
+
+    setSavingMessages(true);
+    try {
+      await setDoc(doc(db, 'store_profiles', empresaId), {
+        whatsappMessages: messageTemplates,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast({ title: 'Mensagens salvas', description: 'Os próximos envios automáticos usarão estes textos.' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar mensagens', description: error.message || 'Falha ao salvar.' });
+    } finally {
+      setSavingMessages(false);
+    }
+  }
+
   async function copyInstanceId() {
     if (!integration?.wapiInstanceId) return;
     try {
@@ -329,7 +382,24 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
         </AlertDescription>
       </Alert>
 
-      {initialLoading ? (
+      <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as 'conexao' | 'mensagens')}>
+        <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-slate-100 p-1 md:w-[420px]">
+          <TabsTrigger value="conexao" className="rounded-xl">Conexão</TabsTrigger>
+          <TabsTrigger value="mensagens" className="rounded-xl">Mensagens</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeSection === 'mensagens' ? (
+        <MessageTemplatesSection
+          templates={messageTemplates}
+          setTemplates={setMessageTemplates}
+          onSave={saveMessageTemplates}
+          saving={savingMessages}
+          storeLink={storeLink}
+          storeName={storeName}
+          workingHours={storeProfile?.workingHours}
+        />
+      ) : initialLoading ? (
         <LoadingState />
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-6">
@@ -462,6 +532,111 @@ export function WhatsAppTab({ user, storeProfile }: WhatsAppTabProps) {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function MessageTemplatesSection({
+  templates,
+  setTemplates,
+  onSave,
+  saving,
+  storeLink,
+  storeName,
+  workingHours,
+}: {
+  templates: WhatsAppMessageTemplates;
+  setTemplates: React.Dispatch<React.SetStateAction<WhatsAppMessageTemplates>>;
+  onSave: () => void;
+  saving: boolean;
+  storeLink: string;
+  storeName: string;
+  workingHours?: any[];
+}) {
+  const sampleValues = {
+    loja: storeName,
+    link: storeLink || '{link}',
+    cliente: 'Maria Silva',
+    primeiro_nome: 'Maria',
+    pedido: 'A1B2C3',
+    itens: '2 x Bolo de Pote - 28,00\n1 x Refrigerante - 6,00',
+    total: '34,00',
+    pagamento: 'Pix',
+    tempo_estimado: '\n\u23f3 Tempo estimado de entrega: 00:50',
+    horarios: formatWorkingHours(workingHours),
+  };
+
+  return (
+    <div className="space-y-5">
+      <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageCircle className="h-5 w-5 text-emerald-600" />
+                Mensagens automáticas
+              </CardTitle>
+              <p className="text-xs text-slate-500 mt-1">
+                Variáveis disponíveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTemplates({ ...DEFAULT_WHATSAPP_MESSAGES })}
+                disabled={saving}
+                className="rounded-full h-9"
+              >
+                Restaurar padrão
+              </Button>
+              <Button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="rounded-full h-9 bg-emerald-600 hover:bg-emerald-700"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar mensagens
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-5 md:p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1.3fr] gap-3 rounded-2xl border bg-slate-50/70 p-4">
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Link automático do cardápio</Label>
+              <Input value={storeLink || 'Link ainda indisponível'} readOnly className="mt-2 rounded-xl bg-white font-mono text-xs" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-slate-700">Horário usado na mensagem de fechado</Label>
+              <pre className="mt-2 max-h-28 overflow-auto rounded-xl border bg-white p-3 text-xs text-slate-600 whitespace-pre-wrap">{formatWorkingHours(workingHours)}</pre>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {MESSAGE_KEYS.map((key) => (
+              <div key={key} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-black text-slate-800">{WHATSAPP_MESSAGE_LABELS[key]}</Label>
+                  <Badge variant="outline" className="text-[10px] font-mono">{key}</Badge>
+                </div>
+                <Textarea
+                  value={templates[key]}
+                  onChange={(event) => setTemplates((prev) => ({ ...prev, [key]: event.target.value }))}
+                  className="min-h-[150px] rounded-xl text-sm leading-relaxed"
+                />
+                <div className="rounded-xl bg-slate-50 border p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Prévia</p>
+                  <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {renderWhatsAppTemplate(templates[key], sampleValues)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
