@@ -26,6 +26,18 @@ function getInstanceId(payload: any) {
   return payload?.instanceId || payload?.instance_id || payload?.instance?.id || '';
 }
 
+function getWebhookToken(url: URL) {
+  const encryptedToken = url.searchParams.get('wt');
+  if (!encryptedToken) return { present: false, token: '' };
+
+  try {
+    return { present: true, token: decryptSecret(encryptedToken) };
+  } catch (error) {
+    console.warn('[W-API webhook] Token do webhook invalido ou expirado:', error);
+    return { present: true, token: '' };
+  }
+}
+
 function getConnectedPhone(payload: any) {
   return payload?.connectedPhone || payload?.phone || payload?.number || payload?.instance?.connectedPhone || '';
 }
@@ -262,6 +274,7 @@ export async function POST(request: Request) {
   const instanceId = getInstanceId(payload);
   const event = payload?.event || payload?.type || 'unknown';
   const empresaIdFromUrl = url.searchParams.get('empresaId') || '';
+  const webhookAuth = getWebhookToken(url);
   const now = new Date().toISOString();
   const adminDb = getOptionalAdminDb();
 
@@ -283,6 +296,24 @@ export async function POST(request: Request) {
     if (!snap.empty) {
       adminRef = snap.docs[0].ref;
       empresaId = snap.docs[0].id;
+    }
+  }
+
+  if (adminRef && webhookAuth.present) {
+    const adminSnap = await adminRef.get();
+    const integration = adminSnap.data()?.whatsappIntegration;
+    let tokenMatches = false;
+
+    try {
+      tokenMatches = Boolean(integration?.wapiTokenEncrypted && decryptSecret(integration.wapiTokenEncrypted) === webhookAuth.token);
+    } catch (error) {
+      console.warn('[W-API webhook] Nao foi possivel validar o token da integracao:', { event, instanceId, empresaId, error });
+    }
+
+    if (!tokenMatches) {
+      console.warn('[W-API webhook] Ignorando atualizacao por token divergente:', { event, instanceId, empresaId });
+      adminRef = null;
+      empresaId = '';
     }
   }
 

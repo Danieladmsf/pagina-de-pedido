@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
       const existing = await getWhatsAppIntegration(empresaId, user.idToken);
       const now = new Date().toISOString();
-      const webhookUrl = getWebhookUrl(request, empresaId);
+      const webhookUrl = getWebhookUrl(request, empresaId, token);
 
       // Tenta configurar os webhooks para validar o token e vincular a loja
       await configureWapiWebhooks(wapiInstanceId, token, webhookUrl);

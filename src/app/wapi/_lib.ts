@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ApiError, AuthenticatedFirebaseUser, jsonError, requireFirebaseUser } from '@/lib/firebase-auth-rest';
 import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
+import { encryptSecret } from '@/lib/wapi/crypto';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
 
 export async function withAuth(
@@ -43,14 +44,27 @@ export async function requireIntegration(empresaId: string, idToken: string): Pr
   return { integration, token };
 }
 
-export function getWebhookUrl(request: Request, empresaId?: string) {
+function getExistingWebhookToken(webhookUrl?: string) {
+  if (!webhookUrl) return '';
+
+  try {
+    return new URL(webhookUrl).searchParams.get('wt') || '';
+  } catch {
+    return '';
+  }
+}
+
+export function getWebhookUrl(request: Request, empresaId?: string, instanceToken?: string, existingWebhookUrl?: string) {
   const requestOrigin = new URL(request.url).origin;
   const configuredBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.WAPI_PUBLIC_BASE_URL || '';
   const baseUrl = requestOrigin.includes('localhost') && configuredBaseUrl ? configuredBaseUrl : requestOrigin;
   const url = new URL('/webhooks/wapi', baseUrl);
   const secret = process.env.WAPI_WEBHOOK_SECRET;
+  const webhookToken = getExistingWebhookToken(existingWebhookUrl);
   if (secret) url.searchParams.set('secret', secret);
   if (empresaId) url.searchParams.set('empresaId', empresaId);
+  if (webhookToken) url.searchParams.set('wt', webhookToken);
+  else if (instanceToken) url.searchParams.set('wt', encryptSecret(instanceToken));
   return url.toString();
 }
 

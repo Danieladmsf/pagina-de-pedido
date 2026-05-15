@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       const body = await request.json().catch(() => ({}));
       const empresaId = requireEmpresa(user, body.empresaId);
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
-      const webhookUrl = getWebhookUrl(request, empresaId);
+      const webhookUrl = getWebhookUrl(request, empresaId, token, integration.webhookUrl);
 
       const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
       const receivedWebhookFailed = webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
