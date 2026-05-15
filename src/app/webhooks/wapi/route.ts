@@ -89,10 +89,18 @@ function firstString(...values: unknown[]) {
 
 function extractIncomingMessage(payload: any, event: string) {
   const eventName = String(event || '').toLowerCase();
-  if (!eventName.includes('received') && !eventName.includes('message')) return null;
+  if (eventName.includes('connect') || eventName.includes('status') || eventName.includes('delivery')) return null;
 
   const data = payload?.data || payload?.message || payload;
-  const fromMe = Boolean(payload?.fromMe || data?.fromMe || data?.key?.fromMe || data?.message?.fromMe);
+  const fromMe = Boolean(
+    payload?.fromMe ||
+    payload?.key?.fromMe ||
+    payload?.message?.key?.fromMe ||
+    data?.fromMe ||
+    data?.key?.fromMe ||
+    data?.message?.fromMe ||
+    data?.message?.key?.fromMe,
+  );
   if (fromMe) return null;
 
   const rawPhone = firstString(
@@ -100,10 +108,19 @@ function extractIncomingMessage(payload: any, event: string) {
     payload?.from,
     payload?.sender,
     payload?.remoteJid,
+    payload?.chatId,
+    payload?.jid,
+    payload?.key?.remoteJid,
+    payload?.message?.key?.remoteJid,
     data?.phone,
     data?.from,
+    data?.from?.id,
     data?.sender,
+    data?.sender?.id,
+    data?.contact?.id,
     data?.remoteJid,
+    data?.chatId,
+    data?.jid,
     data?.key?.remoteJid,
   );
 
@@ -114,12 +131,18 @@ function extractIncomingMessage(payload: any, event: string) {
     payload?.text,
     payload?.text?.message,
     payload?.message?.text,
+    payload?.message?.conversation,
+    payload?.message?.extendedTextMessage?.text,
     data?.body,
     data?.text,
     data?.text?.message,
     data?.message?.conversation,
     data?.message?.extendedTextMessage?.text,
   );
+
+  const looksLikeMessageEvent = eventName.includes('received') || eventName.includes('message');
+  const hasMessageShape = Boolean(text || payload?.body || payload?.text || payload?.message || data?.body || data?.text || data?.message);
+  if (!looksLikeMessageEvent && !hasMessageShape) return null;
 
   return {
     phone: normalizePhone(rawPhone),
