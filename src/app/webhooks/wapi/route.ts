@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import { getFirestoreDocument } from '@/lib/firestore-rest';
 import { decryptSecret } from '@/lib/wapi/crypto';
 import { sendWapiTextMessage } from '@/lib/wapi/wapi.service';
 import {
@@ -12,6 +13,8 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const fallbackAutoReplyContacts = new Map<string, { firstContactSentAt?: number; lastClosedReplyAt?: number }>();
 
 function isAuthorized(request: Request) {
   const expected = process.env.WAPI_WEBHOOK_SECRET;
@@ -180,6 +183,51 @@ function isConnectedEvent(payload: any, event: string) {
   return tokens.some((token) => ['connected', 'connect', 'open', 'online', 'ready'].includes(token));
 }
 
+function buildAutoReply(params: {
+  storeProfile: any;
+  empresaId: string;
+  incoming: { phone: string; text?: string };
+  requestOrigin: string;
+  contactData?: { firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
+}) {
+  const storeProfile = params.storeProfile || {};
+  const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
+  const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja';
+  const storeLink = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
+  const openState = getStoreOpenState(storeProfile);
+
+  let template = '';
+  let type = '';
+  const nowMs = Date.now();
+  const lastClosedReplyAt = params.contactData?.lastClosedReplyAt
+    ? new Date(params.contactData.lastClosedReplyAt).getTime()
+    : 0;
+
+  if (!openState.isOpen && (!lastClosedReplyAt || nowMs - lastClosedReplyAt > 2 * 60 * 60 * 1000)) {
+    template = messages.storeClosed;
+    type = 'store_closed_auto_reply';
+  } else if (!params.contactData?.firstContactSentAt) {
+    template = messages.firstContact;
+    type = 'first_contact_auto_reply';
+  }
+
+  const message = renderWhatsAppTemplate(template, {
+    loja: storeName,
+    link: storeLink,
+    horarios: formatWorkingHours(storeProfile?.workingHours),
+    cliente: '',
+    primeiro_nome: '',
+    pedido: '',
+    itens: '',
+    total: '',
+    pagamento: '',
+    tempo_estimado: '',
+  }).trim();
+
+  if (!message || !type) return null;
+  return { message, type };
+}
+
 async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
@@ -198,67 +246,103 @@ async function maybeSendAutoReply(params: {
 
   const storeSnap = await params.adminDb.collection('store_profiles').doc(params.empresaId).get();
   const storeProfile = storeSnap.exists ? storeSnap.data() : {};
-  const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
-  const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja';
-  const storeLink = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
-  const openState = getStoreOpenState(storeProfile);
   const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.phone}`);
   const contactSnap = await contactRef.get();
   const contactData = contactSnap.exists ? contactSnap.data() || {} : {};
-
-  let template = '';
-  let type = '';
-  const nowMs = Date.now();
-  const lastClosedReplyAt = contactData.lastClosedReplyAt ? new Date(contactData.lastClosedReplyAt).getTime() : 0;
-
-  if (!openState.isOpen && (!lastClosedReplyAt || nowMs - lastClosedReplyAt > 2 * 60 * 60 * 1000)) {
-    template = messages.storeClosed;
-    type = 'store_closed_auto_reply';
-  } else if (!contactData.firstContactSentAt) {
-    template = messages.firstContact;
-    type = 'first_contact_auto_reply';
-  }
-
-  if (!template || !type) return false;
-
-  const message = renderWhatsAppTemplate(template, {
-    loja: storeName,
-    link: storeLink,
-    horarios: formatWorkingHours(storeProfile?.workingHours),
-    cliente: '',
-    primeiro_nome: '',
-    pedido: '',
-    itens: '',
-    total: '',
-    pagamento: '',
-    tempo_estimado: '',
-  }).trim();
-
-  if (!message) return false;
+  const reply = buildAutoReply({
+    storeProfile,
+    empresaId: params.empresaId,
+    incoming,
+    requestOrigin: params.requestOrigin,
+    contactData,
+  });
+  if (!reply) return false;
 
   const token = decryptSecret(integration.wapiTokenEncrypted);
   const result = await sendWapiTextMessage(integration.wapiInstanceId, token, {
     phone: incoming.phone,
-    message,
+    message: reply.message,
     delayMessage: 2,
   });
 
   await contactRef.set({
     empresaId: params.empresaId,
     phone: incoming.phone,
-    ...(type === 'first_contact_auto_reply' ? { firstContactSentAt: params.now } : {}),
-    ...(type === 'store_closed_auto_reply' ? { lastClosedReplyAt: params.now } : {}),
+    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: params.now } : {}),
+    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: params.now } : {}),
     updatedAt: params.now,
   }, { merge: true });
 
   await params.adminDb.collection('whatsapp_auto_replies').add({
     empresaId: params.empresaId,
     phone: incoming.phone,
-    type,
-    message: message.slice(0, 500),
+    type: reply.type,
+    message: reply.message.slice(0, 500),
     providerMessageId: result?.messageId || result?.insertedId || '',
     incomingText: incoming.text || '',
     createdAt: params.now,
+  });
+
+  return true;
+}
+
+async function maybeSendFallbackAutoReply(params: {
+  empresaId: string;
+  instanceId: string;
+  instanceToken: string;
+  payload: any;
+  event: string;
+  requestOrigin: string;
+}) {
+  const incoming = extractIncomingMessage(params.payload, params.event);
+  if (!incoming?.phone) {
+    console.log('[W-API webhook] Sem Firebase Admin: evento nao parece mensagem recebida.', {
+      event: params.event,
+      instanceId: params.instanceId,
+      empresaId: params.empresaId,
+    });
+    return false;
+  }
+
+  const contactKey = `${params.empresaId}_${incoming.phone}`;
+  const contactData = fallbackAutoReplyContacts.get(contactKey) || {};
+  const storeProfile = await getFirestoreDocument<Record<string, any>>(`store_profiles/${params.empresaId}`).catch((error) => {
+    console.warn('[W-API webhook] Sem Firebase Admin: nao foi possivel ler perfil publico da loja:', {
+      event: params.event,
+      instanceId: params.instanceId,
+      empresaId: params.empresaId,
+      error,
+    });
+    return null;
+  });
+
+  const reply = buildAutoReply({
+    storeProfile,
+    empresaId: params.empresaId,
+    incoming,
+    requestOrigin: params.requestOrigin,
+    contactData,
+  });
+  if (!reply) return false;
+
+  const result = await sendWapiTextMessage(params.instanceId, params.instanceToken, {
+    phone: incoming.phone,
+    message: reply.message,
+    delayMessage: 2,
+  });
+
+  fallbackAutoReplyContacts.set(contactKey, {
+    ...contactData,
+    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: Date.now() } : {}),
+    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: Date.now() } : {}),
+  });
+
+  console.log('[W-API webhook] Resposta automatica enviada sem Firebase Admin:', {
+    event: params.event,
+    instanceId: params.instanceId,
+    empresaId: params.empresaId,
+    type: reply.type,
+    providerMessageId: result?.messageId || result?.insertedId || '',
   });
 
   return true;
@@ -279,8 +363,36 @@ export async function POST(request: Request) {
   const adminDb = getOptionalAdminDb();
 
   if (!adminDb) {
-    console.log('[W-API webhook] recebido sem Firebase Admin configurado:', { event, instanceId, empresaId: empresaIdFromUrl });
-    return NextResponse.json({ ok: true, persisted: false });
+    let autoReplySent = false;
+
+    if (empresaIdFromUrl && instanceId && webhookAuth.token) {
+      try {
+        autoReplySent = await maybeSendFallbackAutoReply({
+          empresaId: empresaIdFromUrl,
+          instanceId,
+          instanceToken: webhookAuth.token,
+          payload,
+          event,
+          requestOrigin: url.origin,
+        });
+      } catch (error) {
+        console.warn('[W-API webhook] Sem Firebase Admin: falha ao enviar resposta automatica:', {
+          event,
+          instanceId,
+          empresaId: empresaIdFromUrl,
+          error,
+        });
+      }
+    } else {
+      console.log('[W-API webhook] recebido sem Firebase Admin e sem dados suficientes para resposta:', {
+        event,
+        instanceId,
+        empresaId: empresaIdFromUrl,
+        hasWebhookToken: Boolean(webhookAuth.token),
+      });
+    }
+
+    return NextResponse.json({ ok: true, persisted: false, autoReplySent });
   }
 
   let empresaId = empresaIdFromUrl;
