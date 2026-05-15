@@ -85,6 +85,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // Pagamento
   const [paymentMethod, setPaymentMethod] = useState('');
   const [cashChange, setCashChange] = useState('');
+  const [payDeliverySeparately, setPayDeliverySeparately] = useState(false);
 
   // Campos de endereço
   const [cep, setCep] = useState('');
@@ -103,7 +104,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const lastAttemptedAddressRef = useRef<string>('');
 
   const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
-  const appliedDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
+  const baseDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
+  const appliedDeliveryFee = (paymentMethod === 'conta_casa' && payDeliverySeparately) ? 0 : baseDeliveryFee;
   const grandTotal = totalPrice + appliedDeliveryFee;
   
   // 🔍 DEBUG: Estado da taxa
@@ -616,7 +618,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         status: 'pending',
         totalAmount: safeGrandTotal,
         subtotal: safeSubtotal,
-        deliveryFee: appliedDeliveryFee,
+        deliveryFee: baseDeliveryFee,
+          payDeliveryToMotoboy: paymentMethod === 'conta_casa' && payDeliverySeparately,
         distanceKm: distanceInfo?.distanceKm || null,
         paymentStatus: 'pending',
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
