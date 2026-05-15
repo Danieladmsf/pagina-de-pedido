@@ -1,6 +1,7 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
-import { getFirestoreDocument } from '@/lib/firestore-rest';
+import { getFirestoreDocument, setFirestoreDocument } from '@/lib/firestore-rest';
 import { decryptSecret } from '@/lib/wapi/crypto';
 import { sendWapiTextMessage } from '@/lib/wapi/wapi.service';
 import {
@@ -15,6 +16,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const fallbackAutoReplyContacts = new Map<string, { firstContactSentAt?: number; lastClosedReplyAt?: number }>();
+
+function fallbackContactPath(empresaId: string, phone: string) {
+  const hash = crypto.createHash('sha256').update(`${empresaId}:${phone}`).digest('hex').slice(0, 40);
+  return `active_sessions/wapi_auto_reply_${hash}`;
+}
 
 function isAuthorized(request: Request) {
   const expected = process.env.WAPI_WEBHOOK_SECRET;
@@ -305,7 +311,10 @@ async function maybeSendFallbackAutoReply(params: {
   }
 
   const contactKey = `${params.empresaId}_${incoming.phone}`;
-  const contactData = fallbackAutoReplyContacts.get(contactKey) || {};
+  const contactPath = fallbackContactPath(params.empresaId, incoming.phone);
+  const memoryContactData = fallbackAutoReplyContacts.get(contactKey) || {};
+  const persistedContactData = await getFirestoreDocument<Record<string, any>>(contactPath).catch(() => null);
+  const contactData = persistedContactData || memoryContactData;
   const storeProfile = await getFirestoreDocument<Record<string, any>>(`store_profiles/${params.empresaId}`).catch((error) => {
     console.warn('[W-API webhook] Sem Firebase Admin: nao foi possivel ler perfil publico da loja:', {
       event: params.event,
@@ -335,6 +344,22 @@ async function maybeSendFallbackAutoReply(params: {
     ...contactData,
     ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: Date.now() } : {}),
     ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: Date.now() } : {}),
+  });
+
+  await setFirestoreDocument(contactPath, {
+    ...contactData,
+    empresaId: params.empresaId,
+    phone: incoming.phone,
+    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: new Date().toISOString() } : {}),
+    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: new Date().toISOString() } : {}),
+    updatedAt: new Date().toISOString(),
+  }).catch((error) => {
+    console.warn('[W-API webhook] Sem Firebase Admin: resposta enviada, mas marcador persistente falhou:', {
+      event: params.event,
+      instanceId: params.instanceId,
+      empresaId: params.empresaId,
+      error,
+    });
   });
 
   console.log('[W-API webhook] Resposta automatica enviada sem Firebase Admin:', {
