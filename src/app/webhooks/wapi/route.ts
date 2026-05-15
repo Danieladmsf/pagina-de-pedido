@@ -209,7 +209,11 @@ function buildAutoReply(params: {
     ? new Date(params.contactData.lastClosedReplyAt).getTime()
     : 0;
 
-  if (!openState.isOpen && (!lastClosedReplyAt || nowMs - lastClosedReplyAt > 2 * 60 * 60 * 1000)) {
+  if (!openState.isOpen) {
+    if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= 2 * 60 * 60 * 1000) {
+      return null;
+    }
+
     template = messages.storeClosed;
     type = 'store_closed_auto_reply';
   } else if (!params.contactData?.firstContactSentAt) {
