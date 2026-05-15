@@ -158,6 +158,10 @@ function hasBlockedChatTarget(identifiers: string[]) {
   });
 }
 
+function isBlockedChatTarget(value: string) {
+  return hasBlockedChatTarget([value]);
+}
+
 function hasBlockedMessageType(payload: any, data: any, eventName: string) {
   const type = firstString(
     payload?.messageType,
@@ -206,6 +210,9 @@ function extractIncomingMessage(payload: any, event: string) {
 
   const rawPhone = firstString(
     payload?.phone,
+    payload?.phoneNumber,
+    payload?.senderNumber,
+    payload?.fromNumber,
     stringId(payload?.from),
     stringId(payload?.sender),
     payload?.remoteJid,
@@ -214,9 +221,14 @@ function extractIncomingMessage(payload: any, event: string) {
     payload?.key?.remoteJid,
     payload?.message?.key?.remoteJid,
     data?.phone,
+    data?.phoneNumber,
+    data?.senderNumber,
+    data?.fromNumber,
     stringId(data?.from),
     data?.from?.id,
     stringId(data?.sender),
+    data?.sender?.phone,
+    data?.sender?.number,
     data?.sender?.id,
     data?.contact?.id,
     data?.remoteJid,
@@ -225,23 +237,52 @@ function extractIncomingMessage(payload: any, event: string) {
     data?.key?.remoteJid,
   );
 
-  if (!rawPhone || rawPhone.includes('@g.us')) return null;
+  if (!rawPhone || isBlockedChatTarget(rawPhone)) return null;
 
   const text = firstString(
     payload?.body,
+    payload?.messageBody,
+    payload?.content,
+    payload?.caption,
     payload?.text,
     payload?.text?.message,
+    payload?.textMessage,
+    payload?.textMessageData?.textMessage,
+    payload?.extendedTextMessageData?.text,
+    payload?.msgContent?.conversation,
+    payload?.msgContent?.extendedTextMessage?.text,
+    payload?.message?.body,
+    payload?.message?.messageBody,
+    payload?.message?.content,
+    payload?.message?.caption,
     payload?.message?.text,
     payload?.message?.conversation,
+    payload?.message?.textMessage,
+    payload?.message?.textMessageData?.textMessage,
+    payload?.message?.extendedTextMessageData?.text,
     payload?.message?.extendedTextMessage?.text,
     data?.body,
+    data?.messageBody,
+    data?.content,
+    data?.caption,
     data?.text,
     data?.text?.message,
+    data?.textMessage,
+    data?.textMessageData?.textMessage,
+    data?.extendedTextMessageData?.text,
+    data?.msgContent?.conversation,
+    data?.msgContent?.extendedTextMessage?.text,
+    data?.message?.body,
+    data?.message?.messageBody,
+    data?.message?.content,
+    data?.message?.caption,
     data?.message?.conversation,
+    data?.message?.text,
+    data?.message?.textMessage,
+    data?.message?.textMessageData?.textMessage,
+    data?.message?.extendedTextMessageData?.text,
     data?.message?.extendedTextMessage?.text,
   );
-
-  if (!text) return null;
 
   const looksLikeMessageEvent = eventName.includes('received') || eventName.includes('message');
   const hasMessageShape = Boolean(text || payload?.body || payload?.text || payload?.message || data?.body || data?.text || data?.message);
