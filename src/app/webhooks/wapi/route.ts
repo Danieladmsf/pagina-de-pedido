@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
-import { sendWapiTextMessage } from '@/lib/wapi/wapi.service';
+import { getWapiConnectedPhone, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
 import {
   buildStoreLink,
   formatWorkingHours,
@@ -39,7 +39,7 @@ function getWebhookToken(url: URL) {
 }
 
 function getConnectedPhone(payload: any) {
-  return payload?.connectedPhone || payload?.phone || payload?.number || payload?.instance?.connectedPhone || '';
+  return getWapiConnectedPhone(payload);
 }
 
 function stateValues(payload: any, event: string) {
