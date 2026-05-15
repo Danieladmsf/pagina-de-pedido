@@ -12,7 +12,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const { empresaId: rawEmpresaId } = await params;
       const empresaId = requireEmpresa(user, rawEmpresaId);
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
-      const webhookUrl = getWebhookUrl(request, empresaId);
+      const webhookUrl = getWebhookUrl(request, empresaId, token, integration.webhookUrl);
       let webhookConfigured = false;
 
       let rawStatus: any = null;

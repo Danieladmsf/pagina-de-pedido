@@ -59,13 +59,13 @@ export async function POST(request: Request) {
       }
 
       const now = new Date().toISOString();
-      const webhookUrl = getWebhookUrl(request, empresaId);
       const instanceName = buildInstanceName(body.instanceName || body.storeName, empresaId);
-      const created = await createWapiInstance({ instanceName, webhookUrl });
+      const created = await createWapiInstance({ instanceName });
       if (!created.instanceId || !created.token) {
         throw new ApiError(502, 'A W-API nao retornou instanceId/token para a nova instancia.', created);
       }
 
+      const webhookUrl = getWebhookUrl(request, empresaId, created.token);
       await configureWapiWebhooks(created.instanceId, created.token, webhookUrl);
 
       let qrCode = '';
