@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
-  Copy,
   Loader2,
   MessageCircle,
   Phone,
@@ -16,11 +15,9 @@ import {
   RefreshCw,
   Save,
   Send,
-  ShieldCheck,
   Smartphone,
   Wifi,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -222,9 +219,9 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       });
       setIntegration(data.integration);
       setQrCode(data.qrCode || data.integration?.qrCode || '');
-      toast({ title: 'Instancia criada', description: 'Escaneie o QR Code para conectar o WhatsApp.' });
+      toast({ title: 'WhatsApp pronto para conectar', description: 'Escaneie o QR Code para conectar o numero da loja.' });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao criar instancia', description: error.message });
+      toast({ variant: 'destructive', title: 'Erro ao preparar WhatsApp', description: error.message });
     } finally {
       setLoading(false);
     }
@@ -239,7 +236,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       });
       setIntegration(data.integration);
       setQrCode(data.qrCode || data.integration?.qrCode || '');
-      toast({ title: 'Instancia vinculada', description: 'A instancia foi vinculada a esta loja com sucesso.' });
+      toast({ title: 'WhatsApp vinculado', description: 'A conexao foi vinculada a esta loja com sucesso.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
     } finally {
@@ -265,7 +262,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   }
 
   async function disconnect() {
-    if (!confirm('Desconectar e remover esta instancia WhatsApp? Voce podera criar uma nova depois.')) return;
+    if (!confirm('Desconectar este WhatsApp da loja? Voce podera conectar novamente depois.')) return;
     setLoading(true);
     try {
       await apiFetch('/wapi/disconnect', {
@@ -274,7 +271,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       });
       setIntegration(null);
       setQrCode('');
-      toast({ title: 'WhatsApp desconectado', description: 'Clique em Criar instancia para conectar novamente.' });
+      toast({ title: 'WhatsApp desconectado', description: 'Clique em Conectar WhatsApp para conectar novamente.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao desconectar', description: error.message });
     } finally {
@@ -294,7 +291,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
           type: 'manual_test',
         }),
       });
-      toast({ title: 'Mensagem enviada', description: 'A W-API colocou a mensagem na fila de envio.' });
+      toast({ title: 'Mensagem enviada', description: 'A mensagem entrou na fila de envio.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao enviar mensagem', description: error.message });
     } finally {
@@ -322,16 +319,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }
 
-  async function copyInstanceId() {
-    if (!integration?.wapiInstanceId) return;
-    try {
-      await navigator.clipboard.writeText(integration.wapiInstanceId);
-      toast({ title: 'ID copiado', description: 'Identificador da instancia copiado para a area de transferencia.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Nao foi possivel copiar', description: 'Selecione e copie manualmente.' });
-    }
-  }
-
   const isConnected = integration?.connected || integration?.status === 'connected';
   const status = integration?.status;
 
@@ -347,7 +334,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
               <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Integracao WhatsApp Business</p>
               <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">WhatsApp da loja</h1>
               <p className="text-slate-600 mt-1 text-sm max-w-2xl">
-                Instancia exclusiva por loja, webhooks sincronizados em segundo plano e respostas automaticas persistidas no Firestore.
+                Use o numero da loja para receber mensagens e enviar avisos aos clientes automaticamente.
               </p>
             </div>
           </div>
@@ -361,35 +348,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                 <span className="text-sm font-bold">{statusLabel(status)}</span>
               </div>
             )}
-            {!initialLoading && integration?.lastStatusAt && (
-              <p className="text-[11px] text-slate-500">
-                Verificado em {new Date(integration.lastStatusAt).toLocaleString('pt-BR')}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              Tokens protegidos
-            </div>
-            <p className="mt-1 text-[11px] leading-snug text-slate-500">Chaves da W-API ficam no servidor; o navegador nunca recebe o token puro.</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <RefreshCw className="h-4 w-4 text-emerald-600" />
-              Sincronizacao automatica
-            </div>
-            <p className="mt-1 text-[11px] leading-snug text-slate-500">Status e webhooks sao revisados ao abrir a tela e periodicamente.</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <MessageCircle className="h-4 w-4 text-emerald-600" />
-              Automacoes ativas
-            </div>
-            <p className="mt-1 text-[11px] leading-snug text-slate-500">Mensagens diretas entram pelo webhook da loja; status e grupos sao ignorados.</p>
           </div>
         </div>
       </div>
@@ -435,13 +393,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
               <CardTitle className="flex items-center justify-between text-base">
                 <span className="flex items-center gap-2">
                   <QrCode className="h-5 w-5 text-emerald-600" />
-                  Instancia da loja
+                  WhatsApp da loja
                 </span>
-                {integration && (
-                  <Badge variant="outline" className="font-mono text-[10px] font-bold">
-                    {integration.wapiInstanceId.slice(0, 12)}...
-                  </Badge>
-                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5 md:p-6 space-y-5">
@@ -452,7 +405,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                   <InfoGrid
                     storeName={storeName}
                     integration={integration}
-                    onCopyId={copyInstanceId}
                   />
 
                   <ConnectionSupportActions
@@ -515,7 +467,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 
               {!integration && (
                 <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  Crie a instancia para liberar o envio de mensagens.
+                  Conecte o WhatsApp da loja para liberar o envio de mensagens.
                 </p>
               )}
               {integration && !isConnected && (
@@ -529,8 +481,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Como funciona</p>
                 <ul className="text-xs text-slate-600 space-y-1.5">
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Cada empresa usa uma instancia W-API exclusiva.</li>
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Status e webhooks sao sincronizados automaticamente.</li>
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Cada loja usa o seu proprio WhatsApp.</li>
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />A conexao e acompanhada automaticamente.</li>
                   <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Mantenha o celular online para nao perder notificacoes.</li>
                 </ul>
               </div>
@@ -561,38 +513,28 @@ function ConnectionSupportActions({
   const needsReconnect = !connected || status === 'disconnected' || status === 'error';
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Acoes de suporte</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            A rotina normal e automatica. Use estes comandos apenas para QR expirado, reconexao ou troca de numero.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {needsQr && (
-            <Button variant="outline" onClick={onRefreshQr} disabled={loading} className="h-9 rounded-lg bg-white">
-              <QrCode className="h-4 w-4" />
-              Novo QR
-            </Button>
-          )}
-          {needsReconnect && (
-            <Button variant="outline" onClick={onReconnect} disabled={loading} className="h-9 rounded-lg bg-white">
-              <RefreshCw className="h-4 w-4" />
-              Reconectar
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            onClick={onDisconnect}
-            disabled={loading}
-            className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
-          >
-            <Power className="h-4 w-4" />
-            Desconectar
-          </Button>
-        </div>
-      </div>
+    <div className="flex flex-wrap gap-2">
+      {needsQr && (
+        <Button variant="outline" onClick={onRefreshQr} disabled={loading} className="h-9 rounded-lg bg-white">
+          <QrCode className="h-4 w-4" />
+          Novo QR
+        </Button>
+      )}
+      {needsReconnect && (
+        <Button variant="outline" onClick={onReconnect} disabled={loading} className="h-9 rounded-lg bg-white">
+          <RefreshCw className="h-4 w-4" />
+          Reconectar
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        onClick={onDisconnect}
+        disabled={loading}
+        className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+      >
+        <Power className="h-4 w-4" />
+        Desconectar
+      </Button>
     </div>
   );
 }
@@ -680,7 +622,6 @@ function MessageTemplatesSection({
               <div key={key} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-sm font-black text-slate-800">{WHATSAPP_MESSAGE_LABELS[key]}</Label>
-                  <Badge variant="outline" className="text-[10px] font-mono">{key}</Badge>
                 </div>
                 <Textarea
                   value={templates[key]}
@@ -747,7 +688,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
         </div>
         <h2 className="font-black text-lg text-slate-900">WhatsApp ainda nao conectado</h2>
         <p className="text-sm text-slate-600 mt-1.5 max-w-md mx-auto">
-          Crie uma instancia exclusiva da W-API para esta loja e gere o QR Code para parear seu numero.
+          Gere o QR Code e conecte o numero que a loja vai usar para falar com os clientes.
         </p>
 
         {!showManual ? (
@@ -758,7 +699,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
               className="mt-6 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6 w-full max-w-sm mx-auto"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
-              Criar instancia automaticamente
+              Conectar WhatsApp
             </Button>
             
             <div className="mt-4">
@@ -766,16 +707,16 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                 onClick={() => setShowManual(true)} 
                 className="text-xs text-emerald-700 font-medium hover:underline"
               >
-                Ou vincular instancia W-API ja existente
+                Conectar com dados existentes
               </button>
             </div>
           </>
         ) : (
           <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Vincular Instancia Manualmente</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Conectar manualmente</h3>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">ID da Instancia</Label>
+                <Label className="text-xs text-slate-600">Codigo da conexao</Label>
                 <Input 
                   id="wapiInstanceId"
                   name="wapiInstanceId"
@@ -789,7 +730,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">Token da Instancia</Label>
+                <Label className="text-xs text-slate-600">Chave de acesso</Label>
                 <Input 
                   id="wapiToken"
                   name="wapiToken"
@@ -798,7 +739,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                   data-lpignore="true"
                   value={manualToken} 
                   onChange={(e) => setManualToken(e.target.value)} 
-                  placeholder="Cole o token aqui" 
+                  placeholder="Cole a chave aqui" 
                   className="text-xs h-9"
                   disabled={disabled}
                 />
@@ -817,7 +758,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                   onClick={() => onLink(manualId.trim(), manualToken.trim())}
                 >
                   {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
-                  Vincular e Gerar QR
+                  Conectar e gerar QR
                 </Button>
               </div>
             </div>
@@ -826,7 +767,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
 
         <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
           {[
-            { n: 1, t: 'Criar/Vincular', d: 'Tenha uma sessao W-API exclusiva vinculada a esta loja.' },
+            { n: 1, t: 'Conectar', d: 'Prepare o QR Code para o WhatsApp da loja.' },
             { n: 2, t: 'Escanear QR', d: 'Abra o WhatsApp do celular e leia o codigo gerado.' },
             { n: 3, t: 'Pronto', d: 'Notificacoes comecam a ser enviadas automaticamente.' },
           ].map((step) => (
@@ -847,30 +788,15 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
 function InfoGrid({
   storeName,
   integration,
-  onCopyId,
 }: {
   storeName: string;
   integration: Integration;
-  onCopyId: () => void;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="rounded-xl border bg-white p-3.5">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Empresa</p>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Loja</p>
         <p className="font-bold text-slate-900 truncate mt-0.5">{storeName}</p>
-      </div>
-      <div className="rounded-xl border bg-white p-3.5">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Instancia W-API</p>
-        <button
-          onClick={onCopyId}
-          className="group flex items-center gap-1.5 mt-0.5 hover:text-emerald-600 transition-colors"
-          title="Copiar ID"
-        >
-          <span className="font-mono text-xs font-bold text-slate-900 truncate group-hover:text-emerald-600">
-            {integration.wapiInstanceId}
-          </span>
-          <Copy className="h-3 w-3 text-slate-400 group-hover:text-emerald-600 shrink-0" />
-        </button>
       </div>
       <div className="rounded-xl border bg-white p-3.5">
         <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Numero conectado</p>
@@ -883,12 +809,6 @@ function InfoGrid({
           ) : (
             <span className="text-slate-400 font-normal text-sm">Aguardando conexao</span>
           )}
-        </p>
-      </div>
-      <div className="rounded-xl border bg-white p-3.5">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Ultima verificacao</p>
-        <p className="font-bold text-slate-900 text-sm mt-0.5">
-          {integration.lastStatusAt ? new Date(integration.lastStatusAt).toLocaleString('pt-BR') : '-'}
         </p>
       </div>
     </div>
@@ -920,7 +840,7 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
               <li><span className="font-bold text-emerald-700">2.</span> Toque em <strong>Configuracoes &gt; Aparelhos conectados</strong></li>
               <li><span className="font-bold text-emerald-700">3.</span> Selecione <strong>Conectar um aparelho</strong> e aponte para o codigo</li>
             </ol>
-            <p className="text-[11px] text-slate-500 mt-2">O status atualiza automaticamente a cada 8 segundos.</p>
+            <p className="text-[11px] text-slate-500 mt-2">A tela acompanha a conexao automaticamente.</p>
           </div>
         </div>
       ) : (
@@ -930,7 +850,7 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
           </div>
           <p className="font-bold text-slate-900">QR Code indisponivel no momento</p>
           <p className="text-sm text-slate-600 mt-1">
-            {status === 'error' ? 'Houve um erro na instancia.' : 'Use Novo QR ou Reconectar para gerar um novo codigo.'}
+            {status === 'error' ? 'Houve um erro na conexao.' : 'Use Novo QR ou Reconectar para gerar um novo codigo.'}
           </p>
         </div>
       )}
@@ -955,7 +875,7 @@ function ConnectedCard({ numero }: { numero?: string }) {
             </span>
           </div>
           <p className="text-sm text-emerald-800 mt-1">
-            As notificacoes desta loja serao enviadas automaticamente por esta instancia.
+            As notificacoes desta loja serao enviadas automaticamente por este WhatsApp.
           </p>
           {numero && (
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-emerald-200">
