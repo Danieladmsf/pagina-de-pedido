@@ -38,6 +38,7 @@ import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Component, Menu } from 'lucide-react';
+import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -583,41 +584,67 @@ export default function AdminPage() {
 
     let message = '';
     let msgType = '';
+    let templateKey:
+      | 'orderReceived'
+      | 'orderReadyDelivery'
+      | 'orderReadyPickup'
+      | 'orderReadyDineIn'
+      | 'orderOutForDelivery'
+      | 'orderPickupReady'
+      | 'orderDineInReady'
+      | null = null;
 
     if (status === 'received') {
-      let tempoEstimado = '';
-      if (order.orderType === 'delivery' && storeProfile?.fees?.deliveryTime) {
-         tempoEstimado = `\n⏳ Tempo estimado de entrega: ${storeProfile.fees.deliveryTime}`;
-      } else if (order.orderType === 'pickup' && storeProfile?.fees?.pickupTime) {
-         tempoEstimado = `\n⏳ Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`;
-      }
-
-      message = `Olá, ${firstName}! tudo bem?😊\nSeu pedido nº #${shortId} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n${itemsList}\n\n💵 Total: ${totalStr}\n💳 Pagamento: ${paymentText}${tempoEstimado}\n\nAgradecemos pela preferência e esperamos que aproveite seu docinho ao máximo! 🤎`;
+      templateKey = 'orderReceived';
       msgType = 'order_created';
     } else if (status === 'ready') {
       // Notificação de preparo concluído
       if (order.orderType === 'pickup') {
-        message = `Olá, ${firstName}! ✅\nSeu pedido nº #${shortId} está *pronto* e disponível para retirada! 🏪\n\nVenha buscar quando quiser. Estamos te esperando! 😊`;
+        templateKey = 'orderReadyPickup';
         msgType = 'order_ready_pickup';
       } else if (order.orderType === 'dine_in') {
-        message = `Olá, ${firstName}! 🍽️\nSeu pedido nº #${shortId} está *pronto*!\n\nJá estamos levando até a sua mesa. Bom apetite! 😋`;
+        templateKey = 'orderReadyDineIn';
         msgType = 'order_ready_dine_in';
       } else {
-        message = `Olá, ${firstName}! ✅\nSeu pedido nº #${shortId} está sendo finalizado! Em breve sairá para entrega. 🛵`;
+        templateKey = 'orderReadyDelivery';
         msgType = 'order_ready';
       }
     } else if (status === 'out_for_delivery') {
       // Mensagem diferenciada por tipo de pedido
       if (order.orderType === 'pickup') {
-        message = `Olá, ${firstName}! ✅🏪\nSeu pedido nº #${shortId} está *pronto para retirada*!\n\nPode vir buscar a qualquer momento. Obrigado pela preferência! 😊`;
+        templateKey = 'orderPickupReady';
         msgType = 'pickup_ready';
       } else if (order.orderType === 'dine_in') {
-        message = `Olá, ${firstName}! 🍽️✨\nSeu pedido nº #${shortId} está *disponível*!\n\nSeu prato já está pronto. Bom apetite! 😋`;
+        templateKey = 'orderDineInReady';
         msgType = 'dine_in_ready';
       } else {
-        message = `Olá, ${firstName}! Seu pedido nº #${shortId} saiu para entrega. 🛵\n\nEm breve chegará até você!`;
+        templateKey = 'orderOutForDelivery';
         msgType = 'delivery_out';
       }
+    }
+
+    if (templateKey) {
+      const whatsappMessages = getWhatsAppMessages(storeProfile?.whatsappMessages);
+      message = renderWhatsAppTemplate(whatsappMessages[templateKey], {
+        cliente: order.customerName || 'Cliente',
+        primeiro_nome: firstName,
+        pedido: shortId,
+        itens: itemsList,
+        total: totalStr,
+        pagamento: paymentText,
+        tempo_estimado: status === 'received'
+          ? (
+              order.orderType === 'delivery' && storeProfile?.fees?.deliveryTime
+                ? `\n\u23f3 Tempo estimado de entrega: ${storeProfile.fees.deliveryTime}`
+                : order.orderType === 'pickup' && storeProfile?.fees?.pickupTime
+                  ? `\n\u23f3 Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`
+                  : ''
+            )
+          : '',
+        loja: storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja',
+        link: buildStoreLink(storeProfile, user.uid, typeof window !== 'undefined' ? window.location.origin : undefined),
+        horarios: formatWorkingHours(storeProfile?.workingHours),
+      });
     }
 
     if (!message) return;
@@ -857,8 +884,7 @@ export default function AdminPage() {
     );
   }
 
-  const storeNameSlug = (storeProfile?.general?.name || storeProfile?.storeName || 'loja').replace(/\s+/g, '-').toLowerCase();
-  const storeLink = typeof window !== 'undefined' ? `${window.location.origin}/${storeNameSlug}-${user?.uid}` : '';
+  const storeLink = user && typeof window !== 'undefined' ? buildStoreLink(storeProfile, user.uid, window.location.origin) : '';
 
   return (
     <>
@@ -982,7 +1008,7 @@ export default function AdminPage() {
         {/* Módulo Administrativo (Nova Gestão) */}
         {activeTab === 'whatsapp' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <WhatsAppTab user={user} storeProfile={storeProfile} />
+            <WhatsAppTab user={user} storeProfile={storeProfile} db={db} />
           </div>
         )}
 
