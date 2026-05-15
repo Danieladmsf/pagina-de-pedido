@@ -34,8 +34,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       }
 
       try {
-        await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
-        webhookConfigured = true;
+        const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
+        webhookConfigured = !webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
       } catch (webhookError: any) {
         console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
       }

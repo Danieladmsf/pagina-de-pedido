@@ -241,13 +241,23 @@ export async function configureWapiWebhooks(instanceId: string, token: string, w
   ];
 
   const results = await Promise.allSettled(
-    endpoints.map((endpoint) => updateWapiWebhook(instanceId, token, endpoint, webhookUrl)),
+    endpoints.map((endpoint) => updateWapiWebhook(instanceId, token, endpoint, webhookUrl).then(() => endpoint)),
   );
 
-  const failed = results.filter((result) => result.status === 'rejected');
+  const configured = results
+    .map((result, index) => result.status === 'fulfilled' ? endpoints[index] : '')
+    .filter(Boolean);
+  const failed = results.flatMap((result, index) => {
+    if (result.status !== 'rejected') return [];
+    const reason = result.reason instanceof Error ? result.reason.message : String(result.reason || 'Falha desconhecida');
+    return [{ endpoint: endpoints[index], reason }];
+  });
+
   if (failed.length > 0) {
     console.warn('[W-API] Alguns webhooks nao foram configurados:', failed);
   }
+
+  return { configured, failed, webhookUrl };
 }
 
 export function sendWapiTextMessage(

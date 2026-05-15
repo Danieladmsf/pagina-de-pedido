@@ -223,6 +223,34 @@ export default function AdminPage() {
   }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
+  const whatsappWebhookSyncRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || !isRealUser || whatsappWebhookSyncRef.current) return;
+    whatsappWebhookSyncRef.current = true;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch('/wapi/configure-webhooks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ empresaId: user.uid }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.error) {
+          console.warn('[WhatsApp] Nao foi possivel sincronizar webhooks:', data?.error || response.status);
+        }
+      } catch (error) {
+        console.warn('[WhatsApp] Falha ao sincronizar webhooks:', error);
+      }
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [user, isRealUser]);
 
   const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0) => {
     try {
