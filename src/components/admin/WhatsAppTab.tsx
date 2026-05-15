@@ -27,7 +27,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -115,6 +114,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
   const [savingMessages, setSavingMessages] = useState(false);
+  const [configuringWebhooks, setConfiguringWebhooks] = useState(false);
 
   const empresaId = user?.uid || '';
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || user?.displayName || 'Minha loja';
@@ -298,6 +298,24 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }
 
+  async function configureAutomationWebhooks() {
+    if (!integration || !empresaId) return;
+
+    setConfiguringWebhooks(true);
+    try {
+      const data = await apiFetch('/wapi/configure-webhooks', {
+        method: 'POST',
+        body: JSON.stringify({ empresaId }),
+      });
+      if (data.integration) setIntegration(data.integration);
+      toast({ title: 'Mensagens automaticas ativadas', description: 'A W-API foi reconfigurada para avisar o sistema quando uma mensagem chegar.' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Erro ao ativar mensagens automaticas', description: error.message || 'Falha ao configurar webhooks.' });
+    } finally {
+      setConfiguringWebhooks(false);
+    }
+  }
+
   async function saveMessageTemplates() {
     if (!db || !empresaId) {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Usuario ou banco de dados indisponivel.' });
@@ -382,12 +400,26 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         </AlertDescription>
       </Alert>
 
-      <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as 'conexao' | 'mensagens')}>
-        <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-slate-100 p-1 md:w-[420px]">
-          <TabsTrigger value="conexao" className="rounded-xl">Conexão</TabsTrigger>
-          <TabsTrigger value="mensagens" className="rounded-xl">Mensagens</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:w-[520px]">
+        <Button
+          type="button"
+          variant={activeSection === 'conexao' ? 'default' : 'ghost'}
+          onClick={() => setActiveSection('conexao')}
+          className={`rounded-xl h-11 px-2 text-xs sm:text-sm whitespace-normal leading-tight ${activeSection === 'conexao' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+        >
+          <Wifi className="h-4 w-4 mr-2" />
+          Conexao
+        </Button>
+        <Button
+          type="button"
+          variant={activeSection === 'mensagens' ? 'default' : 'ghost'}
+          onClick={() => setActiveSection('mensagens')}
+          className={`rounded-xl h-11 px-2 text-xs sm:text-sm whitespace-normal leading-tight ${activeSection === 'mensagens' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+        >
+          <MessageCircle className="h-4 w-4 mr-2" />
+          Mensagens automaticas
+        </Button>
+      </div>
 
       {activeSection === 'mensagens' ? (
         <MessageTemplatesSection
@@ -438,6 +470,15 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                     >
                       {loadingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                       Verificar status
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={configureAutomationWebhooks}
+                      disabled={configuringWebhooks || loading || !integration}
+                      className="rounded-full h-9 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                    >
+                      {configuringWebhooks ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageCircle className="h-4 w-4 mr-2" />}
+                      Ativar automacoes
                     </Button>
                     <Button variant="outline" onClick={refreshQrCode} disabled={loading} className="rounded-full h-9">
                       <QrCode className="h-4 w-4 mr-2" />

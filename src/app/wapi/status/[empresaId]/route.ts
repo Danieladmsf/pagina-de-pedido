@@ -1,6 +1,6 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
-import { ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
-import { getWapiConnectedPhone, getWapiStatus, isWapiConnectedStatus } from '@/lib/wapi/wapi.service';
+import { getWebhookUrl, ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
+import { configureWapiWebhooks, getWapiConnectedPhone, getWapiStatus, isWapiConnectedStatus } from '@/lib/wapi/wapi.service';
 import { patchWhatsAppIntegration, sanitizeIntegration, statusFromWapi } from '@/lib/wapi/integration-store';
 
 export const runtime = 'nodejs';
@@ -12,6 +12,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const { empresaId: rawEmpresaId } = await params;
       const empresaId = requireEmpresa(user, rawEmpresaId);
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
+      const webhookUrl = getWebhookUrl(request, empresaId);
+      let webhookConfigured = false;
 
       let rawStatus: any = null;
       let connected = integration.connected;
@@ -31,15 +33,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
         return ok({ integration: sanitizeIntegration(updated), raw: null, wapiError: wapiError?.message });
       }
 
+      try {
+        await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
+        webhookConfigured = true;
+      } catch (webhookError: any) {
+        console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
+      }
+
       const updated = await patchWhatsAppIntegration(empresaId, {
         connected,
         status: statusFromWapi(connected),
         numeroWhatsapp: connectedPhone,
+        webhookUrl,
         lastError: '',
         lastStatusAt: new Date().toISOString(),
       }, user.idToken);
 
-      return ok({ integration: sanitizeIntegration(updated), raw: rawStatus });
+      return ok({ integration: sanitizeIntegration(updated), raw: rawStatus, webhookConfigured });
     } catch (error) {
       return jsonError(error);
     }
