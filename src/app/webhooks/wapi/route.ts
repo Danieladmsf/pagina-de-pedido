@@ -1,7 +1,5 @@
-import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
-import { getFirestoreDocument, setFirestoreDocument } from '@/lib/firestore-rest';
 import { decryptSecret } from '@/lib/wapi/crypto';
 import { sendWapiTextMessage } from '@/lib/wapi/wapi.service';
 import {
@@ -14,13 +12,6 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const fallbackAutoReplyContacts = new Map<string, { firstContactSentAt?: number; lastClosedReplyAt?: number }>();
-
-function fallbackContactPath(empresaId: string, phone: string) {
-  const hash = crypto.createHash('sha256').update(`${empresaId}:${phone}`).digest('hex').slice(0, 40);
-  return `active_sessions/wapi_auto_reply_${hash}`;
-}
 
 function isAuthorized(request: Request) {
   const expected = process.env.WAPI_WEBHOOK_SECRET;
@@ -422,87 +413,6 @@ async function maybeSendAutoReply(params: {
   return true;
 }
 
-async function maybeSendFallbackAutoReply(params: {
-  empresaId: string;
-  instanceId: string;
-  instanceToken: string;
-  payload: any;
-  event: string;
-  requestOrigin: string;
-}) {
-  const incoming = extractIncomingMessage(params.payload, params.event);
-  if (!incoming?.phone) {
-    console.log('[W-API webhook] Sem Firebase Admin: evento nao parece mensagem recebida.', {
-      event: params.event,
-      instanceId: params.instanceId,
-      empresaId: params.empresaId,
-    });
-    return false;
-  }
-
-  const contactKey = `${params.empresaId}_${incoming.phone}`;
-  const contactPath = fallbackContactPath(params.empresaId, incoming.phone);
-  const memoryContactData = fallbackAutoReplyContacts.get(contactKey) || {};
-  const persistedContactData = await getFirestoreDocument<Record<string, any>>(contactPath).catch(() => null);
-  const contactData = persistedContactData || memoryContactData;
-  const storeProfile = await getFirestoreDocument<Record<string, any>>(`store_profiles/${params.empresaId}`).catch((error) => {
-    console.warn('[W-API webhook] Sem Firebase Admin: nao foi possivel ler perfil publico da loja:', {
-      event: params.event,
-      instanceId: params.instanceId,
-      empresaId: params.empresaId,
-      error,
-    });
-    return null;
-  });
-
-  const reply = buildAutoReply({
-    storeProfile,
-    empresaId: params.empresaId,
-    incoming,
-    requestOrigin: params.requestOrigin,
-    contactData,
-  });
-  if (!reply) return false;
-
-  const result = await sendWapiTextMessage(params.instanceId, params.instanceToken, {
-    phone: incoming.phone,
-    message: reply.message,
-    delayMessage: 2,
-  });
-
-  fallbackAutoReplyContacts.set(contactKey, {
-    ...contactData,
-    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: Date.now() } : {}),
-    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: Date.now() } : {}),
-  });
-
-  await setFirestoreDocument(contactPath, {
-    ...contactData,
-    empresaId: params.empresaId,
-    phone: incoming.phone,
-    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: new Date().toISOString() } : {}),
-    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: new Date().toISOString() } : {}),
-    updatedAt: new Date().toISOString(),
-  }).catch((error) => {
-    console.warn('[W-API webhook] Sem Firebase Admin: resposta enviada, mas marcador persistente falhou:', {
-      event: params.event,
-      instanceId: params.instanceId,
-      empresaId: params.empresaId,
-      error,
-    });
-  });
-
-  console.log('[W-API webhook] Resposta automatica enviada sem Firebase Admin:', {
-    event: params.event,
-    instanceId: params.instanceId,
-    empresaId: params.empresaId,
-    type: reply.type,
-    providerMessageId: result?.messageId || result?.insertedId || '',
-  });
-
-  return true;
-}
-
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Webhook nao autorizado.' }, { status: 401 });
@@ -518,36 +428,12 @@ export async function POST(request: Request) {
   const adminDb = getOptionalAdminDb();
 
   if (!adminDb) {
-    let autoReplySent = false;
-
-    if (empresaIdFromUrl && instanceId && webhookAuth.token) {
-      try {
-        autoReplySent = await maybeSendFallbackAutoReply({
-          empresaId: empresaIdFromUrl,
-          instanceId,
-          instanceToken: webhookAuth.token,
-          payload,
-          event,
-          requestOrigin: url.origin,
-        });
-      } catch (error) {
-        console.warn('[W-API webhook] Sem Firebase Admin: falha ao enviar resposta automatica:', {
-          event,
-          instanceId,
-          empresaId: empresaIdFromUrl,
-          error,
-        });
-      }
-    } else {
-      console.log('[W-API webhook] recebido sem Firebase Admin e sem dados suficientes para resposta:', {
-        event,
-        instanceId,
-        empresaId: empresaIdFromUrl,
-        hasWebhookToken: Boolean(webhookAuth.token),
-      });
-    }
-
-    return NextResponse.json({ ok: true, persisted: false, autoReplySent });
+    console.warn('[W-API webhook] Firebase Admin indisponivel; evento ignorado sem envio automatico:', {
+      event,
+      instanceId,
+      empresaId: empresaIdFromUrl,
+    });
+    return NextResponse.json({ ok: true, persisted: false, autoReplySent: false });
   }
 
   let empresaId = empresaIdFromUrl;
