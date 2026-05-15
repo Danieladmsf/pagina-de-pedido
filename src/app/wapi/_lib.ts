@@ -44,7 +44,9 @@ export async function requireIntegration(empresaId: string, idToken: string): Pr
 }
 
 export function getWebhookUrl(request: Request, empresaId?: string) {
-  const baseUrl = process.env.WAPI_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const requestOrigin = new URL(request.url).origin;
+  const configuredBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.WAPI_PUBLIC_BASE_URL || '';
+  const baseUrl = requestOrigin.includes('localhost') && configuredBaseUrl ? configuredBaseUrl : requestOrigin;
   const url = new URL('/webhooks/wapi', baseUrl);
   const secret = process.env.WAPI_WEBHOOK_SECRET;
   if (secret) url.searchParams.set('secret', secret);
