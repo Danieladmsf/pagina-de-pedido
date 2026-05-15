@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useAuth } from '@/firebase';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
-import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -557,7 +557,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const orderRef = doc(collection(db, 'orders'), orderId);
 
       // Validação de estoque antes de enviar
-      const managedStockItemIds = new Set<string>();
       if (enableInventory) {
         const stockByItem: Record<string, number> = {};
         cart.forEach(item => {
@@ -567,9 +566,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           const itemDoc = await getDoc(doc(db, 'menuItems', itemId));
           if (itemDoc.exists()) {
             const currentStock = getManagedStock(itemDoc.data().stockQuantity);
-            if (currentStock !== null) {
-              managedStockItemIds.add(itemId);
-            }
             if (currentStock !== null && requestedQty > currentStock) {
               const itemName = itemDoc.data().name || itemId;
               toast({ variant: "destructive", title: "Estoque insuficiente", description: `"${itemName}" tem apenas ${currentStock} unidade(s) disponível(is).` });
@@ -625,21 +621,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         paymentStatus: 'pending',
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
         orderType,
+        stockDeducted: false,
         items: safeItems
       };
 
       const batch = writeBatch(db);
       batch.set(orderRef, orderData);
-
-      if (enableInventory) {
-        cart.forEach((item) => {
-          if (!managedStockItemIds.has(item.id)) return;
-          const itemRef = doc(db, 'menuItems', item.id);
-          batch.update(itemRef, {
-            stockQuantity: increment(-item.quantity)
-          });
-        });
-      }
 
       await batch.commit();
 

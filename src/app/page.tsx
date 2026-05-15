@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, increment } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, getDoc, increment } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -38,6 +38,10 @@ import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Component, Menu } from 'lucide-react';
+
+const getManagedStock = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+};
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -647,6 +651,43 @@ export default function AdminPage() {
     try {
       const updates = typeof statusOrUpdates === 'string' ? { status: statusOrUpdates } : statusOrUpdates;
       const currentOrder = (ordersRaw as any[])?.find(o => o.id === orderId);
+      const finalizingSale = updates.status === 'delivered' && currentOrder && currentOrder.status !== 'delivered';
+      const shouldDeductStock = !!(finalizingSale && storeProfile?.general?.enableInventory && currentOrder.stockDeducted !== true);
+      let stockDeductionUpdates: Array<{ itemRef: any; quantity: number }> = [];
+
+      const orderItemQuantities = (order: any) => {
+        const quantities = new Map<string, number>();
+        for (const item of order?.items || []) {
+          const quantity = Number(item.quantity) || 0;
+          if (item.id && quantity > 0) {
+            quantities.set(item.id, (quantities.get(item.id) || 0) + quantity);
+          }
+        }
+        return quantities;
+      };
+
+      if (shouldDeductStock) {
+        for (const [itemId, quantity] of orderItemQuantities(currentOrder)) {
+          const itemRef = doc(db, 'menuItems', itemId);
+          const itemSnap = await getDoc(itemRef);
+          if (!itemSnap.exists()) continue;
+
+          const itemData = itemSnap.data();
+          const currentStock = getManagedStock(itemData.stockQuantity);
+          if (currentStock === null) continue;
+
+          if (quantity > currentStock) {
+            toast({
+              variant: 'destructive',
+              title: 'Estoque insuficiente',
+              description: `Não foi possível finalizar. "${itemData.name || itemId}" tem apenas ${currentStock} unidade(s).`
+            });
+            return false;
+          }
+
+          stockDeductionUpdates.push({ itemRef, quantity });
+        }
+      }
       
       // Sincronização de Cliente se o pedido for movido para 'delivered'
       if (updates.status === 'delivered') {
@@ -718,30 +759,53 @@ export default function AdminPage() {
       }
 
       if (updates.status === 'canceled' && currentOrder && currentOrder.status !== 'canceled') {
-        if (storeProfile?.general?.enableInventory) {
+        if (storeProfile?.general?.enableInventory && currentOrder.stockDeducted === true) {
           const batch = writeBatch(db);
-          batch.update(doc(db, 'orders', orderId), updates);
-          for (const item of currentOrder.items || []) {
-            if (item.id) {
-               batch.update(doc(db, 'menuItems', item.id), {
-                 stockQuantity: increment(item.quantity)
-               });
+          batch.update(doc(db, 'orders', orderId), { ...updates, stockDeducted: false });
+          for (const [itemId, quantity] of orderItemQuantities(currentOrder)) {
+            const itemRef = doc(db, 'menuItems', itemId);
+            const itemSnap = await getDoc(itemRef);
+            const currentStock = itemSnap.exists() ? getManagedStock(itemSnap.data().stockQuantity) : null;
+            if (currentStock !== null) {
+              batch.update(itemRef, {
+                stockQuantity: increment(quantity)
+              });
             }
           }
           await batch.commit();
           toast({ title: "Status Atualizado", description: "O pedido foi cancelado e o estoque foi retornado." });
-          return;
+          return true;
         }
+
+        await updateDoc(doc(db, 'orders', orderId), updates);
+        toast({ title: "Status Atualizado", description: "O pedido foi cancelado." });
+        return true;
       }
 
-      await updateDoc(doc(db, 'orders', orderId), updates);
+      if (shouldDeductStock) {
+        const batch = writeBatch(db);
+        for (const stockUpdate of stockDeductionUpdates) {
+          batch.update(stockUpdate.itemRef, {
+            stockQuantity: increment(-stockUpdate.quantity)
+          });
+        }
+        batch.update(doc(db, 'orders', orderId), {
+          ...updates,
+          stockDeducted: stockDeductionUpdates.length > 0
+        });
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, 'orders', orderId), updates);
+      }
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
       if (updates.status && currentOrder?.status !== updates.status) {
         void sendOrderWhatsAppNotification(currentOrder, updates.status);
       }
+      return true;
     } catch (err) {
       console.error(err);
       toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
+      return false;
     }
   };
 
