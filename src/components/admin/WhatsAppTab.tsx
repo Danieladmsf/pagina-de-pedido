@@ -20,7 +20,6 @@ import {
   Smartphone,
   Wifi,
 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -114,7 +113,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
   const [savingMessages, setSavingMessages] = useState(false);
-  const [configuringWebhooks, setConfiguringWebhooks] = useState(false);
 
   const empresaId = user?.uid || '';
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || user?.displayName || 'Minha loja';
@@ -155,7 +153,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         if (data.integration.qrCode) setQrCode(data.integration.qrCode);
       }
     } catch {
-      // Sem dados salvos — mostra tela de criacao
+      // Sem dados salvos; mostra tela de criacao
     } finally {
       setInitialLoading(false);
     }
@@ -182,6 +180,20 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }, [empresaId, user]);
 
+  const refreshQrCode = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await apiFetch(`/wapi/qrcode/${empresaId}`);
+      setIntegration(data.integration);
+      setQrCode(data.qrCode || '');
+      if (!silent) toast({ title: 'QR Code atualizado' });
+    } catch (error: any) {
+      if (!silent) toast({ variant: 'destructive', title: 'Erro ao buscar QR Code', description: error.message });
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [empresaId, user]);
+
   useEffect(() => {
     loadSavedIntegration().then(() => {
       // Depois de carregar do Firestore, faz checagem ao vivo em background
@@ -190,10 +202,16 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   }, [loadSavedIntegration, loadStatus]);
 
   useEffect(() => {
-    if (!integration || integration.connected || !qrCode) return;
-    const timer = setInterval(() => loadStatus(true), 8000);
+    if (!integration) return;
+    const interval = integration.connected ? 60000 : 8000;
+    const timer = setInterval(() => loadStatus(true), interval);
     return () => clearInterval(timer);
-  }, [integration, qrCode, loadStatus]);
+  }, [integration?.wapiInstanceId, integration?.connected, loadStatus]);
+
+  useEffect(() => {
+    if (!integration || integration.connected || qrCode) return;
+    refreshQrCode(true);
+  }, [integration?.wapiInstanceId, integration?.connected, qrCode, refreshQrCode]);
 
   async function createInstance() {
     setLoading(true);
@@ -224,20 +242,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       toast({ title: 'Instancia vinculada', description: 'A instancia foi vinculada a esta loja com sucesso.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshQrCode() {
-    setLoading(true);
-    try {
-      const data = await apiFetch(`/wapi/qrcode/${empresaId}`);
-      setIntegration(data.integration);
-      setQrCode(data.qrCode || '');
-      toast({ title: 'QR Code atualizado' });
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao buscar QR Code', description: error.message });
     } finally {
       setLoading(false);
     }
@@ -298,24 +302,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }
 
-  async function configureAutomationWebhooks() {
-    if (!integration || !empresaId) return;
-
-    setConfiguringWebhooks(true);
-    try {
-      const data = await apiFetch('/wapi/configure-webhooks', {
-        method: 'POST',
-        body: JSON.stringify({ empresaId }),
-      });
-      if (data.integration) setIntegration(data.integration);
-      toast({ title: 'Mensagens automaticas ativadas', description: 'A W-API foi reconfigurada para avisar o sistema quando uma mensagem chegar.' });
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao ativar mensagens automaticas', description: error.message || 'Falha ao configurar webhooks.' });
-    } finally {
-      setConfiguringWebhooks(false);
-    }
-  }
-
   async function saveMessageTemplates() {
     if (!db || !empresaId) {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Usuario ou banco de dados indisponivel.' });
@@ -328,7 +314,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         whatsappMessages: messageTemplates,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
-      toast({ title: 'Mensagens salvas', description: 'Os próximos envios automáticos usarão estes textos.' });
+      toast({ title: 'Mensagens salvas', description: 'Os proximos envios automaticos usarao estes textos.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao salvar mensagens', description: error.message || 'Falha ao salvar.' });
     } finally {
@@ -350,26 +336,18 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const status = integration?.status;
 
   return (
-    <div className="max-w-[1500px] w-full mx-auto p-4 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
-      {/* HERO */}
-      <div className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white p-6 md:p-8">
-        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-emerald-100/60 blur-3xl pointer-events-none" />
-
-        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+    <div className="max-w-[1500px] w-full mx-auto p-4 md:p-8 space-y-5 overflow-y-auto custom-scrollbar">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="hidden md:flex h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
-              <MessageCircle className="h-7 w-7 text-white" />
+            <div className="hidden md:flex h-11 w-11 rounded-xl bg-emerald-600 items-center justify-center shadow-sm shrink-0">
+              <MessageCircle className="h-5 w-5 text-white" />
             </div>
-            <div>
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider mb-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Integracao WhatsApp Business
-              </div>
-              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">Conectar WhatsApp</h1>
-              <p className="text-slate-600 mt-1 text-sm md:text-[15px] max-w-2xl">
-                Cada loja tem uma instancia W-API isolada, com QR Code e status proprios.
-                As notificacoes de pedidos sao enviadas automaticamente por esse numero.
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Integracao WhatsApp Business</p>
+              <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">WhatsApp da loja</h1>
+              <p className="text-slate-600 mt-1 text-sm max-w-2xl">
+                Instancia exclusiva por loja, webhooks sincronizados em segundo plano e respostas automaticas persistidas no Firestore.
               </p>
             </div>
           </div>
@@ -390,15 +368,31 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
             )}
           </div>
         </div>
-      </div>
 
-      <Alert className="border-emerald-200 bg-emerald-50/60">
-        <ShieldCheck className="h-4 w-4 text-emerald-700" />
-        <AlertTitle className="text-emerald-900">Tokens protegidos</AlertTitle>
-        <AlertDescription className="text-emerald-800">
-          O token principal da W-API fica apenas no servidor. O token da instancia e salvo criptografado e nao aparece no navegador.
-        </AlertDescription>
-      </Alert>
+        <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Tokens protegidos
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-slate-500">Chaves da W-API ficam no servidor; o navegador nunca recebe o token puro.</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <RefreshCw className="h-4 w-4 text-emerald-600" />
+              Sincronizacao automatica
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-slate-500">Status e webhooks sao revisados ao abrir a tela e periodicamente.</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <MessageCircle className="h-4 w-4 text-emerald-600" />
+              Automacoes ativas
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-slate-500">Mensagens diretas entram pelo webhook da loja; status e grupos sao ignorados.</p>
+          </div>
+        </div>
+      </div>
 
       <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:w-[520px]">
         <Button
@@ -461,43 +455,14 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                     onCopyId={copyInstanceId}
                   />
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => loadStatus()}
-                      disabled={loadingStatus || loading}
-                      className="rounded-full h-9"
-                    >
-                      {loadingStatus ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                      Verificar status
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={configureAutomationWebhooks}
-                      disabled={configuringWebhooks || loading || !integration}
-                      className="rounded-full h-9 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                    >
-                      {configuringWebhooks ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageCircle className="h-4 w-4 mr-2" />}
-                      Ativar automacoes
-                    </Button>
-                    <Button variant="outline" onClick={refreshQrCode} disabled={loading} className="rounded-full h-9">
-                      <QrCode className="h-4 w-4 mr-2" />
-                      Atualizar QR
-                    </Button>
-                    <Button variant="outline" onClick={reconnect} disabled={loading} className="rounded-full h-9">
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Reconectar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={disconnect}
-                      disabled={loading}
-                      className="rounded-full h-9 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <Power className="h-4 w-4 mr-2" />
-                      Desconectar
-                    </Button>
-                  </div>
+                  <ConnectionSupportActions
+                    connected={isConnected}
+                    loading={loading || loadingStatus}
+                    status={status}
+                    onRefreshQr={() => refreshQrCode()}
+                    onReconnect={reconnect}
+                    onDisconnect={disconnect}
+                  />
 
                   {!isConnected ? (
                     <QrSection qrCode={qrCode} status={status} />
@@ -565,7 +530,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Como funciona</p>
                 <ul className="text-xs text-slate-600 space-y-1.5">
                   <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Cada empresa usa uma instancia W-API exclusiva.</li>
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />O QR Code expira em poucos minutos, gere um novo se precisar.</li>
+                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Status e webhooks sao sincronizados automaticamente.</li>
                   <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Mantenha o celular online para nao perder notificacoes.</li>
                 </ul>
               </div>
@@ -573,6 +538,61 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConnectionSupportActions({
+  connected,
+  loading,
+  status,
+  onRefreshQr,
+  onReconnect,
+  onDisconnect,
+}: {
+  connected: boolean;
+  loading: boolean;
+  status?: IntegrationStatus;
+  onRefreshQr: () => void;
+  onReconnect: () => void;
+  onDisconnect: () => void;
+}) {
+  const needsQr = !connected && status !== 'connected';
+  const needsReconnect = !connected || status === 'disconnected' || status === 'error';
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Acoes de suporte</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            A rotina normal e automatica. Use estes comandos apenas para QR expirado, reconexao ou troca de numero.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {needsQr && (
+            <Button variant="outline" onClick={onRefreshQr} disabled={loading} className="h-9 rounded-lg bg-white">
+              <QrCode className="h-4 w-4" />
+              Novo QR
+            </Button>
+          )}
+          {needsReconnect && (
+            <Button variant="outline" onClick={onReconnect} disabled={loading} className="h-9 rounded-lg bg-white">
+              <RefreshCw className="h-4 w-4" />
+              Reconectar
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={onDisconnect}
+            disabled={loading}
+            className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+          >
+            <Power className="h-4 w-4" />
+            Desconectar
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -615,10 +635,10 @@ function MessageTemplatesSection({
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <MessageCircle className="h-5 w-5 text-emerald-600" />
-                Mensagens automáticas
+                Mensagens automaticas
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Variáveis disponíveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}.
+                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}.
               </p>
             </div>
             <div className="flex gap-2">
@@ -629,7 +649,7 @@ function MessageTemplatesSection({
                 disabled={saving}
                 className="rounded-full h-9"
               >
-                Restaurar padrão
+                Restaurar padrao
               </Button>
               <Button
                 type="button"
@@ -646,11 +666,11 @@ function MessageTemplatesSection({
         <CardContent className="p-5 md:p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1.3fr] gap-3 rounded-2xl border bg-slate-50/70 p-4">
             <div>
-              <Label className="text-xs font-bold text-slate-700">Link automático do cardápio</Label>
-              <Input value={storeLink || 'Link ainda indisponível'} readOnly className="mt-2 rounded-xl bg-white font-mono text-xs" />
+              <Label className="text-xs font-bold text-slate-700">Link automatico do cardapio</Label>
+              <Input value={storeLink || 'Link ainda indisponivel'} readOnly className="mt-2 rounded-xl bg-white font-mono text-xs" />
             </div>
             <div>
-              <Label className="text-xs font-bold text-slate-700">Horário usado na mensagem de fechado</Label>
+              <Label className="text-xs font-bold text-slate-700">Horario usado na mensagem de fechado</Label>
               <pre className="mt-2 max-h-28 overflow-auto rounded-xl border bg-white p-3 text-xs text-slate-600 whitespace-pre-wrap">{formatWorkingHours(workingHours)}</pre>
             </div>
           </div>
@@ -668,7 +688,7 @@ function MessageTemplatesSection({
                   className="min-h-[150px] rounded-xl text-sm leading-relaxed"
                 />
                 <div className="rounded-xl bg-slate-50 border p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Prévia</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Previa</p>
                   <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
                     {renderWhatsAppTemplate(templates[key], sampleValues)}
                   </p>
@@ -910,7 +930,7 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
           </div>
           <p className="font-bold text-slate-900">QR Code indisponivel no momento</p>
           <p className="text-sm text-slate-600 mt-1">
-            {status === 'error' ? 'Houve um erro na instancia.' : 'Clique em Atualizar QR ou Reconectar para gerar um novo codigo.'}
+            {status === 'error' ? 'Houve um erro na instancia.' : 'Use Novo QR ou Reconectar para gerar um novo codigo.'}
           </p>
         </div>
       )}
