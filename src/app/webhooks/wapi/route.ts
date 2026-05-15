@@ -108,11 +108,91 @@ function firstString(...values: unknown[]) {
   return '';
 }
 
+function stringId(value: any) {
+  if (typeof value === 'string') return value;
+  return firstString(value?.id, value?._serialized, value?.remoteJid, value?.jid);
+}
+
+function messageIdentifiers(payload: any, data: any) {
+  return [
+    payload?.from,
+    payload?.sender,
+    payload?.remoteJid,
+    payload?.chatId,
+    payload?.jid,
+    payload?.participant,
+    payload?.author,
+    payload?.key?.remoteJid,
+    payload?.key?.participant,
+    payload?.message?.key?.remoteJid,
+    payload?.message?.key?.participant,
+    data?.from,
+    data?.from?.id,
+    data?.sender,
+    data?.sender?.id,
+    data?.contact,
+    data?.contact?.id,
+    data?.remoteJid,
+    data?.chatId,
+    data?.jid,
+    data?.participant,
+    data?.author,
+    data?.key?.remoteJid,
+    data?.key?.participant,
+    data?.message?.key?.remoteJid,
+    data?.message?.key?.participant,
+  ].map(stringId).filter(Boolean);
+}
+
+function hasBlockedChatTarget(identifiers: string[]) {
+  return identifiers.some((identifier) => {
+    const value = identifier.toLowerCase();
+    return (
+      value.includes('@g.us') ||
+      value.includes('status@broadcast') ||
+      value.includes('@broadcast') ||
+      value.includes('@newsletter') ||
+      value.includes('broadcast') ||
+      value.includes('newsletter')
+    );
+  });
+}
+
+function hasBlockedMessageType(payload: any, data: any, eventName: string) {
+  const type = firstString(
+    payload?.messageType,
+    payload?.typeMessage,
+    payload?.message?.messageType,
+    payload?.message?.type,
+    data?.messageType,
+    data?.typeMessage,
+    data?.message?.messageType,
+    data?.message?.type,
+  ).toLowerCase();
+
+  return (
+    eventName.includes('status') ||
+    eventName.includes('delivery') ||
+    eventName.includes('presence') ||
+    type.includes('status') ||
+    type.includes('story') ||
+    type.includes('broadcast') ||
+    type.includes('newsletter') ||
+    type.includes('reaction') ||
+    type.includes('protocol')
+  );
+}
+
 function extractIncomingMessage(payload: any, event: string) {
   const eventName = String(event || '').toLowerCase();
-  if (eventName.includes('connect') || eventName.includes('status') || eventName.includes('delivery')) return null;
+  if (eventName.includes('connect')) return null;
 
   const data = payload?.data || payload?.message || payload;
+  if (hasBlockedMessageType(payload, data, eventName)) return null;
+
+  const identifiers = messageIdentifiers(payload, data);
+  if (hasBlockedChatTarget(identifiers)) return null;
+
   const fromMe = Boolean(
     payload?.fromMe ||
     payload?.key?.fromMe ||
@@ -126,17 +206,17 @@ function extractIncomingMessage(payload: any, event: string) {
 
   const rawPhone = firstString(
     payload?.phone,
-    payload?.from,
-    payload?.sender,
+    stringId(payload?.from),
+    stringId(payload?.sender),
     payload?.remoteJid,
     payload?.chatId,
     payload?.jid,
     payload?.key?.remoteJid,
     payload?.message?.key?.remoteJid,
     data?.phone,
-    data?.from,
+    stringId(data?.from),
     data?.from?.id,
-    data?.sender,
+    stringId(data?.sender),
     data?.sender?.id,
     data?.contact?.id,
     data?.remoteJid,
@@ -161,12 +241,17 @@ function extractIncomingMessage(payload: any, event: string) {
     data?.message?.extendedTextMessage?.text,
   );
 
+  if (!text) return null;
+
   const looksLikeMessageEvent = eventName.includes('received') || eventName.includes('message');
   const hasMessageShape = Boolean(text || payload?.body || payload?.text || payload?.message || data?.body || data?.text || data?.message);
   if (!looksLikeMessageEvent && !hasMessageShape) return null;
 
+  const phone = normalizePhone(rawPhone);
+  if (phone.length < 10 || phone.length > 15) return null;
+
   return {
-    phone: normalizePhone(rawPhone),
+    phone,
     text,
   };
 }
