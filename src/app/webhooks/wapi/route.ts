@@ -8,6 +8,7 @@ import {
   getStoreOpenState,
   getWhatsAppMessages,
   renderWhatsAppTemplate,
+  formatNextOpeningTime,
 } from '@/lib/whatsapp-messages';
 
 export const runtime = 'nodejs';
@@ -361,6 +362,7 @@ function buildAutoReply(params: {
     loja: storeName,
     link: storeLink,
     horarios: formatWorkingHours(storeProfile?.workingHours),
+    proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
     cliente: '',
     primeiro_nome: '',
     pedido: '',
