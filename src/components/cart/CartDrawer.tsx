@@ -367,20 +367,29 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const isBrasil = parts[parts.length - 1].toLowerCase() === 'brasil';
       const relevantParts = isBrasil ? parts.slice(0, -1) : parts;
       
+      let newStreet = selectedAddress;
+      let newNeighborhood = neighborhood;
+      let newCity = city;
+
       if (relevantParts.length >= 3) {
-        setStreet(relevantParts[0]);
-        setNeighborhood(relevantParts[1]);
-        setCity(relevantParts.slice(2).join(', '));
+        newStreet = relevantParts[0];
+        newNeighborhood = relevantParts[1];
+        newCity = relevantParts.slice(2).join(', ');
       } else if (relevantParts.length === 2) {
-        setStreet(relevantParts[0]);
-        setCity(relevantParts[1]);
+        newStreet = relevantParts[0];
+        newCity = relevantParts[1];
       } else {
-        setStreet(relevantParts[0]);
+        newStreet = relevantParts[0];
       }
 
+      setStreet(newStreet);
+      setNeighborhood(newNeighborhood);
+      setCity(newCity);
+
       if (orderType === 'delivery') {
-        // Usa o endereço original do Google para o cálculo de rota para maior precisão
-        setTimeout(() => calculateDeliveryFee(selectedAddress), 300);
+        // Monta o endereço completo para garantir que o Bairro atualizado seja enviado e avaliado na API
+        const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
+        setTimeout(() => calculateDeliveryFee(fullAddr), 300);
       }
     } else {
       setStreet(selectedAddress);
