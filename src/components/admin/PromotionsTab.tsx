@@ -10,12 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import {
   Plus, Trash2, Pencil, Clock, Tag, Flame, Search,
-  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy
+  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy, Box
 } from 'lucide-react';
 
 interface PromotionsTabProps {
@@ -23,6 +24,7 @@ interface PromotionsTabProps {
   user: any;
   items: any[];
   categories: any[];
+  setEditingCombo: (c: any) => void;
 }
 
 interface PromoItem {
@@ -72,7 +74,7 @@ function formatDateLocal(d: Date) {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
-export function PromotionsTab({ db, user, items, categories }: PromotionsTabProps) {
+export function PromotionsTab({ db, user, items, categories, setEditingCombo }: PromotionsTabProps) {
   const { toast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<any>(null);
@@ -287,6 +289,15 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
     return promotions.filter((p: any) => p.name?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [promotions, searchQuery]);
 
+  const combos = useMemo(() => {
+    return (items || []).filter(i => i.isCombo);
+  }, [items]);
+
+  const filteredCombos = useMemo(() => {
+    if (!searchQuery) return combos;
+    return combos.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [combos, searchQuery]);
+
   const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
@@ -296,28 +307,36 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-slate-800 flex items-center gap-2">
-              <Flame className="h-7 w-7 text-orange-500" />
-              Promoções
+              <Tag className="h-7 w-7 text-purple-600" />
+              Ofertas e Combos
             </h1>
             <p className="text-muted-foreground mt-1 font-medium">
-              Crie campanhas promocionais com desconto e prazo de validade.
+              Configure promoções temporárias com desconto ou agrupe produtos em combos.
             </p>
           </div>
-          <Button onClick={openNewPromo} className="bg-orange-500 hover:bg-orange-600 text-white gap-2 rounded-xl shadow-md">
-            <Plus className="h-4 w-4" /> Nova Promoção
-          </Button>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Buscar promoção..."
-            className="pl-10 rounded-xl"
-          />
-        </div>
+        <Tabs defaultValue="promocoes" className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="promocoes">Promoções Temporárias</TabsTrigger>
+            <TabsTrigger value="combos">Combos (Agrupados)</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="promocoes" className="space-y-6 mt-6">
+            <div className="flex justify-between items-center gap-3">
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar promoção..."
+                  className="pl-10 rounded-xl"
+                />
+              </div>
+              <Button onClick={openNewPromo} className="bg-orange-500 hover:bg-orange-600 text-white gap-2 rounded-xl shadow-md shrink-0">
+                <Plus className="h-4 w-4" /> Nova Promoção
+              </Button>
+            </div>
 
         {/* Promotions Grid */}
         {filteredPromotions.length === 0 ? (
@@ -403,9 +422,101 @@ export function PromotionsTab({ db, user, items, categories }: PromotionsTabProp
             })}
           </div>
         )}
+          </TabsContent>
+
+          {/* ─── Combos Tab ─── */}
+          <TabsContent value="combos" className="space-y-6 mt-6">
+            <div className="flex justify-between items-center gap-3">
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar combo..."
+                  className="pl-10 rounded-xl"
+                />
+              </div>
+              <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white gap-2 rounded-xl shadow-md shrink-0">
+                <Plus className="h-4 w-4" /> Novo Combo
+              </Button>
+            </div>
+
+            {filteredCombos.length === 0 ? (
+              <Card className="border-dashed border-2 rounded-2xl">
+                <CardContent className="py-16 text-center">
+                  <Box className="h-12 w-12 text-purple-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-slate-700">Nenhum combo ainda</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Agrupe produtos em um combo para facilitar as vendas!</p>
+                  <Button onClick={() => setEditingCombo({})} className="mt-4 bg-purple-600 hover:bg-purple-700 text-white gap-2 rounded-xl">
+                    <Plus className="h-4 w-4" /> Criar Combo
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredCombos.map((combo: any) => {
+                  const comboItems = combo.comboItems || [];
+                  const isAvailable = combo.isAvailable !== false;
+                  return (
+                    <Card key={combo.id} className="border shadow-sm rounded-2xl hover:shadow-md transition-shadow overflow-hidden">
+                      <div className={`h-1.5 ${isAvailable ? 'bg-purple-500' : 'bg-slate-300'}`} />
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-slate-800 truncate">{combo.name}</h3>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Badge className={`${isAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} border-0 text-[10px] font-bold gap-1`}>
+                                {isAvailable ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                                {isAvailable ? 'Ativo' : 'Inativo'}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">
+                                {comboItems.length} {comboItems.length === 1 ? 'item' : 'itens'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-lg font-black text-purple-700">R$ {(combo.comboPrice || combo.price || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+
+                        {/* Mini preview */}
+                        <div className="flex flex-wrap gap-1">
+                          {comboItems.slice(0, 4).map((ci: any, idx: number) => (
+                            <Badge key={idx} variant="outline" className="text-[10px] py-0 gap-1">
+                              <Package className="h-2.5 w-2.5" />
+                              {ci.name?.slice(0, 15) || 'Item'}{ci.name?.length > 15 ? '...' : ''}
+                              {ci.quantity > 1 && <span className="font-bold">x{ci.quantity}</span>}
+                            </Badge>
+                          ))}
+                          {comboItems.length > 4 && (
+                            <Badge variant="outline" className="text-[10px] py-0">+{comboItems.length - 4}</Badge>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5 pt-1 border-t">
+                          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 flex-1" onClick={() => setEditingCombo(combo)}>
+                            <Pencil className="h-3 w-3" /> Editar
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-red-500 hover:text-red-700" onClick={async () => {
+                            if (!db || !confirm('Excluir este combo?')) return;
+                            await deleteDoc(doc(db, 'menuItems', combo.id));
+                            toast({ title: '🗑️ Combo excluído.' });
+                          }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* Modal Create/Edit */}
+      {/* Modal Create/Edit Promoção */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>

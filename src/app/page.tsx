@@ -1072,7 +1072,7 @@ export default function AdminPage() {
 
         {activeTab === 'promocoes' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <PromotionsTab db={db} user={user} items={items || []} categories={categories || []} />
+            <PromotionsTab db={db} user={user} items={items || []} categories={categories || []} setEditingCombo={setEditingCombo} />
           </div>
         )}
 
@@ -1115,14 +1115,10 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0 lg:flex-row lg:items-center lg:justify-between">
                 <Tabs value={productManagementTab} onValueChange={(value) => setProductManagementTab(value as 'produtos' | 'combos' | 'marmitas')} className="w-full lg:w-auto">
-                  <TabsList className="grid h-auto w-full grid-cols-3 lg:w-auto">
+                  <TabsList className="grid h-auto w-full grid-cols-2 lg:w-auto">
                     <TabsTrigger value="produtos" className="gap-2">
                       Produtos
                       <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.produtos}</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="combos" className="gap-2">
-                      Combos
-                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.combos}</span>
                     </TabsTrigger>
                     <TabsTrigger value="marmitas" className="gap-2">
                       Marmitas
@@ -1134,11 +1130,6 @@ export default function AdminPage() {
                   {productManagementTab === 'produtos' && (
                     <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                    </Button>
-                  )}
-                  {productManagementTab === 'combos' && (
-                    <Button onClick={() => setEditingCombo({})} className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 flex gap-2">
-                      <Box className="h-4 w-4" /> Criar Combo
                     </Button>
                   )}
                   {productManagementTab === 'marmitas' && (
