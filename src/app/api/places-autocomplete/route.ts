@@ -23,9 +23,10 @@ export async function GET(req: NextRequest) {
     const types = req.nextUrl.searchParams.get('types') || 'address';
     const context = req.nextUrl.searchParams.get('context')?.trim();
     
-    // Se tiver contexto de cidade, anexar ao input com vírgula para direcionar resultados
-    // Ex: "rua etelvina, Cravinhos, SP" (Google entende muito melhor a hierarquia assim)
-    const searchInput = context ? `${input}, ${context}` : input;
+    // DICA DE OURO: No Google Places API (New), colocar a CIDADE ANTES da rua na string
+    // força o algoritmo a restringir a busca geograficamente.
+    // Ex: "Cravinhos, SP, rua etel" funciona perfeitamente.
+    const searchInput = context ? `${context}, ${input}` : input;
     
     const body: Record<string, any> = {
       input: searchInput,
