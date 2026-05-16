@@ -376,10 +376,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
+    console.log('[CartDrawer] handleAddressSelected chamado:', { selectedAddress, neighborhoodAtual: neighborhood, cityAtual: city });
     if (!selectedAddress) return;
 
     if (selectedAddress.includes(',')) {
-      // O Google Places retorna no formato: "Rua X, Bairro Y, Cidade - Estado, Brasil"
       const parts = selectedAddress.split(',').map(p => p.trim());
       const isBrasil = parts[parts.length - 1].toLowerCase() === 'brasil';
       const relevantParts = isBrasil ? parts.slice(0, -1) : parts;
@@ -399,33 +399,40 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         newStreet = relevantParts[0];
       }
 
+      console.log('[CartDrawer] handleAddressSelected parseou:', { newStreet, newNeighborhood, newCity, relevantParts });
+
       setStreet(newStreet);
       setNeighborhood(newNeighborhood);
       setCity(newCity);
 
       if (orderType === 'delivery') {
-        // Monta o endereço completo para garantir que o Bairro atualizado seja enviado e avaliado na API
         const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
+        console.log('[CartDrawer] handleAddressSelected montou fullAddr:', fullAddr);
         setTimeout(() => calculateDeliveryFee(fullAddr), 300);
       }
     } else {
       setStreet(selectedAddress);
       if (orderType === 'delivery') {
         const fullAddr = [selectedAddress, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
+        console.log('[CartDrawer] handleAddressSelected (sem vírgula) montou fullAddr:', fullAddr);
         calculateDeliveryFee(fullAddr);
       }
     }
   }, [orderType, number, neighborhood, city, calculateDeliveryFee]);
 
   const handlePlaceSelected = useCallback(async (placeId: string, description: string) => {
+    console.log('[CartDrawer] handlePlaceSelected chamado:', { placeId, description });
     try {
       const res = await fetch(`/api/place-details?placeId=${placeId}`);
       if (!res.ok) throw new Error('Falha ao buscar detalhes do endereço');
       const data = await res.json();
+      console.log('[CartDrawer] handlePlaceSelected recebeu do place-details:', data);
       
       let newStreet = data.street || description.split(',')[0];
       let newNeighborhood = data.neighborhood || neighborhood;
       let newCity = data.city || city;
+
+      console.log('[CartDrawer] handlePlaceSelected atualizando states:', { newStreet, newNeighborhood, newCity });
 
       setStreet(newStreet);
       if (data.neighborhood) setNeighborhood(data.neighborhood);
@@ -433,11 +440,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       if (orderType === 'delivery') {
         const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
+        console.log('[CartDrawer] handlePlaceSelected chamando calculateDeliveryFee com fullAddr:', fullAddr);
         setTimeout(() => calculateDeliveryFee(fullAddr), 300);
       }
     } catch (err) {
       console.error('[CartDrawer] Erro ao buscar detalhes do place:', err);
-      // Fallback para o comportamento padrão sem details
       handleAddressSelected(description);
     }
   }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected]);

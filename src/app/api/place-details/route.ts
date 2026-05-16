@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     });
     
     const data = await response.json();
+    console.log('[API place-details] Retorno bruto do Google:', JSON.stringify(data, null, 2));
 
     if (!response.ok) {
       return NextResponse.json({
@@ -51,6 +52,8 @@ export async function GET(req: NextRequest) {
         city = comp.longText;
       }
     }
+
+    console.log('[API place-details] Componentes extraidos:', { street, neighborhood, city });
 
     return NextResponse.json({ 
       street,
