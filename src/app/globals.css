@@ -33,11 +33,11 @@
   }
   body {
     @apply bg-background text-foreground font-body;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   html {
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 
