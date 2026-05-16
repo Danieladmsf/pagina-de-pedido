@@ -21,8 +21,13 @@ export async function GET(req: NextRequest) {
     }
 
     const types = req.nextUrl.searchParams.get('types') || 'address';
+    const context = req.nextUrl.searchParams.get('context')?.trim();
+    
+    // Se tiver contexto de cidade, anexar ao input para direcionar resultados
+    const searchInput = context ? `${input} ${context}` : input;
+    
     const body: Record<string, any> = {
-      input,
+      input: searchInput,
       languageCode: 'pt-BR',
       regionCode: 'br',
       includedRegionCodes: ['br'],

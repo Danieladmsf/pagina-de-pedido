@@ -10,8 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useAuth } from '@/firebase';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
+import { useCustomerFirebase } from '@/firebase/customer-client';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -112,9 +112,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // 🔍 DEBUG: Estado da taxa
   console.log('[CartDrawer] Taxa:', { orderType, dynamicFee, deliveryFee, appliedDeliveryFee, isFreeDelivery, grandTotal });
 
-  const db = useFirestore();
-  const auth = useAuth();
-  const { user } = useUser();
+  const { firestore: db, auth, user } = useCustomerFirebase();
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [savedStreet, setSavedStreet] = useState('');

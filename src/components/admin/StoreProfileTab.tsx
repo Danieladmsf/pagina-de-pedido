@@ -696,6 +696,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                             placeholder="Ex: Centro, João Berbel..."
                             className="h-8 text-sm"
                             types="sublocality"
+                            locationContext={formData.deliveryCities.join(', ')}
                           />
                         </div>
                         <div className="flex-1">
@@ -739,6 +740,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                             placeholder="Ex: Rua das Palmeiras, Condomínio..."
                             className="h-8 text-sm"
                             types="route"
+                            locationContext={formData.deliveryCities.join(', ')}
                           />
                         </div>
                         <div className="flex-1">
