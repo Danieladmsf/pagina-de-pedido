@@ -1015,6 +1015,8 @@ export default function AdminPage() {
               updateOrderStatus={updateOrderStatus} 
               registrarLancamento={registrarLancamento}
               caixaAberto={!!caixaAberto}
+              isCaixaHistorico={!!caixaSelecionadoId}
+              onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
               storeProfile={storeProfile}
             />
           </div>
@@ -1044,7 +1046,7 @@ export default function AdminPage() {
             caixaAberto={!!caixaAberto}
             storeProfile={storeProfile}
             addons={addons || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
           />
           </div>
         )}
@@ -1060,7 +1062,7 @@ export default function AdminPage() {
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
             addons={addons || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('configuracoes'); }}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
           />
           </div>
         )}
@@ -2177,7 +2179,7 @@ export default function AdminPage() {
 
           {activeTab === 'freelance' && (
             <div className="mt-6">
-              <FreelanceTab orders={ordersRaw} storeProfile={storeProfile} />
+              <FreelanceTab orders={ordersRaw || []} storeProfile={storeProfile} />
             </div>
           )}
           </div>

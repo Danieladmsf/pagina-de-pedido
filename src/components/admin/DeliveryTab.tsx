@@ -5,7 +5,7 @@ import { collection, onSnapshot, query, where, getDocs, doc, setDoc, updateDoc, 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike } from 'lucide-react';
+import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Calculator } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,6 +18,8 @@ interface DeliveryTabProps {
   updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
   registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
   caixaAberto?: boolean;
+  isCaixaHistorico?: boolean;
+  onOpenCaixa?: () => void;
   storeProfile?: any;
   db?: any;
   user?: any;
@@ -30,7 +32,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db, user }: DeliveryTabProps) {
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
@@ -56,6 +58,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [valorRecebido, setValorRecebido] = useState<string>('');
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   const { toast } = useToast();
+  const isReadOnlyHistorico = isCaixaHistorico;
   
   // Clientes Online
   const [onlineCount, setOnlineCount] = useState(0);
@@ -128,6 +131,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   };
 
   const proceedToPayment = (order: any) => {
+    if (isReadOnlyHistorico) {
+      toast({ title: 'Sessão histórica', description: 'Abra o caixa atual para alterar ou finalizar pedidos.' });
+      return;
+    }
+
     if (order.paymentRegistered) {
       // Se já foi pago no Balcão (paymentRegistered = true), não cobra de novo. Apenas marca como entregue.
       updateOrderStatus(order.id, 'delivered');
@@ -143,6 +151,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
   const handleMarkDelivered = (order: any) => {
+    if (isReadOnlyHistorico) {
+      toast({ title: 'Sessão histórica', description: 'Pedidos de caixas anteriores ficam apenas para consulta.' });
+      return;
+    }
+
     if (order.status === 'delivered') {
       toast({ title: 'Aviso', description: 'Este pedido já foi finalizado e registrado no caixa.' });
       return;
@@ -160,6 +173,31 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
     proceedToPayment(order);
   };
+
+  if (!caixaAberto && !isCaixaHistorico) {
+    return (
+      <div className="flex justify-center">
+        <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
+          <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+          <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
+          <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+            <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
+            <p>O caixa precisa estar aberto para registrar vendas de delivery.</p>
+            <p className="font-semibold text-slate-600">Abra o caixa antes de finalizar pedidos.</p>
+          </div>
+          <div className="flex gap-3 justify-center">
+            <Button
+              onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+            >
+              Abrir Caixa
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Confirmar pagamento + registrar no caixa
   const handleConfirmPayment = async () => {
@@ -441,7 +479,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px]">{new Date(selectedOrder.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</Badge>
-                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal({ order: selectedOrder, dispatch: false })}>
+                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal({ order: selectedOrder, dispatch: false })} disabled={isReadOnlyHistorico}>
                   <Bike className="h-4 w-4" />
                 </Button>
                 <Button size="icon" className="bg-blue-500 hover:bg-blue-600 text-white h-8 w-8" onClick={() => triggerPrint(selectedOrder)}>
@@ -468,7 +506,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 <button 
                   key={step.key} 
                   onClick={step.action} 
-                  disabled={selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                  disabled={isReadOnlyHistorico || selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
                   className={`flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-bold transition-colors ${step.active ? 'bg-teal-500 text-white' : 'bg-white border text-slate-500 hover:bg-teal-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
                   <div className={`h-2.5 w-2.5 rounded-full ${step.active ? 'bg-white' : 'bg-slate-300'}`}></div>
@@ -477,7 +515,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               ))}
               <button 
                 onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')} 
-                disabled={selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                disabled={isReadOnlyHistorico || selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
                 className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
               >
                 ✕

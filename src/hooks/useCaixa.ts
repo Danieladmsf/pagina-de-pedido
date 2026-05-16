@@ -13,6 +13,7 @@ export interface Caixa {
   dataAbertura: any;
   dataFechamento?: any;
   usuarioAbertura: string;
+  valorEmCaixa?: number;
   totalFechamento?: number;
   fechamentoDetalhes?: {
     taxaGarcom: number;
