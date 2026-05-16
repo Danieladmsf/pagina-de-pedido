@@ -527,6 +527,14 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     return freelancersFechamento.reduce((s, f) => s + f.valorPago, 0);
   }, [freelancersFechamento]);
 
+  const motoboysPagosFechamento = useMemo(() => {
+    return motoboysFechamento.filter(m => m.valorPago > 0);
+  }, [motoboysFechamento]);
+
+  const freelancersPagosFechamento = useMemo(() => {
+    return freelancersFechamento.filter(f => f.valorPago > 0);
+  }, [freelancersFechamento]);
+
   const valorEsperadoFechamento = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboysFechamento - totalFreelancersFechamento;
 
   const diferencaApuracao = dinheiroApurado !== '' ? Number(dinheiroApurado) - valorEsperadoFechamento : 0;
@@ -1519,6 +1527,55 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <span className="font-bold">Valor Esperado</span>
                     <span className="font-black text-emerald-400">R$ {valorEsperadoFechamento.toFixed(2)}</span>
                   </div>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="font-bold text-sm text-blue-700">Pagamentos incluídos neste fechamento</h3>
+                    <span className="text-sm font-black text-blue-700">
+                      Total: R$ {(totalMotoboysFechamento + totalFreelancersFechamento).toFixed(2)}
+                    </span>
+                  </div>
+
+                  {motoboysPagosFechamento.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold uppercase text-blue-700">Motoboys</div>
+                      <div className="divide-y rounded-md border bg-white">
+                        {motoboysPagosFechamento.map(m => (
+                          <div key={m.id} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+                            <span className="font-medium text-slate-700">{m.name}</span>
+                            <span>Devido: <strong>R$ {m.saldo.toFixed(2)}</strong></span>
+                            <span className="text-blue-700">Pago agora: <strong>R$ {m.valorPago.toFixed(2)}</strong></span>
+                            <span className={m.saldoRestante > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                              Saldo depois: <strong>R$ {m.saldoRestante.toFixed(2)}</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {freelancersPagosFechamento.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold uppercase text-purple-700">Freelancers / Extras</div>
+                      <div className="divide-y rounded-md border bg-white">
+                        {freelancersPagosFechamento.map(f => (
+                          <div key={f.paymentKey} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+                            <span className="font-medium text-slate-700">{f.name}</span>
+                            <span>Devido: <strong>R$ {f.saldo.toFixed(2)}</strong></span>
+                            <span className="text-purple-700">Pago agora: <strong>R$ {f.valorPago.toFixed(2)}</strong></span>
+                            <span className={f.saldoRestante > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                              Saldo depois: <strong>R$ {f.saldoRestante.toFixed(2)}</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {motoboysPagosFechamento.length === 0 && freelancersPagosFechamento.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhum pagamento selecionado para este fechamento.</p>
+                  )}
                 </div>
 
                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 space-y-3">
