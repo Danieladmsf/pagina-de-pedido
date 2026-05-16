@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       // Não filtrar por tipo — deixar o Google retornar bairros via contexto de cidade
       // (sublocality_level_1 e neighborhood nem sempre são suportados)
     } else if (types === 'route') {
-      body.includedPrimaryTypes = ['route'];
+      // Deixar sem filtro restrito (permitir condomínios e ruas normais)
     }
 
     const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
