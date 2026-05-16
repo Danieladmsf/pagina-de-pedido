@@ -16,7 +16,8 @@ import {
   Palette,
   Menu,
   MessageCircle,
-  Flame
+  Flame,
+  Printer
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -47,6 +48,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_horarios', label: 'Horários', icon: Clock },
     { id: 'perfil_motoboys', label: 'Motoboys', icon: Bike },
     { id: 'perfil_pagamentos', label: 'Pagamentos', icon: Wallet },
+    { id: 'perfil_impressora', label: 'Impressora', icon: Printer },
     { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },
   ];
 
