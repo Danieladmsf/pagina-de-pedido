@@ -213,20 +213,28 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     const dataFormatada = agora.toLocaleDateString('pt-BR');
     const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Loja';
-    const sep = '--------------------------------';
+    const sep = '================================';
+    const sepDash = '--------------------------------';
 
     openPrintWindow('Abertura de Caixa', `
       <div class="header">
         <h1>${storeName}</h1>
-        <p>ABERTURA DE CAIXA</p>
-        <p>Sessão: ${sessao}</p>
-        <p>Data: ${dataFormatada} ${horaFormatada}</p>
+      </div>
+      <p class="sep">${sep}</p>
+      <div style="text-align:center; padding:6px 0; border:2px solid #000; margin:4px 0; font-size:16px; font-weight:bold; letter-spacing:2px;">
+        ★ ABERTURA DE CAIXA ★
       </div>
       <p class="sep">${sep}</p>
       <div class="section">
-        <div class="row bold"><span>Saldo Inicial</span><span>R$ ${saldoInicial.toFixed(2)}</span></div>
+        <div class="row"><span>Sessão</span><span class="bold">${sessao}</span></div>
+        <div class="row"><span>Data</span><span>${dataFormatada}</span></div>
+        <div class="row"><span>Hora</span><span>${horaFormatada}</span></div>
       </div>
-      <p class="sep">${sep}</p>
+      <p class="sep">${sepDash}</p>
+      <div class="section">
+        <div class="row total-final"><span>Saldo Inicial</span><span>R$ ${saldoInicial.toFixed(2)}</span></div>
+      </div>
+      <p class="sep">${sepDash}</p>
       <div class="section">
         <div class="row"><span>Operador</span><span>${storeProfile?.general?.name || 'Principal'}</span></div>
       </div>
@@ -244,12 +252,13 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     const dataFormatada = agora.toLocaleDateString('pt-BR');
     const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Loja';
-    const sep = '--------------------------------';
+    const sep = '================================';
+    const sepDash = '--------------------------------';
 
     const tipoLabels: Record<string, string> = {
-      sangria: 'SANGRIA DE CAIXA',
-      suprimento: 'SUPRIMENTO DE CAIXA',
-      venda: 'VENDA MANUAL',
+      sangria: '▼ SANGRIA DE CAIXA ▼',
+      suprimento: '▲ SUPRIMENTO DE CAIXA ▲',
+      venda: '$ VENDA MANUAL $',
     };
 
     const isSangria = tipo === 'sangria';
@@ -257,19 +266,32 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     openPrintWindow(tipoLabels[tipo] || 'Operação', `
       <div class="header">
         <h1>${storeName}</h1>
-        <p>${tipoLabels[tipo] || tipo.toUpperCase()}</p>
-        <p>Sessão: ${caixaAtual?.sessao || '-'}</p>
-        <p>Data: ${dataFormatada} ${horaFormatada}</p>
+      </div>
+      <p class="sep">${sep}</p>
+      <div style="text-align:center; padding:8px 0; border:2px solid #000; margin:4px 0; font-size:14px; font-weight:bold; letter-spacing:1px;">
+        ${tipoLabels[tipo] || tipo.toUpperCase()}
       </div>
       <p class="sep">${sep}</p>
       <div class="section">
-        <div class="row"><span>Descrição</span></div>
-        <div class="row bold"><span>${titulo}</span></div>
+        <div class="row"><span>Sessão</span><span class="bold">${caixaAtual?.sessao || '-'}</span></div>
+        <div class="row"><span>Data</span><span>${dataFormatada}</span></div>
+        <div class="row"><span>Hora</span><span>${horaFormatada}</span></div>
       </div>
-      <p class="sep">${sep}</p>
+      <p class="sep">${sepDash}</p>
       <div class="section">
-        <div class="row"><span>Forma de Pgto.</span><span>${(formaPagamento === 'conta_casa' ? 'Prazo' : formaPagamento).toUpperCase()}</span></div>
-        <div class="row total-final"><span>${isSangria ? '(−) Valor' : 'Valor'}</span><span>R$ ${valor.toFixed(2)}</span></div>
+        <div class="row"><span class="bold">Descrição:</span></div>
+        <div style="padding:4px 8px; margin:4px 0; background:#f0f0f0; border-radius:2px; font-weight:bold; font-size:12px;">
+          ${titulo}
+        </div>
+      </div>
+      <p class="sep">${sepDash}</p>
+      <div class="section">
+        <div class="row"><span>Forma de Pgto.</span><span class="bold">${(formaPagamento === 'conta_casa' ? 'Prazo' : formaPagamento).toUpperCase()}</span></div>
+      </div>
+      <p class="sep">${sepDash}</p>
+      <div style="text-align:center; padding:8px 0; margin:4px 0; border:1px solid #000;">
+        <div style="font-size:11px; text-transform:uppercase;">${isSangria ? '(−) Valor Retirado' : tipo === 'suprimento' ? '(+) Valor Adicionado' : 'Valor da Venda'}</div>
+        <div style="font-size:18px; font-weight:bold; margin-top:2px;">R$ ${valor.toFixed(2)}</div>
       </div>
       <div class="footer">
         <p>${sep}</p>
