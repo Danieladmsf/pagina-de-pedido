@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users, ShoppingBag, Box } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users, ShoppingBag, Box, RefreshCw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -721,9 +721,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                       </Label>
                       <span className="text-[10px] text-violet-600 font-medium">Selecione os bairros e defina a taxa. Têm prioridade sobre a taxa por KM.</span>
                     </div>
-                    {!loadingNeighborhoods && availableNeighborhoods.length === 0 && formData.deliveryCities.length > 0 && (
+                    {formData.deliveryCities.length > 0 && !loadingNeighborhoods && (
                       <Button onClick={() => fetchNeighborhoods(formData.deliveryCities)} type="button" size="sm" variant="outline" className="h-7 text-xs border-violet-200 text-violet-700 hover:bg-violet-50">
-                        <MapPin className="w-3 h-3 mr-1" /> Carregar Bairros
+                        <RefreshCw className="w-3 h-3 mr-1" /> {availableNeighborhoods.length > 0 ? 'Recarregar' : 'Carregar Bairros'}
                       </Button>
                     )}
                     {loadingNeighborhoods && <Loader2 className="w-4 h-4 animate-spin text-violet-500" />}
