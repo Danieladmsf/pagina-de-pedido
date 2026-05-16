@@ -73,7 +73,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     { maxKm: 6, fee: 8 },
     { maxKm: 10, fee: 12 }
   ]);
-  const [customAddressRules, setCustomAddressRules] = useState<{ keyword: string, fee: number, type: 'neighborhood' | 'address' }[]>([]);
+  const [customAddressRules, setCustomAddressRules] = useState<{ keyword: string, fee: number, type: 'neighborhood' | 'address', addressNumber?: string }[]>([]);
 
   const [paymentMethods, setPaymentMethods] = useState<{ id: string, label: string, icon: string, active: boolean }[]>([
     { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
@@ -265,14 +265,13 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     setFeeRules(feeRules.map((rule, i) => i === index ? { ...rule, [field]: value } : rule));
   };
 
-  // Regras Personalizadas (Endereços/Bairros)
   const addCustomRule = (type: 'neighborhood' | 'address') => {
-    setCustomAddressRules([...customAddressRules, { keyword: '', fee: 0, type }]);
+    setCustomAddressRules([...customAddressRules, { keyword: '', fee: 0, type, addressNumber: '' }]);
   };
   const removeCustomRule = (index: number) => {
     setCustomAddressRules(customAddressRules.filter((_, i) => i !== index));
   };
-  const updateCustomRule = (index: number, field: 'keyword' | 'fee', value: string | number) => {
+  const updateCustomRule = (index: number, field: 'keyword' | 'fee' | 'addressNumber', value: string | number) => {
     setCustomAddressRules(customAddressRules.map((rule, i) => i === index ? { ...rule, [field]: value } : rule));
   };
   const neighborhoodRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'neighborhood');
@@ -877,6 +876,15 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                             className="h-8 text-sm"
                             types="route"
                             locationContext={formData.deliveryCities.join(', ')}
+                          />
+                        </div>
+                        <div className="w-20 shrink-0">
+                          <Label className="text-xs text-indigo-800">Nº (Opcional)</Label>
+                          <Input 
+                            value={rule.addressNumber || ''} 
+                            onChange={(e) => updateCustomRule(rule._idx, 'addressNumber', e.target.value)} 
+                            placeholder="Nº"
+                            className="h-8 text-sm"
                           />
                         </div>
                         <div className="flex-1">
