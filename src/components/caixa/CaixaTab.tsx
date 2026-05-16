@@ -54,14 +54,28 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
   // Modal state
   const [modalOpen, setModalOpen] = useState<'abrir' | 'sangria' | 'suprimento' | 'venda' | null>(null);
+  const [valorInput, setValorInput] = useState<number>(0);
+
+  const openAbrirCaixaModal = () => {
+    const ultimoFechado = caixasOrdenados.find(c => c.status === 'fechado');
+    let ultimoApurado = 0;
+    if (ultimoFechado) {
+      if (ultimoFechado.fechamentoDetalhes?.dinheiroApurado !== undefined) {
+        ultimoApurado = Number(ultimoFechado.fechamentoDetalhes.dinheiroApurado);
+      } else {
+        ultimoApurado = Number(ultimoFechado.valorEmCaixa) || 0;
+      }
+    }
+    setValorInput(ultimoApurado);
+    setModalOpen('abrir');
+  };
 
   useEffect(() => {
     if (autoOpenAbrirCaixa && !caixaAberto) {
-      setModalOpen('abrir');
+      openAbrirCaixaModal();
       if (onModalOpened) onModalOpened();
     }
-  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened]);
-  const [valorInput, setValorInput] = useState<number>(0);
+  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, caixasOrdenados]);
   const [formaPagamentoInput, setFormaPagamentoInput] = useState('dinheiro');
   const [justificativaInput, setJustificativaInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -915,7 +929,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             {/* Ações */}
             <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
               {!caixaAberto && !caixaSelecionadoId && (
-                <Button onClick={() => setModalOpen('abrir')} className="bg-orange-500 hover:bg-orange-600 text-white">
+                <Button onClick={openAbrirCaixaModal} className="bg-orange-500 hover:bg-orange-600 text-white">
                   Abrir Caixa
                 </Button>
               )}
@@ -1086,7 +1100,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             </div>
             <div className="flex gap-3 justify-center">
               <Button onClick={() => setView('anteriores')} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
-              <Button onClick={() => setModalOpen('abrir')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
+              <Button onClick={openAbrirCaixaModal} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
             </div>
           </div>
         </div>
