@@ -34,11 +34,13 @@ export async function GET(req: NextRequest) {
     };
 
     // Places API (New) aceita coleções especiais como "(cities)".
-    // Para bairros usamos "sublocality", para ruas "route".
+    // Para bairros, não filtramos por tipo (o contexto de cidade já direciona).
+    // Para ruas usamos "route".
     if (types === '(cities)' || types === '(regions)') {
       body.includedPrimaryTypes = [types];
     } else if (types === 'sublocality') {
-      body.includedPrimaryTypes = ['sublocality', 'sublocality_level_1', 'neighborhood'];
+      // Não filtrar por tipo — deixar o Google retornar bairros via contexto de cidade
+      // (sublocality_level_1 e neighborhood nem sempre são suportados)
     } else if (types === 'route') {
       body.includedPrimaryTypes = ['route'];
     }
