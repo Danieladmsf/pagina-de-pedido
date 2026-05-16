@@ -771,12 +771,22 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       <p class="sep">${sep}</p>
     ` : '';
 
+    const fechamentoData = isFechado && caixaAtual?.dataFechamento?.toDate ? caixaAtual.dataFechamento.toDate() : null;
+    const dataFechamentoStr = fechamentoData 
+      ? `${fechamentoData.toLocaleDateString('pt-BR')} ${fechamentoData.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+      : `${dataFormatada} ${horaFormatada}`;
+      
+    const diffMinutos = fechamentoData ? (agora.getTime() - fechamentoData.getTime()) / 60000 : 0;
+    const isReimpressao = isFechado && diffMinutos > 5;
+    const reimpressaoLabel = isReimpressao ? `<p style="font-weight:bold;margin-top:2px;">(REIMPRESSÃO: ${dataFormatada} ${horaFormatada})</p>` : '';
+
     openPrintWindow('Fechamento de Caixa', `
       <div class="header">
         <h1>${storeName}</h1>
         <p>FECHAMENTO DE CAIXA</p>
         <p>Sessão: ${caixaAtual?.sessao || '-'}</p>
-        <p>Data: ${dataFormatada} ${horaFormatada}</p>
+        <p>${isFechado ? 'Fechado em' : 'Data'}: ${dataFechamentoStr}</p>
+        ${reimpressaoLabel}
       </div>
 
       <p class="sep">${sep}</p>
