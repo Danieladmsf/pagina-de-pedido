@@ -118,6 +118,7 @@ function messageIdentifiers(payload: any, data: any) {
     payload?.key?.participant,
     payload?.message?.key?.remoteJid,
     payload?.message?.key?.participant,
+    payload?.id?.remote,
     data?.from,
     data?.from?.id,
     data?.sender,
@@ -133,6 +134,7 @@ function messageIdentifiers(payload: any, data: any) {
     data?.key?.participant,
     data?.message?.key?.remoteJid,
     data?.message?.key?.participant,
+    data?.id?.remote,
   ].map(stringId).filter(Boolean);
 }
 
@@ -145,7 +147,8 @@ function hasBlockedChatTarget(identifiers: string[]) {
       value.includes('@broadcast') ||
       value.includes('@newsletter') ||
       value.includes('broadcast') ||
-      value.includes('newsletter')
+      value.includes('newsletter') ||
+      value.includes('group')
     );
   });
 }
@@ -175,13 +178,16 @@ function hasBlockedMessageType(payload: any, data: any, eventName: string) {
     type.includes('broadcast') ||
     type.includes('newsletter') ||
     type.includes('reaction') ||
-    type.includes('protocol')
+    type.includes('protocol') ||
+    type === 'revoked' ||
+    type === 'gp2' ||
+    type === 'notification'
   );
 }
 
 function isReceivedWebhook(event: string, hook?: string) {
   if (hook) return hook === 'received';
-  return String(event || '').trim().toLowerCase().includes('received');
+  return String(event || '').trim().toLowerCase().includes('received') || String(event || '').trim().toLowerCase() === 'message';
 }
 
 function extractIncomingMessage(payload: any, event: string, hook?: string) {
@@ -190,6 +196,12 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
   if (eventName.includes('connect')) return null;
 
   const data = payload?.data || payload?.message || payload;
+  
+  // Explicit Group and Status boolean flags from W-API
+  if (payload?.isGroup || payload?.isGroupMsg || data?.isGroup || data?.isGroupMsg) return null;
+  if (payload?.isStatus || payload?.isStatusMsg || data?.isStatus || data?.isStatusMsg) return null;
+  if (payload?.isForwarded || data?.isForwarded) return null;
+
   if (hasBlockedMessageType(payload, data, eventName)) return null;
 
   const identifiers = messageIdentifiers(payload, data);
@@ -199,10 +211,12 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
     payload?.fromMe ||
     payload?.key?.fromMe ||
     payload?.message?.key?.fromMe ||
+    payload?.id?.fromMe ||
     data?.fromMe ||
     data?.key?.fromMe ||
     data?.message?.fromMe ||
-    data?.message?.key?.fromMe,
+    data?.message?.key?.fromMe ||
+    data?.id?.fromMe
   );
   if (fromMe) return null;
 
