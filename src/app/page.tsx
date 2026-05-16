@@ -53,6 +53,7 @@ export default function AdminPage() {
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<string>('delivery');
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
+  const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   // Estados para modal de Categoria
@@ -80,7 +81,10 @@ export default function AdminPage() {
   };
   
   // Hook do Caixa compartilhado entre módulos
-  const { caixaAberto, registrarLancamento, caixaAtual, setCaixaSelecionadoId } = useCaixa();
+  const { caixaAberto, registrarLancamento, caixaAtual } = useCaixa({
+    caixaSelecionadoId,
+    onCaixaSelecionadoIdChange: setCaixaSelecionadoId,
+  });
   
   const isRealUser = !!(user && !user.isAnonymous);
 
@@ -157,14 +161,17 @@ export default function AdminPage() {
   const deliveryOrders = React.useMemo(() => {
     const merged = new Map<string, any>();
     for (const order of orders) merged.set(order.id, order);
-    for (const order of ordersRawSorted) {
-      if (!['delivered', 'canceled'].includes(order.status)) {
-        merged.set(order.id, order);
+
+    if (!caixaSelecionadoId) {
+      for (const order of ordersRawSorted) {
+        if (!['delivered', 'canceled'].includes(order.status)) {
+          merged.set(order.id, order);
+        }
       }
     }
 
     return Array.from(merged.values()).sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-  }, [orders, ordersRawSorted]);
+  }, [orders, ordersRawSorted, caixaSelecionadoId]);
 
   const productTypeCounts = React.useMemo(() => {
     const counts = { produtos: 0, combos: 0, marmitas: 0 };
@@ -586,13 +593,6 @@ export default function AdminPage() {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
-
-  // Ao sair da aba de configurações (onde o histórico do caixa é visto), voltar a visualizar o Caixa Aberto atual
-  useEffect(() => {
-    if (activeTab !== 'configuracoes') {
-      setCaixaSelecionadoId(null);
-    }
-  }, [activeTab, setCaixaSelecionadoId]);
 
   const handleLogout = async () => {
     if (!auth) return;
@@ -1027,6 +1027,8 @@ export default function AdminPage() {
               orders={orders || []} 
               autoOpenAbrirCaixa={autoOpenAbrirCaixa}
               onModalOpened={() => setAutoOpenAbrirCaixa(false)}
+              selectedCaixaId={caixaSelecionadoId}
+              onSelectedCaixaIdChange={setCaixaSelecionadoId}
             />
           </div>
         )}
