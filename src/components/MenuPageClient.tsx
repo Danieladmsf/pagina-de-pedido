@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer } from 'lucide-react';
+import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -60,6 +60,9 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const categorySectionsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const isScrollingToCategory = useRef(false);
 
   const checkScrollButtons = useCallback(() => {
     const el = categoryScrollRef.current;
@@ -318,25 +321,112 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       if (!isVisibleCategory) return false;
 
       // Hide promo-only items from regular categories
-      if (promoOnlyIds.has(item.id) && activeCategoryId !== '__promo__') return false;
+      if (promoOnlyIds.has(item.id)) return false;
       
-      const matchesCategory = activeCategoryId === 'all' || activeCategoryId === '__promo__' || activeCategoryId === '__combos__' || item.categoryId === activeCategoryId;
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      const matchesSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            item.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      // If promo category is selected, only show promo items
-      if (activeCategoryId === '__promo__') {
-        return promoItemsMap[item.id] && matchesSearch;
-      }
-      
-      // If combos category is selected, only show combo items
-      if (activeCategoryId === '__combos__') {
-        return item.isCombo && matchesSearch;
-      }
 
-      return matchesCategory && matchesSearch;
+      return matchesSearch;
     });
-  }, [activeCategoryId, searchQuery, items, visibleCategories]);
+  }, [searchQuery, items, visibleCategories, promoOnlyIds]);
+
+  // Group items by category for section-based display
+  const groupedItems = useMemo(() => {
+    const groups: { id: string; name: string; items: any[] }[] = [];
+
+    // Promos section
+    if (hasActivePromos) {
+      const promoItems = (items || []).filter(item => 
+        item.isAvailable !== false && promoItemsMap[item.id] &&
+        (!searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+      if (promoItems.length > 0) {
+        groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
+      }
+    }
+
+    // Combos section
+    if (hasCombos) {
+      const comboItems = filteredItems.filter(item => item.isCombo);
+      if (comboItems.length > 0) {
+        groups.push({ id: '__combos__', name: '🍔 Combos', items: comboItems });
+      }
+    }
+
+    // Regular categories
+    visibleCategories.forEach(cat => {
+      const catItems = filteredItems.filter(item => item.categoryId === cat.id && !item.isCombo);
+      if (catItems.length > 0) {
+        groups.push({ id: cat.id, name: cat.name, items: catItems });
+      }
+    });
+
+    return groups;
+  }, [filteredItems, visibleCategories, hasActivePromos, hasCombos, items, promoItemsMap, searchQuery]);
+
+  // Scroll to category section when clicking a tab
+  const scrollToCategory = useCallback((categoryId: string) => {
+    if (categoryId === 'all') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setActiveCategoryId('all');
+      return;
+    }
+    const section = categorySectionsRef.current[categoryId];
+    if (section) {
+      isScrollingToCategory.current = true;
+      setActiveCategoryId(categoryId);
+      const headerOffset = 160; // sticky header + category bar height
+      const elementPosition = section.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: elementPosition - headerOffset, behavior: 'smooth' });
+      setTimeout(() => { isScrollingToCategory.current = false; }, 800);
+    }
+  }, []);
+
+  // IntersectionObserver to track which category is visible
+  useEffect(() => {
+    if (groupedItems.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrollingToCategory.current) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('data-category-id');
+            if (id) {
+              setActiveCategoryId(id);
+              // Auto-scroll the category tab into view
+              const tabEl = document.querySelector(`[data-cat-tab="${id}"]`) as HTMLElement;
+              if (tabEl && categoryScrollRef.current) {
+                tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+              }
+            }
+          }
+        }
+      },
+      { rootMargin: '-180px 0px -65% 0px', threshold: 0 }
+    );
+
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      Object.entries(categorySectionsRef.current).forEach(([, el]) => {
+        if (el) observer.observe(el);
+      });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [groupedItems]);
+
+  // Show/hide back-to-top button based on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 600);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const isStoreOpenRightNow = useMemo(() => {
     if (storeId && (loadingCashRegisters || hasOpenCashRegister !== true)) {
@@ -695,7 +785,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           />
         </div>
 
-        <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
+        <div className="sticky top-0 z-30 rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
           <div className="relative min-w-0 max-w-full group/cats">
               {/* Left fade gradient */}
               <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
@@ -715,38 +805,41 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                 className="flex max-w-full min-w-0 flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x md:mx-11"
               >
                 <Button
+                  data-cat-tab="all"
                   variant={activeCategoryId === 'all' ? 'default' : 'outline'}
                   className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
                     activeCategoryId === 'all'
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
                   }`}
-                  onClick={() => setActiveCategoryId('all')}
+                  onClick={() => scrollToCategory('all')}
                 >
                   Todos
                 </Button>
                 {hasActivePromos && (
                   <Button
+                    data-cat-tab="__promo__"
                     variant={activeCategoryId === '__promo__' ? 'default' : 'outline'}
                     className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
                       activeCategoryId === '__promo__'
                       ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-orange-500/30 shadow-lg'
                       : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-50 animate-pulse'
                     }`}
-                    onClick={() => setActiveCategoryId('__promo__')}
+                    onClick={() => scrollToCategory('__promo__')}
                   >
                     <Flame className="h-4 w-4" /> Promoções
                   </Button>
                 )}
                 {hasCombos && (
                   <Button
+                    data-cat-tab="__combos__"
                     variant={activeCategoryId === '__combos__' ? 'default' : 'outline'}
                     className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
                       activeCategoryId === '__combos__'
                       ? 'bg-purple-600 text-white border-0 shadow-purple-500/30 shadow-lg'
                       : 'bg-white border-purple-300 text-purple-600 hover:bg-purple-50'
                     }`}
-                    onClick={() => setActiveCategoryId('__combos__')}
+                    onClick={() => scrollToCategory('__combos__')}
                   >
                     Combos
                   </Button>
@@ -754,13 +847,14 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                 {visibleCategories.map((cat) => (
                   <Button
                     key={cat.id}
+                    data-cat-tab={cat.id}
                     variant={activeCategoryId === cat.id ? 'default' : 'outline'}
                     className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
                       activeCategoryId === cat.id
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
                     }`}
-                    onClick={() => setActiveCategoryId(cat.id)}
+                    onClick={() => scrollToCategory(cat.id)}
                   >
                     {cat.name}
                   </Button>
@@ -783,90 +877,101 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         </div>
       <ActiveOrdersBanner storeId={storeId} storeSlug={storeSlug} />
       <div className="max-w-7xl mx-auto w-full overflow-x-hidden px-3 pt-5 md:px-8 md:pt-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredItems.map((item) => {
-          const rawStock = item.stockQuantity;
-          const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-          const isOutOfStock = storeProfile?.general?.enableInventory && currentStock === 0;
-          
-          return (
-          (() => {
-            const promo = promoItemsMap[item.id];
-            const isPromoItem = !!promo;
-            const displayPrice = isPromoItem ? promo.promoPrice : item.price;
-            const discountPct = isPromoItem && promo.originalPrice > 0 ? Math.round((1 - promo.promoPrice / promo.originalPrice) * 100) : 0;
+      {groupedItems.map((group) => (
+        <div
+          key={group.id}
+          ref={(el) => { categorySectionsRef.current[group.id] = el; }}
+          data-category-id={group.id}
+          className="mb-8 md:mb-10"
+        >
+          {/* Category section header */}
+          <div className="flex items-center gap-3 mb-4 md:mb-6">
+            <h2 className="text-lg font-black text-primary md:text-xl">{group.name}</h2>
+            <div className="flex-1 h-px bg-gradient-to-r from-primary/20 to-transparent" />
+            <span className="text-xs text-muted-foreground font-medium">{group.items.length} {group.items.length === 1 ? 'item' : 'itens'}</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+            {group.items.map((item) => {
+              const rawStock = item.stockQuantity;
+              const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+              const isOutOfStock = storeProfile?.general?.enableInventory && currentStock === 0;
+              const promo = promoItemsMap[item.id];
+              const isPromoItem = !!promo;
+              const displayPrice = isPromoItem ? promo.promoPrice : item.price;
+              const discountPct = isPromoItem && promo.originalPrice > 0 ? Math.round((1 - promo.promoPrice / promo.originalPrice) * 100) : 0;
 
-            return (
-            <Card 
-              key={item.id} 
-              className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
-              onClick={() => !isOutOfStock && setSelectedItem(item)}
-            >
-              <div className="relative h-44 w-full md:h-56">
-                <Image 
-                  src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
-                  alt={item.name} 
-                  fill 
-                  className="object-cover group-hover:scale-105 transition-transform duration-700"
-                />
-                {isPromoItem ? (
-                  <>
-                    <Badge className="absolute top-3 left-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:left-4 gap-1">
-                      <Flame className="h-3.5 w-3.5" /> -{discountPct}%
-                    </Badge>
-                    <div className="absolute top-3 right-3 md:top-4 md:right-4 flex flex-col items-end gap-1">
-                      <Badge className="bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:px-3 md:text-base">
-                        R$ {displayPrice.toFixed(2)}
+              return (
+                <Card 
+                  key={item.id} 
+                  className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
+                  onClick={() => !isOutOfStock && setSelectedItem(item)}
+                >
+                  <div className="relative h-44 w-full md:h-56">
+                    <Image 
+                      src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
+                      alt={item.name} 
+                      fill 
+                      className="object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                    {isPromoItem ? (
+                      <>
+                        <Badge className="absolute top-3 left-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:left-4 gap-1">
+                          <Flame className="h-3.5 w-3.5" /> -{discountPct}%
+                        </Badge>
+                        <div className="absolute top-3 right-3 md:top-4 md:right-4 flex flex-col items-end gap-1">
+                          <Badge className="bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:px-3 md:text-base">
+                            R$ {displayPrice.toFixed(2)}
+                          </Badge>
+                          <span className="text-[11px] font-bold text-white/90 line-through bg-black/40 backdrop-blur-sm rounded px-1.5 py-0.5">
+                            R$ {promo.originalPrice.toFixed(2)}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
+                        R$ {item.price.toFixed(2)}
                       </Badge>
-                      <span className="text-[11px] font-bold text-white/90 line-through bg-black/40 backdrop-blur-sm rounded px-1.5 py-0.5">
-                        R$ {promo.originalPrice.toFixed(2)}
-                      </span>
+                    )}
+                    {isOutOfStock && (
+                      <Badge className="absolute bottom-3 right-3 bg-red-600 text-white font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs">
+                        Esgotado
+                      </Badge>
+                    )}
+                  </div>
+                  <CardContent className="p-4 flex flex-col flex-1 md:p-6">
+                    <div className="flex-1 space-y-2 mb-4">
+                      <h3 className="min-h-[2.5rem] text-base font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors md:min-h-[3.25rem] md:text-lg">
+                        {item.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
+                        {item.description}
+                      </p>
+                      {item.prazo && (
+                        <span className="inline-block mt-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                          Prazo: {item.prazo}
+                        </span>
+                      )}
                     </div>
-                  </>
-                ) : (
-                  <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
-                    R$ {item.price.toFixed(2)}
-                  </Badge>
-                )}
-                {isOutOfStock && (
-                  <Badge className="absolute bottom-3 right-3 bg-red-600 text-white font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs">
-                    Esgotado
-                  </Badge>
-                )}
-              </div>
-              <CardContent className="p-4 flex flex-col flex-1 md:p-6">
-                <div className="flex-1 space-y-2 mb-4">
-                  <h3 className="min-h-[2.5rem] text-base font-black leading-tight text-primary line-clamp-2 group-hover:text-accent transition-colors md:min-h-[3.25rem] md:text-lg">
-                    {item.name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed md:text-sm md:line-clamp-3">
-                    {item.description}
-                  </p>
-                  {item.prazo && (
-                    <span className="inline-block mt-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                      Prazo: {item.prazo}
-                    </span>
-                  )}
-                </div>
-                {isPromoItem && (
-                  <PromoCountdown endDate={promo.endDate} />
-                )}
-                <div className="flex items-center justify-between pt-4 border-t border-muted">
-                  <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
-                    {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
-                  </span>
-                  <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}>
-                    <Plus className="h-5 w-5 md:h-6 md:w-6" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            );
-          })()
-        )})}
-      </div>
+                    {isPromoItem && (
+                      <PromoCountdown endDate={promo.endDate} />
+                    )}
+                    <div className="flex items-center justify-between pt-4 border-t border-muted">
+                      <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
+                        {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
+                      </span>
+                      <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}>
+                        <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
-      {filteredItems.length === 0 && (
+      {groupedItems.length === 0 && (
         <div className="py-20 text-center space-y-4">
           <p className="text-xl text-muted-foreground font-medium">Ops! Esta loja ainda não tem itens no cardápio.</p>
         </div>
@@ -910,6 +1015,16 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           <span className="font-black text-base whitespace-nowrap">
             R$ {totalPrice.toFixed(2)}
           </span>
+        </button>
+      )}
+      {/* Botão Voltar ao Topo */}
+      {showBackToTop && !showStoreInfo && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full bg-primary/90 hover:bg-primary text-white shadow-2xl shadow-primary/30 flex items-center justify-center transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in backdrop-blur-sm border border-white/20 hover:scale-110"
+          aria-label="Voltar ao topo"
+        >
+          <ArrowUp className="h-5 w-5" />
         </button>
       )}
       <Toaster />
