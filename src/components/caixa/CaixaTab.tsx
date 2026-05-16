@@ -1500,86 +1500,83 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
             {fechamentoStep === 2 && (
               <div className="space-y-4">
-                <div className="rounded-lg border bg-slate-900 p-4 text-white">
-                  <div className="flex justify-between text-sm">
-                    <span>Valor em Caixa</span>
-                    <strong>R$ {totais.valorEmCaixa.toFixed(2)}</strong>
-                  </div>
-                  {taxaGarcomCalculada > 0 && (
-                    <div className="mt-2 flex justify-between text-sm text-amber-300">
-                      <span>(-) Taxa Garcom</span>
-                      <span>R$ {taxaGarcomCalculada.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {totalMotoboysFechamento > 0 && (
-                    <div className="mt-2 flex justify-between text-sm text-blue-300">
-                      <span>(-) Motoboys pagos agora</span>
-                      <span>R$ {totalMotoboysFechamento.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {totalFreelancersFechamento > 0 && (
-                    <div className="mt-2 flex justify-between text-sm text-purple-300">
-                      <span>(-) Freelancers pagos agora</span>
-                      <span>R$ {totalFreelancersFechamento.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="mt-3 flex justify-between border-t border-slate-700 pt-3 text-base">
-                    <span className="font-bold">Valor Esperado</span>
-                    <span className="font-black text-emerald-400">R$ {valorEsperadoFechamento.toFixed(2)}</span>
-                  </div>
-                </div>
-
                 <div className="rounded-lg border bg-white p-4">
-                  <h3 className="font-bold text-sm text-slate-700">Composição e abatimentos do caixa</h3>
-                  <div className="mt-3 divide-y text-sm">
-                    <div className="flex items-center justify-between py-2">
-                      <span>Saldo inicial</span>
-                      <strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong>
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                      <span>Vendas em dinheiro</span>
-                      <strong className="text-emerald-700">R$ {totais.totalDinheiro.toFixed(2)}</strong>
+                  <h3 className="font-bold text-sm text-slate-700 mb-3">Composição do Valor Esperado</h3>
+                  
+                  <div className="divide-y text-sm">
+                    {/* ENTRADAS */}
+                    <div className="py-2 space-y-2">
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Saldo inicial do turno</span>
+                        <span>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>(+) Vendas em dinheiro</span>
+                        <span className="text-emerald-600">R$ {totais.totalDinheiro.toFixed(2)}</span>
+                      </div>
                     </div>
 
-                    {sangriasDinheiro.length > 0 ? (
-                      sangriasDinheiro.map((lanc, index) => (
-                        <div key={lanc.id || index} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                          <span className="text-xs text-muted-foreground">{lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}</span>
-                          <span>{lanc.titulo}</span>
-                          <strong className="text-rose-700">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</strong>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="flex items-center justify-between py-2 text-muted-foreground">
-                        <span>Sangrias em dinheiro</span>
-                        <span>R$ 0.00</span>
+                    {/* SAÍDAS DURANTE O TURNO */}
+                    <div className="py-2 space-y-2">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Saídas registradas no turno (Sangrias)</div>
+                      {sangriasDinheiro.length > 0 ? (
+                        sangriasDinheiro.map((lanc, index) => (
+                          <div key={lanc.id || index} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                            <span className="text-[11px] text-muted-foreground">{lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}</span>
+                            <span className="text-slate-600 truncate">{lanc.titulo}</span>
+                            <strong className="text-rose-600">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</strong>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-muted-foreground italic text-xs">Nenhuma sangria registrada.</div>
+                      )}
+                    </div>
+
+                    {/* SUBTOTAL GAVETA */}
+                    <div className="py-3 bg-slate-50 -mx-4 px-4 my-2">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-slate-700">Total na gaveta antes do fechamento</span>
+                        <span className="text-blue-700">R$ {totais.valorEmCaixa.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* ABATIMENTOS DE FECHAMENTO */}
+                    {(motoboysPagosFechamento.length > 0 || freelancersPagosFechamento.length > 0 || taxaGarcomCalculada > 0) && (
+                      <div className="py-2 space-y-2">
+                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Pagamentos no Fechamento</div>
+                        
+                        {taxaGarcomCalculada > 0 && (
+                          <div className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                            <span className="text-xs font-bold uppercase text-amber-600">Taxa / Serviço</span>
+                            <span className="text-slate-600">Retirada da taxa de serviço</span>
+                            <strong className="text-amber-600">-R$ {taxaGarcomCalculada.toFixed(2)}</strong>
+                          </div>
+                        )}
+
+                        {motoboysPagosFechamento.map(m => (
+                          <div key={m.id} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                            <span className="text-xs font-bold uppercase text-blue-600">Motoboy</span>
+                            <span className="text-slate-600 truncate">{m.name}</span>
+                            <strong className="text-blue-600">-R$ {m.valorPago.toFixed(2)}</strong>
+                          </div>
+                        ))}
+
+                        {freelancersPagosFechamento.map(f => (
+                          <div key={f.paymentKey} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                            <span className="text-xs font-bold uppercase text-purple-600">Freelancer</span>
+                            <span className="text-slate-600 truncate">{f.name}</span>
+                            <strong className="text-purple-600">-R$ {f.valorPago.toFixed(2)}</strong>
+                          </div>
+                        ))}
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between py-2 font-semibold">
-                      <span>Valor em caixa</span>
-                      <span>R$ {totais.valorEmCaixa.toFixed(2)}</span>
-                    </div>
-
-                    {motoboysPagosFechamento.map(m => (
-                      <div key={m.id} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                        <span className="text-xs font-bold uppercase text-blue-700">Motoboy</span>
-                        <span>{m.name}</span>
-                        <strong className="text-blue-700">-R$ {m.valorPago.toFixed(2)}</strong>
+                    {/* FINAL ESPERADO */}
+                    <div className="pt-4 pb-2">
+                      <div className="flex items-center justify-between text-lg">
+                        <span className="font-black text-slate-800">Valor exato que deve ter na gaveta</span>
+                        <strong className="font-black text-emerald-600 text-xl">R$ {valorEsperadoFechamento.toFixed(2)}</strong>
                       </div>
-                    ))}
-
-                    {freelancersPagosFechamento.map(f => (
-                      <div key={f.paymentKey} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                        <span className="text-xs font-bold uppercase text-purple-700">Freelancer</span>
-                        <span>{f.name}</span>
-                        <strong className="text-purple-700">-R$ {f.valorPago.toFixed(2)}</strong>
-                      </div>
-                    ))}
-
-                    <div className="flex items-center justify-between pt-3 text-base">
-                      <span className="font-bold">Valor esperado após abatimentos</span>
-                      <strong className="text-emerald-700">R$ {valorEsperadoFechamento.toFixed(2)}</strong>
                     </div>
                   </div>
                 </div>
