@@ -382,40 +382,58 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     }
   }, []);
 
-  // IntersectionObserver to track which category is visible
+  // Scroll-based category tracking (replaces IntersectionObserver to avoid flickering)
   useEffect(() => {
     if (groupedItems.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (isScrollingToCategory.current) return;
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const id = entry.target.getAttribute('data-category-id');
-            if (id) {
-              setActiveCategoryId(id);
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking || isScrollingToCategory.current) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const offset = 200; // account for sticky header height
+        let closestId: string | null = null;
+        let closestDistance = Infinity;
+
+        Object.entries(categorySectionsRef.current).forEach(([id, el]) => {
+          if (!el) return;
+          const rect = el.getBoundingClientRect();
+          const distance = Math.abs(rect.top - offset);
+          // Section must be at or above the offset line, or be the first one below it
+          if (rect.top <= offset + 50 && distance < closestDistance) {
+            closestDistance = distance;
+            closestId = id;
+          }
+        });
+
+        // If no section is above offset, pick the first one
+        if (!closestId && groupedItems.length > 0) {
+          closestId = groupedItems[0].id;
+        }
+
+        if (closestId) {
+          setActiveCategoryId(prev => {
+            if (prev !== closestId) {
               // Auto-scroll the category tab into view
-              const tabEl = document.querySelector(`[data-cat-tab="${id}"]`) as HTMLElement;
+              const tabEl = document.querySelector(`[data-cat-tab="${closestId}"]`) as HTMLElement;
               if (tabEl && categoryScrollRef.current) {
                 tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
               }
+              return closestId!;
             }
-          }
+            return prev;
+          });
         }
-      },
-      { rootMargin: '-180px 0px -65% 0px', threshold: 0 }
-    );
-
-    // Small delay to ensure DOM is ready
-    const timer = setTimeout(() => {
-      Object.entries(categorySectionsRef.current).forEach(([, el]) => {
-        if (el) observer.observe(el);
+        ticking = false;
       });
-    }, 300);
+    };
 
+    // Initial check after DOM is ready
+    const timer = setTimeout(handleScroll, 500);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       clearTimeout(timer);
-      observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
     };
   }, [groupedItems]);
 
@@ -492,7 +510,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden pb-24 relative" style={themeToCssVars(theme)}>
+    <div className="min-h-screen w-full max-w-full overflow-x-clip pb-24 relative" style={themeToCssVars(theme)}>
       {showStoreInfo && (
         <div className="min-h-screen bg-[#FAFAF7]">
           {/* Header */}
@@ -690,7 +708,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           </div>
         </div>
       )}
-      {!showStoreInfo && (<div className="w-full max-w-full overflow-x-hidden">
+      {!showStoreInfo && (<div className="w-full max-w-full overflow-x-clip">
       {!isStoreOpenRightNow.isOpen && (
         <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
           {isStoreOpenRightNow.reason === 'hours_closed' 
@@ -784,8 +802,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+      </div>
 
-        <div className="sticky top-0 z-30 rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
+      {/* Category bar - outside z-20 container for proper sticky */}
+      <div className="sticky top-0 z-30 max-w-7xl mx-auto px-3 md:px-8">
+        <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
           <div className="relative min-w-0 max-w-full group/cats">
               {/* Left fade gradient */}
               <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
