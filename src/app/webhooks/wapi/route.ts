@@ -346,6 +346,10 @@ function buildAutoReply(params: {
     ? new Date(params.contactData.lastClosedReplyAt).getTime()
     : 0;
 
+  const lastInboundMs = params.contactData?.lastInboundAt
+    ? new Date(params.contactData.lastInboundAt).getTime()
+    : 0;
+
   if (!openState.isOpen) {
     if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= 2 * 60 * 60 * 1000) {
       return null;
@@ -353,7 +357,7 @@ function buildAutoReply(params: {
 
     template = messages.storeClosed;
     type = 'store_closed_auto_reply';
-  } else if (!params.hasPriorContact) {
+  } else if (!params.contactData?.firstContactSentAt || (lastInboundMs > 0 && nowMs - lastInboundMs > 12 * 60 * 60 * 1000)) {
     template = messages.firstContact;
     type = 'first_contact_auto_reply';
   }
