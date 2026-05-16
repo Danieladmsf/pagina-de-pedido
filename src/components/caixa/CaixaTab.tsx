@@ -981,33 +981,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             <SummaryCard label="Pix" value={totais.totalPix} color="bg-teal-500" />
           </div>
 
-          {/* ─── Motoboys da Sessão (Visão Rápida) ─── */}
-          {motoboysSessao.length > 0 && (
-            <div className="flex gap-3 overflow-x-auto shrink-0 custom-scrollbar pb-1">
-              {motoboysSessao.map(m => (
-                <div key={m.id} className="bg-white border border-blue-100 rounded-xl p-3 min-w-[200px] shrink-0 shadow-sm flex flex-col gap-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm text-slate-700 truncate">{m.name}</span>
-                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 text-[10px] uppercase font-bold">
-                      {m.entregas} ped.
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground flex justify-between">
-                    <span>Total ganho:</span>
-                    <span className="font-semibold text-slate-600">R$ {m.total.toFixed(2)}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground flex justify-between">
-                    <span>Vales (Sangria):</span>
-                    <span className="text-rose-600 font-semibold">-R$ {m.jaPago.toFixed(2)}</span>
-                  </div>
-                  <div className="text-sm font-black flex justify-between pt-1.5 border-t mt-1">
-                    <span>A Pagar:</span>
-                    <span className="text-emerald-600">R$ {m.saldo.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
 
           {/* ─── Tabela de Lançamentos ─── */}
           <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">

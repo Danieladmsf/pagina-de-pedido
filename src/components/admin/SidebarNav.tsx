@@ -40,6 +40,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'promocoes', label: 'Promoções', icon: Flame, highlight: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+    { id: 'freelance', label: 'Freelance', icon: Bike },
   ];
 
   const profileItems = [

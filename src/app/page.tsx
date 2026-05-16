@@ -32,6 +32,7 @@ import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
+import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
@@ -2179,6 +2180,12 @@ export default function AdminPage() {
 
           {activeTab === 'clientes' && (
             <ClientesTab db={db} user={user} registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
+          )}
+
+          {activeTab === 'freelance' && (
+            <div className="mt-6">
+              <FreelanceTab orders={ordersRaw} storeProfile={storeProfile} />
+            </div>
           )}
           </div>
         </div>
