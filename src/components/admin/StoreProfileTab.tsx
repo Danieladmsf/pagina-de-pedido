@@ -437,6 +437,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   <div className="mb-4">
                     <h3 className="text-sm font-bold text-slate-800">Imagem para Links (WhatsApp/Redes Sociais)</h3>
                     <p className="text-xs text-slate-500">Imagem exibida ao compartilhar o link do cardápio. Para aparecer no WhatsApp, a imagem precisa ter <b>menos de 300KB</b>.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Tamanho recomendado: <b>600x315 pixels</b> ou <b>1200x630 pixels</b> (Retângulo).</p>
                   </div>
                   <div className="flex flex-col md:flex-row items-start gap-6">
                     <div className="relative group shrink-0">
