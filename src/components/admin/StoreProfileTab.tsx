@@ -72,6 +72,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     { maxKm: 6, fee: 8 },
     { maxKm: 10, fee: 12 }
   ]);
+  const [customAddressRules, setCustomAddressRules] = useState<{ keyword: string, fee: number }[]>([]);
 
   const [paymentMethods, setPaymentMethods] = useState<{ id: string, label: string, icon: string, active: boolean }[]>([
     { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
@@ -110,6 +111,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
             })));
           }
           if (data.feeRules) setFeeRules(data.feeRules);
+          if (data.customAddressRules) setCustomAddressRules(data.customAddressRules);
           if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
           if (data.plannedClosures) setPlannedClosures(data.plannedClosures);
           if (data.creditPixKey) setCreditPixKey(data.creditPixKey);
@@ -156,6 +158,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         motoboys,
         freelancers,
         feeRules: feeRules.sort((a, b) => a.maxKm - b.maxKm),
+        customAddressRules,
         paymentMethods,
         creditPixKey,
         creditPixName,
@@ -247,6 +250,17 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   };
   const updateFeeRule = (index: number, field: 'maxKm' | 'fee', value: number) => {
     setFeeRules(feeRules.map((rule, i) => i === index ? { ...rule, [field]: value } : rule));
+  };
+
+  // Regras Personalizadas (Endereços/Bairros)
+  const addCustomRule = () => {
+    setCustomAddressRules([...customAddressRules, { keyword: '', fee: 0 }]);
+  };
+  const removeCustomRule = (index: number) => {
+    setCustomAddressRules(customAddressRules.filter((_, i) => i !== index));
+  };
+  const updateCustomRule = (index: number, field: 'keyword' | 'fee', value: string | number) => {
+    setCustomAddressRules(customAddressRules.map((rule, i) => i === index ? { ...rule, [field]: value } : rule));
   };
 
   if (isLoading) {
@@ -644,6 +658,42 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     {feeRules.length === 0 && (
                       <div className="text-center py-4 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
                         Nenhuma regra cadastrada. Será usada a taxa padrão ou entrega grátis.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Taxas Personalizadas por Endereço */}
+                <div className="pt-1 pb-3 space-y-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                  <div className="flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <Label className="font-bold text-sm flex items-center gap-2 text-indigo-900">
+                        📍 Taxas Personalizadas (Bairros, Condomínios ou Ruas)
+                      </Label>
+                      <span className="text-[10px] text-indigo-600 font-medium">Estas regras têm prioridade sobre a taxa por KM. Digite parte do endereço para aplicar.</span>
+                    </div>
+                    <Button onClick={addCustomRule} type="button" size="sm" variant="outline" className="h-7 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"><Plus className="w-3 h-3 mr-1" /> Adicionar</Button>
+                  </div>
+                  
+                  <div className="space-y-2 mt-2">
+                    {customAddressRules.map((rule, index) => (
+                      <div key={index} className="flex items-center gap-3 bg-white p-2 rounded border border-indigo-50 shadow-sm">
+                        <div className="flex-[2]">
+                          <Label className="text-xs text-indigo-800">Termo de Busca (Ex: Centro, Condomínio Ipê)</Label>
+                          <Input type="text" placeholder="Qualquer parte do endereço" value={rule.keyword} onChange={(e) => updateCustomRule(index, 'keyword', e.target.value)} className="h-8 text-sm" />
+                        </div>
+                        <div className="flex-1">
+                          <Label className="text-xs text-indigo-800">Taxa (R$)</Label>
+                          <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(index, 'fee', val)} />
+                        </div>
+                        <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(index)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {customAddressRules.length === 0 && (
+                      <div className="text-center py-4 text-xs text-indigo-400 border-2 border-dashed border-indigo-200 rounded-lg bg-white/50">
+                        Nenhuma taxa personalizada. O sistema usará as regras por KM.
                       </div>
                     )}
                   </div>
