@@ -86,7 +86,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const [creditPixName, setCreditPixName] = useState('');
 
   // Bairros disponíveis (carregados da API)
-  const [availableNeighborhoods, setAvailableNeighborhoods] = useState<{ name: string, placeId: string }[]>([]);
+  const [availableNeighborhoods, setAvailableNeighborhoods] = useState<{ name: string, id: string }[]>([]);
   const [loadingNeighborhoods, setLoadingNeighborhoods] = useState(false);
   const [neighborhoodSearch, setNeighborhoodSearch] = useState('');
 
@@ -276,7 +276,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     if (cities.length === 0) { setAvailableNeighborhoods([]); return; }
     setLoadingNeighborhoods(true);
     try {
-      const allResults: { name: string, placeId: string }[] = [];
+      const allResults: { name: string, id: string }[] = [];
       for (const city of cities) {
         const res = await fetch(`/api/list-neighborhoods?city=${encodeURIComponent(city)}`);
         if (res.ok) {
@@ -285,7 +285,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         }
       }
       // Deduplicar por nome
-      const unique = new Map<string, { name: string, placeId: string }>();
+      const unique = new Map<string, { name: string, id: string }>();
       for (const n of allResults) { if (!unique.has(n.name)) unique.set(n.name, n); }
       setAvailableNeighborhoods(Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
     } catch { /* silently fail */ }
@@ -754,7 +754,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                               const selected = isNeighborhoodSelected(n.name);
                               return (
                                 <button
-                                  key={n.placeId}
+                                  key={n.id}
                                   type="button"
                                   onClick={() => toggleNeighborhood(n.name)}
                                   className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left border-b border-violet-50 last:border-0 transition-colors ${

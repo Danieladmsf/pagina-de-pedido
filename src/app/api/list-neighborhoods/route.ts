@@ -1,57 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
-
 export const dynamic = 'force-dynamic';
 
-// Prefixos comuns de bairros brasileiros
-const NEIGHBORHOOD_PREFIXES = [
-  'jardim', 'vila', 'parque', 'residencial', 'centro',
-  'conjunto', 'bairro', 'loteamento', 'núcleo', 'chácara',
-  'recanto', 'portal', 'alto', 'cidade', 'nova',
-  'são', 'santa', 'santo', 'nossa senhora',
-  'industrial', 'ipiranga', 'liberdade', 'bela vista',
-];
-
-// Termos que indicam que NÃO é um bairro
-const BLACKLIST_TERMS = [
-  'restaurante', 'lanchonete', 'padaria', 'pizzaria', 'bar ',
-  'supermercado', 'mercado', 'loja', 'academia', 'farmácia',
-  'hospital', 'clínica', 'consultório', 'dentista', 'médico',
-  'escola', 'colégio', 'universidade', 'faculdade', 'creche',
-  'igreja', 'templo', 'catedral', 'paróquia', 'capela',
-  'tribunal', 'fórum', 'prefeitura', 'câmara', 'cartório',
-  'delegacia', 'polícia', 'bombeiro', 'corpo de bombeiros',
-  'sp-', 'br-', 'rodovia', 'estrada', 'highway',
-  'posto', 'gas station', 'hotel', 'pousada', 'motel',
-  'shopping', 'mall', 'cinema', 'teatro',
-  'banco', 'caixa econômica', 'bradesco', 'itaú',
-  'cemitério', 'velório', 'funerária',
-];
-
-function isLikelyNeighborhood(name: string): boolean {
-  const lower = name.toLowerCase().trim();
-  
-  // Rejeitar se contém termos da blacklist
-  for (const term of BLACKLIST_TERMS) {
-    if (lower.includes(term)) return false;
-  }
-  
-  // Rejeitar se é só o nome da cidade
-  if (lower.split(/\s+/).length <= 1) return false;
-  
-  // Rejeitar se parece ser uma rodovia (ex: SP-255)
-  if (/^[a-z]{2}-\d+/i.test(lower)) return false;
-  
-  // Rejeitar se tem "estado" ou "justiça"
-  if (/estado|justiça|federal|municipal|estadual/i.test(lower)) return false;
-  
-  return true;
-}
-
 /**
- * Busca bairros de uma cidade usando Google Places Autocomplete
- * com prefixos típicos de bairros brasileiros.
+ * Busca bairros de uma cidade brasileira usando OpenStreetMap Overpass API.
+ * Grátis, sem API key, e retorna bairros reais mapeados pela comunidade.
+ * 
+ * NÃO interfere com Google Maps (usado apenas para listar bairros no admin).
+ * O cálculo de frete continua usando Google Distance Matrix.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -60,80 +16,114 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ neighborhoods: [] });
     }
 
-    if (!GOOGLE_MAPS_API_KEY) {
-      return NextResponse.json({ error: 'Chave do Google Maps não configurada.' }, { status: 500 });
-    }
+    // Extrair nome da cidade (remover ", SP" etc.)
+    const cityName = city.split(',')[0].trim();
+    const state = city.split(',')[1]?.trim() || '';
 
-    const cityBase = city.split(',')[0].trim();
-    const allNeighborhoods = new Map<string, string>();
+    // Query Overpass para buscar bairros dentro da cidade
+    // Busca: place=neighbourhood, place=suburb, place=quarter
+    const overpassQuery = `
+[out:json][timeout:30];
+area["name"~"^${escapeRegex(cityName)}$","i"]["admin_level"~"7|8"]${state ? `["is_in:state"~"${escapeRegex(state)}","i"]` : ''}->.city;
+(
+  node["place"~"neighbourhood|suburb|quarter"](area.city);
+  way["place"~"neighbourhood|suburb|quarter"](area.city);
+  relation["place"~"neighbourhood|suburb|quarter"](area.city);
+);
+out center;
+`.trim();
 
-    // Buscar usando Autocomplete com cada prefixo de bairro
-    for (const prefix of NEIGHBORHOOD_PREFIXES) {
-      try {
-        const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
-          method: 'POST',
-          cache: 'no-store',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-            'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text.text',
-          },
-          body: JSON.stringify({
-            input: `${prefix} ${cityBase}`,
-            languageCode: 'pt-BR',
-            regionCode: 'br',
-            includedRegionCodes: ['br'],
-          }),
-        });
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(overpassQuery)}`,
+      signal: AbortSignal.timeout(30000),
+    });
 
-        const data = await response.json();
-        if (response.ok && data.suggestions) {
-          for (const suggestion of data.suggestions) {
-            const pred = suggestion.placePrediction;
-            if (!pred?.text?.text || !pred?.placeId) continue;
-            
-            const fullDesc = pred.text.text;
-            // Verificar se a sugestão é da cidade correta
-            if (!fullDesc.toLowerCase().includes(cityBase.toLowerCase())) continue;
-            
-            // Extrair o nome do bairro (primeira parte antes de " - " ou ", Cravinhos")
-            let name = fullDesc;
-            const dashIdx = name.indexOf(' - ');
-            if (dashIdx > 0) name = name.substring(0, dashIdx);
-            const commaIdx = name.indexOf(', ');
-            if (commaIdx > 0) name = name.substring(0, commaIdx);
-            name = name.trim();
-            
-            // Remover o nome da cidade se ficou no final
-            if (name.toLowerCase().endsWith(cityBase.toLowerCase())) {
-              name = name.substring(0, name.length - cityBase.length).trim();
-            }
-            
-            if (name && name.length > 1 && !allNeighborhoods.has(name) && isLikelyNeighborhood(name)) {
-              allNeighborhoods.set(name, pred.placeId);
-            }
-          }
-        }
-      } catch {
-        // Skip failed prefix
+    if (!response.ok) {
+      // Fallback: tentar query mais simples sem filtro de estado
+      const fallbackQuery = `
+[out:json][timeout:30];
+area["name"="${cityName}"]["admin_level"~"7|8"]->.city;
+(
+  node["place"~"neighbourhood|suburb|quarter"](area.city);
+  way["place"~"neighbourhood|suburb|quarter"](area.city);
+  relation["place"~"neighbourhood|suburb|quarter"](area.city);
+);
+out center;
+`.trim();
+
+      const fallbackRes = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(fallbackQuery)}`,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!fallbackRes.ok) {
+        return NextResponse.json({ 
+          error: 'Não foi possível buscar bairros no momento. Tente novamente.',
+          neighborhoods: [] 
+        }, { status: 502 });
       }
+
+      const fallbackData = await fallbackRes.json();
+      return NextResponse.json(formatResponse(fallbackData, cityName), {
+        headers: { 'Cache-Control': 'public, max-age=86400' }, // Cache 24h
+      });
     }
 
-    // Garantir que "Centro" sempre esteja na lista
-    if (!allNeighborhoods.has('Centro')) {
-      allNeighborhoods.set('Centro', 'centro-placeholder');
-    }
-
-    const neighborhoods = Array.from(allNeighborhoods.entries())
-      .map(([name, placeId]) => ({ name, placeId }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-
-    return NextResponse.json({ 
-      neighborhoods,
-      city: cityBase,
-      total: neighborhoods.length
-    }, { headers: { 'Cache-Control': 'public, max-age=3600' } });
+    const data = await response.json();
+    return NextResponse.json(formatResponse(data, cityName), {
+      headers: { 'Cache-Control': 'public, max-age=86400' }, // Cache 24h
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: err.message || 'Erro ao buscar bairros',
+      neighborhoods: [] 
+    }, { status: 500 });
   }
+}
+
+function formatResponse(data: any, cityName: string) {
+  const seen = new Set<string>();
+  const neighborhoods: { name: string, id: string }[] = [];
+
+  if (data.elements && Array.isArray(data.elements)) {
+    for (const el of data.elements) {
+      const name = el.tags?.name;
+      if (!name) continue;
+      
+      const normalized = name.trim();
+      const key = normalized.toLowerCase();
+      
+      // Pular duplicados e o próprio nome da cidade
+      if (seen.has(key)) continue;
+      if (key === cityName.toLowerCase()) continue;
+      
+      seen.add(key);
+      neighborhoods.push({
+        name: normalized,
+        id: String(el.id),
+      });
+    }
+  }
+
+  // Garantir "Centro" na lista
+  if (!seen.has('centro')) {
+    neighborhoods.push({ name: 'Centro', id: 'centro-default' });
+  }
+
+  neighborhoods.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+  return {
+    neighborhoods,
+    city: cityName,
+    total: neighborhoods.length,
+    source: 'OpenStreetMap',
+  };
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
