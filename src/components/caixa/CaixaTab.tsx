@@ -637,6 +637,8 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       : freelancersFechamento;
     const totalMotoboysImpressao = motoboyRows.reduce((s, m) => s + (m.valorPago ?? m.total), 0);
     const totalFreelancersImpressao = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
+    const totalMotoboys = totalMotoboysImpressao;
+    const totalFreelancersCalc = totalFreelancersImpressao;
     const valorLiquido = isFechado
       ? totais.valorEmCaixa
       : valorEsperadoFechamento;
@@ -1202,8 +1204,13 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       </Dialog>
 
       {/* ─── Modal de Fechamento Detalhado ─── */}
-      <Dialog open={showFechamentoModal} onOpenChange={(open) => { if (!open) setShowFechamentoModal(false); }}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+      <Dialog open={showFechamentoModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowFechamentoModal(false);
+          setFechamentoStep(0);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[820px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
               <Lock className="h-5 w-5" /> Fechamento de Caixa — Sessão {caixaAtual?.sessao}
@@ -1213,7 +1220,354 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-1" id="print-fechamento-modal">
+          <div className="space-y-4 py-1">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>Etapa {fechamentoStep + 1} de {fechamentoSteps.length}</span>
+                <span className="font-semibold text-slate-700">{fechamentoSteps[fechamentoStep]}</span>
+              </div>
+              <Progress value={((fechamentoStep + 1) / fechamentoSteps.length) * 100} className="h-2" />
+              <div className="grid grid-cols-4 gap-2">
+                {fechamentoSteps.map((step, index) => (
+                  <div
+                    key={step}
+                    className={`rounded-md border px-2 py-1 text-center text-[11px] font-semibold ${
+                      index === fechamentoStep
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : index < fechamentoStep
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-500'
+                    }`}
+                  >
+                    {step}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {fechamentoStep === 0 && (
+              <div className="space-y-4">
+                <div className="bg-slate-50 rounded-lg p-4 border space-y-3">
+                  <h3 className="font-bold text-sm text-slate-700 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" /> Resumo de Vendas
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-center">
+                    <div className="bg-white p-3 rounded-md border">
+                      <div className="text-xs text-muted-foreground">Dinheiro</div>
+                      <div className="font-bold text-amber-600">R$ {totais.totalDinheiro.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-md border">
+                      <div className="text-xs text-muted-foreground">Pix</div>
+                      <div className="font-bold text-teal-600">R$ {totais.totalPix.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-md border">
+                      <div className="text-xs text-muted-foreground">Debito</div>
+                      <div className="font-bold text-slate-600">R$ {totais.totalDebito.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-md border">
+                      <div className="text-xs text-muted-foreground">Credito</div>
+                      <div className="font-bold text-violet-600">R$ {totais.totalCredito.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 border-t pt-3 text-sm sm:grid-cols-3">
+                    <div>Saldo Inicial: <strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong></div>
+                    <div>Sangrias: <strong className="text-rose-600">R$ {Math.abs(totais.totalSangria).toFixed(2)}</strong></div>
+                    <div>Valor Caixa: <strong className="text-blue-600">R$ {totais.valorEmCaixa.toFixed(2)}</strong></div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 space-y-2">
+                  <h3 className="font-bold text-sm text-amber-700 flex items-center gap-2">
+                    <Receipt className="h-4 w-4" /> Taxa Garcom / Servico
+                  </h3>
+                  {taxaGarcomCalculada > 0 ? (
+                    <div className="flex justify-between gap-4 text-sm">
+                      <span>
+                        Taxa: <strong>{storeProfile?.fees?.tableServiceFee}{(storeProfile?.fees?.tableServiceFeeType === 'percentage' || storeProfile?.fees?.tableServiceFeeType === '%') ? '%' : ' R$'}</strong>
+                        {' - '}{pedidosDaSessao.length} ped.
+                      </span>
+                      <span className="font-black text-amber-700">R$ {taxaGarcomCalculada.toFixed(2)}</span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhuma taxa configurada.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fechamentoStep === 1 && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
+                  Marque apenas quem sera pago neste fechamento. O valor pode ser integral ou parcial; o saldo restante fica registrado no fechamento.
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-sm text-blue-700 flex items-center gap-2">
+                      <Bike className="h-4 w-4" /> Motoboys
+                    </h3>
+                    <span className="text-sm font-bold text-blue-700">Devido: R$ {totalMotoboys.toFixed(2)}</span>
+                  </div>
+                  {motoboysFechamento.length > 0 ? (
+                    <div className="space-y-3">
+                      {motoboysFechamento.map(m => {
+                        const payment = motoboyPayments[m.id];
+                        const checked = payment?.include ?? m.saldo > 0;
+                        return (
+                          <div key={m.id} className="rounded-md border bg-white p-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(value) => updateMotoboyPayment(m.id, m.saldo, { include: value === true })}
+                                    disabled={m.saldo <= 0}
+                                  />
+                                  <span className="font-semibold">{m.name}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {m.entregas} entregas - Total R$ {m.total.toFixed(2)} - Ja pago R$ {m.jaPago.toFixed(2)}
+                                </div>
+                              </div>
+                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_auto_auto] md:min-w-[360px] md:items-end">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Pagar agora</Label>
+                                  <CurrencyInput
+                                    value={payment?.amount ?? m.saldo}
+                                    onChange={(value) => updateMotoboyPayment(m.id, m.saldo, { include: value > 0, amount: value })}
+                                    disabled={!checked || m.saldo <= 0}
+                                  />
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: true, amount: m.saldo })} disabled={m.saldo <= 0}>
+                                  Tudo
+                                </Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: false, amount: 0 })} disabled={m.saldo <= 0}>
+                                  Adiar
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-2 border-t pt-3 text-xs sm:grid-cols-3">
+                              <span>Saldo devido: <strong>R$ {m.saldo.toFixed(2)}</strong></span>
+                              <span>Pago agora: <strong className="text-blue-700">R$ {m.valorPago.toFixed(2)}</strong></span>
+                              <span>Saldo depois: <strong className={m.saldoRestante > 0 ? 'text-rose-600' : 'text-emerald-600'}>R$ {m.saldoRestante.toFixed(2)}</strong></span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhum motoboy nesta sessao.</p>
+                  )}
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-sm text-purple-700 flex items-center gap-2">
+                      <UserPlus className="h-4 w-4" /> Freelancers / Extras
+                    </h3>
+                    <span className="text-sm font-bold text-purple-700">Devido: R$ {totalFreelancersCalc.toFixed(2)}</span>
+                  </div>
+                  {freelancersFechamento.length > 0 ? (
+                    <div className="space-y-3">
+                      {freelancersFechamento.map((f, index) => {
+                        const payment = freelancerPayments[f.paymentKey];
+                        const checked = payment?.include ?? f.saldo > 0;
+                        return (
+                          <div key={f.paymentKey} className="rounded-md border bg-white p-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(value) => updateFreelancerPayment(f.paymentKey, f.saldo, { include: value === true })}
+                                    disabled={f.saldo <= 0}
+                                  />
+                                  <span className="font-semibold">{f.name}</span>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => removeFreelancer(index)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Total R$ {f.total.toFixed(2)} - Ja pago R$ {f.jaPago.toFixed(2)}
+                                </div>
+                              </div>
+                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_auto_auto] md:min-w-[360px] md:items-end">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Pagar agora</Label>
+                                  <CurrencyInput
+                                    value={payment?.amount ?? f.saldo}
+                                    onChange={(value) => updateFreelancerPayment(f.paymentKey, f.saldo, { include: value > 0, amount: value })}
+                                    disabled={!checked || f.saldo <= 0}
+                                  />
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => updateFreelancerPayment(f.paymentKey, f.saldo, { include: true, amount: f.saldo })} disabled={f.saldo <= 0}>
+                                  Tudo
+                                </Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => updateFreelancerPayment(f.paymentKey, f.saldo, { include: false, amount: 0 })} disabled={f.saldo <= 0}>
+                                  Adiar
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-2 border-t pt-3 text-xs sm:grid-cols-3">
+                              <span>Saldo devido: <strong>R$ {f.saldo.toFixed(2)}</strong></span>
+                              <span>Pago agora: <strong className="text-purple-700">R$ {f.valorPago.toFixed(2)}</strong></span>
+                              <span>Saldo depois: <strong className={f.saldoRestante > 0 ? 'text-rose-600' : 'text-emerald-600'}>R$ {f.saldoRestante.toFixed(2)}</strong></span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhum freelancer nesta sessao.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fechamentoStep === 2 && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-slate-900 p-4 text-white">
+                  <div className="flex justify-between text-sm">
+                    <span>Valor em Caixa</span>
+                    <strong>R$ {totais.valorEmCaixa.toFixed(2)}</strong>
+                  </div>
+                  {taxaGarcomCalculada > 0 && (
+                    <div className="mt-2 flex justify-between text-sm text-amber-300">
+                      <span>(-) Taxa Garcom</span>
+                      <span>R$ {taxaGarcomCalculada.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totalMotoboysFechamento > 0 && (
+                    <div className="mt-2 flex justify-between text-sm text-blue-300">
+                      <span>(-) Motoboys pagos agora</span>
+                      <span>R$ {totalMotoboysFechamento.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totalFreelancersFechamento > 0 && (
+                    <div className="mt-2 flex justify-between text-sm text-purple-300">
+                      <span>(-) Freelancers pagos agora</span>
+                      <span>R$ {totalFreelancersFechamento.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="mt-3 flex justify-between border-t border-slate-700 pt-3 text-base">
+                    <span className="font-bold">Valor Esperado</span>
+                    <span className="font-black text-emerald-400">R$ {valorEsperadoFechamento.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border space-y-3">
+                  <h3 className="font-bold text-sm text-slate-700">Apuracao Fisica da Gaveta</h3>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground font-bold">Total contado em dinheiro</Label>
+                    <CurrencyInput
+                      value={dinheiroApurado !== '' ? Number(dinheiroApurado) : undefined}
+                      onChange={(val) => setDinheiroApurado(val.toString())}
+                      placeholder="R$ 0,00"
+                      className="font-bold text-lg h-11 w-full"
+                    />
+                  </div>
+
+                  {dinheiroApurado !== '' && (
+                    <div className="space-y-3">
+                      <div className={`p-3 rounded-md border flex items-center justify-between ${
+                        diferencaApuracao < 0
+                          ? 'bg-rose-50 border-rose-200 text-rose-700'
+                          : diferencaApuracao > 0
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-blue-50 border-blue-200 text-blue-700'
+                      }`}>
+                        <div className="font-bold text-sm">
+                          {diferencaApuracao === 0 ? 'Caixa bateu' : diferencaApuracao < 0 ? 'Falta de caixa' : 'Sobra de caixa'}
+                        </div>
+                        {diferencaApuracao !== 0 && (
+                          <div className="font-black text-lg">R$ {Math.abs(diferencaApuracao).toFixed(2)}</div>
+                        )}
+                      </div>
+
+                      {diferencaApuracao < 0 && (
+                        <div className="bg-rose-50 p-3 rounded-md border border-rose-200 space-y-2">
+                          <Label className="text-rose-700 font-bold text-xs">
+                            Motivo / Justificativa da quebra *
+                          </Label>
+                          <Input
+                            placeholder="Descreva por que faltou dinheiro na gaveta..."
+                            value={justificativaFalta}
+                            onChange={(e) => setJustificativaFalta(e.target.value)}
+                            className="bg-white border-rose-300 focus-visible:ring-rose-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fechamentoStep === 3 && (
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border bg-slate-50 p-4 space-y-2">
+                    <h3 className="font-bold text-sm text-slate-700">Resumo financeiro</h3>
+                    <div className="flex justify-between text-sm"><span>Valor em Caixa</span><strong>R$ {totais.valorEmCaixa.toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Taxa Garcom</span><strong>R$ {taxaGarcomCalculada.toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Motoboys pagos agora</span><strong>R$ {totalMotoboysFechamento.toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Freelancers pagos agora</span><strong>R$ {totalFreelancersFechamento.toFixed(2)}</strong></div>
+                    <div className="flex justify-between border-t pt-2 text-base"><span className="font-bold">Valor Esperado</span><strong className="text-emerald-700">R$ {valorEsperadoFechamento.toFixed(2)}</strong></div>
+                  </div>
+                  <div className="rounded-lg border bg-white p-4 space-y-2">
+                    <h3 className="font-bold text-sm text-slate-700">Apuracao</h3>
+                    <div className="flex justify-between text-sm">
+                      <span>Dinheiro contado</span>
+                      <strong>R$ {(dinheiroApurado !== '' ? Number(dinheiroApurado) : valorEsperadoFechamento).toFixed(2)}</strong>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Diferenca</span>
+                      <strong className={diferencaApuracao < 0 ? 'text-rose-600' : diferencaApuracao > 0 ? 'text-emerald-600' : 'text-slate-700'}>
+                        R$ {diferencaApuracao.toFixed(2)}
+                      </strong>
+                    </div>
+                    {diferencaApuracao < 0 && (
+                      <div className="border-t pt-2 text-sm">
+                        <div className="text-muted-foreground">Justificativa</div>
+                        <div className="font-medium">{justificativaFalta || 'Nao informada'}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                    <h3 className="font-bold text-sm text-blue-700">Motoboys</h3>
+                    {motoboysFechamento.length > 0 ? motoboysFechamento.map(m => (
+                      <div key={m.id} className="rounded-md bg-white p-3 text-sm">
+                        <div className="font-semibold">{m.name}</div>
+                        <div className="mt-1 grid gap-1 text-xs sm:grid-cols-3">
+                          <span>Devido R$ {m.saldo.toFixed(2)}</span>
+                          <span>Pago R$ {m.valorPago.toFixed(2)}</span>
+                          <span>Restante R$ {m.saldoRestante.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )) : <p className="text-sm text-muted-foreground">Nenhum motoboy nesta sessao.</p>}
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 space-y-3">
+                    <h3 className="font-bold text-sm text-purple-700">Freelancers / Extras</h3>
+                    {freelancersFechamento.length > 0 ? freelancersFechamento.map(f => (
+                      <div key={f.paymentKey} className="rounded-md bg-white p-3 text-sm">
+                        <div className="font-semibold">{f.name}</div>
+                        <div className="mt-1 grid gap-1 text-xs sm:grid-cols-3">
+                          <span>Devido R$ {f.saldo.toFixed(2)}</span>
+                          <span>Pago R$ {f.valorPago.toFixed(2)}</span>
+                          <span>Restante R$ {f.saldoRestante.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )) : <p className="text-sm text-muted-foreground">Nenhum freelancer nesta sessao.</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="hidden space-y-3 py-1" id="print-fechamento-modal">
 
             {/* Seção 1: Resumo de Vendas */}
             <div className="bg-slate-50 rounded-xl p-3 border space-y-1.5">
@@ -1450,7 +1804,43 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             </div>
             
           </div>
-          <DialogFooter className="border-t pt-3 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-row gap-2">
+          <DialogFooter className="border-t pt-4 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-col gap-3 sm:flex-row">
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
+              {fechamentoStep > 0 && (
+                <Button variant="outline" onClick={() => setFechamentoStep(prev => Math.max(0, prev - 1))} disabled={isSubmitting}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto sm:justify-end">
+              {fechamentoStep === fechamentoSteps.length - 1 ? (
+                <>
+                  <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrint}>
+                    <Printer className="h-4 w-4 mr-1" /> Imprimir previa
+                  </Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold"
+                    onClick={confirmarFechamento}
+                    disabled={isSubmitting || apuracaoComFaltaSemJustificativa}
+                  >
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+                    Confirmar Fechamento
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  className="ml-auto"
+                  onClick={() => setFechamentoStep(prev => Math.min(fechamentoSteps.length - 1, prev + 1))}
+                  disabled={isSubmitting || (fechamentoStep === 2 && apuracaoComFaltaSemJustificativa)}
+                >
+                  Proximo <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+
+          <DialogFooter className="hidden border-t pt-3 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-row gap-2">
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
               <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrint}>
