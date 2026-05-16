@@ -14,7 +14,7 @@ const STATUS_LABELS: Record<string, string> = {
   out_for_delivery: 'Saiu para entrega',
 };
 
-export function ActiveOrdersBanner() {
+export function ActiveOrdersBanner({ storeId }: { storeId?: string | null }) {
   const db = useFirestore();
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
@@ -40,11 +40,11 @@ export function ActiveOrdersBanner() {
 
   // Busca pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !customerPhone) return null;
+    if (!db || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
-  }, [db, customerPhone]);
+    return query(collection(db, 'orders'), where('ownerId', '==', storeId), where('customerIdentifier', 'in', possiblePhones));
+  }, [db, customerPhone, storeId]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 
   const activeOrders = useMemo(() => {
@@ -60,7 +60,7 @@ export function ActiveOrdersBanner() {
   const statusLabel = STATUS_LABELS[latest.status] || latest.status;
 
   return (
-    <Link href="/my-orders" className="block">
+    <Link href={storeId ? `/my-orders?storeId=${storeId}` : "/my-orders"} className="block">
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg hover:shadow-xl transition-all active:scale-[0.99]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_60%)] pointer-events-none" />

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ShoppingBag } from 'lucide-react';
 
-export function CustomerAccountButton() {
+export function CustomerAccountButton({ storeId }: { storeId?: string | null }) {
   const db = useFirestore();
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
@@ -32,11 +32,11 @@ export function CustomerAccountButton() {
 
   // Buscar pedidos pelo telefone
   const myOrdersQuery = useMemoFirebase(() => {
-    if (!db || !customerPhone) return null;
+    if (!db || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
-  }, [db, customerPhone]);
+    return query(collection(db, 'orders'), where('ownerId', '==', storeId), where('customerIdentifier', 'in', possiblePhones));
+  }, [db, customerPhone, storeId]);
   const { data: myOrders } = useCollection(myOrdersQuery);
 
   // Badge de pedidos em andamento
@@ -49,7 +49,7 @@ export function CustomerAccountButton() {
   // if (!customerPhone || (!myOrders || myOrders.length === 0)) return null;
 
   return (
-    <Link href="/my-orders">
+    <Link href={storeId ? `/my-orders?storeId=${storeId}` : "/my-orders"}>
       <Button
         variant="secondary"
         size="sm"
