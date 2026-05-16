@@ -270,14 +270,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
           
           if (!phone || phone.length < 10) {
-             setIsProcessing(false);
+             setIsSubmitting(false);
              setQuickRegisterModal({ isOpen: true, name: customerName || '', phone: '', address: fullDeliveryAddress });
              return;
           }
           const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
           const snap = await getDocs(q);
           if (snap.empty) {
-             setIsProcessing(false);
+             setIsSubmitting(false);
              setQuickRegisterModal({ isOpen: true, name: customerName || '', phone, address: fullDeliveryAddress });
              return;
           }
@@ -890,7 +890,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           onClose={() => setQuickRegisterModal(null)}
           onSuccess={() => {
             setQuickRegisterModal(null);
-            handleFinalizarPedido();
+            handleConfirmCheckout();
           }}
           db={db}
           ownerId={storeProfile?.id || user?.uid || 'default'}

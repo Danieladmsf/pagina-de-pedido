@@ -43,6 +43,10 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth) {
+      toast({ variant: 'destructive', title: 'Erro no login', description: 'Autenticacao indisponivel no momento.' });
+      return;
+    }
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -63,6 +67,10 @@ export default function LoginPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth) {
+      toast({ variant: 'destructive', title: 'Erro no cadastro', description: 'Autenticacao indisponivel no momento.' });
+      return;
+    }
     if (password.length < 6) {
       toast({ variant: 'destructive', title: 'Senha fraca', description: 'A senha deve ter pelo menos 6 caracteres.' });
       return;

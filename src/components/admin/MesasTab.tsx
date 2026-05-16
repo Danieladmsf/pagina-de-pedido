@@ -391,7 +391,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       const ownerId = storeInfo?.id || user?.uid || 'default';
       const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
       if (hasContaCasa) {
-          const phone = ''; // Mesa usually doesn't have phone attached
+          const phone = quickRegisterModal?.phone || ''; // Mesa usually doesn't have phone attached
           if (!phone || phone.length < 10) {
              setIsSubmitting(false);
              setQuickRegisterModal({ isOpen: true, name: `Cliente Mesa ${selectedTable}`, phone: '', address: '' });
@@ -924,7 +924,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           onClose={() => setQuickRegisterModal(null)}
           onSuccess={() => {
             setQuickRegisterModal(null);
-            handleConfirmPayment();
+            handleConfirmCheckout();
           }}
           db={db}
           ownerId={storeInfo?.id || user?.uid || 'default'}

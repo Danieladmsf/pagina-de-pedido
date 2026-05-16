@@ -14,6 +14,16 @@ export interface Caixa {
   dataFechamento?: any;
   usuarioAbertura: string;
   totalFechamento?: number;
+  fechamentoDetalhes?: {
+    taxaGarcom: number;
+    motoboys: Array<{ name: string; entregas: number; taxa: number; total: number }>;
+    freelancers: Array<{ name: string; tipo: string; diaria: number; comissao: number; entregas: number; total: number }>;
+    dinheiroApurado: number;
+    diferencaCaixa: number;
+    justificativaFalta: string;
+    totalDeducoes: number;
+    valorRetirada: number;
+  };
 }
 
 export interface LancamentoCaixa {

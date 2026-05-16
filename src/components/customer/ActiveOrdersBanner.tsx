@@ -14,7 +14,7 @@ const STATUS_LABELS: Record<string, string> = {
   out_for_delivery: 'Saiu para entrega',
 };
 
-export function ActiveOrdersBanner({ storeId }: { storeId?: string | null }) {
+export function ActiveOrdersBanner({ storeId, storeSlug }: { storeId?: string | null; storeSlug?: string | null }) {
   const db = useFirestore();
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
@@ -60,8 +60,13 @@ export function ActiveOrdersBanner({ storeId }: { storeId?: string | null }) {
   const latest = activeOrders[0];
   const statusLabel = STATUS_LABELS[latest.status] || latest.status;
 
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
+  if (storeSlug) params.set('returnTo', `/${storeSlug}`);
+  const href = params.size > 0 ? `/my-orders?${params.toString()}` : '/my-orders';
+
   return (
-    <Link href={storeId ? `/my-orders?storeId=${storeId}` : "/my-orders"} className="block">
+    <Link href={href} className="block">
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary/80 text-white shadow-lg hover:shadow-xl transition-all active:scale-[0.99]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_60%)] pointer-events-none" />

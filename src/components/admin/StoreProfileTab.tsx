@@ -73,7 +73,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     { maxKm: 6, fee: 8 },
     { maxKm: 10, fee: 12 }
   ]);
-  const [customAddressRules, setCustomAddressRules] = useState<{ keyword: string, fee: number }[]>([]);
+  const [customAddressRules, setCustomAddressRules] = useState<{ keyword: string, fee: number, type: 'neighborhood' | 'address' }[]>([]);
 
   const [paymentMethods, setPaymentMethods] = useState<{ id: string, label: string, icon: string, active: boolean }[]>([
     { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
@@ -254,8 +254,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   };
 
   // Regras Personalizadas (Endereços/Bairros)
-  const addCustomRule = () => {
-    setCustomAddressRules([...customAddressRules, { keyword: '', fee: 0 }]);
+  const addCustomRule = (type: 'neighborhood' | 'address') => {
+    setCustomAddressRules([...customAddressRules, { keyword: '', fee: 0, type }]);
   };
   const removeCustomRule = (index: number) => {
     setCustomAddressRules(customAddressRules.filter((_, i) => i !== index));
@@ -263,6 +263,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const updateCustomRule = (index: number, field: 'keyword' | 'fee', value: string | number) => {
     setCustomAddressRules(customAddressRules.map((rule, i) => i === index ? { ...rule, [field]: value } : rule));
   };
+  const neighborhoodRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'neighborhood');
+  const addressRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'address');
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -670,37 +672,87 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   </div>
                 </div>
 
-                {/* Taxas Personalizadas por Endereço */}
-                <div className="pt-1 pb-3 space-y-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                {/* Taxas Personalizadas por Bairro */}
+                <div className="pt-1 pb-3 space-y-2 bg-violet-50/50 p-3 rounded-lg border border-violet-100">
                   <div className="flex justify-between items-center">
                     <div className="flex flex-col">
-                      <Label className="font-bold text-sm flex items-center gap-2 text-indigo-900">
-                        📍 Taxas Personalizadas (Bairros, Condomínios ou Ruas)
+                      <Label className="font-bold text-sm flex items-center gap-2 text-violet-900">
+                        🏘️ Taxas por Bairro
                       </Label>
-                      <span className="text-[10px] text-indigo-600 font-medium">Estas regras têm prioridade sobre a taxa por KM. Digite parte do endereço para aplicar.</span>
+                      <span className="text-[10px] text-violet-600 font-medium">Busque o bairro pelo nome. Estas regras têm prioridade sobre a taxa por KM.</span>
                     </div>
-                    <Button onClick={addCustomRule} type="button" size="sm" variant="outline" className="h-7 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"><Plus className="w-3 h-3 mr-1" /> Adicionar</Button>
+                    <Button onClick={() => addCustomRule('neighborhood')} type="button" size="sm" variant="outline" className="h-7 text-xs border-violet-200 text-violet-700 hover:bg-violet-50"><Plus className="w-3 h-3 mr-1" /> Adicionar Bairro</Button>
                   </div>
                   
                   <div className="space-y-2 mt-2">
-                    {customAddressRules.map((rule, index) => (
-                      <div key={index} className="flex items-center gap-3 bg-white p-2 rounded border border-indigo-50 shadow-sm">
+                    {neighborhoodRules.map((rule) => (
+                      <div key={rule._idx} className="flex items-center gap-3 bg-white p-2 rounded border border-violet-50 shadow-sm">
                         <div className="flex-[2]">
-                          <Label className="text-xs text-indigo-800">Termo de Busca (Ex: Centro, Condomínio Ipê)</Label>
-                          <Input type="text" placeholder="Qualquer parte do endereço" value={rule.keyword} onChange={(e) => updateCustomRule(index, 'keyword', e.target.value)} className="h-8 text-sm" />
+                          <Label className="text-xs text-violet-800">Bairro</Label>
+                          <AddressAutocomplete
+                            value={rule.keyword}
+                            onChange={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                            onSelect={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                            placeholder="Ex: Centro, João Berbel..."
+                            className="h-8 text-sm"
+                            types="sublocality"
+                          />
                         </div>
                         <div className="flex-1">
-                          <Label className="text-xs text-indigo-800">Taxa (R$)</Label>
-                          <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(index, 'fee', val)} />
+                          <Label className="text-xs text-violet-800">Taxa (R$)</Label>
+                          <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(rule._idx, 'fee', val)} />
                         </div>
-                        <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(index)}>
+                        <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(rule._idx)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
-                    {customAddressRules.length === 0 && (
-                      <div className="text-center py-4 text-xs text-indigo-400 border-2 border-dashed border-indigo-200 rounded-lg bg-white/50">
-                        Nenhuma taxa personalizada. O sistema usará as regras por KM.
+                    {neighborhoodRules.length === 0 && (
+                      <div className="text-center py-3 text-xs text-violet-400 border-2 border-dashed border-violet-200 rounded-lg bg-white/50">
+                        Nenhum bairro cadastrado.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Taxas Personalizadas por Rua/Endereço */}
+                <div className="pt-1 pb-3 space-y-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                  <div className="flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <Label className="font-bold text-sm flex items-center gap-2 text-indigo-900">
+                        📍 Taxas por Rua / Endereço
+                      </Label>
+                      <span className="text-[10px] text-indigo-600 font-medium">Para condomínios ou ruas específicas. Têm prioridade sobre bairro e KM.</span>
+                    </div>
+                    <Button onClick={() => addCustomRule('address')} type="button" size="sm" variant="outline" className="h-7 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"><Plus className="w-3 h-3 mr-1" /> Adicionar Rua</Button>
+                  </div>
+                  
+                  <div className="space-y-2 mt-2">
+                    {addressRules.map((rule) => (
+                      <div key={rule._idx} className="flex items-center gap-3 bg-white p-2 rounded border border-indigo-50 shadow-sm">
+                        <div className="flex-[2]">
+                          <Label className="text-xs text-indigo-800">Rua / Endereço</Label>
+                          <AddressAutocomplete
+                            value={rule.keyword}
+                            onChange={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                            onSelect={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                            placeholder="Ex: Rua das Palmeiras, Condomínio..."
+                            className="h-8 text-sm"
+                            types="route"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <Label className="text-xs text-indigo-800">Taxa (R$)</Label>
+                          <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(rule._idx, 'fee', val)} />
+                        </div>
+                        <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(rule._idx)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {addressRules.length === 0 && (
+                      <div className="text-center py-3 text-xs text-indigo-400 border-2 border-dashed border-indigo-200 rounded-lg bg-white/50">
+                        Nenhuma rua cadastrada.
                       </div>
                     )}
                   </div>

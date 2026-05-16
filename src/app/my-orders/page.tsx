@@ -93,6 +93,7 @@ export default function MyOrdersPage() {
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneSearched, setPhoneSearched] = useState(false);
   const [storeId, setStoreId] = useState<string | null>(null);
+  const [backHref, setBackHref] = useState('/');
 
   // Carrega o telefone e storeId salvo no localStorage / URL
   useEffect(() => {
@@ -106,12 +107,25 @@ export default function MyOrdersPage() {
       
       const urlParams = new URLSearchParams(window.location.search);
       const sId = urlParams.get('storeId');
+      const returnTo = urlParams.get('returnTo');
+      const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '';
+
       if (sId) {
         setStoreId(sId);
         localStorage.setItem('last_store_id', sId);
       } else {
         const lastStore = localStorage.getItem('last_store_id');
         if (lastStore) setStoreId(lastStore);
+      }
+
+      if (safeReturnTo) {
+        setBackHref(safeReturnTo);
+        localStorage.setItem('last_store_path', safeReturnTo);
+      } else {
+        const lastStorePath = localStorage.getItem('last_store_path');
+        if (lastStorePath && lastStorePath.startsWith('/') && !lastStorePath.startsWith('//')) {
+          setBackHref(lastStorePath);
+        }
       }
     } catch {}
   }, []);
@@ -312,7 +326,7 @@ export default function MyOrdersPage() {
           <Button className="w-full" onClick={handlePhoneLookup}>
             <ShoppingBag className="h-4 w-4 mr-2" /> Buscar Meus Pedidos
           </Button>
-          <Link href="/">
+          <Link href={backHref}>
             <Button variant="ghost" className="w-full text-muted-foreground">
               <ChevronLeft className="h-4 w-4 mr-2" /> Voltar ao Cardápio
             </Button>
@@ -335,7 +349,7 @@ export default function MyOrdersPage() {
       <div className="max-w-2xl mx-auto space-y-3">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Link href="/">
+            <Link href={backHref}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <ChevronLeft className="h-5 w-5" />
               </Button>
@@ -490,7 +504,7 @@ export default function MyOrdersPage() {
               <div className="text-center py-16 space-y-3">
                 <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto" />
                 <p className="text-sm text-slate-400">Nenhum pedido encontrado.</p>
-                <Link href="/"><Button size="sm">Ir para o Cardápio</Button></Link>
+                <Link href={backHref}><Button size="sm">Ir para o Cardápio</Button></Link>
               </div>
             ) : (
               <div className="space-y-2">

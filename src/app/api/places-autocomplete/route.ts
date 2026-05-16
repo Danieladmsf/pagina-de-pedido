@@ -29,9 +29,13 @@ export async function GET(req: NextRequest) {
     };
 
     // Places API (New) aceita coleções especiais como "(cities)".
-    // Para endereços, deixar sem filtro de tipo evita bloquear ruas/avenidas.
+    // Para bairros usamos "sublocality", para ruas "route".
     if (types === '(cities)' || types === '(regions)') {
       body.includedPrimaryTypes = [types];
+    } else if (types === 'sublocality') {
+      body.includedPrimaryTypes = ['sublocality', 'sublocality_level_1', 'neighborhood'];
+    } else if (types === 'route') {
+      body.includedPrimaryTypes = ['route'];
     }
 
     const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {

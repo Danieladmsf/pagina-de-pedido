@@ -89,8 +89,9 @@ async function fetchStoreIdFromSlug(shortSlug: string) {
   }
 }
 
-export async function generateMetadata({ params }: { params: { storeSlug: string } }): Promise<Metadata> {
-  const slug = decodeURIComponent(params.storeSlug);
+export async function generateMetadata({ params }: { params: Promise<{ storeSlug: string }> }): Promise<Metadata> {
+  const { storeSlug } = await params;
+  const slug = decodeURIComponent(storeSlug);
   const parts = slug.split('-');
   const rawStoreId = parts.pop() || '';
 
@@ -145,11 +146,12 @@ export async function generateMetadata({ params }: { params: { storeSlug: string
   };
 }
 
-export async function generateViewport({ params }: { params: { storeSlug: string } }): Promise<Viewport> {
+export async function generateViewport({ params }: { params: Promise<{ storeSlug: string }> }): Promise<Viewport> {
   const defaults: Viewport = { themeColor: '#ffffff' };
-  if (!params?.storeSlug) return defaults;
+  const { storeSlug } = await params;
+  if (!storeSlug) return defaults;
 
-  let storeId = params.storeSlug;
+  let storeId = storeSlug;
   if (storeId.length <= 8) {
     const resolved = await fetchStoreIdFromSlug(storeId);
     if (resolved) storeId = resolved;
@@ -164,14 +166,15 @@ export async function generateViewport({ params }: { params: { storeSlug: string
   };
 }
 
-export default function StorePage({ params }: { params: { storeSlug: string } }) {
+export default async function StorePage({ params }: { params: Promise<{ storeSlug: string }> }) {
+  const { storeSlug } = await params;
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     }>
-      <MenuPageClient storeSlug={params.storeSlug} />
+      <MenuPageClient storeSlug={storeSlug} />
     </Suspense>
   );
 }

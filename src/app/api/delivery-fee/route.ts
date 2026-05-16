@@ -66,21 +66,49 @@ export async function POST(req: NextRequest) {
     let calculatedFee = 0;
     let customMatched = false;
 
-    // Prioridade 1: Regras personalizadas por Endereço/Bairro
+    // Separar regras por tipo: endereço (address) tem prioridade sobre bairro (neighborhood)
     if (customAddressRules && Array.isArray(customAddressRules) && customAddressRules.length > 0) {
       const customerAddrLower = customerAddress.toLowerCase();
-      // Ordena por tamanho da keyword (maiores primeiro = mais específico)
-      const sortedCustom = [...customAddressRules].sort((a, b) => b.keyword.length - a.keyword.length);
-      for (const rule of sortedCustom) {
+      const addrRules = customAddressRules.filter((r: any) => r.type === 'address');
+      const neighborhoodRules = customAddressRules.filter((r: any) => r.type === 'neighborhood');
+
+      // Prioridade 1: Regras por Rua/Endereço (mais específico)
+      const sortedAddr = [...addrRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+      for (const rule of sortedAddr) {
         if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
           calculatedFee = rule.fee;
           customMatched = true;
           break;
         }
       }
+
+      // Prioridade 2: Regras por Bairro
+      if (!customMatched) {
+        const sortedNeighborhood = [...neighborhoodRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+        for (const rule of sortedNeighborhood) {
+          if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+            calculatedFee = rule.fee;
+            customMatched = true;
+            break;
+          }
+        }
+      }
+
+      // Fallback para regras antigas sem type (migração)
+      if (!customMatched) {
+        const legacyRules = customAddressRules.filter((r: any) => !r.type);
+        const sortedLegacy = [...legacyRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+        for (const rule of sortedLegacy) {
+          if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+            calculatedFee = rule.fee;
+            customMatched = true;
+            break;
+          }
+        }
+      }
     }
 
-    // Prioridade 2: Taxa por KM (se não casou com regra personalizada)
+    // Prioridade 3: Taxa por KM (se não casou com regra personalizada)
     if (!customMatched && feeRules && Array.isArray(feeRules) && feeRules.length > 0) {
       // Ordena as regras por maxKm crescente
       const sorted = [...feeRules].sort((a, b) => a.maxKm - b.maxKm);

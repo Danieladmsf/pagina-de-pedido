@@ -178,8 +178,14 @@ function hasBlockedMessageType(payload: any, data: any, eventName: string) {
   );
 }
 
-function extractIncomingMessage(payload: any, event: string) {
+function isReceivedWebhook(event: string, hook?: string) {
+  if (hook) return hook === 'received';
+  return String(event || '').trim().toLowerCase().includes('received');
+}
+
+function extractIncomingMessage(payload: any, event: string, hook?: string) {
   const eventName = String(event || '').toLowerCase();
+  if (!isReceivedWebhook(event, hook)) return null;
   if (eventName.includes('connect')) return null;
 
   const data = payload?.data || payload?.message || payload;
@@ -275,7 +281,7 @@ function extractIncomingMessage(payload: any, event: string) {
     data?.message?.extendedTextMessage?.text,
   );
 
-  const looksLikeMessageEvent = eventName.includes('received') || eventName.includes('message');
+  const looksLikeMessageEvent = eventName.includes('received') || hook === 'received';
   const hasMessageShape = Boolean(text || payload?.body || payload?.text || payload?.message || data?.body || data?.text || data?.message);
   if (!looksLikeMessageEvent && !hasMessageShape) return null;
 
@@ -311,7 +317,8 @@ function buildAutoReply(params: {
   empresaId: string;
   incoming: { phone: string; text?: string };
   requestOrigin: string;
-  contactData?: { firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
+  contactData?: { firstInboundAt?: string | number; firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
+  hasPriorContact?: boolean;
 }) {
   const storeProfile = params.storeProfile || {};
   const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
@@ -333,7 +340,7 @@ function buildAutoReply(params: {
 
     template = messages.storeClosed;
     type = 'store_closed_auto_reply';
-  } else if (!params.contactData?.firstContactSentAt) {
+  } else if (!params.hasPriorContact) {
     template = messages.firstContact;
     type = 'first_contact_auto_reply';
   }
@@ -361,10 +368,11 @@ async function maybeSendAutoReply(params: {
   empresaId: string;
   payload: any;
   event: string;
+  hook?: string;
   requestOrigin: string;
   now: string;
 }) {
-  const incoming = extractIncomingMessage(params.payload, params.event);
+  const incoming = extractIncomingMessage(params.payload, params.event, params.hook);
   if (!incoming?.phone) return false;
 
   const adminSnap = await params.adminRef.get();
@@ -376,12 +384,27 @@ async function maybeSendAutoReply(params: {
   const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.phone}`);
   const contactSnap = await contactRef.get();
   const contactData = contactSnap.exists ? contactSnap.data() || {} : {};
+  const hasPriorContact = Boolean(
+    contactData.firstInboundAt ||
+    contactData.firstContactSentAt ||
+    contactData.lastClosedReplyAt,
+  );
+
+  await contactRef.set({
+    empresaId: params.empresaId,
+    phone: incoming.phone,
+    ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
+    lastInboundAt: params.now,
+    updatedAt: params.now,
+  }, { merge: true });
+
   const reply = buildAutoReply({
     storeProfile,
     empresaId: params.empresaId,
     incoming,
     requestOrigin: params.requestOrigin,
     contactData,
+    hasPriorContact,
   });
   if (!reply) return false;
 
@@ -422,6 +445,7 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({}));
   const instanceId = getInstanceId(payload);
   const event = payload?.event || payload?.type || 'unknown';
+  const hook = url.searchParams.get('hook') || '';
   const empresaIdFromUrl = url.searchParams.get('empresaId') || '';
   const webhookAuth = getWebhookToken(url);
   const now = new Date().toISOString();
@@ -473,6 +497,7 @@ export async function POST(request: Request) {
   await adminDb.collection('whatsapp_webhook_events').add({
     provider: 'wapi',
     event,
+    hook,
     instanceId,
     empresaId,
     payload,
@@ -533,6 +558,7 @@ export async function POST(request: Request) {
         empresaId,
         payload,
         event,
+        hook,
         requestOrigin: new URL(request.url).origin,
         now,
       });
