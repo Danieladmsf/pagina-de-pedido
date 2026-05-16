@@ -383,6 +383,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
           storeLink={storeLink}
           storeName={storeName}
           workingHours={storeProfile?.workingHours}
+          storeProfile={storeProfile}
         />
       ) : initialLoading ? (
         <LoadingState />
@@ -548,6 +549,7 @@ function MessageTemplatesSection({
   storeLink,
   storeName,
   workingHours,
+  storeProfile,
 }: {
   templates: WhatsAppMessageTemplates;
   setTemplates: React.Dispatch<React.SetStateAction<WhatsAppMessageTemplates>>;
@@ -556,6 +558,7 @@ function MessageTemplatesSection({
   storeLink: string;
   storeName: string;
   workingHours?: any[];
+  storeProfile?: any;
 }) {
   const sampleValues = {
     loja: storeName,
