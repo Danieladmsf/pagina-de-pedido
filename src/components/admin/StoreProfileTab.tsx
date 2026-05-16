@@ -646,7 +646,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
             
             <TabsContent value="area" className="mt-0 space-y-5">
             {/* SEÇÃO 1 — Área de Atuação */}
-            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+            <section className="bg-white rounded-2xl shadow-sm border">
               <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-blue-500/15 border border-indigo-500/20 flex items-center justify-center">
                   <MapPin className="h-5 w-5 text-indigo-600" />
