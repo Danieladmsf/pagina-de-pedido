@@ -134,12 +134,20 @@ export function getStoreOpenState(storeProfile: any, now = new Date()) {
   return { isOpen: true, reason: '' };
 }
 
-export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plannedClosures?: any[], timezone = 'America/Sao_Paulo', now = new Date()) {
+export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plannedClosures?: any[], timezoneStr?: string, now = new Date()) {
   if (!workingHours || workingHours.length === 0) return '';
 
-  const localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-  const daysMap = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado'];
-  const accentDaysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  let localNow = new Date();
+  try {
+    const tz = timezoneStr && timezoneStr.trim() !== '' ? timezoneStr : 'America/Sao_Paulo';
+    localNow = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  } catch (e) {
+    localNow = new Date(now);
+  }
+
+  const daysMap = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+  const accentDaysMap = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const displayDaysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
   for (let offset = 0; offset <= 7; offset++) {
     const checkDate = new Date(localNow);
@@ -151,25 +159,30 @@ export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plann
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
     const closure = plannedClosures?.find((c: any) => c.date === dateStr);
-    if (closure) continue; // Planned closure all day
+    if (closure) continue;
 
     const dayIndex = checkDate.getDay();
-    const config = workingHours.find((wh) => wh.day === accentDaysMap[dayIndex] || wh.day === daysMap[dayIndex]);
+    const dayStr1 = daysMap[dayIndex];
+    const dayStr2 = accentDaysMap[dayIndex];
+
+    const config = workingHours.find((wh) => {
+      const whDay = String(wh.day || '').toLowerCase();
+      return whDay === dayStr1 || whDay === dayStr2;
+    });
 
     if (config && !config.isClosed) {
       const [openHour, openMin] = String(config.open || '00:00').split(':').map(Number);
       
-      // se for hoje, checa se a hora de abertura já passou
       if (offset === 0) {
         const currentMins = localNow.getHours() * 60 + localNow.getMinutes();
-        const openMins = openHour * 60 + openMin;
+        const openMins = (openHour || 0) * 60 + (openMin || 0);
         if (currentMins < openMins) {
-          return `A próxima abertura será hoje às ${String(openHour).padStart(2, '0')}:${String(openMin).padStart(2, '0')} hs ⏰🎉.`;
+          return `A próxima abertura será hoje às ${String(openHour || 0).padStart(2, '0')}:${String(openMin || 0).padStart(2, '0')} hs ⏰🎉.`;
         }
       } else {
         const displayDate = `${dd}/${mm}`;
-        const dayName = accentDaysMap[dayIndex];
-        return `A próxima abertura será no dia ${displayDate} (${dayName}) às ${String(openHour).padStart(2, '0')}:${String(openMin).padStart(2, '0')} hs ⏰🎉.`;
+        const dayName = displayDaysMap[dayIndex];
+        return `A próxima abertura será no dia ${displayDate} (${dayName}) às ${String(openHour || 0).padStart(2, '0')}:${String(openMin || 0).padStart(2, '0')} hs ⏰🎉.`;
       }
     }
   }
