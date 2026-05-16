@@ -85,6 +85,11 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const [creditPixKey, setCreditPixKey] = useState('');
   const [creditPixName, setCreditPixName] = useState('');
 
+  // Bairros disponíveis (carregados da API)
+  const [availableNeighborhoods, setAvailableNeighborhoods] = useState<{ name: string, placeId: string }[]>([]);
+  const [loadingNeighborhoods, setLoadingNeighborhoods] = useState(false);
+  const [neighborhoodSearch, setNeighborhoodSearch] = useState('');
+
   useEffect(() => {
     if (!db || !user?.uid) return;
     const fetchProfile = async () => {
@@ -265,6 +270,41 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   };
   const neighborhoodRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'neighborhood');
   const addressRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'address');
+
+  // Carregar bairros quando cidades mudam
+  const fetchNeighborhoods = async (cities: string[]) => {
+    if (cities.length === 0) { setAvailableNeighborhoods([]); return; }
+    setLoadingNeighborhoods(true);
+    try {
+      const allResults: { name: string, placeId: string }[] = [];
+      for (const city of cities) {
+        const res = await fetch(`/api/list-neighborhoods?city=${encodeURIComponent(city)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.neighborhoods) allResults.push(...data.neighborhoods);
+        }
+      }
+      // Deduplicar por nome
+      const unique = new Map<string, { name: string, placeId: string }>();
+      for (const n of allResults) { if (!unique.has(n.name)) unique.set(n.name, n); }
+      setAvailableNeighborhoods(Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+    } catch { /* silently fail */ }
+    setLoadingNeighborhoods(false);
+  };
+
+  // Toggle bairro no/off
+  const toggleNeighborhood = (name: string) => {
+    const existing = customAddressRules.findIndex(r => r.type === 'neighborhood' && r.keyword === name);
+    if (existing >= 0) {
+      setCustomAddressRules(customAddressRules.filter((_, i) => i !== existing));
+    } else {
+      setCustomAddressRules([...customAddressRules, { keyword: name, fee: 0, type: 'neighborhood' }]);
+    }
+  };
+
+  const isNeighborhoodSelected = (name: string) => {
+    return customAddressRules.some(r => r.type === 'neighborhood' && r.keyword === name);
+  };
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -679,41 +719,127 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                       <Label className="font-bold text-sm flex items-center gap-2 text-violet-900">
                         🏘️ Taxas por Bairro
                       </Label>
-                      <span className="text-[10px] text-violet-600 font-medium">Busque o bairro pelo nome. Estas regras têm prioridade sobre a taxa por KM.</span>
+                      <span className="text-[10px] text-violet-600 font-medium">Selecione os bairros e defina a taxa. Têm prioridade sobre a taxa por KM.</span>
                     </div>
-                    <Button onClick={() => addCustomRule('neighborhood')} type="button" size="sm" variant="outline" className="h-7 text-xs border-violet-200 text-violet-700 hover:bg-violet-50"><Plus className="w-3 h-3 mr-1" /> Adicionar Bairro</Button>
+                    {!loadingNeighborhoods && availableNeighborhoods.length === 0 && formData.deliveryCities.length > 0 && (
+                      <Button onClick={() => fetchNeighborhoods(formData.deliveryCities)} type="button" size="sm" variant="outline" className="h-7 text-xs border-violet-200 text-violet-700 hover:bg-violet-50">
+                        <MapPin className="w-3 h-3 mr-1" /> Carregar Bairros
+                      </Button>
+                    )}
+                    {loadingNeighborhoods && <Loader2 className="w-4 h-4 animate-spin text-violet-500" />}
                   </div>
-                  
-                  <div className="space-y-2 mt-2">
-                    {neighborhoodRules.map((rule) => (
-                      <div key={rule._idx} className="flex items-center gap-3 bg-white p-2 rounded border border-violet-50 shadow-sm">
-                        <div className="flex-[2]">
-                          <Label className="text-xs text-violet-800">Bairro</Label>
-                          <AddressAutocomplete
-                            value={rule.keyword}
-                            onChange={(val) => updateCustomRule(rule._idx, 'keyword', val)}
-                            onSelect={(val) => updateCustomRule(rule._idx, 'keyword', val)}
-                            placeholder="Ex: Centro, João Berbel..."
-                            className="h-8 text-sm"
-                            types="sublocality"
-                            locationContext={formData.deliveryCities.join(', ')}
+
+                  {formData.deliveryCities.length === 0 && (
+                    <div className="text-center py-3 text-xs text-violet-400 border-2 border-dashed border-violet-200 rounded-lg bg-white/50">
+                      Cadastre uma cidade acima para carregar os bairros disponíveis.
+                    </div>
+                  )}
+
+                  {availableNeighborhoods.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                      {/* LADO ESQUERDO: Lista de bairros com checkbox */}
+                      <div className="bg-white rounded-lg border border-violet-100 overflow-hidden">
+                        <div className="p-2 border-b border-violet-100 bg-violet-50/30">
+                          <Input
+                            placeholder="Filtrar bairros..."
+                            value={neighborhoodSearch}
+                            onChange={(e) => setNeighborhoodSearch(e.target.value)}
+                            className="h-7 text-xs"
                           />
                         </div>
-                        <div className="flex-1">
-                          <Label className="text-xs text-violet-800">Taxa (R$)</Label>
-                          <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(rule._idx, 'fee', val)} />
+                        <div className="max-h-56 overflow-y-auto">
+                          {availableNeighborhoods
+                            .filter(n => n.name.toLowerCase().includes(neighborhoodSearch.toLowerCase()))
+                            .map((n) => {
+                              const selected = isNeighborhoodSelected(n.name);
+                              return (
+                                <button
+                                  key={n.placeId}
+                                  type="button"
+                                  onClick={() => toggleNeighborhood(n.name)}
+                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left border-b border-violet-50 last:border-0 transition-colors ${
+                                    selected ? 'bg-violet-100 text-violet-900 font-medium' : 'hover:bg-violet-50/50 text-slate-600'
+                                  }`}
+                                >
+                                  <Checkbox checked={selected} className="data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600 h-3.5 w-3.5" />
+                                  <span>{n.name}</span>
+                                </button>
+                              );
+                            })}
+                          {availableNeighborhoods.filter(n => n.name.toLowerCase().includes(neighborhoodSearch.toLowerCase())).length === 0 && (
+                            <div className="p-3 text-center text-xs text-violet-400">Nenhum bairro encontrado.</div>
+                          )}
                         </div>
-                        <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(rule._idx)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="px-3 py-1.5 border-t border-violet-100 bg-violet-50/30 text-[10px] text-violet-500">
+                          {availableNeighborhoods.length} bairros encontrados
+                        </div>
                       </div>
-                    ))}
-                    {neighborhoodRules.length === 0 && (
-                      <div className="text-center py-3 text-xs text-violet-400 border-2 border-dashed border-violet-200 rounded-lg bg-white/50">
-                        Nenhum bairro cadastrado.
+
+                      {/* LADO DIREITO: Bairros selecionados com taxa */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-violet-800 flex items-center gap-1.5 mb-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Selecionados ({neighborhoodRules.length})
+                        </div>
+                        <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                          {neighborhoodRules.map((rule) => (
+                            <div key={rule._idx} className="flex items-center gap-2 bg-white p-2 rounded border border-violet-100 shadow-sm">
+                              <span className="flex-1 text-xs font-medium text-violet-900 truncate" title={rule.keyword}>{rule.keyword}</span>
+                              <div className="w-24 shrink-0">
+                                <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(rule._idx, 'fee', val)} />
+                              </div>
+                              <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 h-7 w-7 shrink-0" onClick={() => removeCustomRule(rule._idx)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          {neighborhoodRules.length === 0 && (
+                            <div className="text-center py-4 text-xs text-violet-400 border-2 border-dashed border-violet-200 rounded-lg bg-white/50">
+                              Selecione bairros na lista ao lado.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Adicionar bairro manual (caso não apareça na lista) */}
+                  {availableNeighborhoods.length > 0 && (
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-violet-100">
+                      <span className="text-[10px] text-violet-500">Bairro não apareceu?</span>
+                      <Button onClick={() => addCustomRule('neighborhood')} type="button" size="sm" variant="ghost" className="h-6 text-[10px] text-violet-600 hover:text-violet-800 px-2">
+                        <Plus className="w-3 h-3 mr-1" /> Adicionar manualmente
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Bairros adicionados manualmente (sem estar na lista) */}
+                  {neighborhoodRules.filter(r => r.keyword === '').length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      {neighborhoodRules.filter(r => r.keyword === '').map((rule) => (
+                        <div key={rule._idx} className="flex items-center gap-3 bg-white p-2 rounded border border-violet-50 shadow-sm">
+                          <div className="flex-[2]">
+                            <Label className="text-xs text-violet-800">Bairro</Label>
+                            <AddressAutocomplete
+                              value={rule.keyword}
+                              onChange={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                              onSelect={(val) => updateCustomRule(rule._idx, 'keyword', val)}
+                              placeholder="Digite o nome do bairro..."
+                              className="h-8 text-sm"
+                              types="sublocality"
+                              locationContext={formData.deliveryCities.join(', ')}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Label className="text-xs text-violet-800">Taxa (R$)</Label>
+                            <CurrencyInput value={rule.fee} onChange={(val) => updateCustomRule(rule._idx, 'fee', val)} />
+                          </div>
+                          <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-600 mt-5 h-8 w-8" onClick={() => removeCustomRule(rule._idx)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Taxas Personalizadas por Rua/Endereço */}

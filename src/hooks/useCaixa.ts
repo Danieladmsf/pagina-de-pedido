@@ -16,8 +16,31 @@ export interface Caixa {
   totalFechamento?: number;
   fechamentoDetalhes?: {
     taxaGarcom: number;
-    motoboys: Array<{ name: string; entregas: number; taxa: number; total: number }>;
-    freelancers: Array<{ name: string; tipo: string; diaria: number; comissao: number; entregas: number; total: number }>;
+    motoboys: Array<{
+      id?: string;
+      name: string;
+      entregas: number;
+      taxa: number;
+      total: number;
+      jaPago?: number;
+      saldo?: number;
+      valorPago?: number;
+      saldoRestante?: number;
+      incluidoNoFechamento?: boolean;
+    }>;
+    freelancers: Array<{
+      name: string;
+      tipo: string;
+      diaria: number;
+      comissao: number;
+      entregas: number;
+      total: number;
+      jaPago?: number;
+      saldo?: number;
+      valorPago?: number;
+      saldoRestante?: number;
+      incluidoNoFechamento?: boolean;
+    }>;
     dinheiroApurado: number;
     diferencaCaixa: number;
     justificativaFalta: string;
@@ -150,8 +173,31 @@ export function useCaixa() {
 
   const fecharCaixa = useCallback(async (params?: { 
     taxaGarcom?: number; 
-    detalhesMotoboys?: Array<{ name: string; entregas: number; taxa: number; total: number }>;
-    detalhesFreelancers?: Array<{ name: string; tipo: string; diaria: number; comissao: number; entregas: number; total: number }>;
+    detalhesMotoboys?: Array<{
+      id?: string;
+      name: string;
+      entregas: number;
+      taxa: number;
+      total: number;
+      jaPago?: number;
+      saldo?: number;
+      valorPago?: number;
+      saldoRestante?: number;
+      incluidoNoFechamento?: boolean;
+    }>;
+    detalhesFreelancers?: Array<{
+      name: string;
+      tipo: string;
+      diaria: number;
+      comissao: number;
+      entregas: number;
+      total: number;
+      jaPago?: number;
+      saldo?: number;
+      valorPago?: number;
+      saldoRestante?: number;
+      incluidoNoFechamento?: boolean;
+    }>;
     dinheiroApurado?: number;
     diferencaCaixa?: number;
     justificativaFalta?: string;
@@ -194,16 +240,19 @@ export function useCaixa() {
     // Registrar sangria para cada Motoboy
     if (params?.detalhesMotoboys) {
       for (const m of params.detalhesMotoboys) {
-        if (m.total > 0) {
+        const valorPago = m.valorPago ?? m.total;
+        if (valorPago > 0) {
           await addDoc(collection(db, 'cash_transactions'), {
             caixaId: caixaAberto.id,
             ownerId: user!.uid,
             tipo: 'sangria',
             titulo: `Motoboy: ${m.name} (${m.entregas} entregas)`,
-            valor: m.total * -1,
+            valor: valorPago * -1,
             formaPagamento: '--',
             data: serverTimestamp(),
             usuario: user?.displayName || user?.email || 'Principal',
+            ...(m.id && { destinatarioId: m.id }),
+            destinatarioTipo: 'motoboy',
           });
         }
       }
@@ -212,16 +261,19 @@ export function useCaixa() {
     // Registrar sangria para cada Freelancer
     if (params?.detalhesFreelancers) {
       for (const f of params.detalhesFreelancers) {
-        if (f.total > 0) {
+        const valorPago = f.valorPago ?? f.total;
+        if (valorPago > 0) {
           await addDoc(collection(db, 'cash_transactions'), {
             caixaId: caixaAberto.id,
             ownerId: user!.uid,
             tipo: 'sangria',
             titulo: `Freelancer: ${f.name} (${f.tipo})`,
-            valor: f.total * -1,
+            valor: valorPago * -1,
             formaPagamento: '--',
             data: serverTimestamp(),
             usuario: user?.displayName || user?.email || 'Principal',
+            destinatarioId: f.name,
+            destinatarioTipo: 'freelancer',
           });
         }
       }
@@ -229,8 +281,8 @@ export function useCaixa() {
 
     // Recalcular totais com as novas sangrias
     const totalDeducoes = (params?.taxaGarcom || 0) 
-      + (params?.detalhesMotoboys?.reduce((s, m) => s + m.total, 0) || 0) 
-      + (params?.detalhesFreelancers?.reduce((s, f) => s + f.total, 0) || 0);
+      + (params?.detalhesMotoboys?.reduce((s, m) => s + (m.valorPago ?? m.total), 0) || 0) 
+      + (params?.detalhesFreelancers?.reduce((s, f) => s + (f.valorPago ?? f.total), 0) || 0);
 
     // O dinheiro real físico na gaveta é apenas Vendas em Dinheiro, Suprimentos, menos Sangrias e Deduções.
     const dinheiroEmCaixa = saldoIni + totalVendasDinheiro + totalSuprimentos - totalSangrias - totalDeducoes;

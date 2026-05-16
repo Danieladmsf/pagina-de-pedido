@@ -20,9 +20,10 @@ interface CurrencyInputProps {
   className?: string;
   required?: boolean;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export function CurrencyInput({ value, defaultValue, onChange, id, name, className, required, placeholder }: CurrencyInputProps) {
+export function CurrencyInput({ value, defaultValue, onChange, id, name, className, required, placeholder, disabled }: CurrencyInputProps) {
   const [display, setDisplay] = useState(() => {
     const initial = value ?? defaultValue ?? 0;
     return formatBRL(Math.round(initial * 100));
@@ -52,6 +53,7 @@ export function CurrencyInput({ value, defaultValue, onChange, id, name, classNa
         className={className}
         required={required}
         placeholder={placeholder || '0,00'}
+        disabled={disabled}
       />
       {name && <input type="hidden" name={name} value={(toCents(display) / 100).toFixed(2)} />}
     </>
