@@ -410,7 +410,6 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
             </div>
           </div>
         </div>
-        </div>
       </div>
 
       <div className="space-y-4 pt-4 border-t">
