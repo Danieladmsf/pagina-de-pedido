@@ -781,7 +781,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       <p class="sep">${sep}</p>
 
       <div class="section">
-        <p class="title">Resumo de Vendas</p>
+        <p class="title">RESUMO DE VENDAS</p>
         <div class="row"><span>Dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
         <div class="row"><span>Pix</span><span>R$ ${totais.totalPix.toFixed(2)}</span></div>
         <div class="row"><span>Débito</span><span>R$ ${totais.totalDebito.toFixed(2)}</span></div>
@@ -791,11 +791,12 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       <p class="sep">${sep}</p>
 
       <div class="section">
-        <div class="row"><span>Saldo Inicial</span><span>R$ ${Math.abs(totais.saldoInicial).toFixed(2)}</span></div>
-        <div class="row"><span>Vendas em dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
-        <div class="row"><span>Sangrias em dinheiro</span><span>R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
-        <div class="row"><span>Suprimentos em dinheiro</span><span>R$ ${totais.totalSuprimentoDinheiro.toFixed(2)}</span></div>
-        <div class="row bold"><span>Valor em Caixa</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
+        <p class="title">APURAÇÃO DE DINHEIRO (GAVETA)</p>
+        <div class="row"><span>Saldo Inicial (Troco)</span><span>R$ ${Math.abs(totais.saldoInicial).toFixed(2)}</span></div>
+        <div class="row"><span>(+) Vendas em dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
+        <div class="row"><span>(+) Suprimentos (Entrada)</span><span>R$ ${Math.abs(totais.totalSuprimentoDinheiro).toFixed(2)}</span></div>
+        <div class="row"><span>(-) Sangrias (Retirada)</span><span style="color: #000;">R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
+        <div class="row bold" style="margin-top: 4px;"><span>(=) Parcial na Gaveta</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
       </div>
 
       <p class="sep">${sep}</p>
@@ -804,7 +805,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
       ${taxaGarcomCalculada > 0 ? `
       <div class="section">
-        <p class="title">Taxa Garçom / Serviço</p>
+        <p class="title">TAXA DE SERVIÇO</p>
         <div class="row"><span>Taxa: ${feeLabel} · ${pedidosDaSessao.length} ped.</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>
       </div>
       <p class="sep">${sep}</p>
@@ -814,12 +815,12 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       ${freelancerBlock}
 
       <div class="resumo">
-        <p class="title">Resumo Final</p>
-        <div class="row"><span>Valor em Caixa</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
-        ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(−) Taxa Garçom</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
-        ${totalMotoboys > 0 ? `<div class="row"><span>(−) Motoboys</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
-        ${totalFreelancersCalc > 0 ? `<div class="row"><span>(−) Freelancers</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
-        <div class="row total-final"><span>Valor Esperado</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
+        <p class="title">FECHAMENTO (VALOR ESPERADO)</p>
+        <div class="row"><span>Parcial na Gaveta</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
+        ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(-) Taxa Garçom</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
+        ${totalMotoboys > 0 ? `<div class="row"><span>(-) Motoboys (Pagos Agora)</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
+        ${totalFreelancersCalc > 0 ? `<div class="row"><span>(-) Freelancers (Pagos Agora)</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
+        <div class="row total-final" style="margin-top: 6px; font-size: 14px;"><span>(=) VALOR ESPERADO</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
       </div>
 
       ${isFechado && caixaAtual?.fechamentoDetalhes?.dinheiroApurado !== undefined ? `
