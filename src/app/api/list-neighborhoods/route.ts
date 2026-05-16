@@ -2,16 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// Prefixos de logradouros brasileiros para cobrir todas as ruas
-const STREET_PREFIXES = ['rua', 'avenida', 'travessa', 'alameda', 'praça', 'rodovia', 'estrada', 'largo'];
-
 /**
  * Busca TODOS os bairros de uma cidade usando ViaCEP (Correios).
- * Estratégia: busca ruas por prefixo → extrai bairros únicos.
+ * 
+ * Estratégia: busca ruas usando múltiplos termos de busca (tipo logradouro +
+ * nomes comuns) para cobrir o máximo de ruas possível, depois extrai os
+ * bairros únicos do campo "bairro" retornado pelos Correios.
  * 
  * 100% gratuito, sem API key, fonte oficial dos Correios.
- * NÃO interfere com Google Maps (cálculos de distância).
+ * NÃO interfere com Google Maps (cálculos de distância continuam no Maps).
  */
+
+// Termos de busca que cobrem a maioria das ruas brasileiras
+// ViaCEP exige mínimo 3 caracteres no logradouro
+const SEARCH_TERMS = [
+  // Tipos de logradouro (cobrem a maioria)
+  'rua', 'avenida', 'travessa', 'alameda', 'praça', 'rodovia', 'estrada', 'largo',
+  'viela', 'beco', 'passagem',
+  // Nomes muito comuns em ruas brasileiras
+  'são', 'santo', 'santa', 'pedro', 'josé', 'maria', 'ana', 'carlos',
+  'silva', 'santos', 'oliveira', 'souza', 'lima', 'costa',
+  // Palavras comuns em logradouros
+  'brasil', 'flores', 'independ', 'liberdade', 'primavera',
+  'nova', 'velha', 'alto', 'jardim', 'parque', 'vila',
+  // Números escritos (aparecem em muitas ruas)
+  'primeiro', 'maio', 'setembro', 'novembro',
+];
+
 export async function GET(req: NextRequest) {
   try {
     const city = req.nextUrl.searchParams.get('city')?.trim();
@@ -22,51 +39,29 @@ export async function GET(req: NextRequest) {
     // Extrair cidade e UF
     const parts = city.split(',').map(p => p.trim());
     const cityName = parts[0];
-    // Tentar extrair UF (ex: "Cravinhos, SP" → "SP")
-    let uf = parts[1] || '';
-    
-    // Se a UF veio como nome completo do estado ou contém mais info, extrair sigla
-    uf = uf.replace(/brasil/i, '').trim();
-    if (uf.length > 2) {
-      // Tentar extrair sigla de 2 letras
-      const match = uf.match(/\b([A-Z]{2})\b/i);
-      if (match) uf = match[1].toUpperCase();
-      else uf = mapStateToUF(uf);
-    }
-    uf = uf.toUpperCase();
-    
-    if (!uf || uf.length !== 2) {
-      // Se não encontrou UF, tentar com SP como padrão (pode ajustar)
-      uf = 'SP';
-    }
+    let uf = extractUF(parts[1] || '');
+    if (!uf) uf = 'SP'; // fallback
 
     const allBairros = new Set<string>();
 
-    // Buscar com cada prefixo de logradouro
-    const fetchPromises = STREET_PREFIXES.map(async (prefix) => {
-      try {
-        const url = `https://viacep.com.br/ws/${encodeURIComponent(uf)}/${encodeURIComponent(cityName)}/${encodeURIComponent(prefix)}/json/`;
-        const res = await fetch(url, { 
-          signal: AbortSignal.timeout(10000),
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            for (const item of data) {
-              if (item.bairro && item.bairro.trim()) {
-                allBairros.add(item.bairro.trim());
-              }
+    // Buscar em paralelo com todos os termos (máximo 6 por vez para não sobrecarregar)
+    const batchSize = 6;
+    for (let i = 0; i < SEARCH_TERMS.length; i += batchSize) {
+      const batch = SEARCH_TERMS.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(term => fetchViaCEP(uf, cityName, term))
+      );
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          for (const item of result.value) {
+            if (item.bairro && item.bairro.trim()) {
+              allBairros.add(item.bairro.trim());
             }
           }
         }
-      } catch {
-        // Skip failed prefix silently
       }
-    });
-
-    await Promise.all(fetchPromises);
+    }
 
     // Converter Set para array ordenado
     const neighborhoods = Array.from(allBairros)
@@ -79,7 +74,7 @@ export async function GET(req: NextRequest) {
       uf,
       total: neighborhoods.length,
       source: 'ViaCEP (Correios)',
-    }, { headers: { 'Cache-Control': 'public, max-age=86400' } }); // Cache 24h
+    }, { headers: { 'Cache-Control': 'public, max-age=86400' } });
   } catch (err: any) {
     return NextResponse.json({ 
       error: err.message || 'Erro ao buscar bairros',
@@ -88,7 +83,29 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** Mapeia nome do estado para sigla UF */
+async function fetchViaCEP(uf: string, city: string, term: string): Promise<any[]> {
+  try {
+    const url = `https://viacep.com.br/ws/${encodeURIComponent(uf)}/${encodeURIComponent(city)}/${encodeURIComponent(term)}/json/`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function extractUF(raw: string): string {
+  let cleaned = raw.replace(/brasil/i, '').trim();
+  if (cleaned.length === 2) return cleaned.toUpperCase();
+  const match = cleaned.match(/\b([A-Z]{2})\b/i);
+  if (match) return match[1].toUpperCase();
+  return mapStateToUF(cleaned);
+}
+
 function mapStateToUF(state: string): string {
   const map: Record<string, string> = {
     'são paulo': 'SP', 'sao paulo': 'SP',
