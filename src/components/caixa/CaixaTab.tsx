@@ -683,7 +683,15 @@ export function CaixaTab({
       const detalhesFreelancers = freelancersFechamento.map(({ paymentKey, ...f }) => f);
 
       const valorLiquidoCaixaFisico = valorEsperadoFechamento;
-      const numApurado = dinheiroApurado !== '' ? Number(dinheiroApurado) : valorLiquidoCaixaFisico;
+
+      // Obrigar o preenchimento do valor apurado fisicamente
+      if (dinheiroApurado === '') {
+        toast({ variant: 'destructive', title: '⚠️ Apuração obrigatória', description: 'Informe o valor de dinheiro contado fisicamente na gaveta antes de fechar o caixa.' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const numApurado = Number(dinheiroApurado);
       const diferencaCaixa = numApurado - valorLiquidoCaixaFisico;
 
       if (diferencaCaixa < 0 && !justificativaFalta.trim()) {
