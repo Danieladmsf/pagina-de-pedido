@@ -348,6 +348,7 @@ export function sendWapiTextMessage(
       message: input.message,
       ...(input.messageId ? { messageId: input.messageId } : {}),
       delayMessage: input.delayMessage ?? 3,
+      linkPreview: true,
     },
   });
 }
