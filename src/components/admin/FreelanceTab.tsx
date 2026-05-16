@@ -27,15 +27,30 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
   const motoboysSessao = useMemo(() => {
     const motoboys = storeProfile?.motoboys || [];
     const map: Record<string, any> = {};
+
+    // Inicializa todos os motoboys cadastrados
+    motoboys.forEach((mb: any) => {
+      map[mb.id] = {
+        id: mb.id,
+        name: mb.name,
+        entregas: 0,
+        taxa: Number(mb.fee || 0), // Diária Fixa
+        somaFretes: 0,
+        total: 0,
+        jaPago: 0,
+        saldo: 0
+      };
+    });
+
+    // Soma entregas da sessão
     pedidosDaSessao.forEach((o: any) => {
       if (!o.motoboyId) return;
-      const mb = motoboys.find((m: any) => m.id === o.motoboyId);
       if (!map[o.motoboyId]) {
         map[o.motoboyId] = { 
           id: o.motoboyId,
-          name: mb?.name || 'Desconhecido', 
+          name: 'Desconhecido', 
           entregas: 0, 
-          taxa: Number(mb?.fee || 0), // Diária Fixa
+          taxa: 0,
           somaFretes: 0,
           total: 0,
           jaPago: 0,
@@ -43,14 +58,21 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
         };
       }
       map[o.motoboyId].entregas++;
-      map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0); // Soma os fretes cobrados dos clientes
+      map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0);
     });
     
     return Object.values(map).map(m => {
-      m.total = m.taxa + m.somaFretes; // Total = Diária + Fretes
+      // Se ele teve 0 entregas, ele não ganha diária fixa?
+      // Pela lógica comum, a diária (taxa) só é paga se ele trabalhou (teve entregas) ou se é fixa mesmo.
+      // Vamos assumir que se ele tem entregas > 0, ele ganha a taxa. Se for 0 entregas, ele ganha 0 de taxa.
+      const taxaAplicada = m.entregas > 0 ? m.taxa : 0;
+      
+      m.total = taxaAplicada + m.somaFretes;
+      
       const adiantamentos = lancamentos
         .filter(l => l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId === m.id)
         .reduce((s, l) => s + Math.abs(l.valor), 0);
+      
       m.jaPago = adiantamentos;
       m.saldo = Math.max(0, m.total - m.jaPago);
       return m;
