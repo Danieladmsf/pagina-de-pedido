@@ -118,7 +118,8 @@ export async function generateMetadata({ params }: { params: Promise<{ storeSlug
   const description = profile?.general?.description || `Peça online no ${storeName}`;
   const bannerUrl = profile?.general?.bannerDesktopUrl || profile?.general?.bannerMobileUrl || profile?.general?.bannerImageUrl || '';
   const logoUrl = profile?.general?.logoUrl || '';
-  const ogImage = bannerUrl || logoUrl || '';
+  const ogImageUrl = profile?.general?.ogImageUrl || '';
+  const ogImage = ogImageUrl || bannerUrl || logoUrl || '';
 
   return {
     title: `${storeName} | Cardápio Digital`,

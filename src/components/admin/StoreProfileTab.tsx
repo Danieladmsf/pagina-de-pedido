@@ -42,6 +42,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     addressNumber: '',
     addressComplement: '',
     logoUrl: '',
+    ogImageUrl: '',
     deliveryCities: [] as string[],
     cityInput: '', // temporário
     deliveryFee: 0,
@@ -56,6 +57,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const ogImageInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingOgImage, setIsUploadingOgImage] = useState(false);
 
   const [workingHours, setWorkingHours] = useState(
     DAYS_OF_WEEK.map(day => ({ day, open: '09:00', close: '16:00', isClosed: false }))
@@ -154,6 +157,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           addressNumber: formData.addressNumber,
           addressComplement: formData.addressComplement,
           logoUrl: formData.logoUrl,
+          ogImageUrl: formData.ogImageUrl,
           enableInventory: formData.enableInventory,
         },
         fees: {
@@ -428,6 +432,64 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     )}
                   </div>
                 </div>
+
+                <div className="mt-8 border-t pt-6">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-slate-800">Imagem para Links (WhatsApp/Redes Sociais)</h3>
+                    <p className="text-xs text-slate-500">Imagem exibida ao compartilhar o link do cardápio. Para aparecer no WhatsApp, a imagem precisa ter <b>menos de 300KB</b>.</p>
+                  </div>
+                  <div className="flex flex-col md:flex-row items-start gap-6">
+                    <div className="relative group shrink-0">
+                      {formData.ogImageUrl ? (
+                        <div className="relative">
+                          <img src={formData.ogImageUrl} alt="OG Image" className="w-48 h-28 rounded-xl object-cover ring-2 ring-emerald-500/30 shadow-md" />
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, ogImageUrl: '' })}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => ogImageInputRef.current?.click()}
+                          disabled={isUploadingOgImage}
+                          className="w-48 h-28 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer bg-slate-50/50"
+                        >
+                          {isUploadingOgImage ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
+                          <span className="text-[11px] font-semibold">{isUploadingOgImage ? 'Enviando...' : 'Enviar miniatura'}</span>
+                        </button>
+                      )}
+                      <input
+                        ref={ogImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 300 * 1024) {
+                            toast({ variant: 'destructive', title: 'Aviso de Tamanho', description: 'O WhatsApp pode ignorar imagens maiores que 300KB. Recomendamos usar uma imagem menor.' });
+                          }
+                          setIsUploadingOgImage(true);
+                          try {
+                            const url = await uploadImage(file);
+                            setFormData(prev => ({ ...prev, ogImageUrl: url }));
+                            toast({ title: 'Imagem enviada com sucesso!' });
+                          } catch (err: any) {
+                            toast({ variant: 'destructive', title: 'Erro ao enviar imagem', description: err.message });
+                          } finally {
+                            setIsUploadingOgImage(false);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </section>
 
