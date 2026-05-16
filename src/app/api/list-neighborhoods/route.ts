@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       uf,
       total: neighborhoods.length,
       source: 'ViaCEP (Correios)',
-    }, { headers: { 'Cache-Control': 'public, max-age=86400' } });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err: any) {
     return NextResponse.json({ 
       error: err.message || 'Erro ao buscar bairros',
