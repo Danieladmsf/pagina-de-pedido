@@ -796,10 +796,17 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         <div class="row"><span>(+) Vendas em dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
         <div class="row"><span>(+) Suprimentos (Entrada)</span><span>R$ ${Math.abs(totais.totalSuprimentoDinheiro).toFixed(2)}</span></div>
         <div class="row"><span>(-) Sangrias (Retirada)</span><span style="color: #000;">R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
-        <div class="row bold" style="margin-top: 4px;"><span>(=) Parcial na Gaveta</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
+        ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(-) Taxa Garçom (Paga agora)</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
+        ${totalMotoboys > 0 ? `<div class="row"><span>(-) Motoboys (Pagos agora)</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
+        ${totalFreelancersCalc > 0 ? `<div class="row"><span>(-) Freelancers (Pagos agora)</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
+        <div class="row total-final" style="margin-top: 6px; font-size: 14px;"><span>(=) VALOR ESPERADO</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
       </div>
 
       <p class="sep">${sep}</p>
+
+      ${(sangriasDinheiroBlock || motoboyBlock || freelancerBlock) ? `
+      <p style="text-align:center;font-weight:bold;font-size:10px;margin:8px 0 4px 0;">--- EXTRATOS DETALHADOS ---</p>
+      ` : ''}
 
       ${sangriasDinheiroBlock}
 
@@ -814,25 +821,16 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       ${motoboyBlock}
       ${freelancerBlock}
 
-      <div class="resumo">
-        <p class="title">FECHAMENTO (VALOR ESPERADO)</p>
-        <div class="row"><span>Parcial na Gaveta</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
-        ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(-) Taxa Garçom</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
-        ${totalMotoboys > 0 ? `<div class="row"><span>(-) Motoboys (Pagos Agora)</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
-        ${totalFreelancersCalc > 0 ? `<div class="row"><span>(-) Freelancers (Pagos Agora)</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
-        <div class="row total-final" style="margin-top: 6px; font-size: 14px;"><span>(=) VALOR ESPERADO</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
-      </div>
-
       ${isFechado && caixaAtual?.fechamentoDetalhes?.dinheiroApurado !== undefined ? `
       <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
-        <div class="row"><span>Apurado na Gaveta</span><span>R$ ${caixaAtual.fechamentoDetalhes.dinheiroApurado.toFixed(2)}</span></div>
+        <div class="row"><span>Apurado na Gaveta Fisicamente</span><span>R$ ${caixaAtual.fechamentoDetalhes.dinheiroApurado.toFixed(2)}</span></div>
         ${caixaAtual.fechamentoDetalhes.diferencaCaixa !== 0 ? `
           <div class="row bold"><span>Diferença (${caixaAtual.fechamentoDetalhes.diferencaCaixa > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${caixaAtual.fechamentoDetalhes.diferencaCaixa.toFixed(2)}</span></div>
         ` : ''}
       </div>
       ` : (!isFechado && dinheiroApurado !== '' ? `
       <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
-        <div class="row"><span>Apurado na Gaveta</span><span>R$ ${Number(dinheiroApurado).toFixed(2)}</span></div>
+        <div class="row"><span>Apurado na Gaveta Fisicamente</span><span>R$ ${Number(dinheiroApurado).toFixed(2)}</span></div>
         ${Number(dinheiroApurado) - valorLiquido !== 0 ? `
           <div class="row bold"><span>Diferença (${Number(dinheiroApurado) - valorLiquido > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${(Number(dinheiroApurado) - valorLiquido).toFixed(2)}</span></div>
         ` : ''}
