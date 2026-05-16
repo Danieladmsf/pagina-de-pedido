@@ -1529,97 +1529,59 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-bold text-sm text-blue-700">Pagamentos incluídos neste fechamento</h3>
-                    <span className="text-sm font-black text-blue-700">
-                      Total: R$ {(totalMotoboysFechamento + totalFreelancersFechamento).toFixed(2)}
-                    </span>
-                  </div>
-
-                  {motoboysPagosFechamento.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold uppercase text-blue-700">Motoboys</div>
-                      <div className="divide-y rounded-md border bg-white">
-                        {motoboysPagosFechamento.map(m => (
-                          <div key={m.id} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                            <span className="font-medium text-slate-700">{m.name}</span>
-                            <span>Devido: <strong>R$ {m.saldo.toFixed(2)}</strong></span>
-                            <span className="text-blue-700">Pago agora: <strong>R$ {m.valorPago.toFixed(2)}</strong></span>
-                            <span className={m.saldoRestante > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                              Saldo depois: <strong>R$ {m.saldoRestante.toFixed(2)}</strong>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {freelancersPagosFechamento.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold uppercase text-purple-700">Freelancers / Extras</div>
-                      <div className="divide-y rounded-md border bg-white">
-                        {freelancersPagosFechamento.map(f => (
-                          <div key={f.paymentKey} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                            <span className="font-medium text-slate-700">{f.name}</span>
-                            <span>Devido: <strong>R$ {f.saldo.toFixed(2)}</strong></span>
-                            <span className="text-purple-700">Pago agora: <strong>R$ {f.valorPago.toFixed(2)}</strong></span>
-                            <span className={f.saldoRestante > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                              Saldo depois: <strong>R$ {f.saldoRestante.toFixed(2)}</strong>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {motoboysPagosFechamento.length === 0 && freelancersPagosFechamento.length === 0 && (
-                    <p className="text-sm text-muted-foreground">Nenhum pagamento selecionado para este fechamento.</p>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 space-y-3">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="font-bold text-sm text-rose-700">Sangrias em dinheiro descontadas</h3>
-                    <span className="text-sm font-black text-rose-700">
-                      Total: R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="grid gap-2 rounded-md border bg-white p-3 text-sm sm:grid-cols-4">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Saldo inicial</div>
+                <div className="rounded-lg border bg-white p-4">
+                  <h3 className="font-bold text-sm text-slate-700">Composição e abatimentos do caixa</h3>
+                  <div className="mt-3 divide-y text-sm">
+                    <div className="flex items-center justify-between py-2">
+                      <span>Saldo inicial</span>
                       <strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong>
                     </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Vendas em dinheiro</div>
+                    <div className="flex items-center justify-between py-2">
+                      <span>Vendas em dinheiro</span>
                       <strong className="text-emerald-700">R$ {totais.totalDinheiro.toFixed(2)}</strong>
                     </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Sangrias em dinheiro</div>
-                      <strong className="text-rose-700">-R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</strong>
+
+                    {sangriasDinheiro.length > 0 ? (
+                      sangriasDinheiro.map((lanc, index) => (
+                        <div key={lanc.id || index} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                          <span className="text-xs text-muted-foreground">{lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}</span>
+                          <span>{lanc.titulo}</span>
+                          <strong className="text-rose-700">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</strong>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex items-center justify-between py-2 text-muted-foreground">
+                        <span>Sangrias em dinheiro</span>
+                        <span>R$ 0.00</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between py-2 font-semibold">
+                      <span>Valor em caixa</span>
+                      <span>R$ {totais.valorEmCaixa.toFixed(2)}</span>
                     </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Valor em caixa</div>
-                      <strong className="text-blue-700">R$ {totais.valorEmCaixa.toFixed(2)}</strong>
+
+                    {motoboysPagosFechamento.map(m => (
+                      <div key={m.id} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                        <span className="text-xs font-bold uppercase text-blue-700">Motoboy</span>
+                        <span>{m.name}</span>
+                        <strong className="text-blue-700">-R$ {m.valorPago.toFixed(2)}</strong>
+                      </div>
+                    ))}
+
+                    {freelancersPagosFechamento.map(f => (
+                      <div key={f.paymentKey} className="grid gap-1 py-2 sm:grid-cols-[150px_1fr_auto] sm:items-center">
+                        <span className="text-xs font-bold uppercase text-purple-700">Freelancer</span>
+                        <span>{f.name}</span>
+                        <strong className="text-purple-700">-R$ {f.valorPago.toFixed(2)}</strong>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center justify-between pt-3 text-base">
+                      <span className="font-bold">Valor esperado após abatimentos</span>
+                      <strong className="text-emerald-700">R$ {valorEsperadoFechamento.toFixed(2)}</strong>
                     </div>
                   </div>
-
-                  {sangriasDinheiro.length > 0 ? (
-                    <div className="divide-y rounded-md border bg-white">
-                      {sangriasDinheiro.map((lanc, index) => (
-                        <div key={lanc.id || index} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[170px_1fr_auto] sm:items-center">
-                          <span className="text-xs text-muted-foreground">
-                            {lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}
-                          </span>
-                          <span className="font-medium text-slate-700">{lanc.titulo}</span>
-                          <span className="font-bold text-rose-700">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nenhuma sangria em dinheiro registrada nesta sessão.</p>
-                  )}
                 </div>
 
                 <div className="bg-white rounded-lg p-4 border space-y-3">
