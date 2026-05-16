@@ -32,6 +32,7 @@ import {
   formatWorkingHours,
   getWhatsAppMessages,
   renderWhatsAppTemplate,
+  formatNextOpeningTime,
 } from '@/lib/whatsapp-messages';
 import type { WhatsAppMessageKey, WhatsAppMessageTemplates } from '@/lib/whatsapp-messages';
 
@@ -566,6 +567,7 @@ function MessageTemplatesSection({
     total: '34,00',
     pagamento: 'Pix',
     tempo_estimado: '\n\u23f3 Tempo estimado de entrega: 00:50',
+    proxima_abertura: formatNextOpeningTime(workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
     horarios: formatWorkingHours(workingHours),
   };
 
