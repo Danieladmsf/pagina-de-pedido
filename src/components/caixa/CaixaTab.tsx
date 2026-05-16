@@ -73,16 +73,20 @@ export function CaixaTab({
   const [modalOpen, setModalOpen] = useState<'abrir' | 'sangria' | 'suprimento' | 'venda' | null>(null);
   const [valorInput, setValorInput] = useState<number>(0);
 
+  const [ultimoSaldoRef, setUltimoSaldoRef] = useState<number | null>(null);
+
   const openAbrirCaixaModal = () => {
     const ultimoFechado = caixasOrdenados.find(c => c.status === 'fechado');
     let ultimoApurado = 0;
     if (ultimoFechado) {
-      if (ultimoFechado.fechamentoDetalhes?.dinheiroApurado !== undefined) {
-        ultimoApurado = Number(ultimoFechado.fechamentoDetalhes.dinheiroApurado);
-      } else {
+      const det = ultimoFechado.fechamentoDetalhes;
+      if (det?.dinheiroApurado !== undefined && det.dinheiroApurado !== null) {
+        ultimoApurado = Number(det.dinheiroApurado);
+      } else if (ultimoFechado.valorEmCaixa !== undefined) {
         ultimoApurado = Number(ultimoFechado.valorEmCaixa) || 0;
       }
     }
+    setUltimoSaldoRef(ultimoFechado ? ultimoApurado : null);
     setValorInput(ultimoApurado);
     setModalOpen('abrir');
   };
@@ -1197,7 +1201,11 @@ export function CaixaTab({
                'Nova Venda Manual'}
             </DialogTitle>
             <DialogDescription>
-              {modalOpen === 'abrir' ? 'Informe o valor em dinheiro na gaveta.' :
+              {modalOpen === 'abrir' ? (
+                ultimoSaldoRef !== null
+                  ? `Valor pré-preenchido com o último caixa apurado: R$ ${ultimoSaldoRef.toFixed(2)}. Ajuste se necessário.`
+                  : 'Informe o valor em dinheiro na gaveta.'
+              ) :
                modalOpen === 'sangria' ? 'Registre uma retirada do caixa.' :
                modalOpen === 'suprimento' ? 'Registre uma entrada extra no caixa.' :
                'Registre uma venda manualmente.'}
