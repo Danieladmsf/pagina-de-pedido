@@ -645,7 +645,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <CustomerAccountButton />
+            <CustomerAccountButton storeId={storeId} />
             <button
               onClick={() => setShowStoreInfo(true)}
               className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur shadow-md border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all"
@@ -780,7 +780,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             </div>
           </div>
         </div>
-      <ActiveOrdersBanner />
+      <ActiveOrdersBanner storeId={storeId} />
       <div className="max-w-7xl mx-auto w-full overflow-x-hidden px-3 pt-5 md:px-8 md:pt-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
         {filteredItems.map((item) => {

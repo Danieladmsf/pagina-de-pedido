@@ -92,8 +92,9 @@ export default function MyOrdersPage() {
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneSearched, setPhoneSearched] = useState(false);
+  const [storeId, setStoreId] = useState<string | null>(null);
 
-  // Carrega o telefone salvo no localStorage
+  // Carrega o telefone e storeId salvo no localStorage / URL
   useEffect(() => {
     try {
       const saved = localStorage.getItem('customer_phone');
@@ -102,16 +103,30 @@ export default function MyOrdersPage() {
         setPhoneInput(saved);
         setPhoneSearched(true);
       }
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const sId = urlParams.get('storeId');
+      if (sId) {
+        setStoreId(sId);
+        localStorage.setItem('last_store_id', sId);
+      } else {
+        const lastStore = localStorage.getItem('last_store_id');
+        if (lastStore) setStoreId(lastStore);
+      }
     } catch {}
   }, []);
 
-  // Buscar pedidos pelo telefone
+  // Buscar pedidos pelo telefone e ownerId (storeId)
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !customerPhone) return null;
+    if (!db || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
-  }, [db, customerPhone]);
+    return query(
+      collection(db, 'orders'), 
+      where('ownerId', '==', storeId), 
+      where('customerIdentifier', 'in', possiblePhones)
+    );
+  }, [db, customerPhone, storeId]);
 
   const profileRef = useMemoFirebase(() => {
     if (!db || !user) return null;
