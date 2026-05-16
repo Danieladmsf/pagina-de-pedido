@@ -76,6 +76,15 @@ export async function POST(req: NextRequest) {
       const sortedAddr = [...addrRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
       for (const rule of sortedAddr) {
         if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+          // Se a regra exigir um número específico, verifica se o endereço do cliente contém esse número
+          if (rule.addressNumber && rule.addressNumber.trim() !== '') {
+            const numStr = rule.addressNumber.trim();
+            // Verifica com regex de limite de palavra (word boundary) para não dar falso positivo (ex: '1' dentro de '123')
+            const regex = new RegExp(`\\b${numStr}\\b`, 'i');
+            if (!regex.test(customerAddrLower)) {
+              continue; // Ignora esta regra se o número não bater, passa para a próxima
+            }
+          }
           calculatedFee = rule.fee;
           customMatched = true;
           break;
