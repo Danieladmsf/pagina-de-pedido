@@ -758,7 +758,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
           <tbody>
             ${sangriasDinheiro.map(l => `
               <tr>
-                <td>${l.data?.toDate?.().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '-'}</td>
+                <td>${l.data?.toDate?.().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) || '-'}</td>
                 <td>${l.titulo}</td>
                 <td class="r">R$ ${Math.abs(l.valor || 0).toFixed(2)}</td>
               </tr>
