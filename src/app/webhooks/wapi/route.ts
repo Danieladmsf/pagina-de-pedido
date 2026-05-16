@@ -288,9 +288,21 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
   const phone = normalizePhone(rawPhone);
   if (phone.length < 10 || phone.length > 15) return null;
 
+  const timestamp = Number(
+    firstString(
+      payload?.messageTimestamp,
+      payload?.timestamp,
+      payload?.t,
+      data?.messageTimestamp,
+      data?.timestamp,
+      data?.t
+    ) || 0
+  );
+
   return {
     phone,
     text,
+    timestamp,
   };
 }
 
@@ -374,6 +386,17 @@ async function maybeSendAutoReply(params: {
 }) {
   const incoming = extractIncomingMessage(params.payload, params.event, params.hook);
   if (!incoming?.phone) return false;
+
+  // Proteção contra sincronização de histórico: 
+  // Se a mensagem for mais velha que 5 minutos, ignorar para não responder mensagens antigas.
+  if (incoming.timestamp) {
+    const msgTimeMs = incoming.timestamp > 9999999999 ? incoming.timestamp : incoming.timestamp * 1000;
+    const nowMs = Date.now();
+    if (nowMs - msgTimeMs > 5 * 60 * 1000) {
+      console.log('[W-API webhook] Ignorando mensagem antiga (sincronização de histórico):', { phone: incoming.phone, ageMs: nowMs - msgTimeMs });
+      return false;
+    }
+  }
 
   const adminSnap = await params.adminRef.get();
   const integration = adminSnap.data()?.whatsappIntegration;
