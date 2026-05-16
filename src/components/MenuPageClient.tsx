@@ -414,10 +414,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         if (closestId) {
           setActiveCategoryId(prev => {
             if (prev !== closestId) {
-              // Auto-scroll the category tab into view
+              // Auto-scroll the category tab into view horizontally
               const tabEl = document.querySelector(`[data-cat-tab="${closestId}"]`) as HTMLElement;
-              if (tabEl && categoryScrollRef.current) {
-                tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+              const container = categoryScrollRef.current;
+              if (tabEl && container) {
+                const scrollLeft = tabEl.offsetLeft - (container.clientWidth / 2) + (tabEl.clientWidth / 2);
+                container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
               }
               return closestId!;
             }
@@ -510,7 +512,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-clip pb-24 relative" style={themeToCssVars(theme)}>
+    <div className="min-h-screen w-full max-w-full pb-24 relative" style={themeToCssVars(theme)}>
       {showStoreInfo && (
         <div className="min-h-screen bg-[#FAFAF7]">
           {/* Header */}
@@ -708,7 +710,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           </div>
         </div>
       )}
-      {!showStoreInfo && (<div className="w-full max-w-full overflow-x-clip">
+      {!showStoreInfo && (<div className="w-full max-w-full">
       {!isStoreOpenRightNow.isOpen && (
         <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
           {isStoreOpenRightNow.reason === 'hours_closed' 
