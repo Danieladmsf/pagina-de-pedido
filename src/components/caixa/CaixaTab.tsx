@@ -13,6 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Plus, Minus, Loader2, Calculator, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -23,6 +25,13 @@ interface FreelancerEntry {
   comissao: number;
   entregas: number;
 }
+
+interface PaymentSelection {
+  include: boolean;
+  amount: number;
+}
+
+const fechamentoSteps = ['Resumo', 'Pagamentos', 'Apuracao', 'Revisao'];
 
 export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpened }: { storeProfile?: any; orders?: any[]; autoOpenAbrirCaixa?: boolean; onModalOpened?: () => void }) {
   const {
@@ -62,6 +71,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   const [printRequested, setPrintRequested] = useState(false);
   const [dinheiroApurado, setDinheiroApurado] = useState<string>('');
   const [justificativaFalta, setJustificativaFalta] = useState<string>('');
+  const [fechamentoStep, setFechamentoStep] = useState(0);
+  const [motoboyPayments, setMotoboyPayments] = useState<Record<string, PaymentSelection>>({});
+  const [freelancerPayments, setFreelancerPayments] = useState<Record<string, PaymentSelection>>({});
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -411,6 +423,104 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     return freelancersComSaldo.reduce((s, f) => s + f.saldo, 0);
   }, [freelancersComSaldo]);
 
+  const clampPaymentAmount = (value: number, max: number) => {
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(Math.max(value, 0), max);
+  };
+
+  useEffect(() => {
+    if (!showFechamentoModal) return;
+
+    setMotoboyPayments(prev => {
+      if (Object.keys(prev).length > 0 || motoboysSessao.length === 0) return prev;
+      return Object.fromEntries(
+        motoboysSessao.map(m => [m.id, { include: m.saldo > 0, amount: m.saldo }])
+      );
+    });
+
+    setFreelancerPayments(prev => {
+      if (Object.keys(prev).length > 0 || freelancersComSaldo.length === 0) return prev;
+      return Object.fromEntries(
+        freelancersComSaldo.map((f, index) => [f.name || `freelancer-${index}`, { include: f.saldo > 0, amount: f.saldo }])
+      );
+    });
+  }, [showFechamentoModal, motoboysSessao, freelancersComSaldo]);
+
+  const motoboysFechamento = useMemo(() => {
+    return motoboysSessao.map(m => {
+      const payment = motoboyPayments[m.id];
+      const valorPago = payment?.include ? clampPaymentAmount(payment.amount, m.saldo) : 0;
+      return {
+        ...m,
+        valorPago,
+        saldoRestante: Math.max(0, m.saldo - valorPago),
+        incluidoNoFechamento: valorPago > 0,
+      };
+    });
+  }, [motoboysSessao, motoboyPayments]);
+
+  const freelancersFechamento = useMemo(() => {
+    return freelancersComSaldo.map((f, index) => {
+      const paymentKey = f.name || `freelancer-${index}`;
+      const payment = freelancerPayments[paymentKey];
+      const valorPago = payment?.include ? clampPaymentAmount(payment.amount, f.saldo) : 0;
+      return {
+        ...f,
+        paymentKey,
+        valorPago,
+        saldoRestante: Math.max(0, f.saldo - valorPago),
+        incluidoNoFechamento: valorPago > 0,
+      };
+    });
+  }, [freelancersComSaldo, freelancerPayments]);
+
+  const totalMotoboysFechamento = useMemo(() => {
+    return motoboysFechamento.reduce((s, m) => s + m.valorPago, 0);
+  }, [motoboysFechamento]);
+
+  const totalFreelancersFechamento = useMemo(() => {
+    return freelancersFechamento.reduce((s, f) => s + f.valorPago, 0);
+  }, [freelancersFechamento]);
+
+  const valorEsperadoFechamento = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboysFechamento - totalFreelancersFechamento;
+
+  const diferencaApuracao = dinheiroApurado !== '' ? Number(dinheiroApurado) - valorEsperadoFechamento : 0;
+  const apuracaoComFaltaSemJustificativa = dinheiroApurado !== '' && diferencaApuracao < 0 && !justificativaFalta.trim();
+
+  const updateMotoboyPayment = (id: string, saldo: number, next: Partial<PaymentSelection>) => {
+    setMotoboyPayments(prev => {
+      const current = prev[id] ?? { include: saldo > 0, amount: saldo };
+      const include = next.include ?? current.include;
+      const amount = next.amount !== undefined
+        ? clampPaymentAmount(next.amount, saldo)
+        : include
+          ? current.amount > 0 ? clampPaymentAmount(current.amount, saldo) : saldo
+          : 0;
+
+      return {
+        ...prev,
+        [id]: { include, amount: include ? amount : 0 },
+      };
+    });
+  };
+
+  const updateFreelancerPayment = (key: string, saldo: number, next: Partial<PaymentSelection>) => {
+    setFreelancerPayments(prev => {
+      const current = prev[key] ?? { include: saldo > 0, amount: saldo };
+      const include = next.include ?? current.include;
+      const amount = next.amount !== undefined
+        ? clampPaymentAmount(next.amount, saldo)
+        : include
+          ? current.amount > 0 ? clampPaymentAmount(current.amount, saldo) : saldo
+          : 0;
+
+      return {
+        ...prev,
+        [key]: { include, amount: include ? amount : 0 },
+      };
+    });
+  };
+
   const handleFecharCaixa = () => {
     // ─── Segurança: bloquear se houver pedidos abertos ───
     const pedidosAbertos = (orders || []).filter((o: any) =>
@@ -457,6 +567,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         setFreelancers(freelancersDoDia);
       }
     }
+    setMotoboyPayments({});
+    setFreelancerPayments({});
+    setFechamentoStep(0);
     setDinheiroApurado('');
     setJustificativaFalta('');
     setShowFechamentoModal(true);
@@ -465,12 +578,22 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   const confirmarFechamento = async () => {
     setIsSubmitting(true);
     try {
-      const detalhesFreelancers = freelancers.map(f => ({
-        ...f,
-        total: getFreelancerTotal(f),
+      const detalhesMotoboys = motoboysFechamento.map(m => ({
+        id: m.id,
+        name: m.name,
+        entregas: m.entregas,
+        taxa: m.taxa,
+        total: m.total,
+        jaPago: m.jaPago,
+        saldo: m.saldo,
+        valorPago: m.valorPago,
+        saldoRestante: m.saldoRestante,
+        incluidoNoFechamento: m.incluidoNoFechamento,
       }));
 
-      const valorLiquidoCaixaFisico = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
+      const detalhesFreelancers = freelancersFechamento.map(({ paymentKey, ...f }) => f);
+
+      const valorLiquidoCaixaFisico = valorEsperadoFechamento;
       const numApurado = dinheiroApurado !== '' ? Number(dinheiroApurado) : valorLiquidoCaixaFisico;
       const diferencaCaixa = numApurado - valorLiquidoCaixaFisico;
 
@@ -482,7 +605,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
       await fecharCaixa({
         taxaGarcom: taxaGarcomCalculada,
-        detalhesMotoboys: motoboysSessao,
+        detalhesMotoboys,
         detalhesFreelancers,
         dinheiroApurado: numApurado,
         diferencaCaixa: diferencaCaixa,
@@ -494,6 +617,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       setFreelancers([]);
       setDinheiroApurado('');
       setJustificativaFalta('');
+      setMotoboyPayments({});
+      setFreelancerPayments({});
+      setFechamentoStep(0);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
     } finally {
@@ -503,9 +629,17 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
   const handlePrint = () => {
     const isFechado = caixaAtual?.status === 'fechado';
-    const valorLiquido = isFechado 
-      ? totais.valorEmCaixa 
-      : totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
+    const motoboyRows = isFechado
+      ? caixaAtual?.fechamentoDetalhes?.motoboys || []
+      : motoboysFechamento;
+    const freelancerRows = isFechado
+      ? caixaAtual?.fechamentoDetalhes?.freelancers || []
+      : freelancersFechamento;
+    const totalMotoboysImpressao = motoboyRows.reduce((s, m) => s + (m.valorPago ?? m.total), 0);
+    const totalFreelancersImpressao = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
+    const valorLiquido = isFechado
+      ? totais.valorEmCaixa
+      : valorEsperadoFechamento;
     const agora = new Date();
     const dataFormatada = agora.toLocaleDateString('pt-BR');
     const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -518,34 +652,44 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     const sep = '--------------------------------';
 
     let motoboyBlock = '';
-    if (motoboysSessao.length > 0) {
+    if (motoboyRows.length > 0) {
       motoboyBlock = `
         <div class="section">
           <p class="title">MOTOBOYS / ENTREGAS</p>
           <table>
-            <thead><tr><th>Nome</th><th class="r">Total</th><th class="r">Vale</th><th class="r">Rest.</th></tr></thead>
+            <thead><tr><th>Nome</th><th class="r">Devido</th><th class="r">Pago</th><th class="r">Rest.</th></tr></thead>
             <tbody>
-              ${motoboysSessao.map(m => `<tr><td>${m.name}</td><td class="r">R$ ${m.total.toFixed(2)}</td><td class="r">${m.jaPago > 0 ? `-R$ ${m.jaPago.toFixed(2)}` : '-'}</td><td class="r bold">R$ ${m.saldo.toFixed(2)}</td></tr>`).join('')}
+              ${motoboyRows.map(m => {
+                const saldoBase = m.saldo ?? m.total;
+                const valorPago = m.valorPago ?? m.total;
+                const saldoRestante = m.saldoRestante ?? Math.max(0, saldoBase - valorPago);
+                return `<tr><td>${m.name}</td><td class="r">R$ ${saldoBase.toFixed(2)}</td><td class="r">R$ ${valorPago.toFixed(2)}</td><td class="r bold">R$ ${saldoRestante.toFixed(2)}</td></tr>`;
+              }).join('')}
             </tbody>
           </table>
-          <div class="row bold"><span>Saldo Motoboys</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>
+          <div class="row bold"><span>Pago no fechamento</span><span>R$ ${totalMotoboysImpressao.toFixed(2)}</span></div>
         </div>
         <p class="sep">${sep}</p>
       `;
     }
 
     let freelancerBlock = '';
-    if (freelancersComSaldo.length > 0) {
+    if (freelancerRows.length > 0) {
       freelancerBlock = `
         <div class="section">
           <p class="title">FREELANCERS / EXTRAS</p>
           <table>
-            <thead><tr><th>Nome</th><th class="r">Total</th><th class="r">Vale</th><th class="r">Rest.</th></tr></thead>
+            <thead><tr><th>Nome</th><th class="r">Devido</th><th class="r">Pago</th><th class="r">Rest.</th></tr></thead>
             <tbody>
-              ${freelancersComSaldo.map(f => `<tr><td>${f.name}</td><td class="r">R$ ${f.total.toFixed(2)}</td><td class="r">${f.jaPago > 0 ? `-R$ ${f.jaPago.toFixed(2)}` : '-'}</td><td class="r bold">R$ ${f.saldo.toFixed(2)}</td></tr>`).join('')}
+              ${freelancerRows.map(f => {
+                const saldoBase = f.saldo ?? f.total;
+                const valorPago = f.valorPago ?? f.total;
+                const saldoRestante = f.saldoRestante ?? Math.max(0, saldoBase - valorPago);
+                return `<tr><td>${f.name}</td><td class="r">R$ ${saldoBase.toFixed(2)}</td><td class="r">R$ ${valorPago.toFixed(2)}</td><td class="r bold">R$ ${saldoRestante.toFixed(2)}</td></tr>`;
+              }).join('')}
             </tbody>
           </table>
-          <div class="row bold"><span>Saldo Freelancers</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>
+          <div class="row bold"><span>Pago no fechamento</span><span>R$ ${totalFreelancersImpressao.toFixed(2)}</span></div>
         </div>
         <p class="sep">${sep}</p>
       `;
