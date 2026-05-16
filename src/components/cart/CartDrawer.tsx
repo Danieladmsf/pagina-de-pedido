@@ -53,6 +53,23 @@ const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 };
 
+const formatPhone = (val: string) => {
+  const raw = val.replace(/\D/g, '').slice(0, 11);
+  if (raw.length === 0) return '';
+  if (raw.length <= 2) return `(${raw}`;
+  if (raw.length <= 6) return `(${raw.slice(0, 2)}) ${raw.slice(2)}`;
+  if (raw.length <= 10) return `(${raw.slice(0, 2)}) ${raw.slice(2, 6)}-${raw.slice(6)}`;
+  return `(${raw.slice(0, 2)}) ${raw.slice(2, 7)}-${raw.slice(7)}`;
+};
+
+const formatDate = (val: string) => {
+  const raw = val.replace(/\D/g, '').slice(0, 8);
+  if (raw.length === 0) return '';
+  if (raw.length <= 2) return raw;
+  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
+  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+};
+
 export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
@@ -867,11 +884,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label htmlFor="cust_phone" className="text-xs font-bold">Telefone / WhatsApp</Label>
-                      <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="h-9 text-sm" placeholder="(00) 90000-0000" />
+                      <Input id="cust_phone" type="tel" autoComplete="tel" value={customerPhone} onChange={(e) => setCustomerPhone(formatPhone(e.target.value))} className="h-9 text-sm" placeholder="(00) 90000-0000" />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cust_birth" className="text-xs font-bold">Nascimento <span className="font-normal opacity-60">(opcional)</span></Label>
-                      <Input id="cust_birth" placeholder="DD/MM/AAAA" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(e.target.value)} className="h-9 text-sm" />
+                      <Input id="cust_birth" placeholder="DD/MM/AAAA" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(formatDate(e.target.value))} className="h-9 text-sm" />
                     </div>
                   </div>
                 </>
