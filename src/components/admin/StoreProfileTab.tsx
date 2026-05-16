@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadImage } from '@/lib/upload';
 
 interface StoreProfileTabProps {
@@ -585,7 +586,13 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         )}
 
         {activeTab === 'taxas' && (
-          <>
+          <Tabs defaultValue="area" className="w-full">
+            <TabsList className="w-full flex mb-6 p-1 bg-slate-100/50 rounded-lg">
+              <TabsTrigger value="area" className="flex-1 rounded-md text-sm">Área de Atuação e Regras</TabsTrigger>
+              <TabsTrigger value="valores" className="flex-1 rounded-md text-sm">Taxas e Prazos</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="area" className="mt-0 space-y-5">
             {/* SEÇÃO 1 — Área de Atuação */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
               <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
@@ -700,6 +707,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                 </div>
               </div>
             </section>
+            </TabsContent>
+
+            <TabsContent value="valores" className="mt-0 space-y-5">
 
             {/* SEÇÃO 2 — Taxas e Valores */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
@@ -808,7 +818,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                 </div>
               </div>
             </section>
-          </>
+            </TabsContent>
+          </Tabs>
         )}
 
         {activeTab === 'horarios' && (() => {
