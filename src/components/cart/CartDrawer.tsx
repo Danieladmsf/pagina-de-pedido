@@ -932,7 +932,20 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label htmlFor="cust_number" className="text-xs font-bold">Número</Label>
-                      <Input id="cust_number" autoComplete="address-line2" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="314" className="h-9 text-sm" />
+                      <Input 
+                        id="cust_number" 
+                        autoComplete="address-line2" 
+                        value={number} 
+                        onChange={(e) => setNumber(e.target.value)} 
+                        onBlur={() => {
+                          if (street && number) {
+                            const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+                            calculateDeliveryFee(fullAddr);
+                          }
+                        }}
+                        placeholder="314" 
+                        className="h-9 text-sm" 
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cust_comp" className="text-xs font-bold">Complemento</Label>
@@ -942,11 +955,37 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label htmlFor="cust_neighborhood" className="text-xs font-bold">Bairro</Label>
-                      <Input id="cust_neighborhood" autoComplete="address-level3" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" className="h-9 text-sm" />
+                      <Input 
+                        id="cust_neighborhood" 
+                        autoComplete="address-level3" 
+                        value={neighborhood} 
+                        onChange={(e) => setNeighborhood(e.target.value)} 
+                        onBlur={() => {
+                          if (street && neighborhood) {
+                            const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+                            calculateDeliveryFee(fullAddr);
+                          }
+                        }}
+                        placeholder="Centro" 
+                        className="h-9 text-sm" 
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cust_city" className="text-xs font-bold">Cidade</Label>
-                      <Input id="cust_city" autoComplete="address-level2" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Sua Cidade - SP" className="h-9 text-sm" />
+                      <Input 
+                        id="cust_city" 
+                        autoComplete="address-level2" 
+                        value={city} 
+                        onChange={(e) => setCity(e.target.value)} 
+                        onBlur={() => {
+                          if (street && city) {
+                            const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
+                            calculateDeliveryFee(fullAddr);
+                          }
+                        }}
+                        placeholder="Sua Cidade - SP" 
+                        className="h-9 text-sm" 
+                      />
                     </div>
                   </div>
 
