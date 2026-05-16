@@ -175,10 +175,11 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     .title { font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
     .row { display: flex; justify-content: space-between; padding: 1px 0; }
     .bold { font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 2px 0; font-size: 11px; }
-    th { border-bottom: 1px solid #000; font-weight: bold; }
-    .r { text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    th, td { text-align: left; padding: 2px 4px 2px 0; font-size: 11px; vertical-align: top; }
+    td:first-child { white-space: nowrap; padding-right: 8px; }
+    th { border-bottom: 1px dashed #000; font-weight: bold; }
+    .r { text-align: right; padding-right: 0; }
     .resumo { margin-top: 4px; }
     .resumo .row { padding: 1px 0; }
     .total-final { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
