@@ -318,8 +318,8 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
 
         <Tabs defaultValue="promocoes" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="promocoes">Promoções Temporárias</TabsTrigger>
-            <TabsTrigger value="combos">Combos (Agrupados)</TabsTrigger>
+            <TabsTrigger value="promocoes" className="gap-1.5"><Flame className="h-4 w-4" /> Promoções</TabsTrigger>
+            <TabsTrigger value="combos" className="gap-1.5"><Box className="h-4 w-4" /> Combos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="promocoes" className="space-y-6 mt-6">

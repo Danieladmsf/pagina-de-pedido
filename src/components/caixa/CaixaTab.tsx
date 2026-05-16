@@ -36,7 +36,21 @@ const fechamentoSteps = ['Resumo', 'Pagamentos', 'Apuracao', 'Revisao'];
 const isFormaPagamentoDinheiro = (formaPagamento?: string) =>
   (formaPagamento || '').toLowerCase().includes('dinheiro');
 
-export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpened }: { storeProfile?: any; orders?: any[]; autoOpenAbrirCaixa?: boolean; onModalOpened?: () => void }) {
+export function CaixaTab({
+  storeProfile,
+  orders,
+  autoOpenAbrirCaixa,
+  onModalOpened,
+  selectedCaixaId,
+  onSelectedCaixaIdChange,
+}: {
+  storeProfile?: any;
+  orders?: any[];
+  autoOpenAbrirCaixa?: boolean;
+  onModalOpened?: () => void;
+  selectedCaixaId?: string | null;
+  onSelectedCaixaIdChange?: (id: string | null) => void;
+}) {
   const {
     caixaAberto,
     caixaAtual,
@@ -49,7 +63,10 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     caixaSelecionadoId,
     setCaixaSelecionadoId,
     proximaSessao,
-  } = useCaixa();
+  } = useCaixa({
+    caixaSelecionadoId: selectedCaixaId,
+    onCaixaSelecionadoIdChange: onSelectedCaixaIdChange,
+  });
   const { toast } = useToast();
 
   // Modal state

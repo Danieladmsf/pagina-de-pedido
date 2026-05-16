@@ -63,10 +63,17 @@ export interface LancamentoCaixa {
   destinatarioTipo?: 'motoboy' | 'freelancer';
 }
 
-export function useCaixa() {
+interface UseCaixaOptions {
+  caixaSelecionadoId?: string | null;
+  onCaixaSelecionadoIdChange?: (id: string | null) => void;
+}
+
+export function useCaixa(options?: UseCaixaOptions) {
   const db = useFirestore();
   const { user } = useUser();
   const isRealUser = !!(user && !user.isAnonymous);
+  const controlledCaixaSelecionadoId = options?.caixaSelecionadoId;
+  const onCaixaSelecionadoIdChange = options?.onCaixaSelecionadoIdChange;
 
   // Busca TODOS os caixas do dono
   const caixaQuery = useMemoFirebase(() => {
@@ -99,7 +106,17 @@ export function useCaixa() {
   }, [caixasOrdenados]);
 
   // Estado para selecionar qual caixa visualizar (aberto ou histórico)
-  const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
+  const [internalCaixaSelecionadoId, setInternalCaixaSelecionadoId] = useState<string | null>(null);
+  const caixaSelecionadoId = controlledCaixaSelecionadoId !== undefined
+    ? controlledCaixaSelecionadoId
+    : internalCaixaSelecionadoId;
+  const setCaixaSelecionadoId = useCallback((id: string | null) => {
+    if (onCaixaSelecionadoIdChange) {
+      onCaixaSelecionadoIdChange(id);
+      return;
+    }
+    setInternalCaixaSelecionadoId(id);
+  }, [onCaixaSelecionadoIdChange]);
 
   // O caixa atualmente visualizado
   const caixaAtual = useMemo(() => {
