@@ -904,17 +904,20 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
             {/* Ações */}
             <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
-              {!caixaAberto && (
+              {!caixaAberto && !caixaSelecionadoId && (
                 <Button onClick={() => setModalOpen('abrir')} className="bg-orange-500 hover:bg-orange-600 text-white">
                   Abrir Caixa
                 </Button>
               )}
+
+              {caixaAberto || caixaSelecionadoId ? (
+                <Button onClick={() => setView('anteriores')} variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
+                  <ArrowLeft className="h-4 w-4 mr-1" /> Caixas Anteriores
+                </Button>
+              ) : null}
+
               {isAberto && (
                 <>
-
-                  <Button onClick={() => setView('anteriores')} variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
-                    Caixas anteriores
-                  </Button>
                   <Button onClick={() => setModalOpen('suprimento')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="h-4 w-4 mr-1" /> Suprimento
                   </Button>
