@@ -185,7 +185,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         );
         const snap = await getDocs(q);
         
-        const isCreditValid = (d) => {
+        const isCreditValid = (d: any) => {
           const data = d.data();
           if (!data.creditEnabled) return false;
           

@@ -20,6 +20,7 @@ interface DeliveryTabProps {
   caixaAberto?: boolean;
   storeProfile?: any;
   db?: any;
+  user?: any;
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -29,7 +30,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db }: DeliveryTabProps) {
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, storeProfile, db, user }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
@@ -181,7 +182,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
              change = valRec - paymentModalOrder.totalAmount;
            }
         }
-        let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+        let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
         if (selectedPayment === 'conta_casa') label = 'Prazo';
         paymentString = selectedPayment === 'dinheiro' && change > 0 
            ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
@@ -208,7 +209,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             amount = Math.min(valRec, remaining);
           }
           if (amount > 0) {
-             let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+             let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
              if (selectedPayment === 'conta_casa') label = 'Prazo';
              splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
           }
@@ -312,7 +313,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
     if (amount <= 0) return;
 
-    let label = FORMAS_PAGAMENTO.find(f => f.id === selectedPayment)?.label || selectedPayment;
+    let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
     if (selectedPayment === 'conta_casa') label = 'Prazo';
     setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
     setSelectedPayment('');

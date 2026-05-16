@@ -18,7 +18,7 @@ import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDay
 interface ClientesTabProps {
   db: any;
   user: any;
-  registrarLancamento?: (params: { tipo: 'venda' | 'despesa'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
   caixaAberto?: boolean;
 }
 
@@ -40,6 +40,8 @@ interface Cliente {
   ownerId: string;
   creditEnabled?: boolean;
   creditBalance?: number;
+  creditLimit?: number;
+  creditPayDay?: number;
 }
 
 const ITEMS_PER_PAGE = 20;

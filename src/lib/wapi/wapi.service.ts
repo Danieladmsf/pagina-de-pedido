@@ -297,26 +297,34 @@ export function updateWapiWebhook(instanceId: string, token: string, endpoint: s
   });
 }
 
-export async function configureWapiWebhooks(instanceId: string, token: string, webhookUrl: string) {
-  const endpoints = [
-    'update-webhook-connected',
-    'update-webhook-delivery',
-    'update-webhook-disconnected',
-    'update-webhook-message-status',
-    'update-webhook-received',
-  ];
+const WEBHOOK_ENDPOINTS = [
+  { endpoint: 'update-webhook-connected', hook: 'connected' },
+  { endpoint: 'update-webhook-delivery', hook: 'delivery' },
+  { endpoint: 'update-webhook-disconnected', hook: 'disconnected' },
+  { endpoint: 'update-webhook-message-status', hook: 'message-status' },
+  { endpoint: 'update-webhook-received', hook: 'received' },
+] as const;
 
+function buildWebhookUrlForHook(webhookUrl: string, hook: string) {
+  const url = new URL(webhookUrl);
+  url.searchParams.set('hook', hook);
+  return url.toString();
+}
+
+export async function configureWapiWebhooks(instanceId: string, token: string, webhookUrl: string) {
   const results = await Promise.allSettled(
-    endpoints.map((endpoint) => updateWapiWebhook(instanceId, token, endpoint, webhookUrl).then(() => endpoint)),
+    WEBHOOK_ENDPOINTS.map(({ endpoint, hook }) =>
+      updateWapiWebhook(instanceId, token, endpoint, buildWebhookUrlForHook(webhookUrl, hook)).then(() => endpoint),
+    ),
   );
 
   const configured = results
-    .map((result, index) => result.status === 'fulfilled' ? endpoints[index] : '')
+    .map((result, index) => result.status === 'fulfilled' ? WEBHOOK_ENDPOINTS[index].endpoint : '')
     .filter(Boolean);
   const failed = results.flatMap((result, index) => {
     if (result.status !== 'rejected') return [];
     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason || 'Falha desconhecida');
-    return [{ endpoint: endpoints[index], reason }];
+    return [{ endpoint: WEBHOOK_ENDPOINTS[index].endpoint, reason }];
   });
 
   if (failed.length > 0) {

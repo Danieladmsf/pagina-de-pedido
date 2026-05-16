@@ -981,6 +981,7 @@ export default function AdminPage() {
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <DeliveryTab 
               db={db}
+              user={user}
               orders={deliveryOrders || []}
               updateOrderStatus={updateOrderStatus} 
               registrarLancamento={registrarLancamento}
@@ -2149,7 +2150,7 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'clientes' && (
-            <ClientesTab db={db} user={user} registrarLancamento={registrarLancamento} caixaAberto={caixaAberto} />
+            <ClientesTab db={db} user={user} registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
           )}
           </div>
         </div>

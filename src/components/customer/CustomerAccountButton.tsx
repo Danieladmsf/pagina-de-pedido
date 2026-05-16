@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ShoppingBag } from 'lucide-react';
 
-export function CustomerAccountButton({ storeId }: { storeId?: string | null }) {
+export function CustomerAccountButton({ storeId, storeSlug }: { storeId?: string | null; storeSlug?: string | null }) {
   const db = useFirestore();
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
@@ -50,8 +50,13 @@ export function CustomerAccountButton({ storeId }: { storeId?: string | null }) 
   // O botão sempre aparece para que o cliente possa fazer login ou ver o histórico.
   // if (!customerPhone || (!myOrders || myOrders.length === 0)) return null;
 
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
+  if (storeSlug) params.set('returnTo', `/${storeSlug}`);
+  const href = params.size > 0 ? `/my-orders?${params.toString()}` : '/my-orders';
+
   return (
-    <Link href={storeId ? `/my-orders?storeId=${storeId}` : "/my-orders"}>
+    <Link href={href}>
       <Button
         variant="secondary"
         size="sm"
