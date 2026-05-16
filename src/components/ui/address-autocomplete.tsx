@@ -26,7 +26,7 @@ interface Prediction {
 
 const MIN_SEARCH_LENGTH = 2;
 
-export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types, onBlur, forceClose, disableSearch, locationContext }: AddressAutocompleteProps) {
+export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, placeholder, className, id, types, onBlur, forceClose, disableSearch, locationContext }: AddressAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
