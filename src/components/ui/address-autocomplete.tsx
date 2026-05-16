@@ -8,6 +8,7 @@ interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
   onSelect?: (address: string) => void; // Callback quando o usuário seleciona uma sugestão
+  onSelectPlace?: (placeId: string, description: string) => void; // Passa o ID do local para busca detalhada
   placeholder?: string;
   className?: string;
   id?: string;
@@ -117,6 +118,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
     setSuggestions([]);
     // Disparar callback de seleção para cálculos externos
     onSelect?.(prediction.description);
+    onSelectPlace?.(prediction.placeId, prediction.description);
   };
 
   return (

@@ -400,6 +400,31 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   }, [orderType, number, neighborhood, city, calculateDeliveryFee]);
 
+  const handlePlaceSelected = useCallback(async (placeId: string, description: string) => {
+    try {
+      const res = await fetch(`/api/place-details?placeId=${placeId}`);
+      if (!res.ok) throw new Error('Falha ao buscar detalhes do endereço');
+      const data = await res.json();
+      
+      let newStreet = data.street || description.split(',')[0];
+      let newNeighborhood = data.neighborhood || neighborhood;
+      let newCity = data.city || city;
+
+      setStreet(newStreet);
+      if (data.neighborhood) setNeighborhood(data.neighborhood);
+      if (data.city) setCity(data.city);
+
+      if (orderType === 'delivery') {
+        const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
+        setTimeout(() => calculateDeliveryFee(fullAddr), 300);
+      }
+    } catch (err) {
+      console.error('[CartDrawer] Erro ao buscar detalhes do place:', err);
+      // Fallback para o comportamento padrão sem details
+      handleAddressSelected(description);
+    }
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected]);
+
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
   useEffect(() => {
@@ -867,6 +892,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         }
                       }}
                       onSelect={handleAddressSelected}
+                      onSelectPlace={handlePlaceSelected}
                       onBlur={() => {
                         if (street && street.length > 5 && dynamicFee === null && !calculatingFee && !distanceInfo) {
                           const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
