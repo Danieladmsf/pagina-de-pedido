@@ -54,6 +54,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     pickupTime: '00:30',
     maxDeliveryRadius: 0,
     enableInventory: false,
+    printerSize: '80mm' as '80mm' | '58mm',
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -159,6 +160,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           logoUrl: formData.logoUrl,
           ogImageUrl: formData.ogImageUrl,
           enableInventory: formData.enableInventory,
+          printerSize: formData.printerSize,
         },
         fees: {
           deliveryCities: formData.deliveryCities,

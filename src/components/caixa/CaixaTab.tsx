@@ -147,7 +147,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     currentPage * ITEMS_PER_PAGE
   );
 
-  const printerSize = storeProfile?.printerSize || '80mm';
+  const printerSize = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
   const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
   const fontSize = printerSize === '58mm' ? '10px' : '12px';
 
