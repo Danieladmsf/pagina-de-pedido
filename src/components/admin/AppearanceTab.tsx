@@ -86,11 +86,13 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
 
   const bannerUrl = storeProfile?.general?.bannerUrl as string | undefined;
   const bannerMobileUrl = storeProfile?.general?.bannerMobileUrl as string | undefined;
+  const defaultProductImageUrl = storeProfile?.general?.defaultProductImageUrl as string | undefined;
   const fileInputDesktopRef = useRef<HTMLInputElement>(null);
   const fileInputMobileRef = useRef<HTMLInputElement>(null);
-  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | null>(null);
+  const fileInputDefaultProductRef = useRef<HTMLInputElement>(null);
+  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | 'defaultProduct' | null>(null);
 
-  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl', value: string | null) => {
+  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl' | 'defaultProductImageUrl', value: string | null) => {
     if (!db || !user?.uid) return;
     await setDoc(
       doc(db, 'store_profiles', user.uid),
@@ -99,7 +101,7 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     );
   };
 
-  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile') => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile' | 'defaultProduct') => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -110,8 +112,8 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     setUploadingTarget(target);
     try {
       const url = await uploadImage(file);
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : 'bannerMobileUrl', url);
-      toast({ title: 'Banner atualizado!', description: 'A nova imagem já aparece no cardápio público.' });
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : (target === 'mobile' ? 'bannerMobileUrl' : 'defaultProductImageUrl'), url);
+      toast({ title: 'Imagem atualizada!', description: 'A nova imagem já aparece no cardápio público.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro no upload', description: err.message || 'Não foi possível enviar.' });
     } finally {
@@ -119,11 +121,11 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const handleBannerRemove = async (target: 'desktop' | 'mobile') => {
+  const handleBannerRemove = async (target: 'desktop' | 'mobile' | 'defaultProduct') => {
     setUploadingTarget(target);
     try {
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : 'bannerMobileUrl', null);
-      toast({ title: 'Banner removido' });
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : (target === 'mobile' ? 'bannerMobileUrl' : 'defaultProductImageUrl'), null);
+      toast({ title: 'Imagem removida' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao remover.' });
     } finally {
@@ -361,6 +363,46 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
                 <><Upload className="w-4 h-4 mr-2" /> {bannerMobileUrl ? 'Trocar' : 'Enviar'}</>
               )}
             </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-4 border-t">
+        <div>
+          <h3 className="text-base font-bold text-slate-800">Imagem padrão de produtos</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Imagem exibida automaticamente em produtos criados sem imagem.
+            <br />
+            <span className="text-[11px] opacity-80">Ideal: formato quadrado (1:1), recomendável 600 x 600 px.</span>
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-4">
+            <div className="shrink-0 w-[120px] aspect-square rounded-xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-center overflow-hidden">
+              {defaultProductImageUrl ? (
+                <img src={defaultProductImageUrl} alt="Produto padrão" className="w-full h-full object-cover" />
+              ) : (
+                <>
+                  <ImageIcon className="w-6 h-6 text-slate-300" />
+                  <span className="text-[10px] text-muted-foreground mt-1">Nenhuma<br/>imagem</span>
+                </>
+              )}
+            </div>
+            <div className="flex-1 space-y-3">
+              <input ref={fileInputDefaultProductRef} type="file" accept="image/*" onChange={(e) => handleBannerUpload(e, 'defaultProduct')} className="hidden" />
+              <Button size="sm" variant="outline" className="w-full" onClick={() => fileInputDefaultProductRef.current?.click()} disabled={uploadingTarget === 'defaultProduct'}>
+                {uploadingTarget === 'defaultProduct' ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> {defaultProductImageUrl ? 'Trocar imagem' : 'Enviar imagem'}</>
+                )}
+              </Button>
+              {defaultProductImageUrl && (
+                <Button size="sm" variant="ghost" onClick={() => handleBannerRemove('defaultProduct')} disabled={uploadingTarget === 'defaultProduct'} className="w-full text-red-500 hover:text-red-600 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-2" /> Remover
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
