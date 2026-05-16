@@ -55,6 +55,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     maxDeliveryRadius: 0,
     enableInventory: false,
     printerSize: '80mm' as '80mm' | '58mm',
+    autoPrint: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -161,6 +162,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           ogImageUrl: formData.ogImageUrl,
           enableInventory: formData.enableInventory,
           printerSize: formData.printerSize,
+          autoPrint: formData.autoPrint,
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -700,6 +702,24 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                       <p className="mt-1">Se o texto estiver cortando nas laterais, provavelmente você está usando uma bobina de <b>58mm</b> e a configuração está em 80mm (ou vice-versa).</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Toggle Impressão Automática */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Impressão Automática de Pedidos
+                      {formData.autoPrint && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ativo</Badge>}
+                    </Label>
+                    <p className="text-[11px] text-slate-500 max-w-md">
+                      Quando ativado, o cupom do pedido será enviado automaticamente para a impressora assim que um novo pedido chegar pelo cardápio. Funciona para todas as lojas que usem este sistema.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.autoPrint}
+                    onCheckedChange={(checked) => setFormData({ ...formData, autoPrint: checked })}
+                    className="data-[state=checked]:bg-amber-600"
+                  />
                 </div>
               </div>
             </section>

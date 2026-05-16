@@ -33,6 +33,9 @@ interface PaymentSelection {
 
 const fechamentoSteps = ['Resumo', 'Pagamentos', 'Apuracao', 'Revisao'];
 
+const isFormaPagamentoDinheiro = (formaPagamento?: string) =>
+  (formaPagamento || '').toLowerCase().includes('dinheiro');
+
 export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpened }: { storeProfile?: any; orders?: any[]; autoOpenAbrirCaixa?: boolean; onModalOpened?: () => void }) {
   const {
     caixaAberto,
@@ -87,7 +90,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   const totais = useMemo(() => {
     let saldoInicial = 0;
     let totalSangria = 0;
+    let totalSangriaDinheiro = 0;
     let totalSuprimento = 0;
+    let totalSuprimentoDinheiro = 0;
     let totalCredito = 0;
     let totalDebito = 0;
     let totalDinheiro = 0;
@@ -101,8 +106,10 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         saldoInicial = v; // já vem negativo
       } else if (lanc.tipo === 'sangria') {
         totalSangria += v; // já vem negativo
+        if (isFormaPagamentoDinheiro(fp)) totalSangriaDinheiro += v;
       } else if (lanc.tipo === 'suprimento') {
         totalSuprimento += v;
+        if (isFormaPagamentoDinheiro(fp)) totalSuprimentoDinheiro += v;
       } else if (lanc.tipo === 'venda') {
         if (fp.includes('credito') || fp.includes('crédito')) totalCredito += v;
         else if (fp.includes('debito') || fp.includes('débito')) totalDebito += v;
@@ -111,10 +118,15 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       }
     });
 
-    const vendasTotal = totalCredito + totalDebito + totalDinheiro + totalPix;
-    const valorEmCaixa = Math.abs(saldoInicial) + totalSuprimento + totalDinheiro + totalSangria; // sangria já é negativo
+    const valorEmCaixa = Math.abs(saldoInicial) + totalSuprimentoDinheiro + totalDinheiro + totalSangriaDinheiro; // sangria já é negativo
 
-    return { saldoInicial, valorEmCaixa, totalSangria, totalSuprimento, totalCredito, totalDebito, totalDinheiro, totalPix };
+    return { saldoInicial, valorEmCaixa, totalSangria, totalSangriaDinheiro, totalSuprimento, totalSuprimentoDinheiro, totalCredito, totalDebito, totalDinheiro, totalPix };
+  }, [lancamentos]);
+
+  const sangriasDinheiro = useMemo(() => {
+    return lancamentos.filter(lanc =>
+      lanc.tipo === 'sangria' && isFormaPagamentoDinheiro(lanc.formaPagamento)
+    );
   }, [lancamentos]);
 
   // ---- Filtered + Paginated Lancamentos ----
@@ -730,6 +742,26 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
       `;
     }
 
+    const sangriasDinheiroBlock = sangriasDinheiro.length > 0 ? `
+      <div class="section">
+        <p class="title">SANGRIAS EM DINHEIRO</p>
+        <table>
+          <thead><tr><th>Data</th><th>Titulo</th><th class="r">Valor</th></tr></thead>
+          <tbody>
+            ${sangriasDinheiro.map(l => `
+              <tr>
+                <td>${l.data?.toDate?.().toLocaleString('pt-BR') || '-'}</td>
+                <td>${l.titulo}</td>
+                <td class="r">R$ ${Math.abs(l.valor || 0).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="row bold"><span>Total sangrias em dinheiro</span><span>R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
+      </div>
+      <p class="sep">${sep}</p>
+    ` : '';
+
     openPrintWindow('Fechamento de Caixa', `
       <div class="header">
         <h1>${storeName}</h1>
@@ -752,12 +784,15 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
 
       <div class="section">
         <div class="row"><span>Saldo Inicial</span><span>R$ ${Math.abs(totais.saldoInicial).toFixed(2)}</span></div>
-        <div class="row"><span>Sangrias</span><span>R$ ${Math.abs(totais.totalSangria).toFixed(2)}</span></div>
-        <div class="row"><span>Suprimentos</span><span>R$ ${totais.totalSuprimento.toFixed(2)}</span></div>
+        <div class="row"><span>Vendas em dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
+        <div class="row"><span>Sangrias em dinheiro</span><span>R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
+        <div class="row"><span>Suprimentos em dinheiro</span><span>R$ ${totais.totalSuprimentoDinheiro.toFixed(2)}</span></div>
         <div class="row bold"><span>Valor em Caixa</span><span>R$ ${totais.valorEmCaixa.toFixed(2)}</span></div>
       </div>
 
       <p class="sep">${sep}</p>
+
+      ${sangriasDinheiroBlock}
 
       ${taxaGarcomCalculada > 0 ? `
       <div class="section">
@@ -1302,7 +1337,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                   </div>
                   <div className="grid gap-2 border-t pt-3 text-sm sm:grid-cols-3">
                     <div>Saldo Inicial: <strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong></div>
-                    <div>Sangrias: <strong className="text-rose-600">R$ {Math.abs(totais.totalSangria).toFixed(2)}</strong></div>
+                    <div>Sangrias em dinheiro: <strong className="text-rose-600">R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</strong></div>
                     <div>Valor Caixa: <strong className="text-blue-600">R$ {totais.valorEmCaixa.toFixed(2)}</strong></div>
                   </div>
                 </div>
@@ -1484,6 +1519,50 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                     <span className="font-bold">Valor Esperado</span>
                     <span className="font-black text-emerald-400">R$ {valorEsperadoFechamento.toFixed(2)}</span>
                   </div>
+                </div>
+
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 space-y-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="font-bold text-sm text-rose-700">Sangrias em dinheiro descontadas</h3>
+                    <span className="text-sm font-black text-rose-700">
+                      Total: R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-2 rounded-md border bg-white p-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Saldo inicial</div>
+                      <strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Vendas em dinheiro</div>
+                      <strong className="text-emerald-700">R$ {totais.totalDinheiro.toFixed(2)}</strong>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Sangrias em dinheiro</div>
+                      <strong className="text-rose-700">-R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</strong>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Valor em caixa</div>
+                      <strong className="text-blue-700">R$ {totais.valorEmCaixa.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  {sangriasDinheiro.length > 0 ? (
+                    <div className="divide-y rounded-md border bg-white">
+                      {sangriasDinheiro.map((lanc, index) => (
+                        <div key={lanc.id || index} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[170px_1fr_auto] sm:items-center">
+                          <span className="text-xs text-muted-foreground">
+                            {lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}
+                          </span>
+                          <span className="font-medium text-slate-700">{lanc.titulo}</span>
+                          <span className="font-bold text-rose-700">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhuma sangria em dinheiro registrada nesta sessão.</p>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-lg p-4 border space-y-3">
