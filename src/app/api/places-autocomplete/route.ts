@@ -23,8 +23,9 @@ export async function GET(req: NextRequest) {
     const types = req.nextUrl.searchParams.get('types') || 'address';
     const context = req.nextUrl.searchParams.get('context')?.trim();
     
-    // Se tiver contexto de cidade, anexar ao input para direcionar resultados
-    const searchInput = context ? `${input} ${context}` : input;
+    // Se tiver contexto de cidade, anexar ao input com vírgula para direcionar resultados
+    // Ex: "rua etelvina, Cravinhos, SP" (Google entende muito melhor a hierarquia assim)
+    const searchInput = context ? `${input}, ${context}` : input;
     
     const body: Record<string, any> = {
       input: searchInput,
@@ -42,7 +43,9 @@ export async function GET(req: NextRequest) {
       // Não filtrar por tipo — deixar o Google retornar bairros via contexto de cidade
       // (sublocality_level_1 e neighborhood nem sempre são suportados)
     } else if (types === 'route') {
-      // Deixar sem filtro restrito (permitir condomínios e ruas normais)
+      // Usar a coleção "address" (que engloba rotas e endereços com número)
+      // Isso impede que ele sugira apenas o nome da cidade (Cravinhos, SP)
+      body.includedPrimaryTypes = ['address'];
     }
 
     const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
