@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react';
 import { MenuPageClient } from '@/components/MenuPageClient';
 import { Loader2 } from 'lucide-react';
-import { Metadata } from 'next';
+import { Metadata, Viewport } from 'next';
+import { getTheme } from '@/lib/themes';
 
 const FIRESTORE_PROJECT = 'studio-2243391254-75492';
 
@@ -141,6 +142,25 @@ export async function generateMetadata({ params }: { params: { storeSlug: string
       description,
       ...(ogImage ? { images: [ogImage] } : {}),
     },
+  };
+}
+
+export async function generateViewport({ params }: { params: { storeSlug: string } }): Promise<Viewport> {
+  const defaults: Viewport = { themeColor: '#ffffff' };
+  if (!params?.storeSlug) return defaults;
+
+  let storeId = params.storeSlug;
+  if (storeId.length <= 8) {
+    const resolved = await fetchStoreIdFromSlug(storeId);
+    if (resolved) storeId = resolved;
+  }
+
+  const profile = await fetchStoreProfile(storeId);
+  const themeId = profile?.general?.theme || 'light';
+  const theme = getTheme(themeId);
+
+  return {
+    themeColor: theme.colors.bg || '#ffffff',
   };
 }
 
