@@ -9,7 +9,7 @@ interface PrintReceiptProps {
 export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(({ order, storeInfo, isKitchen }, ref) => {
   if (!order) return null;
 
-  const printerSize = storeInfo?.printerSize || '80mm';
+  const printerSize = storeInfo?.general?.printerSize || storeInfo?.printerSize || '80mm';
   const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
   const fontSize = printerSize === '58mm' ? '10px' : '12px';
 
@@ -159,6 +159,7 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
         );
       })()}
     </div>
+    </>
   );
 });
 
