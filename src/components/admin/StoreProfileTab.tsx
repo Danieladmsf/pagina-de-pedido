@@ -122,6 +122,13 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           if (data.plannedClosures) setPlannedClosures(data.plannedClosures);
           if (data.creditPixKey) setCreditPixKey(data.creditPixKey);
           if (data.creditPixName) setCreditPixName(data.creditPixName);
+          
+          // Auto-carregar bairros se já tem cidades cadastradas
+          const cities = data.general?.deliveryCities || data.fees?.deliveryCities || [];
+          if (cities.length > 0) {
+            // Carregar em background sem bloquear a UI
+            setTimeout(() => fetchNeighborhoodsFromCities(cities), 500);
+          }
         }
       } catch (err) {
         console.error('Erro ao buscar perfil da loja', err);
@@ -271,8 +278,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const neighborhoodRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'neighborhood');
   const addressRules = customAddressRules.map((r, i) => ({ ...r, _idx: i })).filter(r => r.type === 'address');
 
-  // Carregar bairros quando cidades mudam
-  const fetchNeighborhoods = async (cities: string[]) => {
+  // Função reutilizável para carregar bairros (aceita cidades como parâmetro)
+  const fetchNeighborhoodsFromCities = async (cities: string[]) => {
     if (cities.length === 0) { setAvailableNeighborhoods([]); return; }
     setLoadingNeighborhoods(true);
     try {
@@ -291,6 +298,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     } catch { /* silently fail */ }
     setLoadingNeighborhoods(false);
   };
+
+  // Wrapper que usa formData.deliveryCities (para o botão)
+  const fetchNeighborhoods = (cities: string[]) => fetchNeighborhoodsFromCities(cities);
 
   // Toggle bairro no/off
   const toggleNeighborhood = (name: string) => {
