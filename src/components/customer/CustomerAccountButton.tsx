@@ -35,15 +35,17 @@ export function CustomerAccountButton({ storeId }: { storeId?: string | null }) 
     if (!db || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('ownerId', '==', storeId), where('customerIdentifier', 'in', possiblePhones));
+    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
   }, [db, customerPhone, storeId]);
-  const { data: myOrders } = useCollection(myOrdersQuery);
+  const { data: myOrdersRaw } = useCollection(myOrdersQuery);
 
   // Badge de pedidos em andamento
   const activeCount = useMemo(() => {
-    if (!myOrders) return 0;
-    return (myOrders as any[]).filter(o => ['pending', 'received', 'ready', 'out_for_delivery'].includes(o.status)).length;
-  }, [myOrders]);
+    if (!myOrdersRaw) return 0;
+    return (myOrdersRaw as any[])
+      .filter(o => o.ownerId === storeId)
+      .filter(o => ['pending', 'received', 'ready', 'out_for_delivery'].includes(o.status)).length;
+  }, [myOrdersRaw, storeId]);
 
   // O botão sempre aparece para que o cliente possa fazer login ou ver o histórico.
   // if (!customerPhone || (!myOrders || myOrders.length === 0)) return null;

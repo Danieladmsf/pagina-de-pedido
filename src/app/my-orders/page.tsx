@@ -123,7 +123,6 @@ export default function MyOrdersPage() {
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
     return query(
       collection(db, 'orders'), 
-      where('ownerId', '==', storeId), 
       where('customerIdentifier', 'in', possiblePhones)
     );
   }, [db, customerPhone, storeId]);
@@ -161,19 +160,17 @@ export default function MyOrdersPage() {
   const [activeTab, setActiveTab] = useState<'pedidos' | 'prazo'>('pedidos');
 
   useEffect(() => {
-    if (!ordersRaw || ordersRaw.length === 0 || !db || !customerPhone) return;
-    const ownerId = (ordersRaw as any)[0].ownerId;
-    if (!ownerId) return;
+    if (!storeId || !db || !customerPhone) return;
 
     // Buscar loja
-    getDoc(doc(db, 'store_profiles', ownerId)).then(snap => {
+    getDoc(doc(db, 'store_profiles', storeId)).then(snap => {
       if (snap.exists()) setContaCasaStore(snap.data());
     });
 
     // Buscar cliente com listener em tempo real
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', 'in', possiblePhones));
+    const q = query(collection(db, 'clientes'), where('ownerId', '==', storeId), where('celular', 'in', possiblePhones));
     const unsubClient = onSnapshot(q, (snap) => {
       if (!snap.empty) {
         const cData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
@@ -195,14 +192,16 @@ export default function MyOrdersPage() {
     });
 
     return () => unsubClient();
-  }, [ordersRaw, db, customerPhone]);
+  }, [storeId, db, customerPhone]);
 
 
 
   const orders = useMemo(() => {
-    if (!ordersRaw) return ordersRaw;
-    return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-  }, [ordersRaw]);
+    if (!ordersRaw || !storeId) return [];
+    return [...ordersRaw]
+      .filter((o: any) => o.ownerId === storeId)
+      .sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+  }, [ordersRaw, storeId]);
 
   const lastStatusRef = useRef<Record<string, string>>({});
   useEffect(() => {
