@@ -2,9 +2,11 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { ShoppingBag, ChevronRight } from 'lucide-react';
+import { useCustomerFirebase } from '@/firebase/customer-client';
+import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 
 const ACTIVE_STATUSES = ['pending', 'received', 'ready', 'out_for_delivery'];
 const STATUS_LABELS: Record<string, string> = {
@@ -15,7 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function ActiveOrdersBanner({ storeId, storeSlug }: { storeId?: string | null; storeSlug?: string | null }) {
-  const db = useFirestore();
+  const { firestore: db, auth, user, isUserLoading } = useCustomerFirebase();
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
 
   // Lê o telefone salvo no localStorage + escuta atualizações
@@ -38,13 +40,18 @@ export function ActiveOrdersBanner({ storeId, storeSlug }: { storeId?: string | 
     return () => window.removeEventListener('customer_phone_updated', handler);
   }, []);
 
+  useEffect(() => {
+    if (!auth || isUserLoading || user || !customerPhone) return;
+    void ensureAuthenticated(auth);
+  }, [auth, isUserLoading, user, customerPhone]);
+
   // Busca pedidos pelo telefone
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !customerPhone || !storeId) return null;
+    if (!db || !user || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
     return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
-  }, [db, customerPhone, storeId]);
+  }, [db, user, customerPhone, storeId]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 
   const activeOrders = useMemo(() => {

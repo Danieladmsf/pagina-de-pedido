@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc, setDoc, getDoc, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { useCart } from '@/components/providers/CartProvider';
+import { useCustomerFirebase } from '@/firebase/customer-client';
+import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Aguardando Confirmação',
@@ -83,8 +85,7 @@ function OrderTimeline({ status, orderType }: { status: string; orderType: strin
 }
 
 export default function MyOrdersPage() {
-  const { user, isUserLoading } = useUser();
-  const db = useFirestore();
+  const { user, isUserLoading, firestore: db, auth } = useCustomerFirebase();
   const { toast } = useToast();
   const { addToCart } = useCart();
 
@@ -130,16 +131,21 @@ export default function MyOrdersPage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    if (!auth || isUserLoading || user || !customerPhone) return;
+    void ensureAuthenticated(auth);
+  }, [auth, isUserLoading, user, customerPhone]);
+
   // Buscar pedidos pelo telefone e ownerId (storeId)
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !customerPhone || !storeId) return null;
+    if (!db || !user || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
     return query(
       collection(db, 'orders'), 
       where('customerIdentifier', 'in', possiblePhones)
     );
-  }, [db, customerPhone, storeId]);
+  }, [db, user, customerPhone, storeId]);
 
   const profileRef = useMemoFirebase(() => {
     if (!db || !user) return null;

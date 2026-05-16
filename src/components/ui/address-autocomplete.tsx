@@ -15,6 +15,7 @@ interface AddressAutocompleteProps {
   onBlur?: () => void;
   forceClose?: boolean;
   disableSearch?: boolean;
+  locationContext?: string; // Ex: "Cravinhos, SP" - filtra sugestões por cidade
 }
 
 interface Prediction {
@@ -24,7 +25,7 @@ interface Prediction {
 
 const MIN_SEARCH_LENGTH = 2;
 
-export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types, onBlur, forceClose, disableSearch }: AddressAutocompleteProps) {
+export function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, id, types, onBlur, forceClose, disableSearch, locationContext }: AddressAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<Prediction[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -72,7 +73,8 @@ export function AddressAutocomplete({ value, onChange, onSelect, placeholder, cl
     setErrorMessage('');
     try {
       const typesParam = types ? `&types=${encodeURIComponent(types)}` : '';
-      const res = await fetch(`/api/places-autocomplete?input=${encodeURIComponent(query)}${typesParam}`);
+      const contextParam = locationContext ? `&context=${encodeURIComponent(locationContext)}` : '';
+      const res = await fetch(`/api/places-autocomplete?input=${encodeURIComponent(query)}${typesParam}${contextParam}`);
       const data = await res.json();
       if (!res.ok) {
         console.warn('[AddressAutocomplete] API retornou erro:', data?.error || res.statusText);
