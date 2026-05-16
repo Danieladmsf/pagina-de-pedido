@@ -20,7 +20,7 @@ import { uploadImage } from '@/lib/upload';
 interface StoreProfileTabProps {
   db: any;
   user: any;
-  activeSection?: 'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos';
+  activeSection?: 'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos' | 'impressora';
 }
 
 const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -609,14 +609,14 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
               </div>
             </section>
 
-            {/* SEÇÃO 5 — Configurações de Vendas & Impressão */}
+            {/* SEÇÃO 5 — Configurações de Vendas & Estoque */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
               <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
                   <Box className="h-5 w-5 text-violet-600" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-base font-bold text-slate-800">Vendas, Estoque e Impressão</h2>
+                  <h2 className="text-base font-bold text-slate-800">Vendas & Estoque</h2>
                   <p className="text-xs text-muted-foreground">Configurações globais sobre como o cardápio opera.</p>
                 </div>
               </header>
@@ -637,41 +637,68 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     className="data-[state=checked]:bg-violet-600"
                   />
                 </div>
+              </div>
+            </section>
+          </>
+        )}
 
-                <div className="flex flex-col gap-3 p-4 bg-slate-50 border rounded-xl">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      Tamanho do Papel (Impressora Térmica)
-                    </Label>
-                    <p className="text-[11px] text-slate-500 max-w-md">
-                      Ajuste a formatação dos cupons para caber exatamente no tamanho da sua bobina, evitando cortes nas laterais do texto.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, printerSize: '80mm' })}
-                      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
-                        (!formData.printerSize || formData.printerSize === '80mm') 
-                          ? 'border-violet-600 bg-violet-50 text-violet-800' 
-                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
-                      }`}
-                    >
-                      <span className="font-bold text-sm">80mm</span>
-                      <span className="text-[10px] opacity-70">Padrão Restaurantes</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, printerSize: '58mm' })}
-                      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
-                        formData.printerSize === '58mm' 
-                          ? 'border-violet-600 bg-violet-50 text-violet-800' 
-                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
-                      }`}
-                    >
-                      <span className="font-bold text-sm">58mm</span>
-                      <span className="text-[10px] opacity-70">Mini Impressoras Bluetooth</span>
-                    </button>
+        {activeTab === 'impressora' && (
+          <>
+            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500/15 to-orange-500/15 border border-amber-500/20 flex items-center justify-center">
+                  <ShoppingBag className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-base font-bold text-slate-800">Impressora Térmica</h2>
+                  <p className="text-xs text-muted-foreground">Configure o tamanho do papel para a impressão de cupons.</p>
+                </div>
+              </header>
+              <div className="p-6 space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-bold text-slate-800">Tamanho do Papel (Bobina)</Label>
+                  <p className="text-[11px] text-slate-500 max-w-lg">
+                    Escolha a largura da bobina que a sua impressora térmica utiliza. Isso ajusta a formatação dos cupons para caber exatamente no papel, evitando cortes nas laterais.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, printerSize: '80mm' })}
+                    className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 transition-all ${
+                      (!formData.printerSize || formData.printerSize === '80mm')
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-md'
+                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
+                    }`}
+                  >
+                    <span className="text-3xl mb-1">🖨️</span>
+                    <span className="font-black text-lg">80mm</span>
+                    <span className="text-xs opacity-70 mt-0.5">Padrão Restaurantes</span>
+                    <span className="text-[10px] text-slate-400 mt-1">Elgin, Bematech, Epson, etc.</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, printerSize: '58mm' })}
+                    className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 transition-all ${
+                      formData.printerSize === '58mm'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-md'
+                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
+                    }`}
+                  >
+                    <span className="text-3xl mb-1">📱</span>
+                    <span className="font-black text-lg">58mm</span>
+                    <span className="text-xs opacity-70 mt-0.5">Mini Impressoras Bluetooth</span>
+                    <span className="text-[10px] text-slate-400 mt-1">GN-297, Goojprt, Peripage, etc.</span>
+                  </button>
+                </div>
+                <div className="rounded-xl bg-blue-50 border border-blue-200 p-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-blue-800 leading-relaxed">
+                      <p className="font-bold mb-1">Como funciona?</p>
+                      <p>Ao selecionar o tamanho da bobina, todos os cupons (pedidos, abertura de caixa, sangria, fechamento) serão formatados para caber perfeitamente na sua impressora.</p>
+                      <p className="mt-1">Se o texto estiver cortando nas laterais, provavelmente você está usando uma bobina de <b>58mm</b> e a configuração está em 80mm (ou vice-versa).</p>
+                    </div>
                   </div>
                 </div>
               </div>
