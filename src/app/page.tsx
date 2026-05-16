@@ -1079,7 +1079,7 @@ export default function AdminPage() {
         <div className={
           activeTab === 'produtos'
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : ['categorias', 'addons', 'clientes'].includes(activeTab) || activeTab.startsWith('perfil_')
+            : ['categorias', 'addons', 'clientes', 'freelance'].includes(activeTab) || activeTab.startsWith('perfil_')
               ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
