@@ -1096,8 +1096,8 @@ export default function AdminPage() {
           {activeTab === 'produtos' && (
             <div className="mt-6 flex-1 min-h-0 flex flex-col">
               <div className="mb-6 px-2 shrink-0">
-                <h1 className="text-3xl font-black tracking-tight text-slate-800">Produtos e Combos</h1>
-                <p className="text-muted-foreground mt-1 font-medium">Gerencie seu cardápio, crie combos promocionais e monte produtos personalizados (Marmitas).</p>
+                <h1 className="text-3xl font-black tracking-tight text-slate-800">Produtos e Marmitas</h1>
+                <p className="text-muted-foreground mt-1 font-medium">Gerencie seu cardápio e monte produtos personalizados (Marmitas).</p>
               </div>
             {editingProduct !== null ? (
               <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-4 pr-1">
