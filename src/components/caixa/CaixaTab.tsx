@@ -449,7 +449,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
   const motoboysFechamento = useMemo(() => {
     return motoboysSessao.map(m => {
       const payment = motoboyPayments[m.id];
-      const valorPago = payment?.include ? clampPaymentAmount(payment.amount, m.saldo) : 0;
+      const include = payment?.include ?? m.saldo > 0;
+      const amount = payment?.amount ?? m.saldo;
+      const valorPago = include ? clampPaymentAmount(amount, m.saldo) : 0;
       return {
         ...m,
         valorPago,
@@ -463,7 +465,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     return freelancersComSaldo.map((f, index) => {
       const paymentKey = f.name || `freelancer-${index}`;
       const payment = freelancerPayments[paymentKey];
-      const valorPago = payment?.include ? clampPaymentAmount(payment.amount, f.saldo) : 0;
+      const include = payment?.include ?? f.saldo > 0;
+      const amount = payment?.amount ?? f.saldo;
+      const valorPago = include ? clampPaymentAmount(amount, f.saldo) : 0;
       return {
         ...f,
         paymentKey,
