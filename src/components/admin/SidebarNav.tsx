@@ -38,7 +38,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'categorias', label: 'Categorias', icon: Tag },
     { id: 'addons', label: 'Adicionais', icon: PlusCircle },
     { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'promocoes', label: 'Promoções', icon: Flame, highlight: true },
+    { id: 'promocoes', label: 'Ofertas', icon: Tag, highlight: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
     { id: 'freelance', label: 'Freelance', icon: Bike },
   ];
