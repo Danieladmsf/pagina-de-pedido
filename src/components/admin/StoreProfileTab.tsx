@@ -278,7 +278,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     try {
       const allResults: { name: string, id: string }[] = [];
       for (const city of cities) {
-        const res = await fetch(`/api/list-neighborhoods?city=${encodeURIComponent(city)}`);
+        const res = await fetch(`/api/list-neighborhoods?city=${encodeURIComponent(city)}&_t=${Date.now()}`);
         if (res.ok) {
           const data = await res.json();
           if (data.neighborhoods) allResults.push(...data.neighborhoods);
