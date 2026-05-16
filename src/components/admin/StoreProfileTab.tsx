@@ -362,131 +362,76 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   </Badge>
                 )}
               </header>
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
-                
-                {/* COLUNA 1: LOGO */}
-                <div className="flex flex-col gap-5 pt-0">
-                  <div className="flex items-start gap-5">
-                    <div className="relative group shrink-0">
-                      {formData.logoUrl ? (
-                        <div className="relative">
-                          <img src={formData.logoUrl} alt="Logo" className="w-24 h-24 rounded-2xl object-cover ring-2 ring-emerald-500/30 shadow-md" />
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, logoUrl: '' })}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
+              <div className="p-6">
+                <div className="flex flex-col md:flex-row items-start gap-6">
+                  <div className="relative group shrink-0">
+                    {formData.logoUrl ? (
+                      <div className="relative">
+                        <img src={formData.logoUrl} alt="Logo" className="w-28 h-28 rounded-2xl object-cover ring-2 ring-emerald-500/30 shadow-md" />
                         <button
                           type="button"
-                          onClick={() => logoInputRef.current?.click()}
-                          disabled={isUploadingLogo}
-                          className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer bg-slate-50/50"
+                          onClick={() => setFormData({ ...formData, logoUrl: '' })}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
                         >
-                          {isUploadingLogo ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
-                          <span className="text-[11px] font-semibold">{isUploadingLogo ? 'Enviando...' : 'Enviar logo'}</span>
+                          <X className="w-4 h-4" />
                         </button>
-                      )}
-                      <input
-                        ref={logoInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setIsUploadingLogo(true);
-                          try {
-                            const url = await uploadImage(file);
-                            setFormData(prev => ({ ...prev, logoUrl: url }));
-                            toast({ title: 'Logo enviada com sucesso!' });
-                          } catch (err: any) {
-                            toast({ variant: 'destructive', title: 'Erro ao enviar logo', description: err.message });
-                          } finally {
-                            setIsUploadingLogo(false);
-                            e.target.value = '';
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 space-y-2 pt-1">
-                      <h3 className="text-sm font-bold text-slate-800">Logo Principal</h3>
-                      <p className="text-xs text-slate-500 leading-relaxed">Exibida no topo do seu cardápio. Formato 1:1 (quadrado), PNG transparente ou JPG.</p>
-                      {formData.logoUrl && (
-                        <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] mt-1" onClick={() => logoInputRef.current?.click()}>
-                          <Camera className="w-3 h-3 mr-1.5" /> Trocar logo
-                        </Button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                        className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer bg-slate-50/50"
+                      >
+                        {isUploadingLogo ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
+                        <span className="text-[11px] font-semibold">{isUploadingLogo ? 'Enviando...' : 'Enviar logo'}</span>
+                      </button>
+                    )}
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploadingLogo(true);
+                        try {
+                          const url = await uploadImage(file);
+                          setFormData(prev => ({ ...prev, logoUrl: url }));
+                          toast({ title: 'Logo enviada com sucesso!' });
+                        } catch (err: any) {
+                          toast({ variant: 'destructive', title: 'Erro ao enviar logo', description: err.message });
+                        } finally {
+                          setIsUploadingLogo(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
                   </div>
-                </div>
 
-                {/* COLUNA 2: IMAGEM PARA LINKS */}
-                <div className="flex flex-col gap-5 pt-8 lg:pt-0 lg:pl-8">
-                  <div className="flex items-start gap-5">
-                    <div className="relative group shrink-0">
-                      {formData.ogImageUrl ? (
-                        <div className="relative">
-                          <img src={formData.ogImageUrl} alt="OG Image" className="w-36 h-20 rounded-xl object-cover ring-2 ring-emerald-500/30 shadow-md" />
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, ogImageUrl: '' })}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                  <div className="flex-1 space-y-3 min-w-0">
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2">
+                      <div className="flex items-start gap-2 text-xs text-slate-600">
+                        <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-700 mb-1">Recomendações para a logo</p>
+                          <ul className="space-y-0.5 text-[11px] leading-relaxed text-slate-500">
+                            <li>• Formato quadrado (proporção 1:1)</li>
+                            <li>• Mínimo 512×512 pixels</li>
+                            <li>• Fundo transparente ou branco em PNG</li>
+                            <li>• Tamanho máximo: 2 MB</li>
+                          </ul>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => ogImageInputRef.current?.click()}
-                          disabled={isUploadingOgImage}
-                          className="w-36 h-20 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all cursor-pointer bg-slate-50/50"
-                        >
-                          {isUploadingOgImage ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
-                          <span className="text-[11px] font-semibold">{isUploadingOgImage ? '...' : 'Enviar link'}</span>
-                        </button>
-                      )}
-                      <input
-                        ref={ogImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 300 * 1024) {
-                            toast({ variant: 'destructive', title: 'Aviso de Tamanho', description: 'O WhatsApp pode ignorar imagens maiores que 300KB. Recomendamos usar uma imagem menor.' });
-                          }
-                          setIsUploadingOgImage(true);
-                          try {
-                            const url = await uploadImage(file);
-                            setFormData(prev => ({ ...prev, ogImageUrl: url }));
-                            toast({ title: 'Imagem enviada com sucesso!' });
-                          } catch (err: any) {
-                            toast({ variant: 'destructive', title: 'Erro ao enviar imagem', description: err.message });
-                          } finally {
-                            setIsUploadingOgImage(false);
-                            e.target.value = '';
-                          }
-                        }}
-                      />
+                      </div>
                     </div>
-                    <div className="flex-1 space-y-2 pt-1">
-                      <h3 className="text-sm font-bold text-slate-800">Miniatura p/ Links</h3>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">Aparece no WhatsApp/Insta. <b>Max 300KB</b>.<br/>Rec: 600x315 px (Retângulo).</p>
-                      {formData.ogImageUrl && (
-                        <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] mt-1" onClick={() => ogImageInputRef.current?.click()}>
-                          <Camera className="w-3 h-3 mr-1.5" /> Trocar miniatura
-                        </Button>
-                      )}
-                    </div>
+                    {formData.logoUrl && (
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => logoInputRef.current?.click()}>
+                        <Camera className="w-3.5 h-3.5 mr-1.5" /> Trocar imagem
+                      </Button>
+                    )}
                   </div>
                 </div>
-
               </div>
             </section>
 

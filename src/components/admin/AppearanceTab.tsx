@@ -87,12 +87,14 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
   const bannerUrl = storeProfile?.general?.bannerUrl as string | undefined;
   const bannerMobileUrl = storeProfile?.general?.bannerMobileUrl as string | undefined;
   const defaultProductImageUrl = storeProfile?.general?.defaultProductImageUrl as string | undefined;
+  const ogImageUrl = storeProfile?.general?.ogImageUrl as string | undefined;
   const fileInputDesktopRef = useRef<HTMLInputElement>(null);
   const fileInputMobileRef = useRef<HTMLInputElement>(null);
   const fileInputDefaultProductRef = useRef<HTMLInputElement>(null);
-  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | 'defaultProduct' | null>(null);
+  const fileInputOgImageRef = useRef<HTMLInputElement>(null);
+  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | 'defaultProduct' | 'ogImage' | null>(null);
 
-  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl' | 'defaultProductImageUrl', value: string | null) => {
+  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl' | 'defaultProductImageUrl' | 'ogImageUrl', value: string | null) => {
     if (!db || !user?.uid) return;
     await setDoc(
       doc(db, 'store_profiles', user.uid),
@@ -101,7 +103,7 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     );
   };
 
-  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile' | 'defaultProduct') => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage') => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -109,10 +111,13 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
       toast({ variant: 'destructive', title: 'Arquivo inválido', description: 'Envie uma imagem (PNG, JPG, WebP).' });
       return;
     }
+    if (target === 'ogImage' && file.size > 300 * 1024) {
+      toast({ variant: 'destructive', title: 'Aviso de Tamanho', description: 'O WhatsApp pode ignorar imagens maiores que 300KB. Recomendamos usar uma miniatura menor.' });
+    }
     setUploadingTarget(target);
     try {
       const url = await uploadImage(file);
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : (target === 'mobile' ? 'bannerMobileUrl' : 'defaultProductImageUrl'), url);
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : 'defaultProductImageUrl', url);
       toast({ title: 'Imagem atualizada!', description: 'A nova imagem já aparece no cardápio público.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro no upload', description: err.message || 'Não foi possível enviar.' });
@@ -121,10 +126,10 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const handleBannerRemove = async (target: 'desktop' | 'mobile' | 'defaultProduct') => {
+  const handleBannerRemove = async (target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage') => {
     setUploadingTarget(target);
     try {
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : (target === 'mobile' ? 'bannerMobileUrl' : 'defaultProductImageUrl'), null);
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : 'defaultProductImageUrl', null);
       toast({ title: 'Imagem removida' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao remover.' });
@@ -399,6 +404,47 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
               </Button>
               {defaultProductImageUrl && (
                 <Button size="sm" variant="ghost" onClick={() => handleBannerRemove('defaultProduct')} disabled={uploadingTarget === 'defaultProduct'} className="w-full text-red-500 hover:text-red-600 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-2" /> Remover
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-4 border-t">
+        <div>
+          <h3 className="text-base font-bold text-slate-800">Miniatura para Links (WhatsApp)</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Imagem exibida quando você compartilha o link da loja nas redes sociais e no WhatsApp.
+            <br />
+            <span className="text-[11px] opacity-80">Ideal: formato Retângulo (1200 x 630 px ou 600 x 315 px). <b>Obrigatório: Menos de 300KB!</b></span>
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-4">
+            <div className="shrink-0 w-[180px] h-[95px] rounded-xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-center overflow-hidden">
+              {ogImageUrl ? (
+                <img src={ogImageUrl} alt="Miniatura OG" className="w-full h-full object-cover" />
+              ) : (
+                <>
+                  <ImageIcon className="w-6 h-6 text-slate-300" />
+                  <span className="text-[10px] text-muted-foreground mt-1">Sem miniatura<br/>(usa banner/logo)</span>
+                </>
+              )}
+            </div>
+            <div className="flex-1 space-y-3">
+              <input ref={fileInputOgImageRef} type="file" accept="image/*" onChange={(e) => handleBannerUpload(e, 'ogImage')} className="hidden" />
+              <Button size="sm" variant="outline" className="w-full" onClick={() => fileInputOgImageRef.current?.click()} disabled={uploadingTarget === 'ogImage'}>
+                {uploadingTarget === 'ogImage' ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> {ogImageUrl ? 'Trocar miniatura' : 'Enviar miniatura'}</>
+                )}
+              </Button>
+              {ogImageUrl && (
+                <Button size="sm" variant="ghost" onClick={() => handleBannerRemove('ogImage')} disabled={uploadingTarget === 'ogImage'} className="w-full text-red-500 hover:text-red-600 hover:bg-red-50">
                   <Trash2 className="w-4 h-4 mr-2" /> Remover
                 </Button>
               )}
