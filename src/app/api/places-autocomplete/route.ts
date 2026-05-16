@@ -41,11 +41,9 @@ export async function GET(req: NextRequest) {
       body.includedPrimaryTypes = [types];
     } else if (types === 'sublocality') {
       // Não filtrar por tipo — deixar o Google retornar bairros via contexto de cidade
-      // (sublocality_level_1 e neighborhood nem sempre são suportados)
     } else if (types === 'route') {
-      // Usar a coleção "address" (que engloba rotas e endereços com número)
-      // Isso impede que ele sugira apenas o nome da cidade (Cravinhos, SP)
-      body.includedPrimaryTypes = ['address'];
+      // Remover filtro de tipo pois o Google Places API v1 falha com 'address'
+      // O contexto (cidade) formatado com vírgula já é suficiente para guiar os resultados.
     }
 
     const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {

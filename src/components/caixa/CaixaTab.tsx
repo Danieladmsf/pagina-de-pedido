@@ -1207,24 +1207,22 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
         </DialogContent>
       </Dialog>
 
-      {/* ─── Modal de Fechamento Detalhado ─── */}
-      <Dialog open={showFechamentoModal} onOpenChange={(open) => {
-        if (!open) {
-          setShowFechamentoModal(false);
-          setFechamentoStep(0);
-        }
-      }}>
-        <DialogContent className="sm:max-w-[820px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-xl text-red-600 flex items-center gap-2">
-              <Lock className="h-5 w-5" /> Fechamento de Caixa — Sessão {caixaAtual?.sessao}
-            </DialogTitle>
-            <DialogDescription>
-              Confira os valores antes de confirmar. As deduções serão registradas como sangrias automáticas.
-            </DialogDescription>
-          </DialogHeader>
+      {/* ─── Tela de Fechamento Detalhado ─── */}
+      {showFechamentoModal && (
+        <section className="fixed inset-0 z-50 overflow-y-auto bg-slate-50">
+          <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-6 sm:py-6">
+            <div className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-1.5 text-left">
+                <h2 className="text-xl font-semibold leading-none tracking-tight text-red-600 flex items-center gap-2">
+                  <Lock className="h-5 w-5" /> Fechamento de Caixa — Sessão {caixaAtual?.sessao}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Confira os valores antes de confirmar. As deduções serão registradas como sangrias automáticas.
+                </p>
+              </div>
+            </div>
 
-          <div className="space-y-4 py-1">
+            <div className="flex-1 space-y-4 py-1">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span>Etapa {fechamentoStep + 1} de {fechamentoSteps.length}</span>
@@ -1808,7 +1806,7 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             </div>
             
           </div>
-          <DialogFooter className="border-t pt-4 sm:justify-between items-center bg-slate-50 -mx-6 -mb-6 px-6 pb-6 mt-1 rounded-b-lg flex flex-col gap-3 sm:flex-row">
+            <div className="sticky bottom-0 mt-4 flex flex-col gap-3 border-t bg-slate-50/95 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-2 w-full sm:w-auto">
               <Button variant="ghost" onClick={() => setShowFechamentoModal(false)} disabled={isSubmitting}>Cancelar</Button>
               {fechamentoStep > 0 && (
@@ -1842,9 +1840,10 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                 </Button>
               )}
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </div>
+        </section>
+      )}
 
     </div>
   );
