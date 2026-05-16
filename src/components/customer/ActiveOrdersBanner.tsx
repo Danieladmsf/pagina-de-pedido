@@ -43,16 +43,17 @@ export function ActiveOrdersBanner({ storeId }: { storeId?: string | null }) {
     if (!db || !customerPhone || !storeId) return null;
     const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
     const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('ownerId', '==', storeId), where('customerIdentifier', 'in', possiblePhones));
+    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
   }, [db, customerPhone, storeId]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 
   const activeOrders = useMemo(() => {
-    if (!ordersRaw) return [];
+    if (!ordersRaw || !storeId) return [];
     return (ordersRaw as any[])
+      .filter(o => o.ownerId === storeId)
       .filter(o => ACTIVE_STATUSES.includes(o.status))
       .sort((a, b) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-  }, [ordersRaw]);
+  }, [ordersRaw, storeId]);
 
   if (!customerPhone || activeOrders.length === 0) return null;
 
