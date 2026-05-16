@@ -31,6 +31,7 @@ interface CartDrawerProps {
   storeAddress?: string; // Endereço do restaurante para cálculo de distância
   deliveryFeeRules?: Array<{ maxKm: number; fee: number; perKmExtra?: number }>; // Regras por distância
   maxDeliveryRadius?: number; // Limite de KM
+  customAddressRules?: Array<{ keyword: string; fee: number }>; // Regras personalizadas por bairro/rua
   freeDeliveryOver?: number; // Frete grátis acima de
   paymentMethods?: PaymentMethodConfig[]; // Formas de pagamento configuradas pela loja
   isStoreOpen?: boolean;
@@ -52,7 +53,7 @@ const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
@@ -280,6 +281,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           storeAddress,
           customerAddress,
           feeRules: deliveryFeeRules,
+          customAddressRules,
         }),
       });
       const data = await res.json();
@@ -313,7 +315,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     } finally {
       setCalculatingFee(false);
     }
-  }, [storeAddress, deliveryFeeRules, maxDeliveryRadius, toast]);
+  }, [storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius, toast]);
 
   // Auto-calcular taxa quando AMBOS o endereço salvo E as regras da loja estiverem prontos
   const [autoCalcDone, setAutoCalcDone] = useState(false);

@@ -16,8 +16,8 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.en
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { storeAddress, customerAddress, feeRules } = body;
-    console.log('[API delivery-fee] Recebido:', { storeAddress: storeAddress?.substring(0, 40), customerAddress: customerAddress?.substring(0, 40), feeRules });
+    const { storeAddress, customerAddress, feeRules, customAddressRules } = body;
+    console.log('[API delivery-fee] Recebido:', { storeAddress: storeAddress?.substring(0, 40), customerAddress: customerAddress?.substring(0, 40), feeRules, customAddressRules });
 
     if (!storeAddress || !customerAddress) {
       return NextResponse.json({ error: 'Endereços obrigatórios.' }, { status: 400 });
@@ -64,7 +64,24 @@ export async function POST(req: NextRequest) {
 
     // Calcular a taxa com base nas regras
     let calculatedFee = 0;
-    if (feeRules && Array.isArray(feeRules) && feeRules.length > 0) {
+    let customMatched = false;
+
+    // Prioridade 1: Regras personalizadas por Endereço/Bairro
+    if (customAddressRules && Array.isArray(customAddressRules) && customAddressRules.length > 0) {
+      const customerAddrLower = customerAddress.toLowerCase();
+      // Ordena por tamanho da keyword (maiores primeiro = mais específico)
+      const sortedCustom = [...customAddressRules].sort((a, b) => b.keyword.length - a.keyword.length);
+      for (const rule of sortedCustom) {
+        if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+          calculatedFee = rule.fee;
+          customMatched = true;
+          break;
+        }
+      }
+    }
+
+    // Prioridade 2: Taxa por KM (se não casou com regra personalizada)
+    if (!customMatched && feeRules && Array.isArray(feeRules) && feeRules.length > 0) {
       // Ordena as regras por maxKm crescente
       const sorted = [...feeRules].sort((a, b) => a.maxKm - b.maxKm);
       
