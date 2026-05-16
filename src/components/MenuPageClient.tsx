@@ -839,49 +839,38 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                 >
                   Todos
                 </Button>
-                {hasActivePromos && (
-                  <Button
-                    data-cat-tab="__promo__"
-                    variant={activeCategoryId === '__promo__' ? 'default' : 'outline'}
-                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
-                      activeCategoryId === '__promo__'
-                      ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-orange-500/30 shadow-lg'
-                      : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-50 animate-pulse'
-                    }`}
-                    onClick={() => scrollToCategory('__promo__')}
-                  >
-                    <Flame className="h-4 w-4" /> Promoções
-                  </Button>
-                )}
-                {hasCombos && (
-                  <Button
-                    data-cat-tab="__combos__"
-                    variant={activeCategoryId === '__combos__' ? 'default' : 'outline'}
-                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm gap-1.5 ${
-                      activeCategoryId === '__combos__'
-                      ? 'bg-purple-600 text-white border-0 shadow-purple-500/30 shadow-lg'
-                      : 'bg-white border-purple-300 text-purple-600 hover:bg-purple-50'
-                    }`}
-                    onClick={() => scrollToCategory('__combos__')}
-                  >
-                    Combos
-                  </Button>
-                )}
-                {visibleCategories.map((cat) => (
-                  <Button
-                    key={cat.id}
-                    data-cat-tab={cat.id}
-                    variant={activeCategoryId === cat.id ? 'default' : 'outline'}
-                    className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
-                      activeCategoryId === cat.id
+                {groupedItems.map((group) => {
+                  let buttonClass = '';
+                  let content: React.ReactNode = group.name;
+
+                  if (group.id === '__promo__') {
+                    buttonClass = activeCategoryId === '__promo__'
+                      ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-orange-500/30 shadow-lg gap-1.5'
+                      : 'bg-white border-orange-300 text-orange-600 hover:bg-orange-50 animate-pulse gap-1.5';
+                    content = <><Flame className="h-4 w-4" /> Promoções</>;
+                  } else if (group.id === '__combos__') {
+                    buttonClass = activeCategoryId === '__combos__'
+                      ? 'bg-purple-600 text-white border-0 shadow-purple-500/30 shadow-lg gap-1.5'
+                      : 'bg-white border-purple-300 text-purple-600 hover:bg-purple-50 gap-1.5';
+                    content = 'Combos';
+                  } else {
+                    buttonClass = activeCategoryId === group.id
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-                    }`}
-                    onClick={() => scrollToCategory(cat.id)}
-                  >
-                    {cat.name}
-                  </Button>
-                ))}
+                      : 'bg-white border-primary/20 text-primary hover:bg-primary/5';
+                  }
+
+                  return (
+                    <Button
+                      key={group.id}
+                      data-cat-tab={group.id}
+                      variant={activeCategoryId === group.id ? 'default' : 'outline'}
+                      className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${buttonClass}`}
+                      onClick={() => scrollToCategory(group.id)}
+                    >
+                      {content}
+                    </Button>
+                  );
+                })}
               </div>
 
               {/* Right fade gradient */}
