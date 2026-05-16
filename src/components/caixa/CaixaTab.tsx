@@ -1500,80 +1500,54 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             {fechamentoStep === 2 && (
               <div className="space-y-4">
                 <div className="rounded-lg border bg-white p-4">
-                  <h3 className="font-bold text-sm text-slate-700 mb-3">Composição do Valor Esperado</h3>
+                  <h3 className="font-bold text-sm text-slate-700 mb-3">Apuração de Dinheiro (Gaveta)</h3>
                   
                   <div className="divide-y text-sm">
-                    {/* ENTRADAS */}
+                    {/* ENTRADAS E SAIDAS CONSOLIDADAS */}
                     <div className="py-2 space-y-2">
                       <div className="flex items-center justify-between text-muted-foreground">
-                        <span>Saldo inicial do turno</span>
+                        <span>Saldo inicial do turno (Troco)</span>
                         <span>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</span>
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
                         <span>(+) Vendas em dinheiro</span>
                         <span className="text-emerald-600">R$ {totais.totalDinheiro.toFixed(2)}</span>
                       </div>
-                    </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>(+) Suprimentos (Entrada)</span>
+                        <span className="text-emerald-600">R$ {Math.abs(totais.totalSuprimentoDinheiro).toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>(-) Sangrias (Retiradas)</span>
+                        <span className="text-rose-600">-R$ {Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span>
+                      </div>
 
-                    {/* SAÍDAS DURANTE O TURNO */}
-                    <div className="py-2 space-y-2">
-                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Saídas registradas no turno (Sangrias)</div>
-                      {sangriasDinheiro.length > 0 ? (
-                        sangriasDinheiro.map((lanc, index) => (
-                          <div key={lanc.id || index} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                            <span className="text-[11px] text-muted-foreground">{lanc.data?.toDate?.().toLocaleString('pt-BR') || '-'}</span>
-                            <span className="text-slate-600 truncate">{lanc.titulo}</span>
-                            <strong className="text-rose-600">-R$ {Math.abs(lanc.valor || 0).toFixed(2)}</strong>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-muted-foreground italic text-xs">Nenhuma sangria registrada.</div>
+                      {taxaGarcomCalculada > 0 && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>(-) Taxa / Serviço (Paga agora)</span>
+                          <span className="text-rose-600">-R$ {taxaGarcomCalculada.toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      {motoboysPagosFechamento.length > 0 && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>(-) Motoboys (Pagos agora)</span>
+                          <span className="text-rose-600">-R$ {motoboysPagosFechamento.reduce((s, m) => s + m.valorPago, 0).toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      {freelancersPagosFechamento.length > 0 && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>(-) Freelancers (Pagos agora)</span>
+                          <span className="text-rose-600">-R$ {freelancersPagosFechamento.reduce((s, f) => s + f.valorPago, 0).toFixed(2)}</span>
+                        </div>
                       )}
                     </div>
-
-                    {/* SUBTOTAL GAVETA */}
-                    <div className="py-3 bg-slate-50 -mx-4 px-4 my-2">
-                      <div className="flex items-center justify-between font-bold">
-                        <span className="text-slate-700">Total na gaveta antes do fechamento</span>
-                        <span className="text-blue-700">R$ {totais.valorEmCaixa.toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    {/* ABATIMENTOS DE FECHAMENTO */}
-                    {(motoboysPagosFechamento.length > 0 || freelancersPagosFechamento.length > 0 || taxaGarcomCalculada > 0) && (
-                      <div className="py-2 space-y-2">
-                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Pagamentos no Fechamento</div>
-                        
-                        {taxaGarcomCalculada > 0 && (
-                          <div className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                            <span className="text-xs font-bold uppercase text-amber-600">Taxa / Serviço</span>
-                            <span className="text-slate-600">Retirada da taxa de serviço</span>
-                            <strong className="text-amber-600">-R$ {taxaGarcomCalculada.toFixed(2)}</strong>
-                          </div>
-                        )}
-
-                        {motoboysPagosFechamento.map(m => (
-                          <div key={m.id} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                            <span className="text-xs font-bold uppercase text-blue-600">Motoboy</span>
-                            <span className="text-slate-600 truncate">{m.name}</span>
-                            <strong className="text-blue-600">-R$ {m.valorPago.toFixed(2)}</strong>
-                          </div>
-                        ))}
-
-                        {freelancersPagosFechamento.map(f => (
-                          <div key={f.paymentKey} className="grid gap-1 sm:grid-cols-[150px_1fr_auto] sm:items-center">
-                            <span className="text-xs font-bold uppercase text-purple-600">Freelancer</span>
-                            <span className="text-slate-600 truncate">{f.name}</span>
-                            <strong className="text-purple-600">-R$ {f.valorPago.toFixed(2)}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    )}
 
                     {/* FINAL ESPERADO */}
                     <div className="pt-4 pb-2">
                       <div className="flex items-center justify-between text-lg">
-                        <span className="font-black text-slate-800">Valor exato que deve ter na gaveta</span>
+                        <span className="font-black text-slate-800">(=) Valor esperado na gaveta</span>
                         <strong className="font-black text-emerald-600 text-xl">R$ {valorEsperadoFechamento.toFixed(2)}</strong>
                       </div>
                     </div>
@@ -1581,9 +1555,9 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                 </div>
 
                 <div className="bg-white rounded-lg p-4 border space-y-3">
-                  <h3 className="font-bold text-sm text-slate-700">Apuracao Fisica da Gaveta</h3>
+                  <h3 className="font-bold text-sm text-slate-700">Apuração Física da Gaveta</h3>
                   <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground font-bold">Total contado em dinheiro</Label>
+                    <Label className="text-sm text-muted-foreground font-bold">Total contado fisicamente</Label>
                     <CurrencyInput
                       value={dinheiroApurado !== '' ? Number(dinheiroApurado) : undefined}
                       onChange={(val) => setDinheiroApurado(val.toString())}
@@ -1633,11 +1607,10 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-lg border bg-slate-50 p-4 space-y-2">
                     <h3 className="font-bold text-sm text-slate-700">Resumo financeiro</h3>
-                    <div className="flex justify-between text-sm"><span>Valor em Caixa</span><strong>R$ {totais.valorEmCaixa.toFixed(2)}</strong></div>
-                    <div className="flex justify-between text-sm"><span>Taxa Garcom</span><strong>R$ {taxaGarcomCalculada.toFixed(2)}</strong></div>
-                    <div className="flex justify-between text-sm"><span>Motoboys pagos agora</span><strong>R$ {totalMotoboysFechamento.toFixed(2)}</strong></div>
-                    <div className="flex justify-between text-sm"><span>Freelancers pagos agora</span><strong>R$ {totalFreelancersFechamento.toFixed(2)}</strong></div>
-                    <div className="flex justify-between border-t pt-2 text-base"><span className="font-bold">Valor Esperado</span><strong className="text-emerald-700">R$ {valorEsperadoFechamento.toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Saldo Inicial</span><strong>R$ {Math.abs(totais.saldoInicial).toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Entradas (Vendas + Sup)</span><strong className="text-emerald-600">R$ {(totais.totalDinheiro + Math.abs(totais.totalSuprimentoDinheiro)).toFixed(2)}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Saídas (Sangrias + Pgtos)</span><strong className="text-rose-600">-R$ {(Math.abs(totais.totalSangriaDinheiro) + taxaGarcomCalculada + totalMotoboysFechamento + totalFreelancersFechamento).toFixed(2)}</strong></div>
+                    <div className="flex justify-between border-t pt-2 text-base"><span className="font-bold">(=) Valor Esperado</span><strong className="text-emerald-700">R$ {valorEsperadoFechamento.toFixed(2)}</strong></div>
                   </div>
                   <div className="rounded-lg border bg-white p-4 space-y-2">
                     <h3 className="font-bold text-sm text-slate-700">Apuracao</h3>
