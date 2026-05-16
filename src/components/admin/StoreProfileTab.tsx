@@ -703,24 +703,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     </div>
                   </div>
                 </div>
-
-                {/* Toggle Impressão Automática */}
-                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      Impressão Automática de Pedidos
-                      {formData.autoPrint && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ativo</Badge>}
-                    </Label>
-                    <p className="text-[11px] text-slate-500 max-w-md">
-                      Quando ativado, o cupom do pedido será enviado automaticamente para a impressora assim que um novo pedido chegar pelo cardápio. Funciona para todas as lojas que usem este sistema.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.autoPrint}
-                    onCheckedChange={(checked) => setFormData({ ...formData, autoPrint: checked })}
-                    className="data-[state=checked]:bg-amber-600"
-                  />
-                </div>
               </div>
             </section>
           </>
