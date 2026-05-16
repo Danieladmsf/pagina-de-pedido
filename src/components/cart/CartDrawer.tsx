@@ -359,10 +359,32 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
-    if (orderType === 'delivery' && selectedAddress) {
-      if (selectedAddress.includes(',')) {
-        calculateDeliveryFee(selectedAddress);
+    if (!selectedAddress) return;
+
+    if (selectedAddress.includes(',')) {
+      // O Google Places retorna no formato: "Rua X, Bairro Y, Cidade - Estado, Brasil"
+      const parts = selectedAddress.split(',').map(p => p.trim());
+      const isBrasil = parts[parts.length - 1].toLowerCase() === 'brasil';
+      const relevantParts = isBrasil ? parts.slice(0, -1) : parts;
+      
+      if (relevantParts.length >= 3) {
+        setStreet(relevantParts[0]);
+        setNeighborhood(relevantParts[1]);
+        setCity(relevantParts.slice(2).join(', '));
+      } else if (relevantParts.length === 2) {
+        setStreet(relevantParts[0]);
+        setCity(relevantParts[1]);
       } else {
+        setStreet(relevantParts[0]);
+      }
+
+      if (orderType === 'delivery') {
+        // Usa o endereço original do Google para o cálculo de rota para maior precisão
+        setTimeout(() => calculateDeliveryFee(selectedAddress), 300);
+      }
+    } else {
+      setStreet(selectedAddress);
+      if (orderType === 'delivery') {
         const fullAddr = [selectedAddress, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
         calculateDeliveryFee(fullAddr);
       }
