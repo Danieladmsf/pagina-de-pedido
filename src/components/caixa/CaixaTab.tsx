@@ -981,8 +981,6 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
             <SummaryCard label="Pix" value={totais.totalPix} color="bg-teal-500" />
           </div>
 
-          </div>
-
           {/* ─── Tabela de Lançamentos ─── */}
           <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
             <CardContent className="p-0 flex-1 overflow-y-auto custom-scrollbar">
