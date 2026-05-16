@@ -159,16 +159,16 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                     <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
                       
                       {/* Coluna 1: Entregas */}
-                      <div className="p-4 bg-slate-50/30">
-                        <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                      <div className="p-4 bg-slate-50/30 flex flex-col max-h-[400px]">
+                        <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5 shrink-0">
                           <MapPin className="h-4 w-4 text-blue-500" /> Histórico de Entregas
                         </h4>
                         {m.pedidosLista.length === 0 ? (
                           <p className="text-xs text-slate-400 italic">Nenhuma entrega nesta sessão.</p>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 pb-2 flex-1">
                             {m.pedidosLista.map((ped: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm">
+                              <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm shrink-0">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5 mb-1">
                                     <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1 rounded">#{ped.id?.slice(-5).toUpperCase() || '---'}</span>
@@ -187,7 +187,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                               </div>
                             ))}
                             {m.taxa > 0 && m.entregas > 0 && (
-                              <div className="flex justify-between items-center bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
+                              <div className="flex justify-between items-center bg-blue-50/50 p-2.5 rounded-lg border border-blue-100 shrink-0">
                                 <span className="text-xs font-semibold text-blue-800">Diária / Taxa Fixa</span>
                                 <span className="text-xs font-bold text-blue-700">R$ {m.taxa.toFixed(2)}</span>
                               </div>
@@ -197,16 +197,16 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                       </div>
 
                       {/* Coluna 2: Vales e Sangrias */}
-                      <div className="p-4 bg-slate-50/30">
-                        <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                      <div className="p-4 bg-slate-50/30 flex flex-col max-h-[400px]">
+                        <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5 shrink-0">
                           <ReceiptText className="h-4 w-4 text-rose-500" /> Vales e Sangrias
                         </h4>
                         {m.sangriasLista.length === 0 ? (
                           <p className="text-xs text-slate-400 italic">Nenhum vale registrado nesta sessão.</p>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 pb-2 flex-1">
                             {m.sangriasLista.map((val: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm">
+                              <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm shrink-0">
                                 <div>
                                   <div className="text-xs text-slate-500 flex items-center gap-1 mb-1">
                                     <Clock className="h-3 w-3" />
