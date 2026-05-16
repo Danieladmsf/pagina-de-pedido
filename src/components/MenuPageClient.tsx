@@ -803,7 +803,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             >
               <div className="relative h-44 w-full md:h-56">
                 <Image 
-                  src={item.imageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
+                  src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
                   alt={item.name} 
                   fill 
                   className="object-cover group-hover:scale-105 transition-transform duration-700"
