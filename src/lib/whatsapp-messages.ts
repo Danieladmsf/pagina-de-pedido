@@ -48,7 +48,7 @@ export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
   orderDineInReady:
     'Ol\u00e1, {primeiro_nome}! \u{1F37D}\uFE0F\u2728\nSeu pedido n\u00ba #{pedido} est\u00e1 *dispon\u00edvel*!\n\nSeu prato j\u00e1 est\u00e1 pronto. Bom apetite! \u{1F60B}',
   storeClosed:
-    'Ol\u00e1! No momento a {loja} est\u00e1 fechada.\n\nNosso hor\u00e1rio de atendimento:\n{horarios}\n\nVoc\u00ea tamb\u00e9m pode acessar o card\u00e1pio e deixar tudo pronto para pedir quando abrirmos:\n{link}',
+    'Olá! No momento a {loja} está fechada.\n\nNosso horário de atendimento:\n{horarios}\n\n{proxima_abertura}\n\nEnquanto isso, você já pode dar uma espiadinha no nosso cardápio e deixar tudo pronto para pedir quando abrirmos:\n{link}\n\nAgradecemos o carinho e a preferência! 🥰',
 };
 
 export function getWhatsAppMessages(saved?: Partial<WhatsAppMessageTemplates> | null): WhatsAppMessageTemplates {
@@ -132,4 +132,47 @@ export function getStoreOpenState(storeProfile: any, now = new Date()) {
   }
 
   return { isOpen: true, reason: '' };
+}
+
+export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plannedClosures?: any[], timezone = 'America/Sao_Paulo', now = new Date()) {
+  if (!workingHours || workingHours.length === 0) return '';
+
+  const localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  const daysMap = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado'];
+  const accentDaysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+  for (let offset = 0; offset <= 7; offset++) {
+    const checkDate = new Date(localNow);
+    checkDate.setDate(localNow.getDate() + offset);
+
+    const yyyy = checkDate.getFullYear();
+    const mm = String(checkDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(checkDate.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    const closure = plannedClosures?.find((c: any) => c.date === dateStr);
+    if (closure) continue; // Planned closure all day
+
+    const dayIndex = checkDate.getDay();
+    const config = workingHours.find((wh) => wh.day === accentDaysMap[dayIndex] || wh.day === daysMap[dayIndex]);
+
+    if (config && !config.isClosed) {
+      const [openHour, openMin] = String(config.open || '00:00').split(':').map(Number);
+      
+      // se for hoje, checa se a hora de abertura já passou
+      if (offset === 0) {
+        const currentMins = localNow.getHours() * 60 + localNow.getMinutes();
+        const openMins = openHour * 60 + openMin;
+        if (currentMins < openMins) {
+          return `A próxima abertura será hoje às ${String(openHour).padStart(2, '0')}:${String(openMin).padStart(2, '0')} hs ⏰🎉.`;
+        }
+      } else {
+        const displayDate = `${dd}/${mm}`;
+        const dayName = accentDaysMap[dayIndex];
+        return `A próxima abertura será no dia ${displayDate} (${dayName}) às ${String(openHour).padStart(2, '0')}:${String(openMin).padStart(2, '0')} hs ⏰🎉.`;
+      }
+    }
+  }
+
+  return '';
 }
