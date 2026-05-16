@@ -607,14 +607,14 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
               </div>
             </section>
 
-            {/* SEÇÃO 5 — Configurações de Vendas & Estoque */}
+            {/* SEÇÃO 5 — Configurações de Vendas & Impressão */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
               <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
                   <Box className="h-5 w-5 text-violet-600" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-base font-bold text-slate-800">Vendas & Estoque</h2>
+                  <h2 className="text-base font-bold text-slate-800">Vendas, Estoque e Impressão</h2>
                   <p className="text-xs text-muted-foreground">Configurações globais sobre como o cardápio opera.</p>
                 </div>
               </header>
@@ -634,6 +634,43 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
                     className="data-[state=checked]:bg-violet-600"
                   />
+                </div>
+
+                <div className="flex flex-col gap-3 p-4 bg-slate-50 border rounded-xl">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Tamanho do Papel (Impressora Térmica)
+                    </Label>
+                    <p className="text-[11px] text-slate-500 max-w-md">
+                      Ajuste a formatação dos cupons para caber exatamente no tamanho da sua bobina, evitando cortes nas laterais do texto.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, printerSize: '80mm' })}
+                      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                        (!formData.printerSize || formData.printerSize === '80mm') 
+                          ? 'border-violet-600 bg-violet-50 text-violet-800' 
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
+                      }`}
+                    >
+                      <span className="font-bold text-sm">80mm</span>
+                      <span className="text-[10px] opacity-70">Padrão Restaurantes</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, printerSize: '58mm' })}
+                      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                        formData.printerSize === '58mm' 
+                          ? 'border-violet-600 bg-violet-50 text-violet-800' 
+                          : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
+                      }`}
+                    >
+                      <span className="font-bold text-sm">58mm</span>
+                      <span className="text-[10px] opacity-70">Mini Impressoras Bluetooth</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>

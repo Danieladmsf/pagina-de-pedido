@@ -147,10 +147,14 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     currentPage * ITEMS_PER_PAGE
   );
 
+  const printerSize = storeProfile?.printerSize || '80mm';
+  const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
+  const fontSize = printerSize === '58mm' ? '10px' : '12px';
+
   // ── Estilo térmico compartilhado ──
   const thermalCSS = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: 12px; line-height: 1.4; max-width: 300px; margin: 0 auto; background: #fff; }
+    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
     .header { text-align: center; margin-bottom: 4px; }
     .header h1 { font-size: 14px; font-weight: bold; text-transform: uppercase; }
     .header p { font-size: 11px; }
@@ -167,7 +171,10 @@ export function CaixaTab({ storeProfile, orders, autoOpenAbrirCaixa, onModalOpen
     .resumo .row { padding: 1px 0; }
     .total-final { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
     .footer { text-align: center; margin-top: 16px; font-size: 10px; }
-    @media print { body { padding: 0; } @page { margin: 5mm; } }
+    @media print { 
+      body { padding: 0; width: ${maxWidth} !important; max-width: ${maxWidth} !important; } 
+      @page { size: ${maxWidth} auto !important; margin: 0 !important; } 
+    }
   `;
 
   const openPrintWindow = (title: string, bodyHTML: string) => {

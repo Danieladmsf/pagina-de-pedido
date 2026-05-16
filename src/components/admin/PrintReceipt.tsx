@@ -9,8 +9,24 @@ interface PrintReceiptProps {
 export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(({ order, storeInfo, isKitchen }, ref) => {
   if (!order) return null;
 
+  const printerSize = storeInfo?.printerSize || '80mm';
+  const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
+  const fontSize = printerSize === '58mm' ? '10px' : '12px';
+
   return (
-    <div ref={ref} className="hidden print:block bg-white text-black p-4 text-[12px] font-mono leading-tight max-w-[300px] mx-auto">
+    <>
+      <style>{`
+        @media print {
+          @page { size: ${maxWidth} auto !important; margin: 0 !important; }
+          html, body { width: ${maxWidth} !important; max-width: ${maxWidth} !important; }
+          .print\\:block { 
+            width: ${maxWidth} !important; 
+            max-width: ${maxWidth} !important; 
+            font-size: ${fontSize} !important;
+          }
+        }
+      `}</style>
+      <div ref={ref} className="hidden print:block bg-white text-black p-4 text-[12px] font-mono leading-tight max-w-[300px] mx-auto" style={{ width: maxWidth, maxWidth: maxWidth, fontSize: fontSize }}>
       {/* Cabeçalho */}
       <div className="text-center mb-4 border-b border-black border-dashed pb-4">
         <h1 className="font-bold text-lg uppercase">
