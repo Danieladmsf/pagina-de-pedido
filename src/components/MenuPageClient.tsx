@@ -316,7 +316,13 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
   const hasCombos = useMemo(() => {
     if (!items) return false;
-    return items.some(item => item.isCombo && item.isAvailable !== false);
+    const now = new Date();
+    return items.some(item => {
+      if (!item.isCombo || item.isAvailable === false) return false;
+      if (item.startDate && now < new Date(item.startDate)) return false;
+      if (item.endDate && now > new Date(item.endDate)) return false;
+      return true;
+    });
   }, [items]);
 
   const filteredItems = useMemo(() => {
@@ -327,6 +333,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
     return items.filter(item => {
       if (item.isAvailable === false) return false;
+      
+      if (item.startDate || item.endDate) {
+        const now = new Date();
+        if (item.startDate && now < new Date(item.startDate)) return false;
+        if (item.endDate && now > new Date(item.endDate)) return false;
+      }
       
       // Allow combos to show if they don't have a category, or if their category is visible
       const isVisibleCategory = item.categoryId ? visibleCategoryIds.has(item.categoryId) : item.isCombo;
