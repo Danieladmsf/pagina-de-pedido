@@ -57,6 +57,11 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     return group.usePrice !== false;
   };
 
+  const getNumericGroupValue = (value: unknown) => {
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
+  };
+
   const toggleNormalAddon = (addon: Addon) => {
     setSelectedAddons(prev => {
       const exists = prev.find(a => a.id === addon.id);
@@ -70,7 +75,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       const current = prev[groupIndex] || [];
       let next = [...current];
       if (delta > 0) {
-        const limit = group.max || 0;
+        const limit = getNumericGroupValue(group.max);
         
         if (limit === 1) {
           next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
@@ -104,7 +109,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   if (item.addonGroups && item.addonGroups.length > 0) {
     item.addonGroups.forEach((group, index) => {
       const arr = marmitaSelections[index] || [];
-      const freeLimit = group.freeLimit || 0;
+      const freeLimit = getNumericGroupValue(group.freeLimit);
       
       arr.forEach((a, i) => {
         let effectivePrice = 0;
@@ -136,9 +141,10 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     for (let i = 0; i < item.addonGroups.length; i++) {
       const g = item.addonGroups[i];
       const selectedCount = (marmitaSelections[i] || []).length;
-      if (selectedCount < g.min) {
+      const minRequired = getNumericGroupValue(g.min);
+      if (selectedCount < minRequired) {
         canAddToCart = false;
-        validationMessage = `Selecione ao menos ${g.min} em: ${g.name}`;
+        validationMessage = `Selecione ao menos ${minRequired} em: ${g.name}`;
         break;
       }
     }
@@ -232,6 +238,9 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
             const usesPrice = groupUsesPrice(group);
+            const maxChoices = getNumericGroupValue(group.max);
+            const minChoices = getNumericGroupValue(group.min);
+            const freeChoices = getNumericGroupValue(group.freeLimit);
             
             if (availableAddons.length === 0) return null;
 
@@ -241,25 +250,25 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
-                      {usesPrice && group.freeLimit ? (
+                      {usesPrice && freeChoices ? (
                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
-                          {group.freeLimit} {group.freeLimit === 1 ? 'grátis' : 'grátis'}
+                          {freeChoices} {freeChoices === 1 ? 'grátis' : 'grátis'}
                         </span>
                       ) : null}
                       <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                        {group.max > 0 ? `Escolha de ${group.min || 0} a ${group.max}` : 'Sem limite'}
+                        {maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : 'Sem limite'}
                       </span>
                     </div>
                   </div>
                   <span className="text-[10px] text-muted-foreground font-medium">
-                    {currentSelected.length} {group.max > 0 ? `de ${group.max}` : ''} selecionados
+                    {currentSelected.length} {maxChoices > 0 ? `de ${maxChoices}` : ''} selecionados
                   </span>
                 </div>
                 
                 <div className="grid gap-1.5">
                   {availableAddons.map((addon) => {
                     const selectedQuantity = getAddonQuantity(currentSelected, addon.id);
-                    const limit = group.max || 0;
+                    const limit = maxChoices;
                     const canIncrease = limit === 1
                       ? selectedQuantity === 0
                       : limit === 0 || currentSelected.length < limit;
