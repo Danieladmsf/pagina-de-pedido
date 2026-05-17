@@ -93,12 +93,14 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
       const freeLimit = group.freeLimit || 0;
       
       arr.forEach((a, i) => {
+        let effectivePrice = 0;
         // Se o índice for maior ou igual ao limite gratuito, cobra o valor
         if (i >= freeLimit) {
-          addonsTotal += Number(a.price) || 0;
+          effectivePrice = Number(a.price) || 0;
+          addonsTotal += effectivePrice;
         }
-        // Mas o item sempre vai pro carrinho final
-        finalAddonsList.push(a);
+        // O item vai pro carrinho final com o preço efetivo (0 se for grátis)
+        finalAddonsList.push({ ...a, price: effectivePrice });
       });
     });
   }
@@ -222,14 +224,15 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                           const freeLimit = group.freeLimit || 0;
                           const selectedIndex = currentSelected.findIndex(a => a.id === addon.id);
                           const isSelected = selectedIndex >= 0;
-                          const isFree = isSelected && selectedIndex < freeLimit;
-                          const hasReachedFreeLimit = currentSelected.length >= freeLimit;
+                          // It's free ONLY if it is currently selected AND within the free limit
+                          const isCurrentlyFree = isSelected && selectedIndex < freeLimit;
 
-                          if (!hasReachedFreeLimit) return null;
-
+                          // If the free limit hasn't been reached yet, this item WOULD be free if selected.
+                          // But we want the user to know it has a cost if they exceed the limit.
+                          // So we show the price, unless it is actively selected as a free item.
                           return (
                             <span className="text-[11px] font-bold flex items-center gap-1.5">
-                              {isFree ? (
+                              {isCurrentlyFree ? (
                                 <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[10px]">Grátis</span>
                               ) : (
                                 <span className="text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
