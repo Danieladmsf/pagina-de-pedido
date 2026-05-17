@@ -1603,14 +1603,16 @@ export default function AdminPage() {
               return 0;
             });
 
-            const addonUsageMap = new Map<string, number>();
+            const addonUsageMap = new Map<string, Set<string>>();
             for (const item of (items || [])) {
               for (const id of (item.addonIds || [])) {
-                addonUsageMap.set(id, (addonUsageMap.get(id) || 0) + 1);
+                if (!addonUsageMap.has(id)) addonUsageMap.set(id, new Set());
+                addonUsageMap.get(id)!.add(item.name);
               }
               for (const g of (item.addonGroups || [])) {
                 for (const id of (g.addonIds || [])) {
-                  addonUsageMap.set(id, (addonUsageMap.get(id) || 0) + 1);
+                  if (!addonUsageMap.has(id)) addonUsageMap.set(id, new Set());
+                  addonUsageMap.get(id)!.add(item.name);
                 }
               }
             }
@@ -1632,7 +1634,7 @@ export default function AdminPage() {
             for (const [name, ids] of addonNameMap.entries()) {
               if (ids.length > 1) {
                 for (const id of ids) {
-                  if ((addonUsageMap.get(id) || 0) === 0) {
+                  if (!addonUsageMap.has(id) || addonUsageMap.get(id)!.size === 0) {
                     unusedDuplicateIds.add(id);
                   }
                 }
@@ -1989,10 +1991,17 @@ export default function AdminPage() {
                             />
                           </TableCell>
                           <TableCell className="font-bold">
-                            <div className="flex items-center gap-2">
-                              <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
-                              {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
-                              {unusedDuplicateIds.has(addon.id) && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ml-2">S/ USO (DUPLICADO)</span>}
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
+                                {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
+                                {unusedDuplicateIds.has(addon.id) && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ml-2">S/ USO (DUPLICADO)</span>}
+                              </div>
+                              {addonUsageMap.has(addon.id) && addonUsageMap.get(addon.id)!.size > 0 && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5 font-normal max-w-[200px] sm:max-w-xs md:max-w-md truncate" title={Array.from(addonUsageMap.get(addon.id)!).join(', ')}>
+                                  <span className="font-semibold text-slate-500">Usado em:</span> {Array.from(addonUsageMap.get(addon.id)!).join(', ')}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{addon.group || 'Geral'}</TableCell>
