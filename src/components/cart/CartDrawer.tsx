@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy, QrCode } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -34,6 +34,8 @@ interface CartDrawerProps {
   customAddressRules?: Array<{ keyword: string; fee: number }>; // Regras personalizadas por bairro/rua
   freeDeliveryOver?: number; // Frete grátis acima de
   paymentMethods?: PaymentMethodConfig[]; // Formas de pagamento configuradas pela loja
+  pixKey?: string | null;
+  pixName?: string | null;
   isStoreOpen?: boolean;
   menuItems?: any[];
   enableInventory?: boolean;
@@ -85,7 +87,7 @@ const formatDate = (val: string) => {
   return f;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
@@ -1112,6 +1114,33 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                           {Number(cashChange) >= grandTotal
                             ? `Troco: R$ ${(Number(cashChange) - grandTotal).toFixed(2)}`
                             : `Falta R$ ${(grandTotal - Number(cashChange)).toFixed(2)}`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {paymentMethod === 'pix' && (
+                    <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200 space-y-2">
+                      <div className="flex items-center gap-1.5 text-emerald-800 text-xs font-bold">
+                        <QrCode className="h-4 w-4" /> Pagamento via PIX
+                      </div>
+                      <p className="text-[11px] text-emerald-700 leading-tight">
+                        Você pode copiar a chave PIX abaixo agora ou aguardar a mensagem no seu WhatsApp. <b>Lembre-se de enviar o comprovante no WhatsApp da loja para agilizar!</b>
+                      </p>
+                      {(pixKey || pixName) && (
+                        <div className="bg-white p-2 rounded border border-emerald-100 text-[11px] space-y-1">
+                          {pixKey && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Chave PIX:</span>
+                              <span className="font-mono font-bold">{pixKey}</span>
+                            </div>
+                          )}
+                          {pixName && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Titular:</span>
+                              <span className="font-bold text-slate-800">{pixName}</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
