@@ -323,7 +323,7 @@ export default function AdminPage() {
       } catch {}
 
       // ── Impressão Automática de Pedidos ──
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !storeProfile?.general?.manualPrint) {
         const ps = storeProfile?.general?.printerSize || '80mm';
         const mw = ps === '58mm' ? '58mm' : '80mm';
         const fs = ps === '58mm' ? '10px' : '12px';
