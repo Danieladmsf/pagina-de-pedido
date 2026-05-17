@@ -548,9 +548,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome e telefone." });
       return;
     }
-    if (orderType === 'delivery' && !street) {
-      toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe o endereço de entrega." });
-      return;
+    if (orderType === 'delivery') {
+      if (!street) {
+        toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe a rua de entrega." });
+        return;
+      }
+      if (!neighborhood) {
+        toast({ variant: "destructive", title: "Endereço obrigatório", description: "O preenchimento do bairro é obrigatório." });
+        return;
+      }
     }
     if (!paymentMethod) {
       toast({ variant: "destructive", title: "Pagamento", description: "Selecione uma forma de pagamento." });
