@@ -1448,49 +1448,62 @@ export function CaixaTab({
                         const payment = motoboyPayments[m.id];
                         const checked = payment?.include ?? m.saldo > 0;
                         const isOnDelivery = orders?.some((o: any) => o.motoboyId === m.id && o.status === 'out_for_delivery');
+                        const isQuitado = m.saldo <= 0;
                         return (
-                          <div key={m.id} className={`rounded-md border bg-white p-3 ${isOnDelivery ? 'border-amber-300' : ''}`}>
+                          <div key={m.id} className={`rounded-md border p-3 transition-all ${
+                            isQuitado 
+                              ? 'bg-emerald-50/60 border-emerald-200 opacity-70' 
+                              : isOnDelivery 
+                                ? 'bg-white border-amber-300' 
+                                : 'bg-white'
+                          }`}>
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <Checkbox
                                     checked={checked}
                                     onCheckedChange={(value) => updateMotoboyPayment(m.id, m.saldo, { include: value === true })}
-                                    disabled={m.saldo <= 0}
+                                    disabled={isQuitado}
                                   />
-                                  <span className="font-semibold">{m.name}</span>
-                                  {isOnDelivery ? (
+                                  <span className={`font-semibold ${isQuitado ? 'text-emerald-700 line-through' : ''}`}>{m.name}</span>
+                                  {isQuitado ? (
+                                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] font-bold">✅ Quitado</Badge>
+                                  ) : isOnDelivery ? (
                                     <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] font-bold animate-pulse">🏍️ Em rota</Badge>
                                   ) : (
-                                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-600 border-emerald-200 text-[10px] font-bold">✅ Livre</Badge>
+                                    <Badge variant="secondary" className="bg-blue-50 text-blue-600 border-blue-200 text-[10px] font-bold">💰 Pendente</Badge>
                                   )}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                   {m.entregas} entregas - Total R$ {m.total.toFixed(2)} - Ja pago R$ {m.jaPago.toFixed(2)}
                                 </div>
                               </div>
+                              {!isQuitado && (
                               <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_auto_auto] md:min-w-[360px] md:items-end">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Pagar agora</Label>
                                   <CurrencyInput
                                     value={payment?.amount ?? m.saldo}
                                     onChange={(value) => updateMotoboyPayment(m.id, m.saldo, { include: value > 0, amount: value })}
-                                    disabled={!checked || m.saldo <= 0}
+                                    disabled={!checked || isQuitado}
                                   />
                                 </div>
-                                <Button type="button" variant="outline" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: true, amount: m.saldo })} disabled={m.saldo <= 0}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: true, amount: m.saldo })} disabled={isQuitado}>
                                   Tudo
                                 </Button>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: false, amount: 0 })} disabled={m.saldo <= 0}>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: false, amount: 0 })} disabled={isQuitado}>
                                   Adiar
                                 </Button>
                               </div>
+                              )}
                             </div>
+                            {!isQuitado && (
                             <div className="mt-3 grid gap-2 border-t pt-3 text-xs sm:grid-cols-3">
                               <span>Saldo devido: <strong>R$ {m.saldo.toFixed(2)}</strong></span>
                               <span>Pago agora: <strong className="text-blue-700">R$ {m.valorPago.toFixed(2)}</strong></span>
                               <span>Saldo depois: <strong className={m.saldoRestante > 0 ? 'text-rose-600' : 'text-emerald-600'}>R$ {m.saldoRestante.toFixed(2)}</strong></span>
                             </div>
+                            )}
                           </div>
                         );
                       })}
