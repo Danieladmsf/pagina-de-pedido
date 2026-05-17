@@ -13,6 +13,7 @@ import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
+import { removeAccents } from '@/lib/utils';
 
 interface ProductModalProps {
   db: any;
@@ -282,8 +283,8 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
                     {groups.map((group, index) => {
-                      const searchTerm = (groupSearchTerms[index] || '').toLowerCase();
-                      const filteredAddons = allAddons.filter(a => a.name.toLowerCase().includes(searchTerm));
+                      const searchTerm = removeAccents((groupSearchTerms[index] || '').toLowerCase());
+                      const filteredAddons = allAddons.filter(a => removeAccents(a.name.toLowerCase()).includes(searchTerm));
                       const selectedAddons = allAddons.filter(a => group.addonIds.includes(a.id));
                       const availableAddons = filteredAddons.filter(a => !group.addonIds.includes(a.id));
 

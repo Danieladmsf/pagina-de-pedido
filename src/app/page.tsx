@@ -40,6 +40,7 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Component, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
+import { removeAccents } from '@/lib/utils';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -210,8 +211,8 @@ export default function AdminPage() {
       result = result.filter(item => item.categoryId === productCategoryFilter);
     }
     if (productSearch.trim()) {
-      const s = productSearch.toLowerCase();
-      result = result.filter(item => item.name.toLowerCase().includes(s));
+      const s = removeAccents(productSearch.toLowerCase());
+      result = result.filter(item => removeAccents(item.name.toLowerCase()).includes(s));
     }
     
     if (sortConfig) {
