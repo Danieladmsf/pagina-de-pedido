@@ -925,7 +925,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                       src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'} 
                       alt={item.name} 
                       fill 
-                      className="object-cover group-hover:scale-105 transition-transform duration-700"
+                      className="object-contain group-hover:scale-105 transition-transform duration-700 p-2"
                     />
                     {isPromoItem ? (
                       <>
