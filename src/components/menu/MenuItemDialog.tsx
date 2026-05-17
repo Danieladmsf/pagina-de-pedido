@@ -44,7 +44,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
   const productAddons = useMemo(() => {
     if (item?.isCombo) return [];
     if (!item?.addonIds || item.addonIds.length === 0) return [];
-    return allAddons.filter(a => item.addonIds!.includes(a.id));
+    return allAddons.filter(a => item.addonIds!.includes(a.id) && a.active !== false);
   }, [item, allAddons]);
 
   if (!item) return null;
@@ -171,7 +171,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
 
           {/* Addon Groups */}
           {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
-            const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id));
+            const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
             
             if (availableAddons.length === 0) return null;
