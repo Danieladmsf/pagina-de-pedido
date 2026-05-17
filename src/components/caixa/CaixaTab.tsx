@@ -1211,7 +1211,7 @@ export function CaixaTab({
             <DialogDescription>
               {modalOpen === 'abrir' ? (
                 ultimoSaldoRef !== null
-                  ? `Valor pré-preenchido com o último caixa apurado: R$ ${ultimoSaldoRef.toFixed(2)}. Ajuste se necessário.`
+                  ? `O saldo inicial foi preenchido automaticamente com o último caixa apurado (R$ ${ultimoSaldoRef.toFixed(2)}) e não pode ser editado.`
                   : 'Informe o valor em dinheiro na gaveta.'
               ) :
                modalOpen === 'sangria' ? 'Registre uma retirada do caixa.' :
@@ -1223,7 +1223,13 @@ export function CaixaTab({
           <form onSubmit={handleAction} className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>{modalOpen === 'abrir' ? 'Saldo Inicial na Gaveta (R$)' : 'Valor (R$)'}</Label>
-              <CurrencyInput value={valorInput} onChange={setValorInput} placeholder="0,00" required />
+              <CurrencyInput 
+                value={valorInput} 
+                onChange={setValorInput} 
+                placeholder="0,00" 
+                required 
+                disabled={modalOpen === 'abrir' && ultimoSaldoRef !== null} 
+              />
             </div>
 
             {modalOpen !== 'abrir' && (
