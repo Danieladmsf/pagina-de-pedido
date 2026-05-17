@@ -34,7 +34,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [addonDetails, setAddonDetails] = useState<Addon | null>(null);
+  const [addonDetails, setAddonDetails] = useState<{ addon: Addon; groupName?: string } | null>(null);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
@@ -44,7 +44,44 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
       const isActive = addon.active !== false;
       await updateDoc(doc(db, 'addons', addon.id), { active: !isActive });
       toast({ title: isActive ? 'Adicional pausado globalmente' : 'Adicional reativado' });
-      setAddonDetails({ ...addon, active: !isActive });
+      if (addonDetails?.addon.id === addon.id) {
+        setAddonDetails({ ...addonDetails, addon: { ...addon, active: !isActive } });
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: err.message });
+    }
+  };
+
+  const handleAddToAll = async () => {
+    if (!db || !addonDetails || !addonDetails.groupName) return;
+    if (!confirm(`Deseja adicionar "${addonDetails.addon.name}" a TODOS os produtos que possuem a etapa "${addonDetails.groupName}"?`)) return;
+    try {
+      let updatedCount = 0;
+      for (const item of items) {
+        if (!item.addonGroups) continue;
+        let modified = false;
+        const newGroups = item.addonGroups.map((g: any) => {
+          if (g.name === addonDetails.groupName) {
+            if (!g.addonIds.includes(addonDetails.addon.id)) {
+              modified = true;
+              return { ...g, addonIds: [...g.addonIds, addonDetails.addon.id] };
+            }
+          }
+          return g;
+        });
+        if (modified) {
+          await updateDoc(doc(db, 'menuItems', item.id), { addonGroups: newGroups });
+          updatedCount++;
+        }
+      }
+      
+      const currentGroup = groups.find(g => g.name === addonDetails.groupName);
+      if (currentGroup && !currentGroup.addonIds.includes(addonDetails.addon.id)) {
+         setGroups(groups.map(g => g.name === addonDetails.groupName ? { ...g, addonIds: [...g.addonIds, addonDetails.addon.id] } : g));
+      }
+
+      toast({ title: `Adicionado a ${updatedCount} produtos com sucesso!` });
+      setAddonDetails(null);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
     }
@@ -275,8 +312,8 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
               <DialogContent className="sm:max-w-[400px]">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    {addonDetails.name}
-                    {addonDetails.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
+                    {addonDetails.addon.name}
+                    {addonDetails.addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
@@ -284,21 +321,33 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                     Este adicional está vinculado aos seguintes produtos:
                     <ul className="mt-2 list-disc pl-4 max-h-[150px] overflow-y-auto space-y-1">
                       {items.filter(item => {
-                        if (item.addonIds?.includes(addonDetails.id)) return true;
-                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.id))) return true;
+                        if (item.addonIds?.includes(addonDetails.addon.id)) return true;
+                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
                         return false;
                       }).map(item => (
                         <li key={item.id} className="font-medium text-slate-800">{item.name} {item.isMarmita ? '(Marmita)' : ''}</li>
                       ))}
                       {items.filter(item => {
-                        if (item.addonIds?.includes(addonDetails.id)) return true;
-                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.id))) return true;
+                        if (item.addonIds?.includes(addonDetails.addon.id)) return true;
+                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
                         return false;
                       }).length === 0 && (
                         <li className="text-slate-400 italic">Nenhum produto utiliza este adicional no momento.</li>
                       )}
                     </ul>
                   </div>
+                  
+                  {addonDetails.groupName && (
+                    <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex flex-col gap-2">
+                      <p className="text-xs text-blue-800">
+                        Deseja inserir <b>{addonDetails.addon.name}</b> em todos os produtos que possuem a etapa <b>&quot;{addonDetails.groupName}&quot;</b>?
+                      </p>
+                      <Button onClick={handleAddToAll} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white w-full">
+                        <Plus className="w-3 h-3 mr-1" /> Adicionar a Todos
+                      </Button>
+                    </div>
+                  )}
+
                   <p className="text-xs text-muted-foreground">
                     Você pode pausar este adicional globalmente. Ele ficará <b>indisponível para os clientes</b> em todos os produtos, sem precisar ser removido da configuração de cada um deles.
                   </p>
@@ -306,10 +355,10 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                 <DialogFooter className="flex-col sm:flex-row gap-2">
                   <Button variant="outline" onClick={() => setAddonDetails(null)} className="w-full sm:w-auto">Fechar</Button>
                   <Button 
-                    onClick={() => toggleAddonActive(addonDetails)}
-                    className={`w-full sm:w-auto ${addonDetails.active === false ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}
+                    onClick={() => toggleAddonActive(addonDetails.addon)}
+                    className={`w-full sm:w-auto ${addonDetails.addon.active === false ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}
                   >
-                    {addonDetails.active === false ? <><Power className="w-4 h-4 mr-2" /> Reativar</> : <><PowerOff className="w-4 h-4 mr-2" /> Pausar Globalmente</>}
+                    {addonDetails.addon.active === false ? <><Power className="w-4 h-4 mr-2" /> Reativar</> : <><PowerOff className="w-4 h-4 mr-2" /> Pausar Globalmente</>}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -414,7 +463,13 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                               className="w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/avail"
                                             >
                                               <Plus className="h-3 w-3 text-slate-300 group-hover/avail:text-emerald-500 flex-shrink-0" />
-                                              <span className={`truncate flex-1 ${addon.active === false ? 'text-red-400 line-through' : ''}`}>{addon.name}</span>
+                                              <span 
+                                                className={`truncate flex-1 cursor-pointer hover:underline transition-colors ${addon.active === false ? 'text-red-400 line-through' : 'hover:text-primary'}`}
+                                                onClick={() => setAddonDetails({ addon, groupName: group.name })}
+                                                title="Clique para pausar ou ver detalhes"
+                                              >
+                                                {addon.name}
+                                              </span>
                                               {addon.price > 0 && (
                                                 <span className="text-[10px] text-slate-400 flex-shrink-0">R$ {addon.price.toFixed(2)}</span>
                                               )}
@@ -443,7 +498,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                             <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
                                             <span 
                                               className={`truncate flex-1 cursor-pointer hover:underline transition-colors ${addon.active === false ? 'text-red-500 line-through' : 'text-slate-700 hover:text-primary'}`} 
-                                              onClick={() => setAddonDetails(addon)}
+                                              onClick={() => setAddonDetails({ addon, groupName: group.name })}
                                               title="Clique para pausar ou ver detalhes"
                                             >
                                               {addon.name}
