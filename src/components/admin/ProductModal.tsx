@@ -13,7 +13,6 @@ import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
-import { removeAccents } from '@/lib/utils';
 
 interface ProductModalProps {
   db: any;
@@ -31,7 +30,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
   const [groups, setGroups] = useState<AddonGroup[]>([]);
-  const [groupSearchTerms, setGroupSearchTerms] = useState<Record<number, string>>({});
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -46,7 +44,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       setCategoryId(editingProduct.categoryId || categories?.[0]?.id || '');
       setFixedItemsText((editingProduct.fixedItems || []).join(', '));
       setGroups(editingProduct.addonGroups || []);
-      setGroupSearchTerms({});
       setImageFile(null);
       setImagePreview(editingProduct.imageUrl || '');
       setUploadingImage(false);
@@ -64,17 +61,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const handleUpdateGroup = (index: number, field: keyof AddonGroup, value: any) => {
     const newGroups = [...groups];
     newGroups[index] = { ...newGroups[index], [field]: value };
-    setGroups(newGroups);
-  };
-
-  const handleToggleAddonInGroup = (groupIndex: number, addonId: string) => {
-    const newGroups = [...groups];
-    const group = newGroups[groupIndex];
-    if (group.addonIds.includes(addonId)) {
-      group.addonIds = group.addonIds.filter(id => id !== addonId);
-    } else {
-      group.addonIds = [...group.addonIds, addonId];
-    }
     setGroups(newGroups);
   };
 
@@ -344,16 +330,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                       const currentContainerId = group.addonCategoryId || (group.addonCategoryName
                         ? addonContainers.find(container => container.name === group.addonCategoryName)?.id || ''
                         : '');
-                      const searchTerm = removeAccents((groupSearchTerms[index] || '').toLowerCase());
-                      const filteredAddons = allAddons.filter(a => removeAccents(a.name.toLowerCase()).includes(searchTerm));
-                      const availableAddons = filteredAddons.filter(a => !group.addonIds.includes(a.id));
-
-                      const availableByGroup: Record<string, Addon[]> = {};
-                      availableAddons.forEach(a => {
-                        const g = a.group || 'Sem Grupo';
-                        if (!availableByGroup[g]) availableByGroup[g] = [];
-                        availableByGroup[g].push(a);
-                      });
 
                       return (
                         <Draggable key={`group-${index}`} draggableId={`group-${index}`} index={index}>
@@ -386,10 +362,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                 </Button>
                               </div>
 
-                              {/* Corpo: Dois painéis lado a lado */}
+                              {/* Corpo da etapa */}
                               <div className="p-3">
-                                <div className="mb-3 grid grid-cols-1 gap-2 lg:grid-cols-[minmax(220px,320px)_1fr] lg:items-center">
-                                  <div className="space-y-1">
+                                <div className="mb-3 max-w-sm space-y-1">
                                     <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Container de adicionais</Label>
                                     <select
                                       value={currentContainerId}
@@ -404,65 +379,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                       ))}
                                     </select>
                                   </div>
-                                  <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                                    group.usePrice === false
-                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                      : 'border-amber-200 bg-amber-50 text-amber-700'
-                                  }`}>
-                                    {group.usePrice === false
-                                      ? 'Este container nao cobra preco dos adicionais.'
-                                      : 'Este container usa o preco matriz dos adicionais.'}
-                                  </div>
-                                </div>
-                                {/* Barra de pesquisa fora dos cards */}
-                                <div className="mb-3">
-                                  <Input 
-                                    placeholder="🔍 Buscar adicionais..." 
-                                    className="h-8 text-xs"
-                                    value={groupSearchTerms[index] || ''}
-                                    onChange={(e) => setGroupSearchTerms({...groupSearchTerms, [index]: e.target.value})}
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                  {/* Painel Esquerdo: Disponíveis */}
-                                  <div className="border rounded-lg overflow-hidden flex flex-col">
-                                    <div className="bg-slate-50 px-3 py-1.5 border-b">
-                                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Adicionais</span>
-                                    </div>
-                                    <div className="h-[180px] overflow-y-auto p-1.5 space-y-0.5 bg-white">
-                                      {Object.keys(availableByGroup).length > 0 ? Object.entries(availableByGroup).map(([gName, gAddons]) => (
-                                        <div key={gName}>
-                                          <div className="text-[9px] font-bold uppercase text-slate-300 px-1 pt-1">{gName}</div>
-                                          {gAddons.map((addon: any) => (
-                                            <button
-                                              key={addon.id}
-                                              type="button"
-                                              onClick={() => handleToggleAddonInGroup(index, addon.id)}
-                                              className="w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/avail"
-                                            >
-                                              <Plus className="h-3 w-3 text-slate-300 group-hover/avail:text-emerald-500 flex-shrink-0" />
-                                              <span 
-                                                className={`truncate flex-1 transition-colors ${addon.active === false ? 'text-red-400 line-through' : ''}`}
-                                                title={addon.name}
-                                              >
-                                                {addon.name}
-                                              </span>
-                                              {addon.price > 0 && (
-                                                <span className="text-[10px] text-slate-400 flex-shrink-0">R$ {addon.price.toFixed(2)}</span>
-                                              )}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )) : (
-                                        <div className="text-center text-[11px] text-slate-300 py-4">
-                                          {searchTerm ? 'Nenhum resultado' : 'Todos adicionados'}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Painel Central: Selecionados */}
+                                <div className="grid grid-cols-1 gap-3">
                                   <div className="border rounded-lg overflow-hidden border-emerald-200 flex flex-col">
                                     <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
                                       <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Itens da etapa</span>
@@ -504,7 +421,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                         );
                                       }) : (
                                         <div className="text-center text-[11px] text-slate-300 py-4">
-                                          Selecione um container ou adicione itens manualmente.
+                                          Selecione um container para listar os itens desta etapa.
                                         </div>
                                       )}
                                     </div>
