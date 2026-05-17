@@ -23,6 +23,9 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
   const { toast } = useToast();
   const [selectedItems, setSelectedItems] = useState<ComboItem[]>(editingCombo?.comboItems || []);
   const [categoryId, setCategoryId] = useState(editingCombo?.categoryId || categories?.[0]?.id || '');
+  const [hasExpiration, setHasExpiration] = useState(!!(editingCombo?.startDate || editingCombo?.endDate));
+  const [startDate, setStartDate] = useState(editingCombo?.startDate || '');
+  const [endDate, setEndDate] = useState(editingCombo?.endDate || '');
   
   const handleToggleItem = (item: MenuItem) => {
     if (selectedItems.find(i => i.itemId === item.id)) {
@@ -54,7 +57,9 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
       comboItems: selectedItems,
       originalPrice,
       addonIds: [],
-      imageUrl: ''
+      imageUrl: '',
+      startDate: hasExpiration ? startDate : null,
+      endDate: hasExpiration ? endDate : null,
     };
 
     try {
@@ -98,6 +103,29 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
+              </div>
+              
+              <div className="space-y-2 col-span-1 md:col-span-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Checkbox 
+                    id="has-expiration" 
+                    checked={hasExpiration} 
+                    onCheckedChange={(c) => setHasExpiration(!!c)} 
+                  />
+                  <Label htmlFor="has-expiration" className="cursor-pointer">Programar validade do Combo (Opcional)</Label>
+                </div>
+                {hasExpiration && (
+                  <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 border rounded-md">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Início</Label>
+                      <Input type="datetime-local" name="startDate" value={startDate} onChange={e => setStartDate(e.target.value)} required={hasExpiration} className="h-8 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fim (Expiração)</Label>
+                      <Input type="datetime-local" name="endDate" value={endDate} onChange={e => setEndDate(e.target.value)} required={hasExpiration} className="h-8 text-xs" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
