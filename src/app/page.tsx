@@ -912,18 +912,34 @@ export default function AdminPage() {
     e.preventDefault();
     if (!user || !db) return;
     const formData = new FormData(e.currentTarget);
+    const selectedGroup = formData.get('addonGroup') as string || 'Geral';
     const addonData = {
       name: formData.get('addonName') as string,
       price: parseFloat(formData.get('addonPrice') as string),
-      group: formData.get('addonGroup') as string || 'Geral',
+      group: selectedGroup,
       ownerId: user.uid,
     };
     try {
+      let savedAddonId = editingAddon?.id;
       if (editingAddon?.id) {
         await updateDoc(doc(db, 'addons', editingAddon.id), addonData);
       } else {
         const newDoc = doc(collection(db, 'addons'));
+        savedAddonId = newDoc.id;
         await setDoc(newDoc, { ...addonData, id: newDoc.id });
+      }
+      if (savedAddonId && selectedGroup) {
+        const categorySnap = await getDocs(query(collection(db, 'addonCategories'), where('ownerId', '==', user.uid), where('name', '==', selectedGroup)));
+        if (categorySnap.empty) {
+          const newCategoryDoc = doc(collection(db, 'addonCategories'));
+          await setDoc(newCategoryDoc, { id: newCategoryDoc.id, name: selectedGroup, ownerId: user.uid, addonIds: [savedAddonId], usePrice: true });
+        } else {
+          const categoryDoc = categorySnap.docs[0];
+          const currentIds = categoryDoc.data().addonIds || [];
+          if (!currentIds.includes(savedAddonId)) {
+            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { addonIds: [...currentIds, savedAddonId] });
+          }
+        }
       }
       setEditingAddon(null);
       toast({ title: "Sucesso", description: "Adicional salvo." });
@@ -1132,6 +1148,7 @@ export default function AdminPage() {
               <div className="pb-4 pr-1">
                 <ProductModal
                   db={db} user={user} addons={addons || []}
+                  addonCategories={addonCategories || []}
                   editingProduct={editingProduct} setEditingProduct={setEditingProduct}
                   categories={categories || []}
                   items={items || []}
@@ -1599,6 +1616,34 @@ export default function AdminPage() {
             const explicitGroups = (addonCategories || []).map((c: any) => c.name);
             const implicitGroups = (addons || []).map((a: any) => a.group || 'Geral');
             const allGroups = Array.from(new Set([...explicitGroups, ...implicitGroups])).sort() as string[];
+            const addonCategoryByName = new Map((addonCategories || []).map((c: any) => [c.name, c]));
+            const getLegacyAddonIdsForGroup = (name: string) => (addons || [])
+              .filter((addon: any) => (addon.group || 'Geral') === name)
+              .map((addon: any) => addon.id);
+            const getContainerAddonIds = (name: string) => {
+              const category = addonCategoryByName.get(name) as any;
+              return Array.from(new Set([...(category?.addonIds || []), ...getLegacyAddonIdsForGroup(name)]));
+            };
+            const getAddonContainerNames = (addon: any) => {
+              const names = allGroups.filter(name => getContainerAddonIds(name).includes(addon.id));
+              return names.length > 0 ? names : [addon.group || 'Geral'];
+            };
+            const ensureAddonCategory = async (name: string, seedIds: string[] = []) => {
+              const existing = addonCategoryByName.get(name) as any;
+              if (existing) {
+                return { ref: doc(db, 'addonCategories', existing.id), data: existing };
+              }
+              const newDoc = doc(collection(db, 'addonCategories'));
+              const data = {
+                id: newDoc.id,
+                name,
+                ownerId: user!.uid,
+                addonIds: Array.from(new Set(seedIds)),
+                usePrice: true,
+              };
+              await setDoc(newDoc, data);
+              return { ref: newDoc, data };
+            };
             const normalizedAddonSearch = removeAccents(addonSearchTerm.toLowerCase()).trim();
             const isAddonListSearch = /[,;\n]/.test(addonSearchTerm);
             const addonSearchTerms = isAddonListSearch
@@ -1615,7 +1660,7 @@ export default function AdminPage() {
                 return false;
               }
               const g = addon.group || 'Geral';
-              if (addonCategoryFilter !== 'all' && g !== addonCategoryFilter) return false;
+              if (addonCategoryFilter !== 'all' && !getContainerAddonIds(addonCategoryFilter).includes(addon.id) && g !== addonCategoryFilter) return false;
               return true;
             }).sort((a: any, b: any) => {
               if (isAddonListSearch) {
@@ -1626,8 +1671,8 @@ export default function AdminPage() {
               let valB: any = b[addonSortConfig.key];
               
               if (addonSortConfig.key === 'group') {
-                valA = a.group || 'Geral';
-                valB = b.group || 'Geral';
+                valA = getAddonContainerNames(a).join(', ');
+                valB = getAddonContainerNames(b).join(', ');
               }
               
               if (typeof valA === 'string' && typeof valB === 'string') {
@@ -1700,7 +1745,10 @@ export default function AdminPage() {
                     >
                       Todas as Categorias
                     </Button>
-                    {allGroups.map(g => (
+                    {allGroups.map(g => {
+                      const category = addonCategoryByName.get(g) as any;
+                      const usePrice = category?.usePrice !== false;
+                      return (
                       <Button 
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
@@ -1709,22 +1757,46 @@ export default function AdminPage() {
                         className="whitespace-nowrap rounded-full flex items-center group"
                       >
                         {g}
+                        <span className="ml-2 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
+                          {getContainerAddonIds(g).length}
+                        </span>
                         {addonCategoryFilter === g && (
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditCategoryName(g);
-                              setEditCategoryNewName(g);
-                              setIsEditCategoryModalOpen(true);
-                            }}
-                            className="ml-2 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
-                            title="Editar Categoria"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </div>
+                          <>
+                            <div 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!db || !user) return;
+                                try {
+                                  const currentIds = getContainerAddonIds(g);
+                                  const { ref } = await ensureAddonCategory(g, currentIds);
+                                  await updateDoc(ref, { usePrice: !usePrice });
+                                  toast({ title: !usePrice ? 'Precos ativados' : 'Precos desativados' });
+                                } catch (err: any) {
+                                  toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                                }
+                              }}
+                              className="ml-2 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground px-1.5 py-0.5 rounded-full transition-colors cursor-pointer text-[10px]"
+                              title="Alternar uso de preco"
+                            >
+                              {usePrice ? 'Usa preço' : 'Sem preço'}
+                            </div>
+                            <div 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditCategoryName(g);
+                                setEditCategoryNewName(g);
+                                setIsEditCategoryModalOpen(true);
+                              }}
+                              className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
+                              title="Editar Categoria"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </div>
+                          </>
                         )}
                       </Button>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -1756,7 +1828,7 @@ export default function AdminPage() {
                             if (!db || !user || !newAddonCategoryName.trim()) return;
                             try {
                               const newDoc = doc(collection(db, 'addonCategories'));
-                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid });
+                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true });
                               toast({ title: 'Categoria criada com sucesso!' });
                               setIsAddonCategoryModalOpen(false);
                               setNewAddonCategoryName('');
@@ -1798,7 +1870,7 @@ export default function AdminPage() {
                             className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
                             onClick={async () => {
                             if (!db || !user || !editCategoryName) return;
-                            if (!confirm(`Tem certeza que deseja EXCLUIR a categoria "${editCategoryName}"?\n\nTodos os adicionais que estão nela ficarão sem categoria (Geral).`)) return;
+                            if (!confirm(`Tem certeza que deseja EXCLUIR a categoria "${editCategoryName}"?\n\nOs adicionais continuam na lista matriz; apenas este container será removido.`)) return;
                             try {
                               const batch = writeBatch(db);
                               const oldName = editCategoryName.trim();
@@ -1807,12 +1879,6 @@ export default function AdminPage() {
                               const catDocs = addonCategories?.filter((c: any) => c.name.trim() === oldName);
                               catDocs?.forEach((catDoc: any) => {
                                 batch.delete(doc(db, 'addonCategories', catDoc.id));
-                              });
-
-                              // 2. Update all addons that belong to the old category
-                              const addonsToUpdate = addons?.filter((a: any) => (a.group || 'Geral').trim() === oldName) || [];
-                              addonsToUpdate.forEach((addon: any) => {
-                                batch.update(doc(db, 'addons', addon.id), { group: 'Geral' });
                               });
 
                               await batch.commit();
@@ -1843,14 +1909,8 @@ export default function AdminPage() {
                                 } else {
                                   // It was an implicit category, let's create it explicitly with the new name
                                   const newDoc = doc(collection(db, 'addonCategories'));
-                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid });
+                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true });
                                 }
-
-                                // 2. Update all addons that belong to the old category
-                                const addonsToUpdate = addons?.filter((a: any) => (a.group || 'Geral').trim() === oldName) || [];
-                                addonsToUpdate.forEach((addon: any) => {
-                                  batch.update(doc(db, 'addons', addon.id), { group: newName });
-                                });
 
                                 await batch.commit();
                                 toast({ title: 'Categoria renomeada com sucesso!' });
@@ -1953,12 +2013,11 @@ export default function AdminPage() {
                         <Button onClick={async () => {
                           if (!db || !bulkCategoryName || selectedAddonIds.size === 0) return;
                           try {
-                            const batch = writeBatch(db);
-                            selectedAddonIds.forEach(id => {
-                              batch.update(doc(db, 'addons', id), { group: bulkCategoryName });
-                            });
-                            await batch.commit();
-                            toast({ title: 'Adicionais categorizados com sucesso!' });
+                            const currentIds = getContainerAddonIds(bulkCategoryName);
+                            const nextIds = Array.from(new Set([...currentIds, ...Array.from(selectedAddonIds)]));
+                            const { ref } = await ensureAddonCategory(bulkCategoryName, currentIds);
+                            await updateDoc(ref, { addonIds: nextIds });
+                            toast({ title: 'Itens adicionados ao container sem duplicar.' });
                             setIsBulkCategoryModalOpen(false);
                             setSelectedAddonIds(new Set());
                             setBulkCategoryName('');
@@ -2045,7 +2104,7 @@ export default function AdminPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-muted-foreground text-sm">{addon.group || 'Geral'}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{getAddonContainerNames(addon).join(', ')}</TableCell>
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6">
                             <div className="flex items-center justify-end gap-1">

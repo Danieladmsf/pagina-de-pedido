@@ -7,7 +7,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
-import { AddonGroup, Addon } from '@/lib/types';
+import { AddonGroup, Addon, AddonCategory } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power, PowerOff } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -19,13 +19,14 @@ interface ProductModalProps {
   db: any;
   user: any;
   addons: Addon[];
+  addonCategories?: AddonCategory[];
   editingProduct: any;
   setEditingProduct: (v: any) => void;
   categories: any[];
   items?: any[];
 }
 
-export function ProductModal({ db, user, addons, editingProduct, setEditingProduct, categories, items = [] }: ProductModalProps) {
+export function ProductModal({ db, user, addons, addonCategories = [], editingProduct, setEditingProduct, categories, items = [] }: ProductModalProps) {
   const { toast } = useToast();
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
@@ -183,6 +184,62 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   if (editingProduct === null) return null;
 
   const allAddons = [...(addons || [])].sort((a, b) => a.name.localeCompare(b.name));
+  const addonContainers = (() => {
+    const byName = new Map<string, { id: string; name: string; addonIds: string[]; usePrice: boolean }>();
+
+    for (const category of addonCategories || []) {
+      const ids = Array.isArray(category.addonIds) ? category.addonIds : [];
+      byName.set(category.name, {
+        id: category.id,
+        name: category.name,
+        addonIds: ids,
+        usePrice: category.usePrice !== false,
+      });
+    }
+
+    for (const addon of addons || []) {
+      const name = addon.group || 'Geral';
+      const existing = byName.get(name);
+      if (existing) {
+        if (!existing.addonIds.includes(addon.id)) existing.addonIds.push(addon.id);
+      } else {
+        byName.set(name, {
+          id: `legacy:${name}`,
+          name,
+          addonIds: [addon.id],
+          usePrice: true,
+        });
+      }
+    }
+
+    return Array.from(byName.values())
+      .map(container => ({
+        ...container,
+        addonIds: Array.from(new Set(container.addonIds)),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  })();
+
+  const handleSelectAddonContainer = (groupIndex: number, containerId: string) => {
+    const container = addonContainers.find(item => item.id === containerId);
+    if (!container) return;
+
+    const newGroups = [...groups];
+    const current = newGroups[groupIndex];
+    const currentFreeIds = current.freeAddonIds || [];
+    const shouldUseContainerName = !current.name.trim() || /^Etapa \d+$/i.test(current.name.trim());
+
+    newGroups[groupIndex] = {
+      ...current,
+      name: shouldUseContainerName ? container.name : current.name,
+      addonCategoryId: container.id.startsWith('legacy:') ? undefined : container.id,
+      addonCategoryName: container.name,
+      usePrice: container.usePrice,
+      addonIds: container.addonIds,
+      freeAddonIds: currentFreeIds.filter(id => container.addonIds.includes(id)),
+    };
+    setGroups(newGroups);
+  };
 
   const pageTitle = editingProduct.id 
     ? (isMarmita ? 'Editar Marmita/Prato Montável' : 'Editar Produto') 
@@ -283,12 +340,14 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
                     {groups.map((group, index) => {
+                      const selectedAddons = allAddons.filter(a => group.addonIds.includes(a.id));
+                      const currentContainerId = group.addonCategoryId || (group.addonCategoryName
+                        ? addonContainers.find(container => container.name === group.addonCategoryName)?.id || ''
+                        : '');
                       const searchTerm = removeAccents((groupSearchTerms[index] || '').toLowerCase());
                       const filteredAddons = allAddons.filter(a => removeAccents(a.name.toLowerCase()).includes(searchTerm));
-                      const selectedAddons = allAddons.filter(a => group.addonIds.includes(a.id));
                       const availableAddons = filteredAddons.filter(a => !group.addonIds.includes(a.id));
 
-                      // Agrupar por grupo
                       const availableByGroup: Record<string, Addon[]> = {};
                       availableAddons.forEach(a => {
                         const g = a.group || 'Sem Grupo';
@@ -329,6 +388,32 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
 
                               {/* Corpo: Dois painéis lado a lado */}
                               <div className="p-3">
+                                <div className="mb-3 grid grid-cols-1 gap-2 lg:grid-cols-[minmax(220px,320px)_1fr] lg:items-center">
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Container de adicionais</Label>
+                                    <select
+                                      value={currentContainerId}
+                                      onChange={(e) => handleSelectAddonContainer(index, e.target.value)}
+                                      className="h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
+                                    >
+                                      <option value="">Selecione um container...</option>
+                                      {addonContainers.map(container => (
+                                        <option key={container.id} value={container.id}>
+                                          {container.name} ({container.addonIds.length})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                                    group.usePrice === false
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                      : 'border-amber-200 bg-amber-50 text-amber-700'
+                                  }`}>
+                                    {group.usePrice === false
+                                      ? 'Este container nao cobra preco dos adicionais.'
+                                      : 'Este container usa o preco matriz dos adicionais.'}
+                                  </div>
+                                </div>
                                 {/* Barra de pesquisa fora dos cards */}
                                 <div className="mb-3">
                                   <Input 
@@ -380,7 +465,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                   {/* Painel Central: Selecionados */}
                                   <div className="border rounded-lg overflow-hidden border-emerald-200 flex flex-col">
                                     <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
-                                      <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Selecionados</span>
+                                      <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Itens da etapa</span>
                                       <span className="text-[10px] bg-emerald-100 text-emerald-600 rounded-full px-1.5 font-bold">{selectedAddons.length}</span>
                                     </div>
                                     <div className="h-[180px] overflow-y-auto p-1.5 space-y-0.5 bg-white">
@@ -395,7 +480,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                             >
                                               {addon.name}
                                             </span>
-                                            {addon.price > 0 && (
+                                            {group.usePrice !== false && addon.price > 0 && (
                                               <button
                                                 type="button"
                                                 onClick={(e) => handleToggleFreeAddon(index, addon.id, e)}
@@ -419,7 +504,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                         );
                                       }) : (
                                         <div className="text-center text-[11px] text-slate-300 py-4">
-                                          Clique em &quot;+&quot; para adicionar
+                                          Selecione um container ou adicione itens manualmente.
                                         </div>
                                       )}
                                     </div>

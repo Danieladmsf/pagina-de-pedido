@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { MenuItem, Addon, SelectedAddon, AddonGroup } from '@/lib/types';
+import { MenuItem, Addon, SelectedAddon, AddonGroup, AddonCategory } from '@/lib/types';
 import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,11 +17,12 @@ interface MenuItemDialogProps {
   isOpen: boolean;
   onClose: () => void;
   allAddons?: Addon[];
+  addonCategories?: AddonCategory[];
   isStoreOpen?: boolean;
   onAddToCart?: (item: any, quantity: number, options: any) => void;
 }
 
-export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreOpen = true, onAddToCart }: MenuItemDialogProps) {
+export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCategories = [], isStoreOpen = true, onAddToCart }: MenuItemDialogProps) {
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
@@ -49,6 +50,14 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
 
   if (!item) return null;
 
+  const groupUsesPrice = (group: AddonGroup) => {
+    if (group.addonCategoryId) {
+      const category = addonCategories.find(item => item.id === group.addonCategoryId);
+      if (category) return category.usePrice !== false;
+    }
+    return group.usePrice !== false;
+  };
+
   const toggleNormalAddon = (addon: Addon) => {
     setSelectedAddons(prev => {
       const exists = prev.find(a => a.id === addon.id);
@@ -66,7 +75,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
       if (exists) {
         next = next.filter(a => a.id !== addon.id);
       } else {
-        const finalPrice = group.freeAddonIds?.includes(addon.id) ? 0 : addon.price;
+        const finalPrice = !groupUsesPrice(group) || group.freeAddonIds?.includes(addon.id) ? 0 : addon.price;
         const limit = group.max || 0;
         
         if (limit > 0 && next.length >= limit) {
@@ -95,7 +104,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
       arr.forEach((a, i) => {
         let effectivePrice = 0;
         // Se o índice for maior ou igual ao limite gratuito, cobra o valor
-        if (i >= freeLimit) {
+        if (groupUsesPrice(group) && i >= freeLimit) {
           effectivePrice = Number(a.price) || 0;
           addonsTotal += effectivePrice;
         }
@@ -184,7 +193,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
-                      {group.freeLimit ? (
+                      {groupUsesPrice(group) && group.freeLimit ? (
                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
                           {group.freeLimit} {group.freeLimit === 1 ? 'grátis' : 'grátis'}
                         </span>
@@ -220,7 +229,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], isStoreO
                           />
                           <span className={`text-xs ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
                         </div>
-                        {addon.price > 0 && (() => {
+                        {groupUsesPrice(group) && addon.price > 0 && (() => {
                           const freeLimit = group.freeLimit || 0;
                           const selectedIndex = currentSelected.findIndex(a => a.id === addon.id);
                           const isSelected = selectedIndex >= 0;
