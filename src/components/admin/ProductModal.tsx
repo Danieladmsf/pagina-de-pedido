@@ -132,7 +132,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
     let imageUrl = editingProduct?.imageUrl || '';
     
     try {
-      if (!isMarmita && imageFile) {
+      if (imageFile) {
         imageUrl = await handleUploadImage();
       }
 
