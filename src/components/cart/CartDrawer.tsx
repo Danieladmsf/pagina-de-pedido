@@ -938,8 +938,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         setStreet(val);
                         if (dynamicFee !== null) {
                           setDynamicFee(null);
+                        }
+                        if (distanceInfo !== null) {
                           setDistanceInfo(null);
                         }
+                        if (deliveryBlocked) setDeliveryBlocked(false);
                       }}
                       onSelect={handleAddressSelected}
                       onSelectPlace={handlePlaceSelected}
@@ -950,7 +953,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         }
                       }}
                       forceClose={distanceInfo !== null || deliveryBlocked}
-                      disableSearch={!!city && !!neighborhood}
+                      locationContext={city || undefined}
                       placeholder="Digite rua, bairro ou cidade..."
                     />
                     <input type="hidden" autoComplete="street-address" value={street} onChange={() => {}} />

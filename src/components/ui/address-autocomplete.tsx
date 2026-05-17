@@ -33,6 +33,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
   const [errorMessage, setErrorMessage] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const selectingSuggestionRef = useRef(false);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -52,6 +53,12 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
       setSuggestions([]);
     }
   }, [forceClose]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const fetchSuggestions = async (input: string) => {
     const query = input.trim();
@@ -113,12 +120,31 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
   };
 
   const handleSelect = (prediction: Prediction) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     onChange(prediction.description);
     setIsOpen(false);
     setSuggestions([]);
     // Disparar callback de seleção para cálculos externos
     onSelect?.(prediction.description);
     onSelectPlace?.(prediction.placeId, prediction.description);
+    window.setTimeout(() => {
+      selectingSuggestionRef.current = false;
+    }, 500);
+  };
+
+  const markSuggestionInteraction = () => {
+    selectingSuggestionRef.current = true;
+    window.setTimeout(() => {
+      selectingSuggestionRef.current = false;
+    }, 500);
+  };
+
+  const handleInputBlur = () => {
+    window.setTimeout(() => {
+      if (selectingSuggestionRef.current) return;
+      if (wrapperRef.current?.contains(document.activeElement)) return;
+      onBlur?.();
+    }, 300);
   };
 
   return (
@@ -130,7 +156,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
           value={value}
           onChange={handleInputChange}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-          onBlur={onBlur}
+          onBlur={handleInputBlur}
           placeholder={placeholder || 'Digite o endereço...'}
           className={`pl-9 ${className || ''}`}
         />
@@ -146,6 +172,11 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
               key={prediction.placeId || index}
               type="button"
               className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 flex items-start gap-2 border-b last:border-0 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                markSuggestionInteraction();
+              }}
+              onTouchStart={markSuggestionInteraction}
               onClick={() => handleSelect(prediction)}
             >
               <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
