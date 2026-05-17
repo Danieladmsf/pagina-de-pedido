@@ -65,31 +65,37 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     });
   };
 
-  const toggleMarmitaAddon = (groupIndex: number, addon: Addon, group: AddonGroup) => {
+  const updateMarmitaAddonQuantity = (groupIndex: number, addon: Addon, group: AddonGroup, delta: 1 | -1) => {
     setMarmitaSelections(prev => {
       const current = prev[groupIndex] || [];
-      const exists = current.find(a => a.id === addon.id);
-      
       let next = [...current];
-      if (exists) {
-        next = next.filter(a => a.id !== addon.id);
-      } else {
-        const finalPrice = !groupUsesPrice(group) || group.freeAddonIds?.includes(addon.id) ? 0 : addon.price;
+      if (delta > 0) {
         const limit = group.max || 0;
         
-        if (limit > 0 && next.length >= limit) {
-          if (limit === 1) {
-            next = [{ id: addon.id, name: addon.name, description: addon.description, price: finalPrice }];
-          } else {
-            return prev; // não permite selecionar mais
-          }
+        if (limit === 1) {
+          next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
+        } else if (limit > 0 && next.length >= limit) {
+          return prev;
         } else {
-          next.push({ id: addon.id, name: addon.name, description: addon.description, price: finalPrice });
+          next.push({ id: addon.id, name: addon.name, description: addon.description, price: addon.price });
         }
+      } else {
+        let removeIndex = -1;
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].id === addon.id) {
+            removeIndex = i;
+            break;
+          }
+        }
+        if (removeIndex === -1) return prev;
+        next.splice(removeIndex, 1);
       }
       return { ...prev, [groupIndex]: next };
     });
   };
+
+  const getAddonQuantity = (selection: SelectedAddon[], addonId: string) =>
+    selection.filter(a => a.id === addonId).length;
 
   // Calcula total
   let addonsTotal = 0;
@@ -102,8 +108,9 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       
       arr.forEach((a, i) => {
         let effectivePrice = 0;
-        // Se o índice for maior ou igual ao limite gratuito, cobra o valor
-        if (groupUsesPrice(group) && i >= freeLimit) {
+        const isFreeSelection = i < freeLimit || group.freeAddonIds?.includes(a.id);
+        // Se usar preco e passar do limite gratuito, cobra o valor do adicional.
+        if (groupUsesPrice(group) && !isFreeSelection) {
           effectivePrice = Number(a.price) || 0;
           addonsTotal += effectivePrice;
         }
@@ -224,6 +231,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
           {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
             const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
+            const usesPrice = groupUsesPrice(group);
             
             if (availableAddons.length === 0) return null;
 
@@ -233,7 +241,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
-                      {groupUsesPrice(group) && group.freeLimit ? (
+                      {usesPrice && group.freeLimit ? (
                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
                           {group.freeLimit} {group.freeLimit === 1 ? 'grátis' : 'grátis'}
                         </span>
@@ -250,55 +258,53 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                 
                 <div className="grid gap-1.5">
                   {availableAddons.map((addon) => {
-                    const checked = !!currentSelected.find(a => a.id === addon.id);
-                    const disabled = group.max > 0 && !checked && currentSelected.length >= group.max && group.max > 1;
+                    const selectedQuantity = getAddonQuantity(currentSelected, addon.id);
+                    const limit = group.max || 0;
+                    const canIncrease = limit === 1
+                      ? selectedQuantity === 0
+                      : limit === 0 || currentSelected.length < limit;
+                    const isSelected = selectedQuantity > 0;
 
                     return (
-                      <label
+                      <div
                         key={addon.id}
-                        className={`flex items-start justify-between gap-2 p-2 border rounded cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center justify-between gap-3 border-b border-slate-100 px-1 py-2 last:border-b-0 ${isSelected ? 'bg-primary/5' : 'bg-white'}`}
                       >
-                        <div className="flex min-w-0 items-start gap-2">
-                          <input 
-                            type={group.max === 1 ? 'radio' : 'checkbox'} 
-                            name={`group-${groupIndex}`}
-                            checked={checked}
-                            onChange={() => !disabled && toggleMarmitaAddon(groupIndex, addon, group)}
-                            disabled={disabled}
-                            className="mt-0.5 h-3.5 w-3.5 rounded-sm text-primary focus:ring-primary"
-                          />
-                          <div className="min-w-0">
-                            <span className={`block text-xs font-semibold leading-tight ${checked ? 'text-primary' : 'text-slate-800'}`}>
-                              {addon.name}
+                        <div className="min-w-0">
+                          <span className={`block text-xs font-semibold leading-tight ${isSelected ? 'text-primary' : 'text-slate-800'}`}>
+                            {addon.name}
+                          </span>
+                          {addon.description && (
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                              {addon.description}
                             </span>
-                            {addon.description && (
-                              <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                                {addon.description}
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {usesPrice && addon.price > 0 && (
+                            <span className="mt-0.5 block text-[11px] font-bold text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
+                          )}
                         </div>
-                        {groupUsesPrice(group) && addon.price > 0 && (() => {
-                          const freeLimit = group.freeLimit || 0;
-                          const selectedIndex = currentSelected.findIndex(a => a.id === addon.id);
-                          const isSelected = selectedIndex >= 0;
-                          // It's free ONLY if it is currently selected AND within the free limit
-                          const isCurrentlyFree = isSelected && selectedIndex < freeLimit;
-
-                          // If the free limit hasn't been reached yet, this item WOULD be free if selected.
-                          // But we want the user to know it has a cost if they exceed the limit.
-                          // So we show the price, unless it is actively selected as a free item.
-                          return (
-                            <span className="text-[11px] font-bold flex items-center gap-1.5">
-                              {isCurrentlyFree ? (
-                                <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[10px]">Grátis</span>
-                              ) : (
-                                <span className="text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
-                              )}
-                            </span>
-                          );
-                        })()}
-                      </label>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => updateMarmitaAddonQuantity(groupIndex, addon, group, -1)}
+                            disabled={selectedQuantity === 0}
+                            aria-label={`Diminuir ${addon.name}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white transition-opacity disabled:opacity-25"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="w-4 text-center text-xs font-bold text-slate-600">{selectedQuantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => updateMarmitaAddonQuantity(groupIndex, addon, group, 1)}
+                            disabled={!canIncrease}
+                            aria-label={`Adicionar ${addon.name}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-white transition-opacity disabled:opacity-25"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
