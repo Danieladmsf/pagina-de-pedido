@@ -1105,6 +1105,7 @@ export default function AdminPage() {
                   db={db} user={user} addons={addons || []}
                   editingProduct={editingProduct} setEditingProduct={setEditingProduct}
                   categories={categories || []}
+                  items={items || []}
                 />
               </div>
             ) : editingCombo !== null ? (
