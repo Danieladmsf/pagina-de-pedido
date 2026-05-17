@@ -1895,19 +1895,38 @@ export default function AdminPage() {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="font-bold">{addon.name}</TableCell>
+                          <TableCell className="font-bold">
+                            <div className="flex items-center gap-2">
+                              <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
+                              {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
+                            </div>
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{addon.group || 'Geral'}</TableCell>
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
-                          <TableCell className="text-right pr-6 space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
-                              <Pencil className="h-4 w-4 text-blue-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={async () => {
-                              if (!db) return;
-                              if (confirm("Excluir adicional?")) await deleteDoc(doc(db, 'addons', addon.id));
-                            }}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                          <TableCell className="text-right pr-6">
+                            <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
+                                <Switch 
+                                  checked={addon.active !== false} 
+                                  onCheckedChange={async (checked) => {
+                                    if (!db) return;
+                                    await updateDoc(doc(db, 'addons', addon.id), { active: checked });
+                                    toast({ title: checked ? 'Adicional ativado' : 'Adicional pausado' });
+                                  }} 
+                                  className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                                />
+                                <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
+                              </div>
+                              <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
+                                <Pencil className="h-4 w-4 text-blue-500" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={async () => {
+                                if (!db) return;
+                                if (confirm("Excluir adicional?")) await deleteDoc(doc(db, 'addons', addon.id));
+                              }}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
