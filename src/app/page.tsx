@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical, Search } from 'lucide-react';
+import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical, Search, Copy } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -1260,20 +1260,39 @@ export default function AdminPage() {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="text-right pr-6 space-x-1">
+                          <TableCell className="text-right pr-6 space-x-1 whitespace-nowrap">
                             <Button variant="ghost" size="icon" onClick={() => {
                               if (item.isCombo) {
                                 setEditingCombo(item);
                               } else {
                                 setEditingProduct(item);
                               }
-                            }}>
+                            }} title="Editar">
                               <Pencil className="h-4 w-4 text-blue-500" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={async () => {
+                              const newName = prompt(`Nome da cópia de "${item.name}":`, `${item.name} (Cópia)`);
+                              if (!newName || !db || !user) return;
+                              try {
+                                const newDoc = doc(collection(db, 'menuItems'));
+                                const { id, ...itemWithoutId } = item;
+                                await setDoc(newDoc, {
+                                  ...itemWithoutId,
+                                  id: newDoc.id,
+                                  name: newName,
+                                  createdAt: Date.now()
+                                });
+                                toast({ title: "Produto duplicado com sucesso!" });
+                              } catch(e: any) {
+                                toast({ variant: 'destructive', title: "Erro ao duplicar", description: e.message });
+                              }
+                            }} title="Duplicar">
+                              <Copy className="h-4 w-4 text-emerald-500" />
                             </Button>
                             <Button variant="ghost" size="icon" onClick={async () => {
                               if (!db) return;
                               if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
-                            }}>
+                            }} title="Excluir">
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </TableCell>
