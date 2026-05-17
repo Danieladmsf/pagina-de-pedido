@@ -783,6 +783,8 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               customAddressRules={storeProfile?.fees?.customAddressRules || storeProfile?.customAddressRules || []}
               maxDeliveryRadius={storeProfile?.fees?.maxDeliveryRadius || 0}
               paymentMethods={storeProfile?.paymentMethods}
+              pixKey={storeProfile?.creditPixKey}
+              pixName={storeProfile?.creditPixName}
               isStoreOpen={isStoreOpenRightNow.isOpen}
               menuItems={items || []}
               enableInventory={storeProfile?.general?.enableInventory || false}
