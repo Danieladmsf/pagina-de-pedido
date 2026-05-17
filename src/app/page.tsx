@@ -1133,10 +1133,16 @@ export default function AdminPage() {
 
           {activeTab === 'produtos' && (
             <div className={`mt-6 flex-1 min-h-0 flex flex-col ${(editingProduct !== null || editingCombo !== null) ? 'overflow-y-auto custom-scrollbar' : ''}`}>
-              <div className="mb-6 px-2 shrink-0">
-                <h1 className="text-3xl font-black tracking-tight text-slate-800">Produtos e Marmitas</h1>
-                <p className="text-muted-foreground mt-1 font-medium">Gerencie seu cardápio e monte produtos personalizados (Marmitas).</p>
-              </div>
+              {editingCombo === null && (
+                <div className="mb-6 px-2 shrink-0">
+                  <h1 className="text-3xl font-black tracking-tight text-slate-800">
+                    {editingProduct !== null ? (editingProduct.isMarmita ? 'Editar Marmita' : 'Editar Produto') : 'Produtos e Marmitas'}
+                  </h1>
+                  <p className="text-muted-foreground mt-1 font-medium">
+                    {editingProduct !== null ? 'Gerencie as configurações deste item.' : 'Gerencie seu cardápio e monte produtos personalizados (Marmitas).'}
+                  </p>
+                </div>
+              )}
             {editingProduct !== null ? (
               <div className="pb-4 pr-1">
                 <ProductModal
