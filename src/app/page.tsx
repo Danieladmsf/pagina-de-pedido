@@ -71,6 +71,15 @@ export default function AdminPage() {
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
   const [productManagementTab, setProductManagementTab] = useState<'produtos' | 'combos' | 'marmitas'>('produtos');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [addonSortConfig, setAddonSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleAddonSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (addonSortConfig && addonSortConfig.key === key && addonSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setAddonSortConfig({ key, direction });
+  };
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -1574,6 +1583,24 @@ export default function AdminPage() {
               const g = addon.group || 'Geral';
               if (addonCategoryFilter !== 'all' && g !== addonCategoryFilter) return false;
               return true;
+            }).sort((a: any, b: any) => {
+              if (!addonSortConfig) return 0;
+              let valA: any = a[addonSortConfig.key];
+              let valB: any = b[addonSortConfig.key];
+              
+              if (addonSortConfig.key === 'group') {
+                valA = a.group || 'Geral';
+                valB = b.group || 'Geral';
+              }
+              
+              if (typeof valA === 'string' && typeof valB === 'string') {
+                 if (valA.toLowerCase() < valB.toLowerCase()) return addonSortConfig.direction === 'asc' ? -1 : 1;
+                 if (valA.toLowerCase() > valB.toLowerCase()) return addonSortConfig.direction === 'asc' ? 1 : -1;
+              } else {
+                 if (valA < valB) return addonSortConfig.direction === 'asc' ? -1 : 1;
+                 if (valA > valB) return addonSortConfig.direction === 'asc' ? 1 : -1;
+              }
+              return 0;
             });
 
             return (
@@ -1885,9 +1912,15 @@ export default function AdminPage() {
                           }}
                         />
                       </TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Preço</TableHead>
+                      <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('name')}>
+                        Nome {addonSortConfig?.key === 'name' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </TableHead>
+                      <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('group')}>
+                        Categoria {addonSortConfig?.key === 'group' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </TableHead>
+                      <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('price')}>
+                        Preço {addonSortConfig?.key === 'price' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </TableHead>
                       <TableHead className="text-right pr-6">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
