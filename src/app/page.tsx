@@ -1603,6 +1603,36 @@ export default function AdminPage() {
               return 0;
             });
 
+            const addonUsageMap = new Map<string, number>();
+            for (const item of (items || [])) {
+              for (const id of (item.addonIds || [])) {
+                addonUsageMap.set(id, (addonUsageMap.get(id) || 0) + 1);
+              }
+              for (const g of (item.addonGroups || [])) {
+                for (const id of (g.addonIds || [])) {
+                  addonUsageMap.set(id, (addonUsageMap.get(id) || 0) + 1);
+                }
+              }
+            }
+
+            const addonNameMap = new Map<string, string[]>();
+            for (const addon of addons || []) {
+              const nameKey = addon.name.trim().toLowerCase();
+              if (!addonNameMap.has(nameKey)) addonNameMap.set(nameKey, []);
+              addonNameMap.get(nameKey)!.push(addon.id);
+            }
+
+            const unusedDuplicateIds = new Set<string>();
+            for (const [name, ids] of addonNameMap.entries()) {
+              if (ids.length > 1) {
+                for (const id of ids) {
+                  if ((addonUsageMap.get(id) || 0) === 0) {
+                    unusedDuplicateIds.add(id);
+                  }
+                }
+              }
+            }
+
             return (
             <div className="mt-6">
               <div className="mb-6 px-2">
@@ -1932,8 +1962,13 @@ export default function AdminPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredAddons.map((addon: any) => (
-                        <TableRow key={addon.id} className={selectedAddonIds.has(addon.id) ? 'bg-emerald-50/30' : ''}>
+                      filteredAddons.map((addon: any) => {
+                        let rowClass = selectedAddonIds.has(addon.id) ? 'bg-emerald-50/30' : '';
+                        if (unusedDuplicateIds.has(addon.id)) {
+                          rowClass = 'bg-red-50/80 border border-red-500';
+                        }
+                        return (
+                        <TableRow key={addon.id} className={rowClass}>
                           <TableCell className="pl-6">
                             <input 
                               type="checkbox" 
@@ -1981,7 +2016,8 @@ export default function AdminPage() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
