@@ -1670,18 +1670,21 @@ export default function AdminPage() {
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
-            const normalizedAddonSearch = removeAccents(addonSearchTerm.toLowerCase()).trim();
+            const normalizeAddonLookup = (value: string) =>
+              removeAccents(value.toLowerCase()).replace(/\s+/g, ' ').trim();
+            const normalizedAddonSearch = normalizeAddonLookup(addonSearchTerm);
             const isAddonListSearch = /[,;\n]/.test(addonSearchTerm);
             const addonSearchTerms = isAddonListSearch
-              ? addonSearchTerm
+              ? Array.from(new Set(addonSearchTerm
                   .split(/[,;\n]/)
-                  .map(term => removeAccents(term.toLowerCase()).trim())
-                  .filter(Boolean)
+                  .map(term => normalizeAddonLookup(term))
+                  .filter(Boolean)))
               : [];
+            const addonSearchTermSet = new Set(addonSearchTerms);
             const filteredAddons = (addons || []).filter((addon: any) => {
-              const addonName = removeAccents((addon.name || '').toLowerCase());
+              const addonName = normalizeAddonLookup(addon.name || '');
               if (isAddonListSearch) {
-                if (addonSearchTerms.length > 0 && !addonSearchTerms.some(term => addonName.includes(term))) return false;
+                if (addonSearchTerms.length > 0 && !addonSearchTermSet.has(addonName)) return false;
               } else if (normalizedAddonSearch && !addonName.includes(normalizedAddonSearch)) {
                 return false;
               }
