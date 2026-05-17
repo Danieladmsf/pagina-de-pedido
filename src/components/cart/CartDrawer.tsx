@@ -1132,7 +1132,23 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                           {pixKey && (
                             <div className="flex justify-between items-center">
                               <span className="text-slate-500">Chave PIX:</span>
-                              <span className="font-mono font-bold">{pixKey}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold">{pixKey}</span>
+                                <Button 
+                                  type="button" 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(pixKey);
+                                    toast({ title: 'Copiado!', description: 'Chave PIX copiada para a área de transferência.' });
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
                           )}
                           {pixName && (
