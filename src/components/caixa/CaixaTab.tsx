@@ -1447,8 +1447,9 @@ export function CaixaTab({
                       {motoboysFechamento.map(m => {
                         const payment = motoboyPayments[m.id];
                         const checked = payment?.include ?? m.saldo > 0;
+                        const isOnDelivery = orders?.some((o: any) => o.motoboyId === m.id && o.status === 'out_for_delivery');
                         return (
-                          <div key={m.id} className="rounded-md border bg-white p-3">
+                          <div key={m.id} className={`rounded-md border bg-white p-3 ${isOnDelivery ? 'border-amber-300' : ''}`}>
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
@@ -1458,6 +1459,11 @@ export function CaixaTab({
                                     disabled={m.saldo <= 0}
                                   />
                                   <span className="font-semibold">{m.name}</span>
+                                  {isOnDelivery ? (
+                                    <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] font-bold animate-pulse">🏍️ Em rota</Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-600 border-emerald-200 text-[10px] font-bold">✅ Livre</Badge>
+                                  )}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                   {m.entregas} entregas - Total R$ {m.total.toFixed(2)} - Ja pago R$ {m.jaPago.toFixed(2)}
