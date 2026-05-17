@@ -1599,12 +1599,28 @@ export default function AdminPage() {
             const explicitGroups = (addonCategories || []).map((c: any) => c.name);
             const implicitGroups = (addons || []).map((a: any) => a.group || 'Geral');
             const allGroups = Array.from(new Set([...explicitGroups, ...implicitGroups])).sort() as string[];
+            const normalizedAddonSearch = removeAccents(addonSearchTerm.toLowerCase()).trim();
+            const isAddonListSearch = /[,;\n]/.test(addonSearchTerm);
+            const addonSearchTerms = isAddonListSearch
+              ? addonSearchTerm
+                  .split(/[,;\n]/)
+                  .map(term => removeAccents(term.toLowerCase()).trim())
+                  .filter(Boolean)
+              : [];
             const filteredAddons = (addons || []).filter((addon: any) => {
-              if (addonSearchTerm && !addon.name.toLowerCase().includes(addonSearchTerm.toLowerCase())) return false;
+              const addonName = removeAccents((addon.name || '').toLowerCase());
+              if (isAddonListSearch) {
+                if (addonSearchTerms.length > 0 && !addonSearchTerms.some(term => addonName.includes(term))) return false;
+              } else if (normalizedAddonSearch && !addonName.includes(normalizedAddonSearch)) {
+                return false;
+              }
               const g = addon.group || 'Geral';
               if (addonCategoryFilter !== 'all' && g !== addonCategoryFilter) return false;
               return true;
             }).sort((a: any, b: any) => {
+              if (isAddonListSearch) {
+                return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
+              }
               if (!addonSortConfig) return 0;
               let valA: any = a[addonSortConfig.key];
               let valB: any = b[addonSortConfig.key];
