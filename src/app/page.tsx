@@ -1617,12 +1617,13 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'addons' && (() => {
+            const getAddonLegacyGroup = (addon: any) => (addon.group || '').trim();
             const explicitGroups = (addonCategories || []).map((c: any) => c.name);
-            const implicitGroups = (addons || []).map((a: any) => a.group || 'Geral');
+            const implicitGroups = (addons || []).map(getAddonLegacyGroup).filter(Boolean);
             const allGroups = Array.from(new Set([...explicitGroups, ...implicitGroups])).sort() as string[];
             const addonCategoryByName = new Map((addonCategories || []).map((c: any) => [c.name, c]));
             const getLegacyAddonIdsForGroup = (name: string) => (addons || [])
-              .filter((addon: any) => (addon.group || 'Geral') === name)
+              .filter((addon: any) => getAddonLegacyGroup(addon) === name)
               .map((addon: any) => addon.id);
             const getContainerAddonIds = (name: string) => {
               const category = addonCategoryByName.get(name) as any;
@@ -1632,7 +1633,7 @@ export default function AdminPage() {
             };
             const getAddonContainerNames = (addon: any) => {
               const names = allGroups.filter(name => getContainerAddonIds(name).includes(addon.id));
-              return names.length > 0 ? names : [addon.group || 'Geral'];
+              return names.length > 0 ? names : [getAddonLegacyGroup(addon) || 'Sem container'];
             };
             const ensureAddonCategory = async (name: string, seedIds: string[] = []) => {
               const existing = addonCategoryByName.get(name) as any;
@@ -1688,7 +1689,7 @@ export default function AdminPage() {
               } else if (normalizedAddonSearch && !addonName.includes(normalizedAddonSearch)) {
                 return false;
               }
-              const g = addon.group || 'Geral';
+              const g = getAddonLegacyGroup(addon);
               if (addonCategoryFilter !== 'all' && !getContainerAddonIds(addonCategoryFilter).includes(addon.id) && g !== addonCategoryFilter) return false;
               return true;
             }).sort((a: any, b: any) => {
@@ -1885,6 +1886,11 @@ export default function AdminPage() {
                               catDocs?.forEach((catDoc: any) => {
                                 batch.delete(doc(db, 'addonCategories', catDoc.id));
                               });
+                              (addons || [])
+                                .filter((addon: any) => getAddonLegacyGroup(addon) === oldName)
+                                .forEach((addon: any) => {
+                                  batch.update(doc(db, 'addons', addon.id), { group: '' });
+                                });
 
                               await batch.commit();
                               toast({ title: 'Container excluído com sucesso!' });
@@ -1916,6 +1922,11 @@ export default function AdminPage() {
                                   const newDoc = doc(collection(db, 'addonCategories'));
                                   batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true });
                                 }
+                                (addons || [])
+                                  .filter((addon: any) => getAddonLegacyGroup(addon) === oldName)
+                                  .forEach((addon: any) => {
+                                    batch.update(doc(db, 'addons', addon.id), { group: newName });
+                                  });
 
                                 await batch.commit();
                                 toast({ title: 'Container renomeado com sucesso!' });
