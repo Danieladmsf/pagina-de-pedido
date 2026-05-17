@@ -307,63 +307,6 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
             )}
           </form>
 
-          {addonDetails && (
-            <Dialog open={!!addonDetails} onOpenChange={(open) => !open && setAddonDetails(null)}>
-              <DialogContent className="sm:max-w-[400px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    {addonDetails.addon.name}
-                    {addonDetails.addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                  <div className="bg-slate-50 p-3 rounded-lg border text-sm text-slate-600">
-                    Este adicional está vinculado aos seguintes produtos:
-                    <ul className="mt-2 list-disc pl-4 max-h-[150px] overflow-y-auto space-y-1">
-                      {items.filter(item => {
-                        if (item.addonIds?.includes(addonDetails.addon.id)) return true;
-                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
-                        return false;
-                      }).map(item => (
-                        <li key={item.id} className="font-medium text-slate-800">{item.name} {item.isMarmita ? '(Marmita)' : ''}</li>
-                      ))}
-                      {items.filter(item => {
-                        if (item.addonIds?.includes(addonDetails.addon.id)) return true;
-                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
-                        return false;
-                      }).length === 0 && (
-                        <li className="text-slate-400 italic">Nenhum produto utiliza este adicional no momento.</li>
-                      )}
-                    </ul>
-                  </div>
-                  
-                  {addonDetails.groupName && (
-                    <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex flex-col gap-2">
-                      <p className="text-xs text-blue-800">
-                        Deseja inserir <b>{addonDetails.addon.name}</b> em todos os produtos que possuem a etapa <b>&quot;{addonDetails.groupName}&quot;</b>?
-                      </p>
-                      <Button onClick={handleAddToAll} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white w-full">
-                        <Plus className="w-3 h-3 mr-1" /> Adicionar a Todos
-                      </Button>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    Você pode pausar este adicional globalmente. Ele ficará <b>indisponível para os clientes</b> em todos os produtos, sem precisar ser removido da configuração de cada um deles.
-                  </p>
-                </div>
-                <DialogFooter className="flex-col sm:flex-row gap-2">
-                  <Button variant="outline" onClick={() => setAddonDetails(null)} className="w-full sm:w-auto">Fechar</Button>
-                  <Button 
-                    onClick={() => toggleAddonActive(addonDetails.addon)}
-                    className={`w-full sm:w-auto ${addonDetails.addon.active === false ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}
-                  >
-                    {addonDetails.addon.active === false ? <><Power className="w-4 h-4 mr-2" /> Reativar</> : <><PowerOff className="w-4 h-4 mr-2" /> Pausar Globalmente</>}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
 
         </CardContent>
       </Card>
@@ -445,13 +388,13 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                   />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                                   {/* Painel Esquerdo: Disponíveis */}
-                                  <div className="border rounded-lg overflow-hidden">
+                                  <div className="border rounded-lg overflow-hidden flex flex-col">
                                     <div className="bg-slate-50 px-3 py-1.5 border-b">
-                                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Disponíveis</span>
+                                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Adicionais</span>
                                     </div>
-                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                    <div className="h-[180px] overflow-y-auto p-1.5 space-y-0.5 bg-white">
                                       {Object.keys(availableByGroup).length > 0 ? Object.entries(availableByGroup).map(([gName, gAddons]) => (
                                         <div key={gName}>
                                           <div className="text-[9px] font-bold uppercase text-slate-300 px-1 pt-1">{gName}</div>
@@ -465,7 +408,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                               <Plus className="h-3 w-3 text-slate-300 group-hover/avail:text-emerald-500 flex-shrink-0" />
                                               <span 
                                                 className={`truncate flex-1 cursor-pointer hover:underline transition-colors ${addon.active === false ? 'text-red-400 line-through' : 'hover:text-primary'}`}
-                                                onClick={() => setAddonDetails({ addon, groupName: group.name })}
+                                                onClick={(e) => { e.stopPropagation(); setAddonDetails({ addon, groupName: group.name }); }}
                                                 title="Clique para pausar ou ver detalhes"
                                               >
                                                 {addon.name}
@@ -484,13 +427,13 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                     </div>
                                   </div>
 
-                                  {/* Painel Direito: Selecionados */}
-                                  <div className="border rounded-lg overflow-hidden border-emerald-200">
+                                  {/* Painel Central: Selecionados */}
+                                  <div className="border rounded-lg overflow-hidden border-emerald-200 flex flex-col">
                                     <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
                                       <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Selecionados</span>
                                       <span className="text-[10px] bg-emerald-100 text-emerald-600 rounded-full px-1.5 font-bold">{selectedAddons.length}</span>
                                     </div>
-                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                    <div className="h-[180px] overflow-y-auto p-1.5 space-y-0.5 bg-white">
                                       {selectedAddons.length > 0 ? selectedAddons.map((addon: any) => {
                                         const isFree = group.freeAddonIds?.includes(addon.id);
                                         return (
@@ -498,7 +441,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                             <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
                                             <span 
                                               className={`truncate flex-1 cursor-pointer hover:underline transition-colors ${addon.active === false ? 'text-red-500 line-through' : 'text-slate-700 hover:text-primary'}`} 
-                                              onClick={() => setAddonDetails({ addon, groupName: group.name })}
+                                              onClick={(e) => { e.stopPropagation(); setAddonDetails({ addon, groupName: group.name }); }}
                                               title="Clique para pausar ou ver detalhes"
                                             >
                                               {addon.name}
@@ -528,6 +471,60 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                       }) : (
                                         <div className="text-center text-[11px] text-slate-300 py-4">
                                           Clique em &quot;+&quot; para adicionar
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Painel Direito: Produtos Vinculados */}
+                                  <div className="border rounded-lg overflow-hidden border-blue-200 flex flex-col">
+                                    <div className="bg-blue-50 px-3 py-1.5 border-b border-blue-200">
+                                      <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide">Produtos</span>
+                                    </div>
+                                    <div className="h-[180px] overflow-y-auto p-2 bg-white flex flex-col relative">
+                                      {addonDetails && addonDetails.groupName === group.name ? (
+                                        <div className="space-y-2 flex flex-col h-full">
+                                          <div className="flex items-center gap-1.5 border-b pb-1">
+                                            <span className="text-[11px] font-bold text-slate-800 truncate" title={addonDetails.addon.name}>{addonDetails.addon.name}</span>
+                                            {addonDetails.addon.active === false && <span className="bg-red-100 text-red-700 text-[9px] px-1 rounded font-bold uppercase tracking-wide flex-shrink-0">Pausado</span>}
+                                          </div>
+                                          <div className="text-[10px] text-slate-600 space-y-1 flex-1 overflow-y-auto">
+                                            <span className="font-semibold text-slate-500 block mb-1">Usado em:</span>
+                                            <ul className="list-disc pl-3">
+                                              {items.filter(item => {
+                                                if (item.addonIds?.includes(addonDetails.addon.id)) return true;
+                                                if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
+                                                return false;
+                                              }).map(item => (
+                                                <li key={item.id} className="truncate" title={item.name}>{item.name} {item.isMarmita ? '(M)' : ''}</li>
+                                              ))}
+                                              {items.filter(item => {
+                                                if (item.addonIds?.includes(addonDetails.addon.id)) return true;
+                                                if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.addon.id))) return true;
+                                                return false;
+                                              }).length === 0 && (
+                                                <li className="text-slate-400 italic">Nenhum</li>
+                                              )}
+                                            </ul>
+                                          </div>
+                                          
+                                          <div className="flex flex-col gap-1.5 mt-auto pt-2 border-t">
+                                            <Button 
+                                              onClick={() => toggleAddonActive(addonDetails.addon)}
+                                              size="sm"
+                                              className={`w-full h-6 text-[10px] px-2 ${addonDetails.addon.active === false ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}
+                                            >
+                                              {addonDetails.addon.active === false ? 'Reativar no Cardápio' : 'Pausar Globalmente'}
+                                            </Button>
+
+                                            <Button onClick={handleAddToAll} size="sm" variant="outline" className="w-full h-6 text-[10px] px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200">
+                                              <Plus className="w-3 h-3 mr-1" /> Add a Todos ({group.name})
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex-1 flex items-center justify-center text-center text-[10px] text-slate-400 px-2 leading-relaxed">
+                                          Clique em um adicional<br/>nas caixas ao lado<br/>para ver onde ele é<br/>usado e opções.
                                         </div>
                                       )}
                                     </div>
