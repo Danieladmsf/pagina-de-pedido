@@ -2015,7 +2015,14 @@ export function CaixaTab({
               ) : (
                 <Button
                   className="ml-auto"
-                  onClick={() => setFechamentoStep(prev => Math.min(fechamentoSteps.length - 1, prev + 1))}
+                  onClick={() => {
+                    // Validação: na etapa Apuração (step 2), obrigar preenchimento do valor físico
+                    if (fechamentoStep === 2 && dinheiroApurado === '') {
+                      toast({ variant: 'destructive', title: 'Apuração obrigatória', description: 'Informe o valor contado fisicamente na gaveta antes de prosseguir.' });
+                      return;
+                    }
+                    setFechamentoStep(prev => Math.min(fechamentoSteps.length - 1, prev + 1));
+                  }}
                   disabled={isSubmitting || (fechamentoStep === 2 && apuracaoComFaltaSemJustificativa)}
                 >
                   Proximo <ChevronRight className="h-4 w-4 ml-1" />
