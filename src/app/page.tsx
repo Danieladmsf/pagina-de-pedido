@@ -9,7 +9,6 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -70,7 +69,6 @@ export default function AdminPage() {
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
-  const [productManagementTab, setProductManagementTab] = useState<'produtos' | 'combos' | 'marmitas'>('produtos');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [addonSortConfig, setAddonSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
@@ -183,30 +181,18 @@ export default function AdminPage() {
     return Array.from(merged.values()).sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
   }, [orders, ordersRawSorted, caixaSelecionadoId]);
 
-  const productTypeCounts = React.useMemo(() => {
-    const counts = { produtos: 0, combos: 0, marmitas: 0 };
-    for (const item of items || []) {
-      if (item.isCombo) {
-        counts.combos++;
-      } else if (item.isMarmita) {
-        counts.marmitas++;
-      } else {
-        counts.produtos++;
-      }
-    }
-    return counts;
-  }, [items]);
+  const sortedProductCategories = React.useMemo(() => {
+    return [...(categories || [])].sort((a: any, b: any) => {
+      const orderA = a.displayOrder ?? 0;
+      const orderB = b.displayOrder ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
+  }, [categories]);
 
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
-    let result = [...items];
-    if (productManagementTab === 'combos') {
-      result = result.filter(item => item.isCombo);
-    } else if (productManagementTab === 'marmitas') {
-      result = result.filter(item => !item.isCombo && item.isMarmita);
-    } else {
-      result = result.filter(item => !item.isCombo && !item.isMarmita);
-    }
+    let result = items.filter(item => !item.isCombo);
     if (productCategoryFilter !== 'todas') {
       result = result.filter(item => item.categoryId === productCategoryFilter);
     }
@@ -232,7 +218,7 @@ export default function AdminPage() {
     }
     
     return result;
-  }, [items, productManagementTab, productCategoryFilter, productSearch, sortConfig, categories]);
+  }, [items, productCategoryFilter, productSearch, sortConfig, categories]);
 
   useEffect(() => {
     console.log('[admin] user:', user?.uid, 'isRealUser:', isRealUser);
@@ -1111,7 +1097,6 @@ export default function AdminPage() {
                 setEditingCombo(combo);
                 if (combo) {
                   setActiveTab('produtos');
-                  setProductManagementTab('combos');
                 }
               }} 
             />
@@ -1162,54 +1147,49 @@ export default function AdminPage() {
               </div>
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0 lg:flex-row lg:items-center lg:justify-between">
-                <Tabs value={productManagementTab} onValueChange={(value) => setProductManagementTab(value as 'produtos' | 'combos' | 'marmitas')} className="w-full lg:w-auto">
-                  <TabsList className="grid h-auto w-full grid-cols-3 lg:w-auto">
-                    <TabsTrigger value="produtos" className="gap-2">
-                      Produtos
-                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.produtos}</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="marmitas" className="gap-2">
-                      Marmitas
-                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.marmitas}</span>
-                    </TabsTrigger>
+              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 custom-scrollbar">
                     <button
                       type="button"
-                      onClick={() => setActiveTab('categorias')}
-                      className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      onClick={() => setProductCategoryFilter('todas')}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
+                        productCategoryFilter === 'todas'
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary'
+                      }`}
                     >
-                      Categorias
-                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{categories?.length || 0}</span>
+                      Todos
                     </button>
-                  </TabsList>
-                </Tabs>
-                <div className="flex justify-end gap-2">
-                  {productManagementTab === 'produtos' && (
+                    {sortedProductCategories.map((cat: any) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setProductCategoryFilter(cat.id)}
+                        className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
+                          productCategoryFilter === cat.id
+                            ? 'border-primary bg-primary text-white'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex shrink-0 justify-end gap-2">
                     <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
                       <Plus className="mr-2 h-4 w-4" /> Novo Produto
                     </Button>
-                  )}
-                  {productManagementTab === 'marmitas' && (
                     <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
                       <Component className="h-4 w-4" /> Criar Marmita
                     </Button>
-                  )}
+                  </div>
                 </div>
-            </CardHeader>
+              </CardHeader>
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
-                <div className="p-4 border-b bg-slate-50 flex flex-col md:flex-row gap-4 items-center shrink-0">
-                  <select
-                    className="h-10 px-3 py-2 rounded-md border border-input bg-background text-sm min-w-[200px]"
-                    value={productCategoryFilter}
-                    onChange={(e) => setProductCategoryFilter(e.target.value)}
-                  >
-                    <option value="todas">Todas Categorias</option>
-                    {categories?.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
+                <div className="p-4 border-b bg-slate-50 flex items-center shrink-0">
                   <Input
-                    placeholder={productManagementTab === 'produtos' ? 'Procurar produto...' : productManagementTab === 'combos' ? 'Procurar combo...' : 'Procurar marmita...'}
+                    placeholder="Procurar produto ou marmita..."
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     className="w-full"
@@ -1241,7 +1221,7 @@ export default function AdminPage() {
                     {filteredItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="h-32 text-center text-sm text-muted-foreground">
-                          Nenhum item encontrado nesta aba.
+                          Nenhum produto ou marmita encontrado nesta categoria.
                         </TableCell>
                       </TableRow>
                     ) : filteredItems.map((item) => {
