@@ -1722,16 +1722,39 @@ export function CaixaTab({
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
                     <h3 className="font-bold text-sm text-blue-700">Motoboys</h3>
-                    {motoboysFechamento.length > 0 ? motoboysFechamento.map(m => (
-                      <div key={m.id} className="rounded-md bg-white p-3 text-sm">
-                        <div className="font-semibold">{m.name}</div>
+                    {motoboysFechamento.length > 0 ? motoboysFechamento.map(m => {
+                      const isJaQuitado = m.saldo <= 0;
+                      const isSeraQuitado = !isJaQuitado && m.saldoRestante <= 0 && m.valorPago > 0;
+                      const isParcial = !isJaQuitado && !isSeraQuitado && m.valorPago > 0;
+                      const isAdiado = !isJaQuitado && m.valorPago <= 0;
+                      return (
+                      <div key={m.id} className={`rounded-md p-3 text-sm ${
+                        isJaQuitado ? 'bg-emerald-50 border border-emerald-200 opacity-60' :
+                        isSeraQuitado ? 'bg-emerald-50 border border-emerald-200' :
+                        isParcial ? 'bg-amber-50 border border-amber-200' :
+                        isAdiado ? 'bg-slate-50 border border-slate-200' :
+                        'bg-white'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-semibold ${isJaQuitado ? 'text-emerald-700 line-through' : isSeraQuitado ? 'text-emerald-700' : ''}`}>{m.name}</span>
+                          {isJaQuitado ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] font-bold">✅ Quitado</Badge>
+                          ) : isSeraQuitado ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] font-bold">✅ Será quitado</Badge>
+                          ) : isParcial ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] font-bold">⚠️ Parcial</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-300 text-[10px] font-bold">⏸️ Adiado</Badge>
+                          )}
+                        </div>
                         <div className="mt-1 grid gap-1 text-xs sm:grid-cols-3">
-                          <span>Devido R$ {m.saldo.toFixed(2)}</span>
-                          <span>Pago R$ {m.valorPago.toFixed(2)}</span>
-                          <span>Restante R$ {m.saldoRestante.toFixed(2)}</span>
+                          <span>Devido <strong className={isJaQuitado ? 'text-emerald-600' : ''}>R$ {m.saldo.toFixed(2)}</strong></span>
+                          <span>Pago <strong className={m.valorPago > 0 ? 'text-blue-700' : ''}>R$ {m.valorPago.toFixed(2)}</strong></span>
+                          <span>Restante <strong className={m.saldoRestante > 0 ? 'text-rose-600' : 'text-emerald-600'}>R$ {m.saldoRestante.toFixed(2)}</strong></span>
                         </div>
                       </div>
-                    )) : <p className="text-sm text-muted-foreground">Nenhum motoboy nesta sessao.</p>}
+                      );
+                    }) : <p className="text-sm text-muted-foreground">Nenhum motoboy nesta sessao.</p>}
                   </div>
                   <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 space-y-3">
                     <h3 className="font-bold text-sm text-purple-700">Freelancers / Extras</h3>
