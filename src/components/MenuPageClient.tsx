@@ -813,21 +813,21 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         <div className="rounded-2xl border border-primary/10 bg-white/95 p-2.5 shadow-xl shadow-slate-900/10 backdrop-blur-xl md:rounded-[1.75rem] md:p-4">
           <div className="relative min-w-0 max-w-full group/cats">
               {/* Left fade gradient */}
-              <div className={`hidden md:block absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
+              <div className={`absolute left-8 md:left-10 top-0 bottom-0 w-6 md:w-8 bg-gradient-to-r from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0'}`} />
 
-              {/* Left scroll arrow - desktop only */}
+              {/* Left scroll arrow */}
               <button
                 onClick={() => scrollCategories('left')}
-                className={`hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                className={`flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 md:w-9 md:h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 aria-label="Scroll categorias esquerda"
               >
-                <ChevronLeft className="h-5 w-5" />
+                <ChevronLeft className="h-4 w-4 md:h-5 md:w-5" />
               </button>
 
               {/* Category buttons */}
               <div
                 ref={categoryScrollRef}
-                className="flex max-w-full min-w-0 flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x md:mx-11"
+                className="flex max-w-full min-w-0 flex-row gap-2 overflow-x-auto pb-1 hide-scrollbar snap-x mx-9 md:mx-11"
               >
                 <Button
                   data-cat-tab="all"
@@ -876,15 +876,15 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               </div>
 
               {/* Right fade gradient */}
-              <div className={`hidden md:block absolute right-10 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0'}`} />
+              <div className={`absolute right-8 md:right-10 top-0 bottom-0 w-6 md:w-8 bg-gradient-to-l from-white to-transparent z-[5] pointer-events-none transition-opacity duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0'}`} />
 
-              {/* Right scroll arrow - desktop only */}
+              {/* Right scroll arrow */}
               <button
                 onClick={() => scrollCategories('right')}
-                className={`hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                className={`flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 md:w-9 md:h-9 items-center justify-center rounded-full bg-white/95 shadow-lg border border-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 ${canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 aria-label="Scroll categorias direita"
               >
-                <ChevronRight className="h-5 w-5" />
+                <ChevronRight className="h-4 w-4 md:h-5 md:w-5" />
               </button>
             </div>
           </div>
