@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { MenuItem, Addon, SelectedAddon, AddonGroup, AddonCategory } from '@/lib/types';
 import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
 import { Minus, Plus, AlertCircle } from 'lucide-react';
@@ -62,7 +61,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     setSelectedAddons(prev => {
       const exists = prev.find(a => a.id === addon.id);
       if (exists) return prev.filter(a => a.id !== addon.id);
-      return [...prev, { id: addon.id, name: addon.name, price: addon.price }];
+      return [...prev, { id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
     });
   };
 
@@ -80,12 +79,12 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
         
         if (limit > 0 && next.length >= limit) {
           if (limit === 1) {
-            next = [{ id: addon.id, name: addon.name, price: finalPrice }];
+            next = [{ id: addon.id, name: addon.name, description: addon.description, price: finalPrice }];
           } else {
             return prev; // não permite selecionar mais
           }
         } else {
-          next.push({ id: addon.id, name: addon.name, price: finalPrice });
+          next.push({ id: addon.id, name: addon.name, description: addon.description, price: finalPrice });
         }
       }
       return { ...prev, [groupIndex]: next };
@@ -180,6 +179,47 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
 
 
+          {/* Normal Addons */}
+          {productAddons.length > 0 && (
+            <div className="space-y-2 p-3 border rounded-md bg-slate-50/50">
+              <Label className="text-sm font-bold text-slate-800">Adicionais</Label>
+              <div className="grid gap-1.5">
+                {productAddons.map((addon) => {
+                  const checked = !!selectedAddons.find(a => a.id === addon.id);
+
+                  return (
+                    <label
+                      key={addon.id}
+                      className={`flex items-start justify-between gap-2 p-2 border rounded cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'}`}
+                    >
+                      <div className="flex min-w-0 items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleNormalAddon(addon)}
+                          className="mt-0.5 h-3.5 w-3.5 rounded-sm text-primary focus:ring-primary"
+                        />
+                        <div className="min-w-0">
+                          <span className={`block text-xs font-semibold leading-tight ${checked ? 'text-primary' : 'text-slate-800'}`}>
+                            {addon.name}
+                          </span>
+                          {addon.description && (
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                              {addon.description}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {addon.price > 0 && (
+                        <span className="shrink-0 text-[11px] font-bold text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Addon Groups */}
           {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
             const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id) && a.active !== false);
@@ -216,18 +256,27 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                     return (
                       <label
                         key={addon.id}
-                        className={`flex items-center justify-between gap-2 p-2 border rounded cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-start justify-between gap-2 p-2 border rounded cursor-pointer transition-colors bg-white ${checked ? 'border-primary/50 bg-primary/5' : 'hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-start gap-2">
                           <input 
                             type={group.max === 1 ? 'radio' : 'checkbox'} 
                             name={`group-${groupIndex}`}
                             checked={checked}
                             onChange={() => !disabled && toggleMarmitaAddon(groupIndex, addon, group)}
                             disabled={disabled}
-                            className="h-3.5 w-3.5 rounded-sm text-primary focus:ring-primary"
+                            className="mt-0.5 h-3.5 w-3.5 rounded-sm text-primary focus:ring-primary"
                           />
-                          <span className={`text-xs ${checked ? 'font-medium text-primary' : 'text-slate-700'}`}>{addon.name}</span>
+                          <div className="min-w-0">
+                            <span className={`block text-xs font-semibold leading-tight ${checked ? 'text-primary' : 'text-slate-800'}`}>
+                              {addon.name}
+                            </span>
+                            {addon.description && (
+                              <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                                {addon.description}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         {groupUsesPrice(group) && addon.price > 0 && (() => {
                           const freeLimit = group.freeLimit || 0;

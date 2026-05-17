@@ -4,6 +4,7 @@ export type Category = 'Todos' | 'Sucos' | 'Vitaminas' | 'Salgados' | 'Pratos Fe
 export interface Addon {
   id: string;
   name: string;
+  description?: string;
   price: number;
   ownerId: string;
   active?: boolean;
@@ -62,6 +63,7 @@ export interface MenuItem {
 export interface SelectedAddon {
   id: string;
   name: string;
+  description?: string;
   price: number;
 }
 

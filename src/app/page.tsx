@@ -915,6 +915,7 @@ export default function AdminPage() {
     const selectedGroup = formData.get('addonGroup') as string || 'Geral';
     const addonData = {
       name: formData.get('addonName') as string,
+      description: ((formData.get('addonDescription') as string) || '').trim(),
       price: parseFloat(formData.get('addonPrice') as string),
       group: selectedGroup,
       ownerId: user.uid,
@@ -2013,6 +2014,16 @@ export default function AdminPage() {
                           <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
                         </div>
                         <div className="space-y-2">
+                          <Label htmlFor="addonDescription">Texto de apresentacao</Label>
+                          <Textarea
+                            id="addonDescription"
+                            name="addonDescription"
+                            defaultValue={editingAddon?.description || ''}
+                            placeholder="Ex: fatias de abacaxi fresco, porcao extra, molho especial..."
+                            className="min-h-[80px] resize-none text-sm"
+                          />
+                        </div>
+                        <div className="space-y-2">
                           <Label htmlFor="addonGroup">Categoria</Label>
                           <select 
                             id="addonGroup" 
@@ -2158,6 +2169,11 @@ export default function AdminPage() {
                                 {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
                                 {unusedDuplicateIds.has(addon.id) && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ml-2">S/ USO (DUPLICADO)</span>}
                               </div>
+                              {addon.description && (
+                                <div className="text-[11px] text-slate-500 mt-0.5 font-normal max-w-[200px] sm:max-w-xs md:max-w-md line-clamp-2">
+                                  {addon.description}
+                                </div>
+                              )}
                               {addonUsageMap.has(addon.id) && addonUsageMap.get(addon.id)!.size > 0 && (
                                 <div className="text-[10px] text-muted-foreground mt-0.5 font-normal max-w-[200px] sm:max-w-xs md:max-w-md truncate" title={Array.from(addonUsageMap.get(addon.id)!).join(', ')}>
                                   <span className="font-semibold text-slate-500">Usado em:</span> {Array.from(addonUsageMap.get(addon.id)!).join(', ')}
