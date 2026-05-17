@@ -492,7 +492,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             <div className="flex items-center gap-1 mb-2 px-1 py-1.5 bg-slate-50 rounded-lg">
               <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-200 -z-10"></div>
               {[
-                { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { updateOrderStatus(selectedOrder.id, 'received'); triggerPrint(selectedOrder); } },
+                { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { 
+                  updateOrderStatus(selectedOrder.id, 'received'); 
+                  if (storeProfile?.manualPrint) triggerPrint(selectedOrder); 
+                } },
                 { key: 'ready', label: 'Preparo', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
                 { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
                   if (selectedOrder.orderType === 'delivery' && !selectedOrder.motoboyId) {
