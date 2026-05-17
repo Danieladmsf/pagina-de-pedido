@@ -1665,6 +1665,11 @@ export default function AdminPage() {
               });
               toast({ title: 'Item removido apenas deste container.' });
             };
+            const setAddonGlobalActive = async (addon: any, active: boolean) => {
+              if (!db) return;
+              await updateDoc(doc(db, 'addons', addon.id), { active });
+              toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
+            };
             const normalizedAddonSearch = removeAccents(addonSearchTerm.toLowerCase()).trim();
             const isAddonListSearch = /[,;\n]/.test(addonSearchTerm);
             const addonSearchTerms = isAddonListSearch
@@ -2072,7 +2077,7 @@ export default function AdminPage() {
                     : 'bg-slate-50 text-slate-600'
                 }`}>
                   {isContainerView
-                    ? `Container "${addonCategoryFilter}": a lixeira remove o item apenas deste container.`
+                    ? `Container "${addonCategoryFilter}": a lixeira remove so deste container; Ativo/Pausado altera o item globalmente.`
                     : 'Lista Matriz: editar, pausar ou excluir aqui altera o adicional globalmente.'}
                 </div>
                 <Table>
@@ -2150,28 +2155,38 @@ export default function AdminPage() {
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6">
                             {isContainerView ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Remover apenas deste container"
-                                onClick={async () => {
-                                  if (confirm(`Remover "${addon.name}" apenas do container "${addonCategoryFilter}"?`)) {
-                                    await removeAddonFromContainer(addon);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-2">
+                                <div
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1"
+                                  title="Ativo/Pausado global"
+                                >
+                                  <Switch
+                                    checked={addon.active !== false}
+                                    onCheckedChange={(checked) => setAddonGlobalActive(addon, checked)}
+                                    aria-label="Ativo/Pausado global"
+                                    className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                                  />
+                                  <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Remover apenas deste container"
+                                  onClick={async () => {
+                                    if (confirm(`Remover "${addon.name}" apenas do container "${addonCategoryFilter}"?`)) {
+                                      await removeAddonFromContainer(addon);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
                                 <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
                                   <Switch
                                     checked={addon.active !== false}
-                                    onCheckedChange={async (checked) => {
-                                      if (!db) return;
-                                      await updateDoc(doc(db, 'addons', addon.id), { active: checked });
-                                      toast({ title: checked ? 'Adicional ativado' : 'Adicional pausado' });
-                                    }}
+                                    onCheckedChange={(checked) => setAddonGlobalActive(addon, checked)}
                                     className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
                                   />
                                   <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
