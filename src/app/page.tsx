@@ -1605,14 +1605,18 @@ export default function AdminPage() {
 
             const addonUsageMap = new Map<string, Set<string>>();
             for (const item of (items || [])) {
+              const typeLabel = item.isCombo ? ' (Combo)' : item.isMarmita ? ' (Marmita)' : ' (Produto)';
+              const statusLabel = item.isAvailable === false ? ' [Inativo]' : '';
+              const displayName = `${item.name}${typeLabel}${statusLabel}`;
+              
               for (const id of (item.addonIds || [])) {
                 if (!addonUsageMap.has(id)) addonUsageMap.set(id, new Set());
-                addonUsageMap.get(id)!.add(item.name);
+                addonUsageMap.get(id)!.add(displayName);
               }
               for (const g of (item.addonGroups || [])) {
                 for (const id of (g.addonIds || [])) {
                   if (!addonUsageMap.has(id)) addonUsageMap.set(id, new Set());
-                  addonUsageMap.get(id)!.add(item.name);
+                  addonUsageMap.get(id)!.add(displayName);
                 }
               }
             }
