@@ -1185,7 +1185,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
         {cart.length > 0 && (
           <div className="pt-3 border-t space-y-2">
-            {orderType === 'delivery' && step !== 'cart' && (
+            {orderType === 'delivery' && (
               <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
