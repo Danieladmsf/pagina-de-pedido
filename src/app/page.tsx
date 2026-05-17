@@ -597,11 +597,30 @@ export default function AdminPage() {
     return { revenue, count: filtered.length, avgTicket, customers, topItems, dailyBreakdown };
   }, [orders, reportPeriod, customFrom, customTo]);
 
+  // Debounce o redirect para login para evitar que flutuações temporárias de auth
+  // (ex: outra aba abrindo o cardápio do cliente) desloguem o admin indevidamente.
+  const wasEverLoggedIn = useRef(false);
   useEffect(() => {
-    if (!isUserLoading && (!user || user.isAnonymous)) {
-      router.push('/login');
+    if (user && !user.isAnonymous) {
+      wasEverLoggedIn.current = true;
     }
-  }, [user, isUserLoading, router]);
+  }, [user]);
+
+  useEffect(() => {
+    if (isUserLoading) return; // Ainda carregando, não faz nada
+    if (user && !user.isAnonymous) return; // Logado normalmente, tudo certo
+
+    // Se o user sumiu mas ele JÁ ESTAVA logado, espera 2s antes de redirecionar
+    // para dar tempo do Firebase Auth se estabilizar entre abas
+    const delay = wasEverLoggedIn.current ? 2000 : 0;
+    const timer = setTimeout(() => {
+      // Re-checa o auth atual antes de redirecionar
+      if (!auth?.currentUser || auth.currentUser.isAnonymous) {
+        router.push('/login');
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [user, isUserLoading, router, auth]);
 
   const handleLogout = async () => {
     if (!auth) return;
