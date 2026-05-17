@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
+import { removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 
 function PromoCountdown({ endDate }: { endDate: Date }) {
@@ -334,8 +335,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       // Hide promo-only items from regular categories
       if (promoOnlyIds.has(item.id)) return false;
       
-      const matchesSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           item.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const cleanSearchQuery = removeAccents(searchQuery.toLowerCase());
+      const cleanItemName = removeAccents(item.name.toLowerCase());
+      const cleanItemDesc = removeAccents(item.description.toLowerCase());
+      const matchesSearch = !searchQuery || cleanItemName.includes(cleanSearchQuery) || 
+                           cleanItemDesc.includes(cleanSearchQuery);
 
       return matchesSearch;
     });
@@ -347,10 +351,13 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
     // Promos section
     if (hasActivePromos) {
-      const promoItems = (items || []).filter(item => 
-        item.isAvailable !== false && promoItemsMap[item.id] &&
-        (!searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.description.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
+      const promoItems = (items || []).filter(item => {
+        const cleanSearchQuery = removeAccents(searchQuery.toLowerCase());
+        const cleanItemName = removeAccents(item.name.toLowerCase());
+        const cleanItemDesc = removeAccents(item.description.toLowerCase());
+        return item.isAvailable !== false && promoItemsMap[item.id] &&
+        (!searchQuery || cleanItemName.includes(cleanSearchQuery) || cleanItemDesc.includes(cleanSearchQuery))
+      });
       if (promoItems.length > 0) {
         groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
       }
