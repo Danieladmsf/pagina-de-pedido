@@ -190,6 +190,33 @@ function isReceivedWebhook(event: string, hook?: string) {
   return String(event || '').trim().toLowerCase().includes('received') || String(event || '').trim().toLowerCase() === 'message';
 }
 
+// Deep scan: check if ANY string value in the payload contains a blocked target
+// This catches status@broadcast and @g.us even in unexpected/nested fields
+function deepHasBlockedTarget(obj: any, depth = 0): boolean {
+  if (depth > 6 || !obj) return false;
+  if (typeof obj === 'string') {
+    const lower = obj.toLowerCase();
+    return (
+      lower.includes('@g.us') ||
+      lower.includes('status@broadcast') ||
+      lower.includes('@broadcast') ||
+      lower.includes('@newsletter')
+    );
+  }
+  if (Array.isArray(obj)) {
+    return obj.some((item) => deepHasBlockedTarget(item, depth + 1));
+  }
+  if (typeof obj === 'object') {
+    for (const key of Object.keys(obj)) {
+      // Only scan identifier-like keys, skip large content fields
+      const lk = key.toLowerCase();
+      if (lk === 'body' || lk === 'content' || lk === 'caption' || lk === 'text' || lk === 'messagebody' || lk === 'textmessage' || lk === 'conversation') continue;
+      if (deepHasBlockedTarget(obj[key], depth + 1)) return true;
+    }
+  }
+  return false;
+}
+
 function extractIncomingMessage(payload: any, event: string, hook?: string) {
   const eventName = String(event || '').toLowerCase();
   if (!isReceivedWebhook(event, hook)) return null;
@@ -197,15 +224,45 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
 
   const data = payload?.data || payload?.message || payload;
   
-  // Explicit Group and Status boolean flags from W-API
+  // ── Layer 1: Explicit boolean flags from W-API ──
   if (payload?.isGroup || payload?.isGroupMsg || data?.isGroup || data?.isGroupMsg) return null;
   if (payload?.isStatus || payload?.isStatusMsg || data?.isStatus || data?.isStatusMsg) return null;
+  if (payload?.isStatusV3 || data?.isStatusV3) return null;
+  if (payload?.isViewOnce || data?.isViewOnce) return null;
   if (payload?.isForwarded || data?.isForwarded) return null;
 
+  // ── Layer 2: Check message type strings ──
   if (hasBlockedMessageType(payload, data, eventName)) return null;
 
+  // ── Layer 3: Check all known identifier fields ──
   const identifiers = messageIdentifiers(payload, data);
   if (hasBlockedChatTarget(identifiers)) return null;
+
+  // ── Layer 4: Deep-check remoteJid / chatId in ALL possible locations ──
+  // W-API sometimes puts status@broadcast or @g.us in unexpected nested fields
+  const allJids = [
+    payload?.remoteJid, payload?.chatId, payload?.chat, payload?.chat?.id,
+    payload?.key?.remoteJid, payload?.message?.key?.remoteJid,
+    payload?.id?.remote, payload?.id?.participant,
+    data?.remoteJid, data?.chatId, data?.chat, data?.chat?.id,
+    data?.key?.remoteJid, data?.message?.key?.remoteJid,
+    data?.id?.remote, data?.id?.participant,
+    // W-API specific nested structures
+    payload?.message?.remoteJid, payload?.message?.chatId,
+    data?.message?.remoteJid, data?.message?.chatId,
+  ].map(v => String(v || '')).filter(v => v && v !== 'undefined');
+  
+  if (hasBlockedChatTarget(allJids)) {
+    console.log('[W-API webhook] Bloqueado por JID (status/grupo):', { jids: allJids.filter(j => j.includes('@')) });
+    return null;
+  }
+
+  // ── Layer 5: Deep payload scan as last resort ──
+  // Catches edge cases where status@broadcast or @g.us appears in any nested field
+  if (deepHasBlockedTarget(payload)) {
+    console.log('[W-API webhook] Bloqueado por deep scan (status/grupo detectado no payload)');
+    return null;
+  }
 
   const fromMe = Boolean(
     payload?.fromMe ||
