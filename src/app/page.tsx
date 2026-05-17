@@ -1617,7 +1617,13 @@ export default function AdminPage() {
 
             const addonNameMap = new Map<string, string[]>();
             for (const addon of addons || []) {
-              const nameKey = addon.name.trim().toLowerCase();
+              const nameKey = addon.name
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove acentos
+                .toLowerCase()
+                .trim()
+                .replace(/\s+/g, ' ') // Espaços múltiplos
+                .replace(/s\b/g, '') // Plurais no final da palavra
+                .replace(/[ao]\b/g, ''); // Masculino/Feminino no final da palavra
               if (!addonNameMap.has(nameKey)) addonNameMap.set(nameKey, []);
               addonNameMap.get(nameKey)!.push(addon.id);
             }
