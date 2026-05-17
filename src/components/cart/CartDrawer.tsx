@@ -119,6 +119,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [distanceInfo, setDistanceInfo] = useState<{ distanceText: string; durationText: string; distanceKm: number; originAddress?: string; destinationAddress?: string } | null>(null);
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [deliveryBlocked, setDeliveryBlocked] = useState(false);
+  const [showNeighborhoodSuggestions, setShowNeighborhoodSuggestions] = useState(false);
   const lastAttemptedAddressRef = useRef<string>('');
 
   const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
@@ -955,22 +956,58 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative">
                       <Label htmlFor="cust_neighborhood" className="text-xs font-bold">Bairro</Label>
                       <Input 
                         id="cust_neighborhood" 
-                        autoComplete="address-level3" 
+                        autoComplete="off" 
                         value={neighborhood} 
-                        onChange={(e) => setNeighborhood(e.target.value)} 
+                        onChange={(e) => {
+                          setNeighborhood(e.target.value);
+                          setShowNeighborhoodSuggestions(true);
+                        }}
+                        onFocus={() => setShowNeighborhoodSuggestions(true)}
                         onBlur={() => {
+                          // Delay para permitir click na sugestão
+                          setTimeout(() => setShowNeighborhoodSuggestions(false), 200);
                           if (street && neighborhood) {
                             const fullAddr = [street, number, neighborhood, city].filter(Boolean).join(', ');
                             calculateDeliveryFee(fullAddr);
                           }
                         }}
-                        placeholder="Centro" 
+                        placeholder="Digite o bairro..." 
                         className="h-9 text-sm" 
                       />
+                      {showNeighborhoodSuggestions && (() => {
+                        const neighborhoodRules = (customAddressRules || []).filter((r: any) => r.type === 'neighborhood' && r.keyword);
+                        const filtered = neighborhood.trim().length > 0
+                          ? neighborhoodRules.filter((r: any) => r.keyword.toLowerCase().includes(neighborhood.toLowerCase().trim()))
+                          : neighborhoodRules;
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                            {filtered.map((rule: any, idx: number) => (
+                              <button
+                                key={rule.keyword + idx}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 flex items-center justify-between border-b last:border-0 transition-colors"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setNeighborhood(rule.keyword);
+                                  setShowNeighborhoodSuggestions(false);
+                                  if (street) {
+                                    const fullAddr = [street, number, rule.keyword, city].filter(Boolean).join(', ');
+                                    calculateDeliveryFee(fullAddr, rule.keyword);
+                                  }
+                                }}
+                              >
+                                <span className="font-medium">{rule.keyword}</span>
+                                <span className="text-xs text-green-600 font-bold">R$ {Number(rule.fee).toFixed(2)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cust_city" className="text-xs font-bold">Cidade</Label>
