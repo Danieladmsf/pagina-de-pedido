@@ -34,7 +34,6 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
