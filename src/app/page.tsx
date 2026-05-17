@@ -1965,7 +1965,7 @@ export default function AdminPage() {
                       filteredAddons.map((addon: any) => {
                         let rowClass = selectedAddonIds.has(addon.id) ? 'bg-emerald-50/30' : '';
                         if (unusedDuplicateIds.has(addon.id)) {
-                          rowClass = 'bg-red-50/80 border border-red-500';
+                          rowClass = 'bg-red-200 border-2 border-red-500';
                         }
                         return (
                         <TableRow key={addon.id} className={rowClass}>
@@ -1986,6 +1986,7 @@ export default function AdminPage() {
                             <div className="flex items-center gap-2">
                               <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
                               {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
+                              {unusedDuplicateIds.has(addon.id) && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ml-2">S/ USO (DUPLICADO)</span>}
                             </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{addon.group || 'Geral'}</TableCell>
