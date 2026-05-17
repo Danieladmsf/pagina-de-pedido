@@ -207,7 +207,18 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return (cashRegisters || []).some((cashRegister: any) => cashRegister.status === 'aberto');
   }, [storeId, loadingCashRegisters, cashRegisters]);
 
-  const theme = getTheme((storeProfile as any)?.theme);
+  const themeId = (storeProfile as any)?.theme || 'padrao';
+  const theme = getTheme(themeId);
+
+  // Ícones de combo contextuais por tema (dois ícones que representam "combo" no segmento)
+  const comboIcons: Record<string, string> = {
+    padrao: '🍽️+🥤',
+    marmitaria: '🍱+🥤',
+    confeitaria: '🍪+🎂',
+    pizzaria: '🍕+🥤',
+    sucaria: '🥤+🍨',
+  };
+  const comboEmoji = comboIcons[themeId] || comboIcons.padrao;
   const storeDisplayName = storeProfile?.general?.name || storeInfo?.storeName || '';
   const currentYear = new Date().getFullYear();
   const foundedYear = Number((storeProfile as any)?.general?.foundedYear);
@@ -349,7 +360,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     if (hasCombos) {
       const comboItems = filteredItems.filter(item => item.isCombo);
       if (comboItems.length > 0) {
-        groups.push({ id: '__combos__', name: '🍔 Combos', items: comboItems });
+        groups.push({ id: '__combos__', name: `${comboEmoji} Combos`, items: comboItems });
       }
     }
 
@@ -854,7 +865,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                     buttonClass = activeCategoryId === '__combos__'
                       ? 'bg-purple-600 text-white border-0 shadow-purple-500/30 shadow-lg gap-1.5'
                       : 'bg-white border-purple-300 text-purple-600 hover:bg-purple-50 gap-1.5';
-                    content = 'Combos';
+                    content = <>{comboEmoji} Combos</>;
                   } else {
                     buttonClass = activeCategoryId === group.id
                       ? 'bg-primary text-primary-foreground'
