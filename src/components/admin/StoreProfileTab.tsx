@@ -56,6 +56,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     enableInventory: false,
     printerSize: '80mm' as '80mm' | '58mm',
     autoPrint: false,
+    manualPrint: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -163,6 +164,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           enableInventory: formData.enableInventory,
           printerSize: formData.printerSize,
           autoPrint: formData.autoPrint,
+          manualPrint: formData.manualPrint,
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -702,6 +704,26 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                       <p className="mt-1">Se o texto estiver cortando nas laterais, provavelmente você está usando uma bobina de <b>58mm</b> e a configuração está em 80mm (ou vice-versa).</p>
                     </div>
                   </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <Label className="text-sm font-bold text-slate-800">Impressão Manual (Aceitar Pedido)</Label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Se ligado, você precisará clicar em "Recebido" no Delivery para imprimir o pedido e parar o apito.</p>
+                    </div>
+                    <Switch 
+                      checked={formData.manualPrint} 
+                      onCheckedChange={(c) => setFormData({ ...formData, manualPrint: c })}
+                      className="data-[state=checked]:bg-amber-500"
+                    />
+                  </div>
+                  {!formData.manualPrint && (
+                    <p className="text-[11px] text-emerald-600 font-medium">✅ Impressão Automática ativada: O pedido será impresso assim que chegar na tela do Delivery.</p>
+                  )}
+                  {formData.manualPrint && (
+                    <p className="text-[11px] text-amber-600 font-medium">⚠️ Impressão Manual ativada: Clique no botão "Recebido" para iniciar a impressão.</p>
+                  )}
                 </div>
               </div>
             </section>
