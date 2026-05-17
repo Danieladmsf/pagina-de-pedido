@@ -935,9 +935,13 @@ export default function AdminPage() {
           await setDoc(newCategoryDoc, { id: newCategoryDoc.id, name: selectedGroup, ownerId: user.uid, addonIds: [savedAddonId], usePrice: true });
         } else {
           const categoryDoc = categorySnap.docs[0];
-          const currentIds = categoryDoc.data().addonIds || [];
+          const categoryData = categoryDoc.data();
+          const currentIds = categoryData.addonIds || [];
+          const removedAddonIds = (categoryData.removedAddonIds || []).filter((id: string) => id !== savedAddonId);
           if (!currentIds.includes(savedAddonId)) {
-            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { addonIds: [...currentIds, savedAddonId] });
+            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { addonIds: [...currentIds, savedAddonId], removedAddonIds });
+          } else if (removedAddonIds.length !== (categoryData.removedAddonIds || []).length) {
+            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { removedAddonIds });
           }
         }
       }
@@ -1622,7 +1626,9 @@ export default function AdminPage() {
               .map((addon: any) => addon.id);
             const getContainerAddonIds = (name: string) => {
               const category = addonCategoryByName.get(name) as any;
-              return Array.from(new Set([...(category?.addonIds || []), ...getLegacyAddonIdsForGroup(name)]));
+              const removedIds = new Set(category?.removedAddonIds || []);
+              return Array.from(new Set([...(category?.addonIds || []), ...getLegacyAddonIdsForGroup(name)]))
+                .filter((id: string) => !removedIds.has(id));
             };
             const getAddonContainerNames = (addon: any) => {
               const names = allGroups.filter(name => getContainerAddonIds(name).includes(addon.id));
@@ -1643,6 +1649,21 @@ export default function AdminPage() {
               };
               await setDoc(newDoc, data);
               return { ref: newDoc, data };
+            };
+            const isContainerView = addonCategoryFilter !== 'all';
+            const removeAddonFromContainer = async (addon: any) => {
+              if (!db || !user || !isContainerView) return;
+              const containerName = addonCategoryFilter;
+              const currentIds = getContainerAddonIds(containerName);
+              const nextIds = currentIds.filter((id: string) => id !== addon.id);
+              const existing = addonCategoryByName.get(containerName) as any;
+              const removedAddonIds = Array.from(new Set([...(existing?.removedAddonIds || []), addon.id]));
+              const { ref } = await ensureAddonCategory(containerName, currentIds);
+              await updateDoc(ref, {
+                addonIds: nextIds,
+                removedAddonIds,
+              });
+              toast({ title: 'Item removido apenas deste container.' });
             };
             const normalizedAddonSearch = removeAccents(addonSearchTerm.toLowerCase()).trim();
             const isAddonListSearch = /[,;\n]/.test(addonSearchTerm);
@@ -1743,7 +1764,7 @@ export default function AdminPage() {
                       size="sm"
                       className="whitespace-nowrap rounded-full"
                     >
-                      Todas as Categorias
+                      Lista Matriz
                     </Button>
                     {allGroups.map(g => {
                       const category = addonCategoryByName.get(g) as any;
@@ -1788,7 +1809,7 @@ export default function AdminPage() {
                                 setIsEditCategoryModalOpen(true);
                               }}
                               className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
-                              title="Editar Categoria"
+                            title="Editar Container"
                             >
                               <Pencil className="h-3 w-3" />
                             </div>
@@ -1806,15 +1827,15 @@ export default function AdminPage() {
                     }}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="sm" className="whitespace-nowrap rounded-full border-dashed text-primary border-primary/50 hover:bg-primary/10">
-                          <Plus className="mr-1 h-3 w-3" /> Nova Categoria
+                          <Plus className="mr-1 h-3 w-3" /> Novo Container
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Nova Categoria de Adicionais</DialogTitle>
+                          <DialogTitle>Novo Container de Adicionais</DialogTitle>
                         </DialogHeader>
                         <div className="py-4 space-y-2">
-                          <Label>Nome da Categoria</Label>
+                          <Label>Nome do Container</Label>
                           <Input 
                             autoFocus
                             value={newAddonCategoryName} 
@@ -1829,7 +1850,7 @@ export default function AdminPage() {
                             try {
                               const newDoc = doc(collection(db, 'addonCategories'));
                               await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true });
-                              toast({ title: 'Categoria criada com sucesso!' });
+                              toast({ title: 'Container criado com sucesso!' });
                               setIsAddonCategoryModalOpen(false);
                               setNewAddonCategoryName('');
                             } catch (err: any) {
@@ -1851,11 +1872,11 @@ export default function AdminPage() {
                     }}>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Editar Categoria: {editCategoryName}</DialogTitle>
+                          <DialogTitle>Editar Container: {editCategoryName}</DialogTitle>
                         </DialogHeader>
                         <div className="py-4 space-y-4">
                           <div className="space-y-2">
-                            <Label>Nome da Categoria</Label>
+                            <Label>Nome do Container</Label>
                             <Input 
                               autoFocus
                               value={editCategoryNewName} 
@@ -1882,7 +1903,7 @@ export default function AdminPage() {
                               });
 
                               await batch.commit();
-                              toast({ title: 'Categoria excluída com sucesso!' });
+                              toast({ title: 'Container excluído com sucesso!' });
                               setIsEditCategoryModalOpen(false);
                               if (addonCategoryFilter === oldName) {
                                 setAddonCategoryFilter('all');
@@ -1913,7 +1934,7 @@ export default function AdminPage() {
                                 }
 
                                 await batch.commit();
-                                toast({ title: 'Categoria renomeada com sucesso!' });
+                                toast({ title: 'Container renomeado com sucesso!' });
                                 setIsEditCategoryModalOpen(false);
                                 if (addonCategoryFilter === oldName) {
                                   setAddonCategoryFilter(newName);
@@ -1944,7 +1965,7 @@ export default function AdminPage() {
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       <Tag className="mr-2 h-4 w-4" /> 
-                      Categorizar Selecionados ({selectedAddonIds.size})
+                      Adicionar ao Container ({selectedAddonIds.size})
                     </Button>
                   )}
                   <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
@@ -1993,10 +2014,10 @@ export default function AdminPage() {
                   }}>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Categorizar {selectedAddonIds.size} itens</DialogTitle>
+                        <DialogTitle>Adicionar {selectedAddonIds.size} itens ao container</DialogTitle>
                       </DialogHeader>
                       <div className="py-4 space-y-2">
-                        <Label>Nova Categoria</Label>
+                        <Label>Container</Label>
                         <select
                           className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                           value={bulkCategoryName}
@@ -2016,7 +2037,9 @@ export default function AdminPage() {
                             const currentIds = getContainerAddonIds(bulkCategoryName);
                             const nextIds = Array.from(new Set([...currentIds, ...Array.from(selectedAddonIds)]));
                             const { ref } = await ensureAddonCategory(bulkCategoryName, currentIds);
-                            await updateDoc(ref, { addonIds: nextIds });
+                            const existing = addonCategoryByName.get(bulkCategoryName) as any;
+                            const removedAddonIds = (existing?.removedAddonIds || []).filter((id: string) => !selectedAddonIds.has(id));
+                            await updateDoc(ref, { addonIds: nextIds, removedAddonIds });
                             toast({ title: 'Itens adicionados ao container sem duplicar.' });
                             setIsBulkCategoryModalOpen(false);
                             setSelectedAddonIds(new Set());
@@ -2025,7 +2048,7 @@ export default function AdminPage() {
                             toast({ variant: 'destructive', title: 'Erro', description: err.message });
                           }
                         }} className="bg-emerald-600 text-white hover:bg-emerald-700">
-                          Aplicar Categoria
+                          Aplicar Container
                         </Button>
                       </DialogFooter>
                     </DialogContent>
@@ -2033,6 +2056,15 @@ export default function AdminPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
+                <div className={`border-b px-4 py-2 text-xs font-semibold ${
+                  isContainerView
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-slate-50 text-slate-600'
+                }`}>
+                  {isContainerView
+                    ? `Container "${addonCategoryFilter}": a lixeira remove o item apenas deste container.`
+                    : 'Lista Matriz: editar, pausar ou excluir aqui altera o adicional globalmente.'}
+                </div>
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
@@ -2107,29 +2139,44 @@ export default function AdminPage() {
                           <TableCell className="text-muted-foreground text-sm">{getAddonContainerNames(addon).join(', ')}</TableCell>
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6">
-                            <div className="flex items-center justify-end gap-1">
-                              <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
-                                <Switch 
-                                  checked={addon.active !== false} 
-                                  onCheckedChange={async (checked) => {
-                                    if (!db) return;
-                                    await updateDoc(doc(db, 'addons', addon.id), { active: checked });
-                                    toast({ title: checked ? 'Adicional ativado' : 'Adicional pausado' });
-                                  }} 
-                                  className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
-                                />
-                                <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
-                              </div>
-                              <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
-                                <Pencil className="h-4 w-4 text-blue-500" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={async () => {
-                                if (!db) return;
-                                if (confirm("Excluir adicional?")) await deleteDoc(doc(db, 'addons', addon.id));
-                              }}>
+                            {isContainerView ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Remover apenas deste container"
+                                onClick={async () => {
+                                  if (confirm(`Remover "${addon.name}" apenas do container "${addonCategoryFilter}"?`)) {
+                                    await removeAddonFromContainer(addon);
+                                  }
+                                }}
+                              >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
-                            </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1">
+                                <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
+                                  <Switch
+                                    checked={addon.active !== false}
+                                    onCheckedChange={async (checked) => {
+                                      if (!db) return;
+                                      await updateDoc(doc(db, 'addons', addon.id), { active: checked });
+                                      toast({ title: checked ? 'Adicional ativado' : 'Adicional pausado' });
+                                    }}
+                                    className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                                  />
+                                  <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
+                                  <Pencil className="h-4 w-4 text-blue-500" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={async () => {
+                                  if (!db) return;
+                                  if (confirm("Excluir adicional da lista matriz? Isso remove do banco de dados.")) await deleteDoc(doc(db, 'addons', addon.id));
+                                }}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
                         );
