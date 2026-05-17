@@ -92,11 +92,11 @@ export function CaixaTab({
   };
 
   useEffect(() => {
-    if (autoOpenAbrirCaixa && !caixaAberto) {
+    if (autoOpenAbrirCaixa && !caixaAberto && !loading) {
       openAbrirCaixaModal();
       if (onModalOpened) onModalOpened();
     }
-  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, caixasOrdenados]);
+  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, loading, caixasOrdenados]);
   const [formaPagamentoInput, setFormaPagamentoInput] = useState('dinheiro');
   const [justificativaInput, setJustificativaInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
