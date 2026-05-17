@@ -1766,10 +1766,7 @@ export default function AdminPage() {
                     >
                       Lista Matriz
                     </Button>
-                    {allGroups.map(g => {
-                      const category = addonCategoryByName.get(g) as any;
-                      const usePrice = category?.usePrice !== false;
-                      return (
+                    {allGroups.map(g => (
                       <Button 
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
@@ -1782,42 +1779,21 @@ export default function AdminPage() {
                           {getContainerAddonIds(g).length}
                         </span>
                         {addonCategoryFilter === g && (
-                          <>
-                            <div 
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (!db || !user) return;
-                                try {
-                                  const currentIds = getContainerAddonIds(g);
-                                  const { ref } = await ensureAddonCategory(g, currentIds);
-                                  await updateDoc(ref, { usePrice: !usePrice });
-                                  toast({ title: !usePrice ? 'Precos ativados' : 'Precos desativados' });
-                                } catch (err: any) {
-                                  toast({ variant: 'destructive', title: 'Erro', description: err.message });
-                                }
-                              }}
-                              className="ml-2 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground px-1.5 py-0.5 rounded-full transition-colors cursor-pointer text-[10px]"
-                              title="Alternar uso de preco"
-                            >
-                              {usePrice ? 'Usa preço' : 'Sem preço'}
-                            </div>
-                            <div 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditCategoryName(g);
-                                setEditCategoryNewName(g);
-                                setIsEditCategoryModalOpen(true);
-                              }}
-                              className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditCategoryName(g);
+                              setEditCategoryNewName(g);
+                              setIsEditCategoryModalOpen(true);
+                            }}
+                            className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
                             title="Editar Container"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </div>
-                          </>
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </div>
                         )}
                       </Button>
-                      );
-                    })}
+                    ))}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -1951,6 +1927,40 @@ export default function AdminPage() {
                     </Dialog>
                 </div>
                 </div>
+
+                {addonCategoryFilter !== 'all' && (() => {
+                  const category = addonCategoryByName.get(addonCategoryFilter) as any;
+                  const usePrice = category?.usePrice !== false;
+                  return (
+                    <div className="flex w-full flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-bold text-slate-700">Configuração do container: {addonCategoryFilter}</p>
+                        <p className="text-slate-500">Define se os itens deste container somam preço no pedido.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!db || !user) return;
+                          try {
+                            const currentIds = getContainerAddonIds(addonCategoryFilter);
+                            const { ref } = await ensureAddonCategory(addonCategoryFilter, currentIds);
+                            await updateDoc(ref, { usePrice: !usePrice });
+                            toast({ title: !usePrice ? 'Preços ativados' : 'Preços desativados' });
+                          } catch (err: any) {
+                            toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                          }
+                        }}
+                        className={`h-8 rounded-full px-3 text-xs font-bold transition-colors ${
+                          usePrice
+                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                            : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                        }`}
+                      >
+                        {usePrice ? 'Usa preço' : 'Sem preço'}
+                      </button>
+                    </div>
+                  );
+                })()}
                 
                 <div className="flex gap-2 flex-1 min-w-[300px]">
                   <div className="relative flex-1 max-w-sm">
