@@ -76,27 +76,35 @@ export function CaixaTab({
   const [ultimoSaldoRef, setUltimoSaldoRef] = useState<number | null>(null);
 
   const openAbrirCaixaModal = () => {
-    const ultimoFechado = caixasOrdenados.find(c => c.status === 'fechado');
-    let ultimoApurado = 0;
-    if (ultimoFechado) {
-      const det = ultimoFechado.fechamentoDetalhes;
-      if (det?.dinheiroApurado !== undefined && det.dinheiroApurado !== null) {
-        ultimoApurado = Number(det.dinheiroApurado);
-      } else if (ultimoFechado.valorEmCaixa !== undefined) {
-        ultimoApurado = Number(ultimoFechado.valorEmCaixa) || 0;
-      }
-    }
-    setUltimoSaldoRef(ultimoFechado ? ultimoApurado : null);
-    setValorInput(ultimoApurado);
     setModalOpen('abrir');
   };
+
+  useEffect(() => {
+    if (modalOpen === 'abrir') {
+      const ultimoFechado = caixasOrdenados.find(c => c.status === 'fechado');
+      if (ultimoFechado) {
+        const det = ultimoFechado.fechamentoDetalhes;
+        let ultimoApurado = 0;
+        if (det?.dinheiroApurado !== undefined && det.dinheiroApurado !== null) {
+          ultimoApurado = Number(det.dinheiroApurado);
+        } else if (ultimoFechado.valorEmCaixa !== undefined) {
+          ultimoApurado = Number(ultimoFechado.valorEmCaixa) || 0;
+        }
+        setUltimoSaldoRef(ultimoApurado);
+        setValorInput(ultimoApurado);
+      } else {
+        setUltimoSaldoRef(null);
+        setValorInput(0);
+      }
+    }
+  }, [modalOpen, caixasOrdenados]);
 
   useEffect(() => {
     if (autoOpenAbrirCaixa && !caixaAberto && !loading) {
       openAbrirCaixaModal();
       if (onModalOpened) onModalOpened();
     }
-  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, loading, caixasOrdenados]);
+  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, loading]);
   const [formaPagamentoInput, setFormaPagamentoInput] = useState('dinheiro');
   const [justificativaInput, setJustificativaInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
