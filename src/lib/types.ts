@@ -6,7 +6,17 @@ export interface Addon {
   name: string;
   price: number;
   ownerId: string;
+  active?: boolean;
+  imageUrl?: string;
   group?: string; // Grupo: "Carnes", "Guarnições", "Sabores Suco", etc.
+}
+
+export interface AddonCategory {
+  id: string;
+  name: string;
+  ownerId: string;
+  addonIds?: string[];
+  usePrice?: boolean;
 }
 
 export interface ComboItem {
@@ -18,6 +28,9 @@ export interface ComboItem {
 export interface AddonGroup {
   name: string;       // "Escolha a Carne", "Guarnição", etc.
   addonIds: string[];
+  addonCategoryId?: string;
+  addonCategoryName?: string;
+  usePrice?: boolean;
   min: number;        // Mínimo de seleção obrigatória
   max: number;        // Máximo de seleção
   freeLimit?: number; // Quantidade de opções inclusas grátis no valor do prato

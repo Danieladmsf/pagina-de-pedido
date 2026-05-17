@@ -139,6 +139,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return query(collection(db, 'addons'), where('ownerId', '==', storeIdFromUrl));
   }, [db, slugResolved, storeIdFromUrl]);
 
+  const addonCategoriesQuery = useMemoFirebase(() => {
+    if (!db || !slugResolved || !storeIdFromUrl) return null;
+    return query(collection(db, 'addonCategories'), where('ownerId', '==', storeIdFromUrl));
+  }, [db, slugResolved, storeIdFromUrl]);
+
   const promotionsQuery = useMemoFirebase(() => {
     if (!db || !slugResolved || !storeIdFromUrl) return null;
     return query(collection(db, 'promotions'), where('ownerId', '==', storeIdFromUrl));
@@ -148,6 +153,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: addons } = useCollection(addonsQuery);
+  const { data: addonCategories } = useCollection(addonCategoriesQuery);
   const { data: promotionsRaw } = useCollection(promotionsQuery);
 
   // Active promotions: active=true AND within date range
@@ -1041,6 +1047,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         isOpen={!!selectedItem}
         onClose={() => setSelectedItem(null)}
         allAddons={addons || []}
+        addonCategories={addonCategories || []}
         isStoreOpen={isStoreOpenRightNow.isOpen}
       />
       </div>
