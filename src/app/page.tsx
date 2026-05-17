@@ -1148,42 +1148,40 @@ export default function AdminPage() {
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => setProductCategoryFilter('todas')}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
+                      productCategoryFilter === 'todas'
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {sortedProductCategories.map((cat: any) => (
                     <button
+                      key={cat.id}
                       type="button"
-                      onClick={() => setProductCategoryFilter('todas')}
+                      onClick={() => setProductCategoryFilter(cat.id)}
                       className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
-                        productCategoryFilter === 'todas'
+                        productCategoryFilter === cat.id
                           ? 'border-primary bg-primary text-white'
                           : 'border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary'
                       }`}
                     >
-                      Todos
+                      {cat.name}
                     </button>
-                    {sortedProductCategories.map((cat: any) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setProductCategoryFilter(cat.id)}
-                        className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
-                          productCategoryFilter === cat.id
-                            ? 'border-primary bg-primary text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-primary/50 hover:text-primary'
-                        }`}
-                      >
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex shrink-0 justify-end gap-2">
-                    <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
-                      <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                    </Button>
-                    <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
-                      <Component className="h-4 w-4" /> Criar Marmita
-                    </Button>
-                  </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
+                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
+                  </Button>
+                  <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
+                    <Component className="h-4 w-4" /> Criar Marmita
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
