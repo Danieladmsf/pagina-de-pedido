@@ -223,27 +223,25 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                 <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
                 <Input id="stockQuantity" name="stockQuantity" type="number" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
               </div>
-              {!isMarmita && (
-                <div className="col-span-4 md:col-span-2 space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
-                  <div className="flex items-center gap-2">
-                    {imagePreview && (
-                      <div className="relative h-10 w-10 rounded-lg overflow-hidden border flex-shrink-0">
-                        <Image src={imagePreview} alt="preview" fill className="object-cover" />
-                      </div>
-                    )}
-                    <label className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-center gap-1.5 border border-dashed border-muted-foreground/30 rounded-lg hover:border-primary transition-colors bg-muted/10 h-10 px-2">
-                        <Upload className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                        <span className="text-[11px] text-muted-foreground truncate">
-                          {imageFile ? imageFile.name : 'Foto'}
-                        </span>
-                      </div>
-                      <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                    </label>
-                  </div>
+              <div className="col-span-4 md:col-span-2 space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
+                <div className="flex items-center gap-2">
+                  {imagePreview && (
+                    <div className="relative h-10 w-10 rounded-lg overflow-hidden border flex-shrink-0">
+                      <Image src={imagePreview} alt="preview" fill className="object-cover" />
+                    </div>
+                  )}
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center justify-center gap-1.5 border border-dashed border-muted-foreground/30 rounded-lg hover:border-primary transition-colors bg-muted/10 h-10 px-2">
+                      <Upload className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        {imageFile ? imageFile.name : 'Foto'}
+                      </span>
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </label>
                 </div>
-              )}
+              </div>
             </div>
 
             {isMarmita ? (
