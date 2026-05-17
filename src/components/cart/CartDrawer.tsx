@@ -276,8 +276,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   }, [customerPhone, db, effectiveStoreOwnerId]);
 
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
-  const calculateDeliveryFee = useCallback(async (customerAddress: string) => {
-    console.log('[CartDrawer] calculateDeliveryFee chamado:', { customerAddress, storeAddress: storeAddress?.substring(0, 30), rulesCount: deliveryFeeRules?.length, rules: deliveryFeeRules });
+  const calculateDeliveryFee = useCallback(async (customerAddress: string, neighborhoodHint?: string) => {
+    const effectiveNeighborhood = neighborhoodHint || neighborhood;
+    console.log('[CartDrawer] calculateDeliveryFee chamado:', { customerAddress, effectiveNeighborhood, storeAddress: storeAddress?.substring(0, 30), rulesCount: deliveryFeeRules?.length, rules: deliveryFeeRules });
     if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) {
       console.warn('[CartDrawer] ABORTANDO cálculo - falta dados:', { storeAddress: !!storeAddress, rules: deliveryFeeRules?.length });
       return;
@@ -297,6 +298,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           customerAddress,
           feeRules: deliveryFeeRules,
           customAddressRules,
+          neighborhoodHint: effectiveNeighborhood,
         }),
       });
       const data = await res.json();
@@ -330,7 +332,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     } finally {
       setCalculatingFee(false);
     }
-  }, [storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius, toast]);
+  }, [storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius, neighborhood, toast]);
 
   // Auto-calcular taxa quando AMBOS o endereço salvo E as regras da loja estiverem prontos
   const [autoCalcDone, setAutoCalcDone] = useState(false);

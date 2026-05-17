@@ -16,8 +16,8 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.en
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { storeAddress, customerAddress, feeRules, customAddressRules } = body;
-    console.log('[API delivery-fee] Recebido:', { storeAddress: storeAddress?.substring(0, 40), customerAddress: customerAddress?.substring(0, 40), feeRules, customAddressRules });
+    const { storeAddress, customerAddress, feeRules, customAddressRules, neighborhoodHint } = body;
+    console.log('[API delivery-fee] Recebido:', { storeAddress: storeAddress?.substring(0, 40), customerAddress: customerAddress?.substring(0, 40), neighborhoodHint, feeRules, customAddressRules });
 
     if (!storeAddress || !customerAddress) {
       return NextResponse.json({ error: 'Endereços obrigatórios.' }, { status: 400 });
@@ -94,10 +94,18 @@ export async function POST(req: NextRequest) {
       // Prioridade 2: Regras por Bairro
       if (!customMatched) {
         const sortedNeighborhood = [...neighborhoodRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+        // Combinar: buscar no endereço completo OU no bairro informado separadamente
+        const neighborhoodHintLower = (neighborhoodHint || '').toLowerCase().trim();
         for (const rule of sortedNeighborhood) {
-          if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+          if (!rule.keyword) continue;
+          const keywordLower = rule.keyword.toLowerCase();
+          // Match no endereço completo OU match direto no bairro informado
+          if (customerAddrLower.includes(keywordLower) || 
+              (neighborhoodHintLower && neighborhoodHintLower.includes(keywordLower)) ||
+              (neighborhoodHintLower && keywordLower.includes(neighborhoodHintLower))) {
             calculatedFee = rule.fee;
             customMatched = true;
+            console.log('[API delivery-fee] ✅ Match por BAIRRO:', { keyword: rule.keyword, fee: rule.fee, matchedVia: customerAddrLower.includes(keywordLower) ? 'endereço' : 'neighborhoodHint' });
             break;
           }
         }
