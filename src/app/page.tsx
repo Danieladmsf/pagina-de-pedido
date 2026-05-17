@@ -1105,7 +1105,16 @@ export default function AdminPage() {
 
         {activeTab === 'promocoes' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <PromotionsTab db={db} user={user} items={items || []} categories={categories || []} setEditingCombo={setEditingCombo} />
+            <PromotionsTab 
+              db={db} user={user} items={items || []} categories={categories || []} 
+              setEditingCombo={(combo) => {
+                setEditingCombo(combo);
+                if (combo) {
+                  setActiveTab('produtos');
+                  setProductManagementTab('combos');
+                }
+              }} 
+            />
           </div>
         )}
 
