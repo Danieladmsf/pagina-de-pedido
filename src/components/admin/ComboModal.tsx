@@ -46,11 +46,13 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
     const priceStr = formData.get('price') as string;
     const price = parseFloat(priceStr) || 0;
 
+    const manualDescription = formData.get('description') as string;
+    
     const data = {
       name,
       price,
       categoryId,
-      description: `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
+      description: manualDescription.trim() ? manualDescription : `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
       ownerId: user.uid,
       isAvailable: true,
       isCombo: true,
@@ -105,6 +107,17 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                 </select>
               </div>
               
+              <div className="space-y-2 col-span-1 md:col-span-2">
+                <Label htmlFor="description">Descrição do Combo (Opcional)</Label>
+                <textarea 
+                  id="description" 
+                  name="description" 
+                  defaultValue={editingCombo?.description && !editingCombo.description.startsWith('Itens do combo:') ? editingCombo.description : ''} 
+                  placeholder="Descreva o que vem neste combo (se deixar em branco, será gerado com base nos itens selecionados)" 
+                  className="w-full h-20 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+
               <div className="space-y-2 col-span-1 md:col-span-2">
                 <div className="flex items-center gap-2 mb-2">
                   <Checkbox 
