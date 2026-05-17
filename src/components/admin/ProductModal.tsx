@@ -340,7 +340,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                     <div className="bg-slate-50 px-3 py-1.5 border-b">
                                       <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Disponíveis</span>
                                     </div>
-                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                    <div className="p-1.5 space-y-0.5">
                                       {Object.keys(availableByGroup).length > 0 ? Object.entries(availableByGroup).map(([gName, gAddons]) => (
                                         <div key={gName}>
                                           <div className="text-[9px] font-bold uppercase text-slate-300 px-1 pt-1">{gName}</div>
@@ -373,7 +373,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                       <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Selecionados</span>
                                       <span className="text-[10px] bg-emerald-100 text-emerald-600 rounded-full px-1.5 font-bold">{selectedAddons.length}</span>
                                     </div>
-                                    <div className="max-h-[180px] overflow-y-auto p-1.5 space-y-0.5">
+                                    <div className="p-1.5 space-y-0.5">
                                       {selectedAddons.length > 0 ? selectedAddons.map((addon: any) => {
                                         const isFree = group.freeAddonIds?.includes(addon.id);
                                         return (
