@@ -1164,7 +1164,7 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0 lg:flex-row lg:items-center lg:justify-between">
                 <Tabs value={productManagementTab} onValueChange={(value) => setProductManagementTab(value as 'produtos' | 'combos' | 'marmitas')} className="w-full lg:w-auto">
-                  <TabsList className="grid h-auto w-full grid-cols-2 lg:w-auto">
+                  <TabsList className="grid h-auto w-full grid-cols-3 lg:w-auto">
                     <TabsTrigger value="produtos" className="gap-2">
                       Produtos
                       <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.produtos}</span>
@@ -1173,6 +1173,14 @@ export default function AdminPage() {
                       Marmitas
                       <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{productTypeCounts.marmitas}</span>
                     </TabsTrigger>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('categorias')}
+                      className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      Categorias
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 shadow-sm">{categories?.length || 0}</span>
+                    </button>
                   </TabsList>
                 </Tabs>
                 <div className="flex justify-end gap-2">
