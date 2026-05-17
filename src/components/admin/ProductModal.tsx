@@ -5,10 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { AddonGroup, Addon } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power, PowerOff } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
@@ -20,9 +21,10 @@ interface ProductModalProps {
   editingProduct: any;
   setEditingProduct: (v: any) => void;
   categories: any[];
+  items?: any[];
 }
 
-export function ProductModal({ db, user, addons, editingProduct, setEditingProduct, categories }: ProductModalProps) {
+export function ProductModal({ db, user, addons, editingProduct, setEditingProduct, categories, items = [] }: ProductModalProps) {
   const { toast } = useToast();
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
@@ -32,8 +34,21 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [addonDetails, setAddonDetails] = useState<Addon | null>(null);
 
   const isMarmita = editingProduct?.isMarmita === true;
+
+  const toggleAddonActive = async (addon: Addon) => {
+    if (!db) return;
+    try {
+      const isActive = addon.active !== false;
+      await updateDoc(doc(db, 'addons', addon.id), { active: !isActive });
+      toast({ title: isActive ? 'Adicional pausado globalmente' : 'Adicional reativado' });
+      setAddonDetails({ ...addon, active: !isActive });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: err.message });
+    }
+  };
 
   useEffect(() => {
     if (editingProduct) {
@@ -254,6 +269,53 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
               </div>
             )}
           </form>
+
+          {addonDetails && (
+            <Dialog open={!!addonDetails} onOpenChange={(open) => !open && setAddonDetails(null)}>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    {addonDetails.name}
+                    {addonDetails.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                  <div className="bg-slate-50 p-3 rounded-lg border text-sm text-slate-600">
+                    Este adicional está vinculado aos seguintes produtos:
+                    <ul className="mt-2 list-disc pl-4 max-h-[150px] overflow-y-auto space-y-1">
+                      {items.filter(item => {
+                        if (item.addonIds?.includes(addonDetails.id)) return true;
+                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.id))) return true;
+                        return false;
+                      }).map(item => (
+                        <li key={item.id} className="font-medium text-slate-800">{item.name} {item.isMarmita ? '(Marmita)' : ''}</li>
+                      ))}
+                      {items.filter(item => {
+                        if (item.addonIds?.includes(addonDetails.id)) return true;
+                        if (item.addonGroups?.some((g: any) => g.addonIds.includes(addonDetails.id))) return true;
+                        return false;
+                      }).length === 0 && (
+                        <li className="text-slate-400 italic">Nenhum produto utiliza este adicional no momento.</li>
+                      )}
+                    </ul>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Você pode pausar este adicional globalmente. Ele ficará <b>indisponível para os clientes</b> em todos os produtos, sem precisar ser removido da configuração de cada um deles.
+                  </p>
+                </div>
+                <DialogFooter className="flex-col sm:flex-row gap-2">
+                  <Button variant="outline" onClick={() => setAddonDetails(null)} className="w-full sm:w-auto">Fechar</Button>
+                  <Button 
+                    onClick={() => toggleAddonActive(addonDetails)}
+                    className={`w-full sm:w-auto ${addonDetails.active === false ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"}`}
+                  >
+                    {addonDetails.active === false ? <><Power className="w-4 h-4 mr-2" /> Reativar</> : <><PowerOff className="w-4 h-4 mr-2" /> Pausar Globalmente</>}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+
         </CardContent>
       </Card>
 
@@ -352,7 +414,7 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                               className="w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/avail"
                                             >
                                               <Plus className="h-3 w-3 text-slate-300 group-hover/avail:text-emerald-500 flex-shrink-0" />
-                                              <span className="truncate flex-1">{addon.name}</span>
+                                              <span className={`truncate flex-1 ${addon.active === false ? 'text-red-400 line-through' : ''}`}>{addon.name}</span>
                                               {addon.price > 0 && (
                                                 <span className="text-[10px] text-slate-400 flex-shrink-0">R$ {addon.price.toFixed(2)}</span>
                                               )}
@@ -379,7 +441,13 @@ export function ProductModal({ db, user, addons, editingProduct, setEditingProdu
                                         return (
                                           <div key={addon.id} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-emerald-50/50 group/sel">
                                             <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
-                                            <span className="truncate flex-1 text-slate-700">{addon.name}</span>
+                                            <span 
+                                              className={`truncate flex-1 cursor-pointer hover:underline transition-colors ${addon.active === false ? 'text-red-500 line-through' : 'text-slate-700 hover:text-primary'}`} 
+                                              onClick={() => setAddonDetails(addon)}
+                                              title="Clique para pausar ou ver detalhes"
+                                            >
+                                              {addon.name}
+                                            </span>
                                             {addon.price > 0 && (
                                               <button
                                                 type="button"
