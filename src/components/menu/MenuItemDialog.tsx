@@ -269,15 +269,14 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   {availableAddons.map((addon) => {
                     const selectedQuantity = getAddonQuantity(currentSelected, addon.id);
                     const limit = maxChoices;
-                    const canIncrease = limit === 1
-                      ? selectedQuantity === 0
-                      : limit === 0 || currentSelected.length < limit;
+                    const canIncrease = limit === 0 || currentSelected.length < limit;
                     const isSelected = selectedQuantity > 0;
+                    const isLockedByLimit = limit > 0 && currentSelected.length >= limit && !isSelected;
 
                     return (
                       <div
                         key={addon.id}
-                        className={`flex items-center justify-between gap-3 border-b border-slate-100 px-1 py-2 last:border-b-0 ${isSelected ? 'bg-primary/5' : 'bg-white'}`}
+                        className={`flex items-center justify-between gap-3 border-b border-slate-100 px-1 py-2 transition-opacity last:border-b-0 ${isSelected ? 'bg-primary/5' : 'bg-white'} ${isLockedByLimit ? 'opacity-40' : ''}`}
                       >
                         <div className="min-w-0">
                           <span className={`block text-xs font-semibold leading-tight ${isSelected ? 'text-primary' : 'text-slate-800'}`}>
