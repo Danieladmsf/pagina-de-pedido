@@ -212,20 +212,38 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
         <div className="grid grid-cols-1 gap-4">
           {motoboysSessao.map(m => {
             const isExpanded = expandedId === m.id;
+            // Verifica se o motoboy tem alguma entrega ativa (saiu para entrega e ainda não entregou/cancelou)
+            const activeDelivery = orders?.find((o: any) => 
+              o.motoboyId === m.id && 
+              o.status === 'out_for_delivery'
+            );
+            const isOnDelivery = Boolean(activeDelivery);
             return (
-              <Card key={m.id} className={`shadow-sm overflow-hidden transition-all duration-200 ${isExpanded ? 'ring-2 ring-blue-500/20 border-blue-200' : ''}`}>
+              <Card key={m.id} className={`shadow-sm overflow-hidden transition-all duration-200 ${isExpanded ? 'ring-2 ring-blue-500/20 border-blue-200' : ''} ${isOnDelivery ? 'border-amber-300' : ''}`}>
                 <div 
                   className={`p-4 cursor-pointer hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : ''}`}
                   onClick={() => setExpandedId(isExpanded ? null : m.id)}
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${m.saldo > 0 ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 relative ${isOnDelivery ? 'bg-amber-100 text-amber-600' : m.saldo > 0 ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
                         <Bike className="h-6 w-6" />
+                        {isOnDelivery && (
+                          <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-amber-500 border-2 border-white animate-pulse" />
+                        )}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-lg text-slate-800 leading-none">{m.name}</span>
+                          {isOnDelivery ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-xs font-bold animate-pulse">
+                              🏍️ Em entrega
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-600 border-emerald-200 text-xs font-bold">
+                              ✅ Livre
+                            </Badge>
+                          )}
                           <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 text-xs font-bold">
                             {m.entregas} ped.
                           </Badge>
