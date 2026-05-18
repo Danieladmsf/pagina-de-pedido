@@ -1082,6 +1082,7 @@ export default function AdminPage() {
             caixaAberto={!!caixaAberto}
             storeProfile={storeProfile}
             addons={addons || []}
+            addonCategories={addonCategories || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
           />
           </div>
@@ -1098,6 +1099,7 @@ export default function AdminPage() {
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
             addons={addons || []}
+            addonCategories={addonCategories || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
           />
           </div>

@@ -50,13 +50,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   if (!item) return null;
 
   const groupUsesPrice = (group: AddonGroup) => {
-    if (typeof group.usePrice === 'boolean') {
-      return group.usePrice;
-    }
-    if (group.addonCategoryId) {
-      const category = addonCategories.find(item => item.id === group.addonCategoryId);
-      if (category) return category.usePrice !== false;
-    }
+    const category = group.addonCategoryId
+      ? addonCategories.find(item => item.id === group.addonCategoryId)
+      : group.addonCategoryName
+        ? addonCategories.find(item => item.name === group.addonCategoryName)
+        : undefined;
+    if (category) return category.usePrice !== false;
+    if (typeof group.usePrice === 'boolean') return group.usePrice;
     return group.usePrice !== false;
   };
 

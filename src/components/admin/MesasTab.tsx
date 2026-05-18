@@ -26,6 +26,7 @@ interface MesasTabProps {
   storeInfo?: any;
   onOpenCaixa?: () => void;
   addons?: any[];
+  addonCategories?: any[];
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -35,7 +36,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [] }: MesasTabProps) {
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [] }: MesasTabProps) {
   const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active && m.id !== 'conta_casa');
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
@@ -916,6 +917,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         isOpen={!!selectedItemForDialog}
         onClose={() => setSelectedItemForDialog(null)}
         allAddons={addons}
+        addonCategories={addonCategories}
         onAddToCart={handleDialogAddToCart}
       />
       {quickRegisterModal && (
