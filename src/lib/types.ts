@@ -17,6 +17,7 @@ export interface AddonCategory {
   name: string;
   ownerId: string;
   addonIds?: string[];
+  removedAddonIds?: string[];
   usePrice?: boolean;
 }
 
