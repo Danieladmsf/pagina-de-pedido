@@ -51,7 +51,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   }, [editingProduct, categories]);
 
   const handleAddGroup = () => {
-    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, freeLimit: 1, max: 0 }]);
+    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, max: 0 }]);
   };
 
   const handleRemoveGroup = (index: number) => {
@@ -67,24 +67,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const handleRemoveAddonFromGroup = (groupIndex: number, addonId: string) => {
     const newGroups = [...groups];
     newGroups[groupIndex].addonIds = newGroups[groupIndex].addonIds.filter(id => id !== addonId);
-    if (newGroups[groupIndex].freeAddonIds) {
-      newGroups[groupIndex].freeAddonIds = newGroups[groupIndex].freeAddonIds!.filter(id => id !== addonId);
-    }
-    setGroups(newGroups);
-  };
-
-  const handleToggleFreeAddon = (groupIndex: number, addonId: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const newGroups = [...groups];
-    const group = newGroups[groupIndex];
-    if (!group.freeAddonIds) group.freeAddonIds = [];
-    
-    if (group.freeAddonIds.includes(addonId)) {
-      group.freeAddonIds = group.freeAddonIds.filter(id => id !== addonId);
-    } else {
-      group.freeAddonIds = [...group.freeAddonIds, addonId];
-    }
     setGroups(newGroups);
   };
 
@@ -128,6 +110,14 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       const description = isMarmita 
         ? (fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '')
         : (formData.get('description') as string || '');
+      const addonGroups = isMarmita
+        ? groups.map((group) => {
+            const cleanGroup = { ...group } as Record<string, unknown>;
+            delete cleanGroup.freeLimit;
+            delete cleanGroup.freeAddonIds;
+            return cleanGroup;
+          })
+        : [];
 
       const data = {
         name,
@@ -139,7 +129,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         isAvailable: editingProduct?.id ? editingProduct.isAvailable : true,
         isMarmita,
         fixedItems: isMarmita ? fixedItems : [],
-        addonGroups: groups,
+        addonGroups,
         addonIds: [],
         imageUrl
       };
@@ -212,7 +202,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
 
     const newGroups = [...groups];
     const current = newGroups[groupIndex];
-    const currentFreeIds = current.freeAddonIds || [];
     const shouldUseContainerName = !current.name.trim() || /^Etapa \d+$/i.test(current.name.trim());
 
     newGroups[groupIndex] = {
@@ -222,7 +211,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       addonCategoryName: container.name,
       usePrice: container.usePrice,
       addonIds: container.addonIds,
-      freeAddonIds: currentFreeIds.filter(id => container.addonIds.includes(id)),
     };
     setGroups(newGroups);
   };
@@ -352,10 +340,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                     <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
                                     <Input type="number" min="0" value={group.max || 0} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de escolhas (0 = Ilimitado)" />
                                   </div>
-                                  <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
-                                    <span className="text-[10px] text-emerald-700 font-semibold">Grátis:</span>
-                                    <Input type="number" min="0" value={group.freeLimit || 0} onChange={e => handleUpdateGroup(index, 'freeLimit', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-emerald-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Quantidade de itens que saem de graça" />
-                                  </div>
                                 </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -387,7 +371,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                     </div>
                                     <div className="h-[180px] overflow-y-auto p-1.5 space-y-0.5 bg-white">
                                       {selectedAddons.length > 0 ? selectedAddons.map((addon: any) => {
-                                        const isFree = group.freeAddonIds?.includes(addon.id);
                                         return (
                                           <div key={addon.id} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-emerald-50/50 group/sel">
                                             <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
@@ -398,17 +381,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                               {addon.name}
                                             </span>
                                             {group.usePrice !== false && addon.price > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => handleToggleFreeAddon(index, addon.id, e)}
-                                                className={`text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors flex-shrink-0 ${
-                                                  isFree 
-                                                    ? 'bg-emerald-100 text-emerald-700 hover:bg-amber-100 hover:text-amber-700' 
-                                                    : 'bg-amber-50 text-amber-600 hover:bg-emerald-100 hover:text-emerald-700'
-                                                }`}
-                                              >
-                                                {isFree ? 'Grátis' : `+R$ ${addon.price.toFixed(2)}`}
-                                              </button>
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-semibold flex-shrink-0">
+                                                +R$ {addon.price.toFixed(2)}
+                                              </span>
                                             )}
                                             <button
                                               type="button"
