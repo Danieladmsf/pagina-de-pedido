@@ -111,7 +111,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         ? (fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '')
         : (formData.get('description') as string || '');
       const addonGroups = groups.map((group) => {
-        const cleanGroup = { ...group } as Record<string, unknown>;
+        const cleanGroup = { ...group, addonIds: getGroupAddonIds(group) } as Record<string, unknown>;
         delete cleanGroup.freeLimit;
         delete cleanGroup.freeAddonIds;
         return cleanGroup;
@@ -159,14 +159,16 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
 
   const allAddons = [...(addons || [])].sort((a, b) => a.name.localeCompare(b.name));
   const addonContainers = (() => {
-    const byName = new Map<string, { id: string; name: string; addonIds: string[]; usePrice: boolean }>();
+    const byName = new Map<string, { id: string; name: string; addonIds: string[]; removedAddonIds: string[]; usePrice: boolean }>();
 
     for (const category of addonCategories || []) {
       const ids = Array.isArray(category.addonIds) ? category.addonIds : [];
+      const removedAddonIds = Array.isArray(category.removedAddonIds) ? category.removedAddonIds : [];
       byName.set(category.name, {
         id: category.id,
         name: category.name,
-        addonIds: ids,
+        addonIds: ids.filter(id => !removedAddonIds.includes(id)),
+        removedAddonIds,
         usePrice: category.usePrice !== false,
       });
     }
@@ -175,12 +177,13 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       const name = addon.group || 'Geral';
       const existing = byName.get(name);
       if (existing) {
-        if (!existing.addonIds.includes(addon.id)) existing.addonIds.push(addon.id);
+        if (!existing.removedAddonIds.includes(addon.id) && !existing.addonIds.includes(addon.id)) existing.addonIds.push(addon.id);
       } else {
         byName.set(name, {
           id: `legacy:${name}`,
           name,
           addonIds: [addon.id],
+          removedAddonIds: [],
           usePrice: true,
         });
       }
@@ -193,6 +196,19 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   })();
+
+  const getContainerForGroup = (group: AddonGroup) => {
+    if (group.addonCategoryId) {
+      const containerById = addonContainers.find(container => container.id === group.addonCategoryId);
+      if (containerById) return containerById;
+    }
+    if (group.addonCategoryName) {
+      return addonContainers.find(container => container.name === group.addonCategoryName);
+    }
+    return undefined;
+  };
+
+  const getGroupAddonIds = (group: AddonGroup) => getContainerForGroup(group)?.addonIds || group.addonIds || [];
 
   const handleSelectAddonContainer = (groupIndex: number, containerId: string) => {
     const container = addonContainers.find(item => item.id === containerId);
@@ -312,7 +328,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
                     {groups.map((group, index) => {
-                      const selectedAddons = allAddons.filter(a => group.addonIds.includes(a.id));
+                      const selectedAddons = allAddons.filter(a => getGroupAddonIds(group).includes(a.id));
                       const currentContainerId = group.addonCategoryId || (group.addonCategoryName
                         ? addonContainers.find(container => container.name === group.addonCategoryName)?.id || ''
                         : '');

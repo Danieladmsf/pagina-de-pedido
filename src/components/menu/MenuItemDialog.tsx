@@ -49,12 +49,40 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
   if (!item) return null;
 
+  const getCategoryForGroup = (group: AddonGroup) => {
+    if (group.addonCategoryId) {
+      const categoryById = addonCategories.find(item => item.id === group.addonCategoryId);
+      if (categoryById) return categoryById;
+    }
+    if (group.addonCategoryName) {
+      return addonCategories.find(item => item.name === group.addonCategoryName);
+    }
+    return undefined;
+  };
+
+  const getCategoryAddonIds = (category: AddonCategory) => {
+    const removedIds = new Set(category.removedAddonIds || []);
+    const legacyIds = allAddons
+      .filter(addon => (addon.group || '').trim() === category.name)
+      .map(addon => addon.id);
+    return Array.from(new Set([...(category.addonIds || []), ...legacyIds]))
+      .filter(id => !removedIds.has(id));
+  };
+
+  const getGroupAddonIds = (group: AddonGroup) => {
+    const category = getCategoryForGroup(group);
+    if (category) return getCategoryAddonIds(category);
+    if (group.addonCategoryName) {
+      const legacyIds = allAddons
+        .filter(addon => (addon.group || '').trim() === group.addonCategoryName)
+        .map(addon => addon.id);
+      if (legacyIds.length > 0) return legacyIds;
+    }
+    return group.addonIds || [];
+  };
+
   const groupUsesPrice = (group: AddonGroup) => {
-    const category = group.addonCategoryId
-      ? addonCategories.find(item => item.id === group.addonCategoryId)
-      : group.addonCategoryName
-        ? addonCategories.find(item => item.name === group.addonCategoryName)
-        : undefined;
+    const category = getCategoryForGroup(group);
     if (category) return category.usePrice !== false;
     if (typeof group.usePrice === 'boolean') return group.usePrice;
     return group.usePrice !== false;
@@ -231,7 +259,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
           {/* Addon Groups */}
           {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
-            const availableAddons = allAddons.filter(a => group.addonIds.includes(a.id) && a.active !== false);
+            const groupAddonIds = getGroupAddonIds(group);
+            const availableAddons = allAddons.filter(a => groupAddonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
             const usesPrice = groupUsesPrice(group);
             const maxChoices = getNumericGroupValue(group.max);
