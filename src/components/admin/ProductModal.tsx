@@ -570,15 +570,34 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                 </span>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={toggleAllReplicateTargets}
                   disabled={eligibleReplicateTargets.length === 0}
-                  className="h-8 text-xs"
+                  className="h-10 px-4 text-xs font-bold"
                 >
-                  {allReplicateTargetsSelected ? 'Limpar' : 'Selecionar todos'}
+                  {allReplicateTargetsSelected ? 'Limpar selecao' : 'Selecionar tudo'}
                 </Button>
               </div>
+            </div>
+
+            <div className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${eligibleReplicateTargets.length === 0 ? 'bg-slate-50 text-slate-400' : 'bg-emerald-50 text-emerald-800'}`}>
+              <Checkbox
+                id="replicate-select-all"
+                checked={allReplicateTargetsSelected}
+                onCheckedChange={toggleAllReplicateTargets}
+                disabled={eligibleReplicateTargets.length === 0}
+                className="h-4 w-4"
+              />
+              <Label
+                htmlFor="replicate-select-all"
+                className={`flex-1 text-sm font-bold ${eligibleReplicateTargets.length === 0 ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                Selecionar tudo disponivel nesta categoria
+              </Label>
+              <span className="text-xs font-semibold">
+                {eligibleReplicateTargets.length} produto(s)
+              </span>
             </div>
 
             <div className="max-h-[320px] overflow-y-auto rounded-lg border bg-white">
