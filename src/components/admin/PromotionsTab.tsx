@@ -42,17 +42,41 @@ interface Promotion {
   ownerId: string;
   name: string;
   startDate: any;
-  endDate: any;
+  endDate?: any;
+  noEndDate?: boolean;
   active: boolean;
   createdAt: any;
   items: PromoItem[];
 }
 
+function dateValueToMillis(value: any) {
+  if (!value) return NaN;
+  const date = value?.toDate?.() ? value.toDate() : new Date(value);
+  return date.getTime();
+}
+
+function getPromoStartMillis(promo: any) {
+  const time = dateValueToMillis(promo.startDate);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getPromoEndMillis(promo: any) {
+  if (promo.noEndDate || !promo.endDate) return Number.POSITIVE_INFINITY;
+  const time = dateValueToMillis(promo.endDate);
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function getPromoEndDate(promo: any) {
+  if (promo.noEndDate || !promo.endDate) return null;
+  const date = promo.endDate?.toDate?.() ? promo.endDate.toDate() : new Date(promo.endDate);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function getPromoStatus(promo: Promotion): 'active' | 'scheduled' | 'expired' | 'paused' {
   if (!promo.active) return 'paused';
   const now = Date.now();
-  const start = promo.startDate?.toDate?.() ? promo.startDate.toDate().getTime() : new Date(promo.startDate).getTime();
-  const end = promo.endDate?.toDate?.() ? promo.endDate.toDate().getTime() : new Date(promo.endDate).getTime();
+  const start = getPromoStartMillis(promo);
+  const end = getPromoEndMillis(promo);
   if (now < start) return 'scheduled';
   if (now > end) return 'expired';
   return 'active';
@@ -84,6 +108,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
   const [formName, setFormName] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
+  const [formNoEndDate, setFormNoEndDate] = useState(false);
   const [formActive, setFormActive] = useState(true);
   const [formItems, setFormItems] = useState<PromoItem[]>([]);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
@@ -116,6 +141,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     const end = new Date(now);
     end.setDate(end.getDate() + 7);
     setFormEndDate(formatDateLocal(end));
+    setFormNoEndDate(false);
     setFormActive(true);
     setFormItems([]);
     setItemSearchQuery('');
@@ -131,9 +157,13 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     setEditingPromo(promo);
     setFormName(promo.name || '');
     const start = promo.startDate?.toDate?.() ? promo.startDate.toDate() : new Date(promo.startDate);
-    const end = promo.endDate?.toDate?.() ? promo.endDate.toDate() : new Date(promo.endDate);
+    const noEndDate = promo.noEndDate || !promo.endDate;
+    const end = getPromoEndDate(promo);
+    const fallbackEnd = new Date();
+    fallbackEnd.setDate(fallbackEnd.getDate() + 7);
     setFormStartDate(formatDateLocal(start));
-    setFormEndDate(formatDateLocal(end));
+    setFormEndDate(formatDateLocal(end || fallbackEnd));
+    setFormNoEndDate(noEndDate);
     setFormActive(promo.active ?? true);
     setFormItems(promo.items || []);
     setItemSearchQuery('');
@@ -184,18 +214,18 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     if (!db || !user) return;
     if (!formName.trim()) { toast({ title: 'Erro', description: 'Dê um nome à promoção.' }); return; }
     if (formItems.length === 0) { toast({ title: 'Erro', description: 'Adicione pelo menos um produto.' }); return; }
-    if (!formStartDate || !formEndDate) { toast({ title: 'Erro', description: 'Defina as datas.' }); return; }
+    if (!formStartDate || (!formNoEndDate && !formEndDate)) { toast({ title: 'Erro', description: 'Defina as datas.' }); return; }
 
     // Check for duplicate products in other active/scheduled promotions
     const newStart = new Date(formStartDate).getTime();
-    const newEnd = new Date(formEndDate).getTime();
+    const newEnd = formNoEndDate ? Number.POSITIVE_INFINITY : new Date(formEndDate).getTime();
     const conflicts: string[] = [];
     for (const fi of formItems) {
       for (const other of promotions) {
         if (editingPromo && other.id === editingPromo.id) continue;
         if (!other.active) continue;
-        const otherStart = other.startDate?.toDate?.() ? other.startDate.toDate().getTime() : new Date(other.startDate).getTime();
-        const otherEnd = other.endDate?.toDate?.() ? other.endDate.toDate().getTime() : new Date(other.endDate).getTime();
+        const otherStart = getPromoStartMillis(other);
+        const otherEnd = getPromoEndMillis(other);
         // Check if date ranges overlap
         if (newStart <= otherEnd && newEnd >= otherStart) {
           const otherItems = (other.items || []).map((i: any) => i.menuItemId);
@@ -215,7 +245,8 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
       ownerId: user.uid,
       name: formName.trim(),
       startDate: Timestamp.fromDate(new Date(formStartDate)),
-      endDate: Timestamp.fromDate(new Date(formEndDate)),
+      endDate: formNoEndDate ? null : Timestamp.fromDate(new Date(formEndDate)),
+      noEndDate: formNoEndDate,
       active: formActive,
       items: formItems,
       updatedAt: Timestamp.now(),
@@ -265,7 +296,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     promotions.forEach((p: any) => {
       if (editingPromo && p.id === editingPromo.id) return;
       if (!p.active) return;
-      const end = p.endDate?.toDate?.() ? p.endDate.toDate().getTime() : new Date(p.endDate).getTime();
+      const end = getPromoEndMillis(p);
       if (now > end) return; // expired
       (p.items || []).forEach((pi: any) => {
         map[pi.menuItemId] = p.name;
@@ -357,7 +388,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
               const cfg = STATUS_CONFIG[status];
               const StatusIcon = cfg.icon;
               const start = promo.startDate?.toDate?.() ? promo.startDate.toDate() : new Date(promo.startDate);
-              const end = promo.endDate?.toDate?.() ? promo.endDate.toDate() : new Date(promo.endDate);
+              const end = getPromoEndDate(promo) || { toLocaleDateString: () => 'Sem prazo' };
               const promoItems = promo.items || [];
 
               return (
@@ -539,7 +570,15 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
               </div>
               <div>
                 <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Término</Label>
-                <Input type="datetime-local" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} className="mt-1" />
+                <Input type="datetime-local" value={formEndDate} onChange={e => setFormEndDate(e.target.value)} disabled={formNoEndDate} className="mt-1" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-xl border bg-slate-50 px-3 py-2">
+              <Switch checked={formNoEndDate} onCheckedChange={setFormNoEndDate} />
+              <div>
+                <Label className="text-sm font-semibold">Sem prazo</Label>
+                <p className="text-xs text-muted-foreground">A promocao fica ativa ate voce pausar ou excluir.</p>
               </div>
             </div>
 

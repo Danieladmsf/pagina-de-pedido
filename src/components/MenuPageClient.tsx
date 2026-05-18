@@ -21,10 +21,34 @@ import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 
-function PromoCountdown({ endDate }: { endDate: Date }) {
+function promoDateToMillis(value: any) {
+  if (!value) return NaN;
+  const date = value?.toDate?.() ? value.toDate() : new Date(value);
+  return date.getTime();
+}
+
+function getPromotionStartMillis(promo: any) {
+  const time = promoDateToMillis(promo.startDate);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getPromotionEndMillis(promo: any) {
+  if (promo.noEndDate || !promo.endDate) return Number.POSITIVE_INFINITY;
+  const time = promoDateToMillis(promo.endDate);
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function getPromotionEndDate(promo: any) {
+  if (promo.noEndDate || !promo.endDate) return undefined;
+  const date = promo.endDate?.toDate?.() ? promo.endDate.toDate() : new Date(promo.endDate);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function PromoCountdown({ endDate, noEndDate }: { endDate?: Date; noEndDate?: boolean }) {
   const [timeLeft, setTimeLeft] = React.useState('');
 
   React.useEffect(() => {
+    if (noEndDate || !endDate) return;
     const update = () => {
       const diff = endDate.getTime() - Date.now();
       if (diff <= 0) { setTimeLeft('Encerrada'); return; }
@@ -38,7 +62,16 @@ function PromoCountdown({ endDate }: { endDate: Date }) {
     update();
     const interval = setInterval(update, 60000);
     return () => clearInterval(interval);
-  }, [endDate]);
+  }, [endDate, noEndDate]);
+
+  if (noEndDate || !endDate) {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5 mb-3">
+        <Timer className="h-3.5 w-3.5" />
+        <span>Sem prazo</span>
+      </div>
+    );
+  }
 
   if (timeLeft === 'Encerrada') return null;
 
@@ -162,19 +195,19 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     const now = Date.now();
     return promotionsRaw.filter((p: any) => {
       if (!p.active) return false;
-      const start = p.startDate?.toDate?.() ? p.startDate.toDate().getTime() : new Date(p.startDate).getTime();
-      const end = p.endDate?.toDate?.() ? p.endDate.toDate().getTime() : new Date(p.endDate).getTime();
+      const start = getPromotionStartMillis(p);
+      const end = getPromotionEndMillis(p);
       return now >= start && now <= end;
     });
   }, [promotionsRaw]);
 
   // Map of menuItemId -> promoPrice for active promotions
   const promoItemsMap = useMemo(() => {
-    const map: Record<string, { promoPrice: number; originalPrice: number; endDate: Date; promoName: string }> = {};
+    const map: Record<string, { promoPrice: number; originalPrice: number; endDate?: Date; noEndDate?: boolean; promoName: string }> = {};
     activePromotions.forEach((p: any) => {
-      const end = p.endDate?.toDate?.() ? p.endDate.toDate() : new Date(p.endDate);
+      const end = getPromotionEndDate(p);
       (p.items || []).forEach((pi: any) => {
-        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, endDate: end, promoName: p.name };
+        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, endDate: end, noEndDate: !!p.noEndDate || !p.endDate, promoName: p.name };
       });
     });
     return map;
@@ -1003,7 +1036,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                       )}
                     </div>
                     {isPromoItem && (
-                      <PromoCountdown endDate={promo.endDate} />
+                      <PromoCountdown endDate={promo.endDate} noEndDate={promo.noEndDate} />
                     )}
                     <div className="flex items-center justify-between pt-4 border-t border-muted">
                       <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
