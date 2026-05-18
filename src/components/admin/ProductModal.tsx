@@ -110,14 +110,12 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       const description = isMarmita 
         ? (fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '')
         : (formData.get('description') as string || '');
-      const addonGroups = isMarmita
-        ? groups.map((group) => {
-            const cleanGroup = { ...group } as Record<string, unknown>;
-            delete cleanGroup.freeLimit;
-            delete cleanGroup.freeAddonIds;
-            return cleanGroup;
-          })
-        : [];
+      const addonGroups = groups.map((group) => {
+        const cleanGroup = { ...group } as Record<string, unknown>;
+        delete cleanGroup.freeLimit;
+        delete cleanGroup.freeAddonIds;
+        return cleanGroup;
+      });
 
       const data = {
         name,

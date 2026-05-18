@@ -1276,7 +1276,7 @@ export default function AdminPage() {
                                 </Badge>
                               </div>
                             )}
-                            {item.isMarmita && item.addonGroups?.length > 0 && (
+                            {item.addonGroups?.length > 0 && (
                               <div className="mt-1">
                                 <Badge className="text-[10px] bg-orange-600 hover:bg-orange-700 font-normal">
                                   Etapas: {item.addonGroups.length}
