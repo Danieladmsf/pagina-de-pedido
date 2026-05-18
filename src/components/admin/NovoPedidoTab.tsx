@@ -26,6 +26,7 @@ interface NovoPedidoTabProps {
   storeProfile?: any;
   onOpenCaixa?: () => void;
   addons?: any[];
+  addonCategories?: any[];
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -39,7 +40,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   caixaAberto = false,
   storeProfile,
   onOpenCaixa,
-  addons = []
+  addons = [],
+  addonCategories = []
 }: NovoPedidoTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
@@ -882,6 +884,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         isOpen={!!selectedItemForDialog}
         onClose={() => setSelectedItemForDialog(null)}
         allAddons={addons}
+        addonCategories={addonCategories}
         onAddToCart={handleDialogAddToCart}
       />
       {quickRegisterModal && (
