@@ -37,7 +37,7 @@ import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
-import { Settings, MessageCircle, MapPinned, Box, Component, Menu } from 'lucide-react';
+import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
 
@@ -1202,9 +1202,6 @@ export default function AdminPage() {
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
                     <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                  </Button>
-                  <Button onClick={() => setEditingProduct({ isMarmita: true })} className="bg-orange-600 hover:bg-orange-700 text-white h-10 px-4 flex gap-2">
-                    <Component className="h-4 w-4" /> Criar Marmita
                   </Button>
                 </div>
               </CardHeader>
