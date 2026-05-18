@@ -1172,6 +1172,11 @@ export default function AdminPage() {
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
+                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
+                  </Button>
+                </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                   <button
                     type="button"
@@ -1198,11 +1203,6 @@ export default function AdminPage() {
                       {cat.name}
                     </button>
                   ))}
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
-                    <Plus className="mr-2 h-4 w-4" /> Novo Produto
-                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
