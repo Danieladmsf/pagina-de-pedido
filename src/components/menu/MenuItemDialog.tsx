@@ -50,6 +50,9 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   if (!item) return null;
 
   const groupUsesPrice = (group: AddonGroup) => {
+    if (typeof group.usePrice === 'boolean') {
+      return group.usePrice;
+    }
     if (group.addonCategoryId) {
       const category = addonCategories.find(item => item.id === group.addonCategoryId);
       if (category) return category.usePrice !== false;
@@ -113,7 +116,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       
       arr.forEach((a, i) => {
         let effectivePrice = 0;
-        const isFreeSelection = i < freeLimit || group.freeAddonIds?.includes(a.id);
+        const isFreeSelection = i < freeLimit;
         // Se usar preco e passar do limite gratuito, cobra o valor do adicional.
         if (groupUsesPrice(group) && !isFreeSelection) {
           effectivePrice = Number(a.price) || 0;
