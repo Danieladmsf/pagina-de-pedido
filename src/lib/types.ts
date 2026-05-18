@@ -34,8 +34,6 @@ export interface AddonGroup {
   usePrice?: boolean;
   min: number;        // Mínimo de seleção obrigatória
   max: number;        // Máximo de seleção
-  freeLimit?: number; // Quantidade de opções inclusas grátis no valor do prato
-  freeAddonIds?: string[]; // IDs dos complementos que serão forçados a R$ 0,00 neste grupo
 }
 
 export interface MenuItem {

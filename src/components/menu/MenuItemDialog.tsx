@@ -112,17 +112,10 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   if (item.addonGroups && item.addonGroups.length > 0) {
     item.addonGroups.forEach((group, index) => {
       const arr = marmitaSelections[index] || [];
-      const freeLimit = getNumericGroupValue(group.freeLimit);
       
-      arr.forEach((a, i) => {
-        let effectivePrice = 0;
-        const isFreeSelection = i < freeLimit;
-        // Se usar preco e passar do limite gratuito, cobra o valor do adicional.
-        if (groupUsesPrice(group) && !isFreeSelection) {
-          effectivePrice = Number(a.price) || 0;
-          addonsTotal += effectivePrice;
-        }
-        // O item vai pro carrinho final com o preço efetivo (0 se for grátis)
+      arr.forEach((a) => {
+        const effectivePrice = groupUsesPrice(group) ? Number(a.price) || 0 : 0;
+        addonsTotal += effectivePrice;
         finalAddonsList.push({ ...a, price: effectivePrice });
       });
     });
@@ -243,7 +236,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const usesPrice = groupUsesPrice(group);
             const maxChoices = getNumericGroupValue(group.max);
             const minChoices = getNumericGroupValue(group.min);
-            const freeChoices = getNumericGroupValue(group.freeLimit);
             
             if (availableAddons.length === 0) return null;
 
@@ -253,11 +245,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
-                      {usesPrice && freeChoices ? (
-                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">
-                          {freeChoices} {freeChoices === 1 ? 'grátis' : 'grátis'}
-                        </span>
-                      ) : null}
                       <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
                         {maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : 'Sem limite'}
                       </span>
