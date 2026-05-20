@@ -6,13 +6,27 @@ echo.
 echo Abrindo Chrome com impressao silenciosa...
 echo A impressora padrao do Windows sera usada.
 echo.
-echo IMPORTANTE: Certifique-se que a EPSON TM-T20
-echo esta configurada como impressora padrao!
+echo IMPORTANTE: configure a impressora termica como
+echo impressora padrao do Windows antes de iniciar.
 echo.
 
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing http://localhost:3000/admin
+set "APP_URL=%~1"
+if "%APP_URL%"=="" set "APP_URL=https://pagina-de-pedido.vercel.app/admin"
 
-echo Chrome aberto! Ao clicar em "Recebido" ou no
-echo icone de impressora, o cupom sai direto na EPSON.
+set "CHROME_EXE=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not exist "%CHROME_EXE%" set "CHROME_EXE=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+
+if not exist "%CHROME_EXE%" (
+  echo Chrome nao encontrado. Instale o Google Chrome neste computador.
+  pause
+  exit /b 1
+)
+
+start "" "%CHROME_EXE%" --user-data-dir="%LOCALAPPDATA%\CardapioDigitalPrintChrome" --no-first-run --kiosk-printing --app="%APP_URL%"
+
+echo Chrome aberto em modo impressao direta:
+echo %APP_URL%
+echo.
+echo Com este atalho, window.print sai direto na impressora padrao.
 echo.
 pause

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users, ShoppingBag, Box, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, Trash2, Store, Clock, Settings, Truck, Wallet, CalendarOff, ChevronLeft, ChevronRight, Camera, X, Building2, Phone, MessageCircle, MapPin, Hash, ImageIcon, Info, CheckCircle2, Bike, Users, ShoppingBag, Box, RefreshCw, Download } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -205,6 +205,57 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+  };
+
+  const handleDownloadSilentPrintShortcut = () => {
+    if (typeof window === 'undefined') return;
+
+    const adminUrl = `${window.location.origin.replace(/\/$/, '')}/admin`;
+    const batContent = [
+      '@echo off',
+      'echo ============================================',
+      'echo   CARDAPIO DIGITAL - Modo Impressao Direta',
+      'echo ============================================',
+      'echo.',
+      'echo Abrindo Chrome com impressao silenciosa...',
+      'echo A impressora padrao do Windows sera usada.',
+      'echo.',
+      'echo IMPORTANTE: configure a impressora termica como',
+      'echo impressora padrao do Windows antes de iniciar.',
+      'echo.',
+      `set "APP_URL=${adminUrl}"`,
+      'set "CHROME_EXE=%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"',
+      'if not exist "%CHROME_EXE%" set "CHROME_EXE=%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe"',
+      'if not exist "%CHROME_EXE%" (',
+      '  echo Chrome nao encontrado. Instale o Google Chrome neste computador.',
+      '  pause',
+      '  exit /b 1',
+      ')',
+      'start "" "%CHROME_EXE%" --user-data-dir="%LOCALAPPDATA%\\CardapioDigitalPrintChrome" --no-first-run --kiosk-printing --app="%APP_URL%"',
+      'echo.',
+      'echo Chrome aberto em modo impressao direta:',
+      'echo %APP_URL%',
+      'echo.',
+      'echo Com este atalho, window.print sai direto na impressora padrao.',
+      'echo.',
+      'pause',
+      '',
+    ].join('\r\n');
+
+    const blob = new Blob([batContent], { type: 'application/x-bat' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'abrir-admin-impressao.bat';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'Atalho gerado',
+      description: 'Execute o arquivo no computador conectado a impressora.',
+    });
   };
 
   // Funções de formatação simples (máscaras)
@@ -724,6 +775,28 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   {formData.manualPrint && (
                     <p className="text-[11px] text-amber-600 font-medium">⚠️ Impressão Manual ativada: Clique no botão "Recebido" para iniciar a impressão.</p>
                   )}
+                </div>
+
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-emerald-900">Impressao direta sem modal do navegador</p>
+                      <p className="text-[11px] text-emerald-700 leading-relaxed max-w-xl">
+                        Baixe e execute este atalho no computador conectado a impressora. Ele abre o painel no Chrome com impressao silenciosa e usa a impressora padrao do Windows.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadSilentPrintShortcut}
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-100 shrink-0"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Baixar atalho
+                  </Button>
                 </div>
               </div>
             </section>
