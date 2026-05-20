@@ -7,7 +7,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, query, where, getDocs, updateDoc, increment, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, writeBatch } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -15,6 +15,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+import { validateCustomerCredit } from '@/lib/customer-credit';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -267,22 +268,36 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       const ownerId = storeProfile?.id || user?.uid || 'default';
       const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
+      let contaCasaCustomerId: string | null = null;
       if (hasContaCasa) {
-          const phone = customerPhone || '';
-          const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
-          
-          if (!phone || phone.length < 10) {
-             setIsSubmitting(false);
-             setQuickRegisterModal({ isOpen: true, name: customerName || '', phone: '', address: fullDeliveryAddress });
-             return;
+        const phone = customerPhone || '';
+        const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
+        const contaCasaAmount = splitsToProcess
+          .filter(s => s.methodId === 'conta_casa')
+          .reduce((sum, split) => sum + split.amount, 0);
+
+        if (!phone || phone.replace(/\D/g, '').length < 10) {
+          setIsSubmitting(false);
+          setQuickRegisterModal({ isOpen: true, name: customerName || '', phone: '', address: fullDeliveryAddress });
+          return;
+        }
+
+        const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount);
+        if (!creditCheck.allowed) {
+          if (creditCheck.reason === 'not_found') {
+            setIsSubmitting(false);
+            setQuickRegisterModal({ isOpen: true, name: customerName || '', phone, address: fullDeliveryAddress });
+            return;
           }
-          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
-          const snap = await getDocs(q);
-          if (snap.empty) {
-             setIsSubmitting(false);
-             setQuickRegisterModal({ isOpen: true, name: customerName || '', phone, address: fullDeliveryAddress });
-             return;
-          }
+
+          toast({
+            variant: 'destructive',
+            title: 'Prazo bloqueado',
+            description: creditCheck.message || 'Este pedido passa do limite de prazo do cliente.',
+          });
+          return;
+        }
+        contaCasaCustomerId = creditCheck.customer?.id || null;
       }
 
       const newOrderRef = doc(collection(db, 'orders'));
@@ -331,11 +346,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
       for (const split of splitsToProcess) {
         if (split.methodId === 'conta_casa') {
-           const ownerId = storeProfile?.id || user?.uid || 'default';
-           const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', customerPhone));
-           const snap = await getDocs(q);
-           if (!snap.empty) {
-              const cId = snap.docs[0].id;
+           if (contaCasaCustomerId) {
+              const cId = contaCasaCustomerId;
               const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
               await setDoc(newTrans, {
                  id: newTrans.id,
