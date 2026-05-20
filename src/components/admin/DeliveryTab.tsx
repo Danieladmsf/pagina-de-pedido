@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, getDocs, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
+import { validateCustomerCredit } from '@/lib/customer-credit';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -262,20 +263,35 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
       const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
       const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
+      let contaCasaCustomerId: string | null = null;
       if (hasContaCasa) {
-          const phone = paymentModalOrder.customerPhone || '';
-          if (!phone || phone.length < 10) {
-             setIsProcessing(false);
-             setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone: '', address: paymentModalOrder.deliveryAddress || '' });
-             return;
+        const phone = paymentModalOrder.customerPhone || '';
+        const contaCasaAmount = splitsToProcess
+          .filter(s => s.methodId === 'conta_casa')
+          .reduce((sum, split) => sum + split.amount, 0);
+
+        if (!phone || phone.replace(/\D/g, '').length < 10) {
+          setIsProcessing(false);
+          setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone: '', address: paymentModalOrder.deliveryAddress || '' });
+          return;
+        }
+
+        const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount);
+        if (!creditCheck.allowed) {
+          if (creditCheck.reason === 'not_found') {
+            setIsProcessing(false);
+            setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone, address: paymentModalOrder.deliveryAddress || '' });
+            return;
           }
-          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
-          const snap = await getDocs(q);
-          if (snap.empty) {
-             setIsProcessing(false);
-             setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone, address: paymentModalOrder.deliveryAddress || '' });
-             return;
-          }
+
+          toast({
+            variant: 'destructive',
+            title: 'Prazo bloqueado',
+            description: creditCheck.message || 'Este pedido passa do limite de prazo do cliente.',
+          });
+          return;
+        }
+        contaCasaCustomerId = creditCheck.customer?.id || null;
       }
 
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
@@ -286,11 +302,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       if (caixaAberto) {
         for (const split of splitsToProcess) {
           if (split.methodId === 'conta_casa') {
-             const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
-             const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', paymentModalOrder.customerPhone || ''));
-             const snap = await getDocs(q);
-             if (!snap.empty) {
-                const cId = snap.docs[0].id;
+             if (contaCasaCustomerId) {
+                const cId = contaCasaCustomerId;
                 const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
                 await setDoc(newTrans, {
                    id: newTrans.id,

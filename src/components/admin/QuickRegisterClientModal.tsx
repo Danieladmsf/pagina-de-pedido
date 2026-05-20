@@ -83,7 +83,7 @@ export function QuickRegisterClientModal({
         id: newRef.id,
         ownerId,
         nome: formNome,
-        celular: formCelular,
+        celular: phoneRaw,
         dataNascimento: formNascimento,
         logradouro: formLogradouro,
         numero: formNumero,
@@ -93,6 +93,9 @@ export function QuickRegisterClientModal({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         contaCasa: { enabled: true },
+        creditEnabled: true,
+        creditLimit: 0,
+        creditPayDay: 0,
         creditBalance: 0
       });
 

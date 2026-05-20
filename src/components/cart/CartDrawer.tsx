@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
 import { Textarea } from '@/components/ui/textarea';
+import { validateCustomerCredit } from '@/lib/customer-credit';
 
 interface PaymentMethodConfig {
   id: string;
@@ -226,86 +227,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
     const checkCredit = async () => {
       try {
-        // Normalizar telefone: remover espaços, traços, parênteses e +55
-        const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
-        
-        // Buscar TODOS os documentos do cliente (pode haver duplicatas)
-        const q = query(
-          collection(db, 'clientes'),
-          where('ownerId', '==', effectiveStoreOwnerId),
-          where('celular', '==', normalizedPhone)
-        );
-        const snap = await getDocs(q);
-        
-        const isCreditValid = (d: any) => {
-          const data = d.data();
-          if (!data.creditEnabled) return false;
-          
-          const balance = data.creditBalance || 0;
-          const limit = data.creditLimit || 0;
-          const payDay = data.creditPayDay || 0;
-          
-          // Bloqueia se o limite for atingido ou ultrapassado
-          if (limit > 0 && balance >= limit) return false;
-          
-          // Bloqueia se passou do dia do pagamento e há saldo devedor
-          if (payDay > 0 && balance > 0) {
-            const today = new Date().getDate();
-            if (today > payDay) {
-               return false; // Dívida em aberto após data limite
-            }
-          }
-          
-          return true;
-        };
-
-        // Verificar se QUALQUER documento tem creditEnabled
-        if (!snap.empty) {
-          const hasCredit = snap.docs.some(isCreditValid);
-          if (hasCredit) {
-            setContaCasaEnabled(true);
-            return;
-          }
-        }
-        
-        // Fallback: tentar com telefone original (caso salvo com formatação diferente)
-        if (normalizedPhone !== customerPhone) {
-          const q2 = query(
-            collection(db, 'clientes'),
-            where('ownerId', '==', effectiveStoreOwnerId),
-            where('celular', '==', customerPhone)
-          );
-          const snap2 = await getDocs(q2);
-          if (!snap2.empty) {
-            const hasCredit = snap2.docs.some(isCreditValid);
-            if (hasCredit) {
-              setContaCasaEnabled(true);
-              return;
-            }
-          }
-        }
-
-        // Fallback 2: tentar com +55 prefixo
-        const withPrefix = '+55' + normalizedPhone;
-        if (withPrefix !== customerPhone && withPrefix !== normalizedPhone) {
-          const q3 = query(
-            collection(db, 'clientes'),
-            where('ownerId', '==', effectiveStoreOwnerId),
-            where('celular', '==', withPrefix)
-          );
-          const snap3 = await getDocs(q3);
-          if (!snap3.empty) {
-            const hasCredit = snap3.docs.some(isCreditValid);
-            if (hasCredit) {
-              setContaCasaEnabled(true);
-              return;
-            }
-          }
-        }
-        
-        setContaCasaEnabled(false);
+        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, customerPhone, 0);
+        setContaCasaEnabled(creditCheck.allowed);
       } catch (err) {
         console.warn('Erro ao verificar Conta da Casa:', err);
+        setContaCasaEnabled(false);
       }
     };
     const timer = setTimeout(checkCredit, 500);
@@ -728,6 +654,22 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       // Normalizar telefone: remover +55, espaços, traços, parênteses
       const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
+
+      if (paymentMethod === 'conta_casa') {
+        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, normalizedPhone, safeGrandTotal);
+        if (!creditCheck.allowed) {
+          if (creditCheck.reason !== 'over_limit') {
+            setContaCasaEnabled(false);
+            setPaymentMethod('');
+          }
+          toast({
+            variant: "destructive",
+            title: "Prazo bloqueado",
+            description: creditCheck.message || "Este pedido nao pode ser comprado a prazo.",
+          });
+          return;
+        }
+      }
 
       const orderData = {
         id: orderId,
