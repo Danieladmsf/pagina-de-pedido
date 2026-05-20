@@ -85,7 +85,7 @@ function PromoCountdown({ endDate, noEndDate }: { endDate?: Date; noEndDate?: bo
 
 export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const db = useFirestore();
-  const { totalItems, totalPrice } = useCart();
+  const { addToCart, totalItems, totalPrice } = useCart();
   const searchParams = useSearchParams();
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +225,32 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }, [activePromotions]);
 
   const hasActivePromos = Object.keys(promoItemsMap).length > 0;
+
+  const itemNeedsCustomization = useCallback((item: any) => {
+    const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
+    const hasAddonGroups = Array.isArray(item.addonGroups) && item.addonGroups.some((group: any) => {
+      return (Array.isArray(group.addonIds) && group.addonIds.length > 0)
+        || group.addonCategoryId
+        || group.addonCategoryName;
+    });
+    return hasNormalAddons || hasAddonGroups;
+  }, []);
+
+  const handleProductPlusClick = useCallback((event: React.MouseEvent, item: any) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (itemNeedsCustomization(item)) {
+      setSelectedItem(item);
+      return;
+    }
+
+    addToCart(item, 1, { addons: [], notes: '' });
+    window.setTimeout(() => {
+      const checkoutButton = document.querySelector('[data-floating-checkout]') as HTMLButtonElement | null;
+      checkoutButton?.focus({ preventScroll: true });
+    }, 80);
+  }, [addToCart, itemNeedsCustomization]);
 
   // Derivar storeId efetivo: do URL (?s=) ou do ownerId do primeiro item carregado
   const storeId = storeIdFromUrl || (items && items.length > 0 ? (items[0] as any).ownerId : null);
@@ -1042,7 +1068,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                       <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
                         {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
                       </span>
-                      <Button disabled={isOutOfStock} size="sm" className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}>
+                      <Button
+                        disabled={isOutOfStock}
+                        size="sm"
+                        className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
+                        onClick={(event) => handleProductPlusClick(event, item)}
+                      >
                         <Plus className="h-5 w-5 md:h-6 md:w-6" />
                       </Button>
                     </div>
