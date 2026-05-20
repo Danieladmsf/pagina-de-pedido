@@ -25,6 +25,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
+  const addButtonRef = React.useRef<HTMLButtonElement>(null);
+  const quantityPlusButtonRef = React.useRef<HTMLButtonElement>(null);
   
   // Para produtos normais
   const [selectedAddons, setSelectedAddons] = useState<SelectedAddon[]>([]);
@@ -181,12 +183,30 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     } else {
       addToCart(item, quantity, { addons: finalAddonsList, notes });
     }
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     onClose();
+    window.setTimeout(() => {
+      const checkoutButton = document.querySelector('[data-floating-checkout]') as HTMLButtonElement | null;
+      checkoutButton?.focus({ preventScroll: true });
+    }, 120);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[400px] max-h-[85vh] overflow-y-auto flex flex-col p-4">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        className="sm:max-w-[400px] max-h-[85dvh] overflow-hidden flex flex-col p-4"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          window.requestAnimationFrame(() => {
+            const target = addButtonRef.current && !addButtonRef.current.disabled
+              ? addButtonRef.current
+              : quantityPlusButtonRef.current;
+            target?.focus({ preventScroll: true });
+          });
+        }}
+      >
         <DialogHeader className="pb-1 space-y-1">
           <DialogTitle className="text-lg font-bold flex items-center gap-2 leading-tight">
             {item.name}
@@ -200,7 +220,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
           )}
         </DialogHeader>
 
-        <div className="space-y-6 py-4 flex-1 overflow-y-auto pr-2">
+        <div className="space-y-6 py-4 flex-1 min-h-0 overflow-y-auto pr-2">
           
           {/* Combo Items */}
           {item.isCombo && item.comboItems && item.comboItems.length > 0 && (
@@ -350,7 +370,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
           </div>
         </div>
 
-        <DialogFooter className="flex-col gap-4 border-t pt-4">
+        <DialogFooter className="flex-col gap-4 border-t bg-background pt-4 shrink-0">
           {!canAddToCart && (
             <Alert variant="destructive" className="py-2">
               <AlertCircle className="h-4 w-4" />
@@ -364,12 +384,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                 <Minus className="h-4 w-4" />
               </Button>
               <span className="font-bold min-w-[20px] text-center">{quantity}</span>
-              <Button variant="ghost" size="icon" onClick={() => setQuantity(quantity + 1)}>
+              <Button ref={quantityPlusButtonRef} variant="ghost" size="icon" onClick={() => setQuantity(quantity + 1)}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
 
             <Button
+              ref={addButtonRef}
               className={`w-full sm:w-auto font-bold px-8 ${canAddToCart && isStoreOpen ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
               onClick={handleAdd}
               disabled={!isStoreOpen || !canAddToCart}

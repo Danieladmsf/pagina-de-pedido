@@ -1088,6 +1088,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       {/* Botão flutuante - Finalizar Pedido */}
       {totalItems > 0 && !showStoreInfo && (
         <button
+          data-floating-checkout
           onClick={() => {
             // Dispara clique no botão do carrinho para abrir o Sheet
             const cartBtn = document.querySelector('[data-cart-trigger]') as HTMLElement;
