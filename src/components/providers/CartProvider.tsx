@@ -9,6 +9,7 @@ interface CartContextType {
   addToCart: (item: MenuItem, quantity: number, customization?: CartItem['customization']) => void;
   removeFromCart: (cartId: string) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
+  updateItemNotes: (cartId: string, notes: string) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -37,6 +38,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart(prev => prev.map(item => item.cartId === cartId ? { ...item, quantity } : item));
   };
 
+  const updateItemNotes = (cartId: string, notes: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.cartId !== cartId) return item;
+      return {
+        ...item,
+        customization: {
+          ...(item.customization || {}),
+          notes,
+        },
+      };
+    }));
+  };
+
   const clearCart = () => setCart([]);
 
   const itemUnitPrice = (item: CartItem) => {
@@ -48,7 +62,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalPrice = cart.reduce((acc, item) => acc + (itemUnitPrice(item) * item.quantity), 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, updateItemNotes, clearCart, totalItems, totalPrice }}>
       {children}
     </CartContext.Provider>
   );

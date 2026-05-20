@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy, QrCode } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy, QrCode, MessageSquareText } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
+import { Textarea } from '@/components/ui/textarea';
 
 interface PaymentMethodConfig {
   id: string;
@@ -105,13 +106,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     ? [...basePaymentMethods, { id: 'conta_casa', label: 'Sua conta (Prazo)', icon: '📝', active: true }]
     : basePaymentMethods;
     
-  const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, clearCart } = useCart();
+  const { cart, removeFromCart, updateQuantity, updateItemNotes, totalPrice, totalItems, clearCart } = useCart();
   const effectiveStoreOwnerId = storeOwnerId || ((cart as any[]).find((i) => i.ownerId)?.ownerId ?? null);
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<Step>('cart');
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
+  const [editingNoteCartId, setEditingNoteCartId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerBirthDate, setCustomerBirthDate] = useState('');
@@ -143,6 +146,22 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const baseDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
   const appliedDeliveryFee = (paymentMethod === 'conta_casa' && payDeliverySeparately) ? 0 : baseDeliveryFee;
   const grandTotal = totalPrice + appliedDeliveryFee;
+
+  const openItemNoteEditor = (item: any) => {
+    setEditingNoteCartId(item.cartId);
+    setNoteDraft(item.customization?.notes || '');
+  };
+
+  const closeItemNoteEditor = () => {
+    setEditingNoteCartId(null);
+    setNoteDraft('');
+  };
+
+  const saveItemNote = () => {
+    if (!editingNoteCartId) return;
+    updateItemNotes(editingNoteCartId, noteDraft.trim());
+    closeItemNoteEditor();
+  };
   
   // 🔍 DEBUG: Estado da taxa
   console.log('[CartDrawer] Taxa:', { orderType, dynamicFee, deliveryFee, appliedDeliveryFee, isFreeDelivery, grandTotal });
@@ -869,10 +888,48 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         }
                         updateQuantity(item.cartId, item.quantity + 1);
                       }} className="border rounded-md p-1"><Plus className="h-3 w-3" /></button>
-                      <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={() => removeFromCart(item.cartId)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-slate-500 hover:text-primary"
+                          onClick={() => openItemNoteEditor(item)}
+                          title="Adicionar observacao"
+                        >
+                          <MessageSquareText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => {
+                            if (editingNoteCartId === item.cartId) closeItemNoteEditor();
+                            removeFromCart(item.cartId);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
+                    {editingNoteCartId === item.cartId && (
+                      <div className="rounded-lg border bg-slate-50 p-2.5 space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Observacao do item</Label>
+                        <Textarea
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          placeholder="Ex: sem cebola, molho separado..."
+                          className="min-h-[70px] resize-none bg-white text-xs"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={closeItemNoteEditor}>
+                            Cancelar
+                          </Button>
+                          <Button type="button" size="sm" className="h-8 text-xs" onClick={saveItemNote}>
+                            Salvar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
