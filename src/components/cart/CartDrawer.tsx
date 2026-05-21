@@ -242,8 +242,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const calculateDeliveryFee = useCallback(async (customerAddress: string, neighborhoodHint?: string) => {
     const effectiveNeighborhood = neighborhoodHint || neighborhood;
     console.log('[CartDrawer] calculateDeliveryFee chamado:', { customerAddress, effectiveNeighborhood, storeAddress: storeAddress?.substring(0, 30), rulesCount: deliveryFeeRules?.length, rules: deliveryFeeRules });
-    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) {
-      console.warn('[CartDrawer] ABORTANDO cálculo - falta dados:', { storeAddress: !!storeAddress, rules: deliveryFeeRules?.length });
+    
+    const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
+    if (!storeAddress || !hasRules) {
+      console.warn('[CartDrawer] ABORTANDO cálculo - falta dados:', { storeAddress: !!storeAddress, rulesCount: deliveryFeeRules?.length, customRulesCount: customAddressRules?.length });
       return;
     }
     if (!customerAddress || customerAddress.length < 5) {
@@ -302,7 +304,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   useEffect(() => {
     if (autoCalcDone) return;
     if (!savedStreet || savedStreet.length < 5) return;
-    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
+    const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
+    if (!storeAddress || !hasRules) return;
     
     console.log('[CartDrawer] ✅ Auto-cálculo: endereço salvo + regras prontos. Calculando taxa...');
     const addr = [savedStreet, savedNumber, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
@@ -452,10 +455,64 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       if (!neighborhood.trim()) return 'Informe o bairro.';
       if (!city.trim()) return 'Informe a cidade.';
       if (deliveryBlocked) return 'Endereço fora da área de entrega.';
+      
+      const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
+      if (hasRules && dynamicFee === null && !calculatingFee) {
+        return 'A taxa de entrega não pôde ser calculada. Verifique se o endereço foi preenchido corretamente.';
+      }
+
       return null;
     }
     if (s === 3) {
       if (!paymentMethod) return 'Selecione uma forma de pagamento.';
+      return null;
+    }
+    return null;
+  };
+
+  const goNextStep = () => {
+    const err = validateStep(checkoutStep);
+    if (err) {
+      toast({ variant: 'destructive', title: 'Atenção', description: err });
+      return;
+    }
+    if (checkoutStep === 1) {
+      setCheckoutStep(orderType === 'delivery' ? 2 : 3);
+    } else if (checkoutStep === 2) {
+      setCheckoutStep(3);
+    }
+  };
+
+  const goPrevStep = () => {
+    if (checkoutStep === 1) {
+      setStep('cart');
+    } else if (checkoutStep === 2) {
+      setCheckoutStep(1);
+    } else if (checkoutStep === 3) {
+      setCheckoutStep(orderType === 'delivery' ? 2 : 1);
+    }
+  };
+
+
+
+  const handleCheckout = async () => {
+    if (!db || !auth) {
+      toast({ variant: "destructive", title: "Erro", description: "Sistema indisponível. Recarregue a página." });
+      return;
+    }
+    if (!customerName || !customerPhone) {
+      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome e telefone." });
+      return;
+    }
+    if (orderType === 'delivery') {
+      if (!street) {
+        toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe a rua de entrega." });
+        return;
+      }
+      if (!neighborhood) {
+        toast({ variant: "destructive", title: "Endereço obrigatório", description: "O preenchimento do bairro é obrigatório." });
+        return;
+      }
       return null;
     }
     return null;
@@ -520,6 +577,13 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     if (cart.length === 0) {
       toast({ variant: "destructive", title: "Carrinho Vazio", description: "Adicione itens antes de finalizar." });
       return;
+    }
+    if (orderType === 'delivery') {
+      const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
+      if (hasRules && dynamicFee === null) {
+        toast({ variant: "destructive", title: "Taxa de Entrega", description: "A taxa de entrega não pôde ser calculada. Verifique se o endereço foi preenchido corretamente." });
+        return;
+      }
     }
     if (orderType === 'delivery' && maxDeliveryRadius > 0) {
       if (!distanceInfo) {

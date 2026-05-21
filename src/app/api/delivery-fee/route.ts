@@ -42,25 +42,27 @@ export async function POST(req: NextRequest) {
     console.log('[API delivery-fee] Full Google response:', JSON.stringify(data, null, 2));
 
     if (data.status !== 'OK') {
-      const errorMsg = data.error_message 
-        ? `Google Maps: ${data.error_message}` 
-        : `Google Maps retornou status: ${data.status}`;
-      return NextResponse.json({ error: errorMsg, details: data }, { status: 500 });
+      console.warn('[API delivery-fee] Google Maps falhou:', data.status, data.error_message);
     }
 
     const element = data.rows?.[0]?.elements?.[0];
+    
+    let distanceKm = 0;
+    let distanceText = '';
+    let durationText = '';
+    let originAddress = storeAddress;
+    let destinationAddress = customerAddress;
+    let mapsErrorMsg = '';
 
-    if (!element || element.status !== 'OK') {
-      return NextResponse.json({
-        error: 'Não foi possível calcular a distância para este endereço.',
-        details: element?.status || 'UNKNOWN',
-      }, { status: 400 });
+    if (data.status === 'OK' && element && element.status === 'OK') {
+      distanceKm = element.distance.value / 1000;
+      durationText = element.duration.text;
+      distanceText = element.distance.text;
+      originAddress = data.origin_addresses?.[0] || storeAddress;
+      destinationAddress = data.destination_addresses?.[0] || customerAddress;
+    } else {
+      mapsErrorMsg = data.error_message || `Google Maps status: ${data.status} / ${element?.status}`;
     }
-
-    const distanceMeters = element.distance.value; // em metros
-    const distanceKm = distanceMeters / 1000;
-    const durationText = element.duration.text; // Ex: "12 min"
-    const distanceText = element.distance.text; // Ex: "5.3 km"
 
     // Calcular a taxa com base nas regras
     let calculatedFee = 0;
@@ -151,14 +153,20 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    if (!customMatched && mapsErrorMsg) {
+      return NextResponse.json({
+        error: 'Não foi possível calcular a distância para este endereço.',
+        details: mapsErrorMsg,
+      }, { status: 400 });
+    }
 
     return NextResponse.json({
       distanceKm: Math.round(distanceKm * 10) / 10,
       distanceText,
       durationText,
       fee: Math.round(calculatedFee * 100) / 100,
-      originAddress: data.origin_addresses?.[0] || storeAddress,
-      destinationAddress: data.destination_addresses?.[0] || customerAddress,
+      originAddress,
+      destinationAddress,
     });
   } catch (err: any) {
     console.error('Erro na API delivery-fee:', err);
