@@ -57,6 +57,8 @@ $searchPaths = [System.Collections.Generic.List[string]]::new()
 $searchPaths.Add("$env:USERPROFILE\Desktop")
 $searchPaths.Add("$env:USERPROFILE\OneDrive\Desktop")
 $searchPaths.Add("C:\Users\Public\Desktop")
+$searchPaths.Add("$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar")
+$searchPaths.Add("$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\StartMenu")
 
 if (Test-Path "C:\Users" -ErrorAction SilentlyContinue) {
     Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
