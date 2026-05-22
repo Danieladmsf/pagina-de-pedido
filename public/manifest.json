@@ -2,7 +2,7 @@
   "name": "Cardápio Digital",
   "short_name": "Cardápio",
   "description": "Cardápio digital e gestão de pedidos",
-  "start_url": "/admin",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#FAFAF7",
   "theme_color": "#ffffff",
