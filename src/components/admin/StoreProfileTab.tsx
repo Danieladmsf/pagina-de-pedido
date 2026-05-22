@@ -210,7 +210,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const handleDownloadSilentPrintShortcut = () => {
     if (typeof window === 'undefined') return;
 
-    const adminUrl = `${window.location.origin.replace(/\/$/, '')}/admin`;
+    const adminUrl = `${window.location.origin.replace(/\/$/, '')}/`;
     const batContent = [
       '@echo off',
       'echo ============================================',
