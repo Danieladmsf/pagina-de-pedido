@@ -493,56 +493,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   };
 
-
-
-  const handleCheckout = async () => {
-    if (!db || !auth) {
-      toast({ variant: "destructive", title: "Erro", description: "Sistema indisponível. Recarregue a página." });
-      return;
-    }
-    if (!customerName || !customerPhone) {
-      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha nome e telefone." });
-      return;
-    }
-    if (orderType === 'delivery') {
-      if (!street) {
-        toast({ variant: "destructive", title: "Endereço obrigatório", description: "Informe a rua de entrega." });
-        return;
-      }
-      if (!neighborhood) {
-        toast({ variant: "destructive", title: "Endereço obrigatório", description: "O preenchimento do bairro é obrigatório." });
-        return;
-      }
-      return null;
-    }
-    return null;
-  };
-
-  const goNextStep = () => {
-    const err = validateStep(checkoutStep);
-    if (err) {
-      toast({ variant: 'destructive', title: 'Atenção', description: err });
-      return;
-    }
-    if (checkoutStep === 1) {
-      setCheckoutStep(orderType === 'delivery' ? 2 : 3);
-    } else if (checkoutStep === 2) {
-      setCheckoutStep(3);
-    }
-  };
-
-  const goPrevStep = () => {
-    if (checkoutStep === 1) {
-      setStep('cart');
-    } else if (checkoutStep === 2) {
-      setCheckoutStep(1);
-    } else if (checkoutStep === 3) {
-      setCheckoutStep(orderType === 'delivery' ? 2 : 1);
-    }
-  };
-
-
-
   const handleCheckout = async () => {
     if (!db || !auth) {
       toast({ variant: "destructive", title: "Erro", description: "Sistema indisponível. Recarregue a página." });
