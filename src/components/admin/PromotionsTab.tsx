@@ -165,7 +165,27 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     setFormEndDate(formatDateLocal(end || fallbackEnd));
     setFormNoEndDate(noEndDate);
     setFormActive(promo.active ?? true);
-    setFormItems(promo.items || []);
+    
+    // Sincroniza os itens com os preços e descontos mais recentes do catálogo
+    const syncedItems = (promo.items || []).map((fi: any) => {
+      const currentItem = itemsMap[fi.menuItemId];
+      if (currentItem) {
+        const originalPrice = currentItem.price || 0;
+        let promoPrice = fi.promoPrice;
+        if (fi.discountType === 'percentage') {
+          promoPrice = Math.round(originalPrice * (1 - fi.discountValue / 100) * 100) / 100;
+        } else {
+          promoPrice = Math.max(0, originalPrice - fi.discountValue);
+        }
+        return {
+          ...fi,
+          originalPrice,
+          promoPrice
+        };
+      }
+      return fi;
+    });
+    setFormItems(syncedItems);
     setItemSearchQuery('');
     setIsModalOpen(true);
   };
@@ -624,7 +644,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)}
+                            {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'}
                             {alreadyInPromo && <span className="text-red-500 font-bold ml-1">• Já em "{alreadyInPromo}"</span>}
                           </p>
                         </div>
@@ -661,9 +681,16 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm truncate">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Original: {brl(fi.originalPrice)}
-                            {discountPct > 0 && <span className="text-orange-600 font-bold ml-2">-{discountPct}%</span>}
+                          <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                            <span>Original: {brl(fi.originalPrice)}</span>
+                            <span className="text-slate-300">•</span>
+                            <span>Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'}</span>
+                            {discountPct > 0 && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-orange-600 font-bold">-{discountPct}%</span>
+                              </>
+                            )}
                           </p>
                         </div>
                         <button onClick={() => removeItemFromPromo(fi.menuItemId)} className="text-red-400 hover:text-red-600">
