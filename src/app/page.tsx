@@ -758,7 +758,15 @@ export default function AdminPage() {
         const quantities = new Map<string, number>();
         for (const item of order?.items || []) {
           const quantity = Number(item.quantity) || 0;
-          if (item.id && quantity > 0) {
+          if (quantity <= 0) continue;
+
+          if (item.isCombo && item.comboItems) {
+            for (const ci of item.comboItems) {
+              if (ci.itemId) {
+                quantities.set(ci.itemId, (quantities.get(ci.itemId) || 0) + quantity);
+              }
+            }
+          } else if (item.id) {
             quantities.set(item.id, (quantities.get(item.id) || 0) + quantity);
           }
         }

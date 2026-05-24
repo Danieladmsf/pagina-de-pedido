@@ -10,6 +10,47 @@ import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
 import { Minus, Plus, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+
+const checkCartStock = (
+  projectedCart: any[],
+  menuItemsList: MenuItem[],
+  enableInventory: boolean
+): { allowed: boolean; message?: string } => {
+  if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
+
+  const demand: Record<string, number> = {};
+
+  projectedCart.forEach(item => {
+    const qty = Number(item.quantity) || 0;
+    if (qty <= 0) return;
+
+    if (item.isCombo && item.comboItems) {
+      item.comboItems.forEach((ci: any) => {
+        demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+      });
+    } else {
+      demand[item.id] = (demand[item.id] || 0) + qty;
+    }
+  });
+
+  for (const [productId, reqQty] of Object.entries(demand)) {
+    const matchedProduct = menuItemsList.find(m => m.id === productId);
+    if (!matchedProduct) continue;
+
+    const rawStock = (matchedProduct as any).stockQuantity;
+    const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+
+    if (availableStock !== null && reqQty > availableStock) {
+      return {
+        allowed: false,
+        message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
+      };
+    }
+  }
+
+  return { allowed: true };
+};
 
 interface MenuItemDialogProps {
   item: MenuItem | null;
@@ -19,10 +60,13 @@ interface MenuItemDialogProps {
   addonCategories?: AddonCategory[];
   isStoreOpen?: boolean;
   onAddToCart?: (item: any, quantity: number, options: any) => void;
+  menuItems?: MenuItem[];
+  enableInventory?: boolean;
 }
 
-export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCategories = [], isStoreOpen = true, onAddToCart }: MenuItemDialogProps) {
-  const { addToCart } = useCart();
+export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCategories = [], isStoreOpen = true, onAddToCart, menuItems = [], enableInventory = false }: MenuItemDialogProps) {
+  const { addToCart, cart } = useCart();
+  const { toast } = useToast();
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const addButtonRef = React.useRef<HTMLButtonElement>(null);
@@ -178,6 +222,21 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
   const handleAdd = () => {
     if (!canAddToCart) return;
+
+    if (enableInventory && menuItems && menuItems.length > 0) {
+      const mockItem: any = { ...item, quantity, isCombo: item.isCombo, comboItems: item.comboItems };
+      const projectedCart = [...cart, mockItem];
+      const check = checkCartStock(projectedCart, menuItems, enableInventory);
+      if (!check.allowed) {
+        toast({
+          title: "Estoque insuficiente",
+          description: check.message,
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     if (onAddToCart) {
       onAddToCart(item, quantity, { addons: finalAddonsList, notes });
     } else {

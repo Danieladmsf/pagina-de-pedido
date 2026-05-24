@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment, writeBatch, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -161,7 +161,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         if (storeInfo?.general?.enableInventory) {
           const stockRestore: Record<string, number> = {};
           cart.forEach(item => {
-            if (item.id) {
+            if (item.isCombo && item.comboItems) {
+              item.comboItems.forEach((ci: any) => {
+                stockRestore[ci.itemId] = (stockRestore[ci.itemId] || 0) + item.quantity;
+              });
+            } else if (item.id) {
               stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
             }
           });
@@ -200,16 +204,57 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       if (diffQty > 0) {
         newItemsToPrint.push({ ...item, quantity: diffQty });
       }
-      if (diffQty !== 0 && item.id) {
-        stockDiffs[item.id] = (stockDiffs[item.id] || 0) + diffQty;
+      if (diffQty !== 0) {
+        if (item.isCombo && item.comboItems) {
+          item.comboItems.forEach((ci: any) => {
+            stockDiffs[ci.itemId] = (stockDiffs[ci.itemId] || 0) + diffQty;
+          });
+        } else if (item.id) {
+          stockDiffs[item.id] = (stockDiffs[item.id] || 0) + diffQty;
+        }
       }
     });
 
     originalCart.forEach(oi => {
-      if (!cart.find(item => (item.cartItemId || item.id) === (oi.cartItemId || oi.id))) {
-        if (oi.id) stockDiffs[oi.id] = (stockDiffs[oi.id] || 0) - oi.quantity;
+      const stillInCart = cart.find(item => (item.cartItemId || item.id) === (oi.cartItemId || oi.id));
+      if (!stillInCart) {
+        if (oi.isCombo && oi.comboItems) {
+          oi.comboItems.forEach((ci: any) => {
+            stockDiffs[ci.itemId] = (stockDiffs[ci.itemId] || 0) - oi.quantity;
+          });
+        } else if (oi.id) {
+          stockDiffs[oi.id] = (stockDiffs[oi.id] || 0) - oi.quantity;
+        }
       }
     });
+
+    if (storeInfo?.general?.enableInventory) {
+      const itemsToValidate = Object.entries(stockDiffs).filter(([_, diff]) => diff > 0);
+      if (itemsToValidate.length > 0) {
+        try {
+          for (const [itemId, diff] of itemsToValidate) {
+            const itemRef = doc(db, 'menuItems', itemId);
+            const itemSnap = await getDoc(itemRef);
+            if (itemSnap.exists()) {
+              const itemData = itemSnap.data();
+              const rawStock = itemData.stockQuantity;
+              const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+              if (currentStock !== null && diff > currentStock) {
+                toast({
+                  variant: 'destructive',
+                  title: 'Estoque insuficiente',
+                  description: `Não foi possível salvar. "${itemData.name || itemId}" tem apenas ${currentStock} unidade(s) disponível(is), mas você tentou adicionar ${diff}.`
+                });
+                setIsSubmitting(false);
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao validar estoque:", err);
+        }
+      }
+    }
 
     try {
       let finalOrderId = activeOrderId;
@@ -919,6 +964,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         allAddons={addons}
         addonCategories={addonCategories}
         onAddToCart={handleDialogAddToCart}
+        menuItems={items}
+        enableInventory={storeInfo?.general?.enableInventory || false}
       />
       {quickRegisterModal && (
         <QuickRegisterClientModal

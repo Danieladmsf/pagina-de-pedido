@@ -35,6 +35,7 @@ interface CartDrawerProps {
   maxDeliveryRadius?: number; // Limite de KM
   customAddressRules?: Array<{ keyword: string; fee: number }>; // Regras personalizadas por bairro/rua
   freeDeliveryOver?: number; // Frete grátis acima de
+
   paymentMethods?: PaymentMethodConfig[]; // Formas de pagamento configuradas pela loja
   pixKey?: string | null;
   pixName?: string | null;
@@ -42,6 +43,7 @@ interface CartDrawerProps {
   menuItems?: any[];
   enableInventory?: boolean;
   themeId?: string | null;
+  promoItemsMap?: Record<string, { promoPrice: number }>;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
@@ -55,6 +57,46 @@ type Step = 'cart' | 'info';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+};
+
+const checkCartStock = (
+  projectedCart: any[],
+  menuItemsList: any[],
+  enableInventory: boolean
+): { allowed: boolean; message?: string } => {
+  if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
+
+  const demand: Record<string, number> = {};
+
+  projectedCart.forEach(item => {
+    const qty = Number(item.quantity) || 0;
+    if (qty <= 0) return;
+
+    if (item.isCombo && item.comboItems) {
+      item.comboItems.forEach((ci: any) => {
+        demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+      });
+    } else {
+      demand[item.id] = (demand[item.id] || 0) + qty;
+    }
+  });
+
+  for (const [productId, reqQty] of Object.entries(demand)) {
+    const matchedProduct = menuItemsList.find(m => m.id === productId);
+    if (!matchedProduct) continue;
+
+    const rawStock = matchedProduct.stockQuantity;
+    const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+
+    if (availableStock !== null && reqQty > availableStock) {
+      return {
+        allowed: false,
+        message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
+      };
+    }
+  }
+
+  return { allowed: true };
 };
 
 const formatPhone = (val: string) => {
@@ -89,7 +131,7 @@ const formatDate = (val: string) => {
   return f;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
@@ -625,20 +667,54 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       // Validação de estoque antes de enviar
       if (enableInventory) {
-        const stockByItem: Record<string, number> = {};
+        // Find all unique product IDs we need to check stock for
+        const uniqueProductIds = new Set<string>();
         cart.forEach(item => {
-          stockByItem[item.id] = (stockByItem[item.id] || 0) + item.quantity;
+          if (item.isCombo && item.comboItems) {
+            item.comboItems.forEach((ci: any) => uniqueProductIds.add(ci.itemId));
+          } else {
+            uniqueProductIds.add(item.id);
+          }
         });
-        for (const [itemId, requestedQty] of Object.entries(stockByItem)) {
-          const itemDoc = await getDoc(doc(db, 'menuItems', itemId));
+
+        // Fetch latest stock quantities from Firestore
+        const latestStocks: Record<string, { stock: number | null; name: string }> = {};
+        for (const pId of Array.from(uniqueProductIds)) {
+          const itemDoc = await getDoc(doc(db, 'menuItems', pId));
           if (itemDoc.exists()) {
-            const currentStock = getManagedStock(itemDoc.data().stockQuantity);
-            if (currentStock !== null && requestedQty > currentStock) {
-              const itemName = itemDoc.data().name || itemId;
-              toast({ variant: "destructive", title: "Estoque insuficiente", description: `"${itemName}" tem apenas ${currentStock} unidade(s) disponível(is).` });
-              setIsSubmitting(false);
-              return;
-            }
+            const data = itemDoc.data();
+            const rawStock = data.stockQuantity;
+            const stock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+            latestStocks[pId] = { stock, name: data.name || pId };
+          }
+        }
+
+        // Calculate aggregated demand in current cart
+        const demand: Record<string, number> = {};
+        cart.forEach(item => {
+          const qty = Number(item.quantity) || 0;
+          if (qty <= 0) return;
+
+          if (item.isCombo && item.comboItems) {
+            item.comboItems.forEach((ci: any) => {
+              demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+            });
+          } else {
+            demand[item.id] = (demand[item.id] || 0) + qty;
+          }
+        });
+
+        // Validate
+        for (const [pId, reqQty] of Object.entries(demand)) {
+          const info = latestStocks[pId];
+          if (info && info.stock !== null && reqQty > info.stock) {
+            toast({
+              variant: "destructive",
+              title: "Estoque insuficiente",
+              description: `"${info.name}" tem apenas ${info.stock} unidade(s) disponível(is).`
+            });
+            setIsSubmitting(false);
+            return;
           }
         }
       }
@@ -647,7 +723,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       let safeSubtotal = 0;
       const safeItems = cart.map(item => {
         const officialItem = menuItems.find(mi => mi.id === item.id);
-        const basePrice = officialItem ? officialItem.price : item.price;
+        const promo = promoItemsMap?.[item.id];
+        const basePrice = promo ? promo.promoPrice : (officialItem ? officialItem.price : item.price);
         
         const addons = item.customization?.addons || [];
         const addonsTotal = addons.reduce((a, b) => a + b.price, 0);
@@ -662,6 +739,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           unitPrice: safeUnitPrice,
           addons: addons.map(a => ({ name: a.name, price: a.price })),
           notes: item.customization?.notes || '',
+          isCombo: !!officialItem?.isCombo,
+          comboItems: officialItem?.comboItems || null,
         };
       });
       const safeGrandTotal = safeSubtotal + appliedDeliveryFee;
@@ -832,14 +911,17 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       <span className="text-sm font-bold">{item.quantity}</span>
                       <button onClick={() => {
                         if (enableInventory) {
-                          const menuItem = menuItems.find(m => m.id === item.id);
-                          const managedStock = menuItem ? getManagedStock(menuItem.stockQuantity) : null;
-                          if (managedStock !== null) {
-                            const currentTotal = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
-                            if (currentTotal + 1 > managedStock) {
-                              toast({ title: "Estoque insuficiente", description: `Temos apenas ${managedStock} unidades disponíveis no momento.`, variant: "destructive" });
-                              return;
-                            }
+                          const projectedCart = cart.map(i =>
+                            i.cartId === item.cartId ? { ...i, quantity: i.quantity + 1 } : i
+                          );
+                          const check = checkCartStock(projectedCart, menuItems, enableInventory);
+                          if (!check.allowed) {
+                            toast({
+                              title: "Estoque insuficiente",
+                              description: check.message,
+                              variant: "destructive"
+                            });
+                            return;
                           }
                         }
                         updateQuantity(item.cartId, item.quantity + 1);
