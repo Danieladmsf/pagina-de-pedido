@@ -57,6 +57,7 @@ export interface MenuItem {
   isMarmita?: boolean;
   fixedItems?: string[];       // ["Arroz", "Feijão", "Salada"]
   addonGroups?: AddonGroup[];  // Grupos de seleção obrigatória
+  stockQuantity?: number | null;
 }
 
 export interface SelectedAddon {
