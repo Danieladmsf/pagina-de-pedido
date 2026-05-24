@@ -7,7 +7,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, increment, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, writeBatch, getDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -214,6 +214,58 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       return;
     }
 
+    if (storeProfile?.general?.enableInventory) {
+      // Find all unique product IDs we need to check stock for
+      const uniqueProductIds = new Set<string>();
+      cart.forEach(item => {
+        if (item.isCombo && item.comboItems) {
+          item.comboItems.forEach((ci: any) => uniqueProductIds.add(ci.itemId));
+        } else {
+          uniqueProductIds.add(item.id);
+        }
+      });
+
+      // Fetch latest stock quantities from Firestore
+      const latestStocks: Record<string, { stock: number | null; name: string }> = {};
+      for (const pId of Array.from(uniqueProductIds)) {
+        const itemDoc = await getDoc(doc(db, 'menuItems', pId));
+        if (itemDoc.exists()) {
+          const data = itemDoc.data();
+          const rawStock = data.stockQuantity;
+          const stock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+          latestStocks[pId] = { stock, name: data.name || pId };
+        }
+      }
+
+      // Calculate aggregated demand in current cart
+      const demand: Record<string, number> = {};
+      cart.forEach(item => {
+        const qty = Number(item.quantity) || 0;
+        if (qty <= 0) return;
+
+        if (item.isCombo && item.comboItems) {
+          item.comboItems.forEach((ci: any) => {
+            demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+          });
+        } else {
+          demand[item.id] = (demand[item.id] || 0) + qty;
+        }
+      });
+
+      // Validate
+      for (const [pId, reqQty] of Object.entries(demand)) {
+        const info = latestStocks[pId];
+        if (info && info.stock !== null && reqQty > info.stock) {
+          toast({
+            variant: "destructive",
+            title: "Estoque insuficiente",
+            description: `"${info.name}" tem apenas ${info.stock} unidade(s) disponível(is).`
+          });
+          return;
+        }
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -316,7 +368,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           quantity: i.quantity,
           unitPrice: i.price,
           addons: i.addons,
-          notes: i.notes
+          notes: i.notes,
+          isCombo: !!i.isCombo,
+          comboItems: i.comboItems || null
         })),
         status: orderType === 'delivery' ? 'received' : 'delivered',
         paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
@@ -333,7 +387,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       if (storeProfile?.general?.enableInventory) {
         cart.forEach((item) => {
-          if (item.id) {
+          if (item.isCombo && item.comboItems) {
+            item.comboItems.forEach((ci: any) => {
+              batch.update(doc(db, 'menuItems', ci.itemId), {
+                stockQuantity: increment(-item.quantity)
+              });
+            });
+          } else if (item.id) {
             batch.update(doc(db, 'menuItems', item.id), {
               stockQuantity: increment(-item.quantity)
             });
@@ -898,6 +958,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         allAddons={addons}
         addonCategories={addonCategories}
         onAddToCart={handleDialogAddToCart}
+        menuItems={items}
+        enableInventory={storeProfile?.general?.enableInventory || false}
       />
       {quickRegisterModal && (
         <QuickRegisterClientModal

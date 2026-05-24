@@ -240,17 +240,20 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     event.preventDefault();
     event.stopPropagation();
 
-    if (itemNeedsCustomization(item)) {
-      setSelectedItem(item);
+    const promo = promoItemsMap[item.id];
+    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+
+    if (itemNeedsCustomization(effectiveItem)) {
+      setSelectedItem(effectiveItem);
       return;
     }
 
-    addToCart(item, 1, { addons: [], notes: '' });
+    addToCart(effectiveItem, 1, { addons: [], notes: '' });
     window.setTimeout(() => {
       const checkoutButton = document.querySelector('[data-floating-checkout]') as HTMLButtonElement | null;
       checkoutButton?.focus({ preventScroll: true });
     }, 80);
-  }, [addToCart, itemNeedsCustomization]);
+  }, [addToCart, itemNeedsCustomization, promoItemsMap]);
 
   // Derivar storeId efetivo: do URL (?s=) ou do ownerId do primeiro item carregado
   const storeId = storeIdFromUrl || (items && items.length > 0 ? (items[0] as any).ownerId : null);
@@ -884,6 +887,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               menuItems={items || []}
               enableInventory={storeProfile?.general?.enableInventory || false}
               themeId={(storeProfile as any)?.theme}
+              promoItemsMap={promoItemsMap}
             />
           </div>
         </div>
@@ -1002,7 +1006,23 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
             {group.items.map((item) => {
               const rawStock = item.stockQuantity;
-              const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+              let currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+              if (item.isCombo) {
+                let minStock = Infinity;
+                const comboItemsList = item.comboItems || [];
+                for (const ci of comboItemsList) {
+                  const matched = items?.find(i => i.id === ci.itemId);
+                  if (matched) {
+                    const cStock = typeof matched.stockQuantity === 'number' && Number.isFinite(matched.stockQuantity) && matched.stockQuantity >= 0 ? matched.stockQuantity : null;
+                    if (cStock !== null && cStock < minStock) {
+                      minStock = cStock;
+                    }
+                  } else {
+                    minStock = 0; // If any required product doesn't exist, combo stock is 0
+                  }
+                }
+                currentStock = minStock === Infinity ? null : minStock;
+              }
               const isOutOfStock = storeProfile?.general?.enableInventory && currentStock === 0;
               const promo = promoItemsMap[item.id];
               const isPromoItem = !!promo;
@@ -1013,7 +1033,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                 <Card 
                   key={item.id} 
                   className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
-                  onClick={() => !isOutOfStock && setSelectedItem(item)}
+                  onClick={() => {
+                    if (isOutOfStock) return;
+                    const promo = promoItemsMap[item.id];
+                    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+                    setSelectedItem(effectiveItem);
+                  }}
                 >
                   <div className="relative h-44 w-full md:h-56">
                     <Image 
@@ -1113,6 +1138,8 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         allAddons={addons || []}
         addonCategories={addonCategories || []}
         isStoreOpen={isStoreOpenRightNow.isOpen}
+        menuItems={items || []}
+        enableInventory={storeProfile?.general?.enableInventory || false}
       />
       </div>
       </div>)}
