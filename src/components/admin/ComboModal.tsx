@@ -154,7 +154,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                         onCheckedChange={() => handleToggleItem(item)}
                       />
                       <Label htmlFor={`combo-item-${item.id}`} className="flex-1 cursor-pointer font-normal text-sm">
-                        {item.name} <span className="text-muted-foreground ml-1">(R$ {item.price.toFixed(2)})</span>
+                        {item.name} <span className="text-muted-foreground ml-1">(R$ {item.price.toFixed(2)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'})</span>
                       </Label>
                     </div>
                   ))}
@@ -171,23 +171,32 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                       Nenhum item selecionado.<br/>Marque os produtos ao lado.
                     </div>
                   ) : (
-                    selectedItems.map((item) => (
-                      <div key={item.itemId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-100 shadow-sm">
-                        <span className="text-sm font-medium text-slate-700 truncate pr-2" title={item.name}>{item.name}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-muted-foreground font-medium">R$ {item.price.toFixed(2)}</span>
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
-                            onClick={() => handleToggleItem({ id: item.itemId, name: item.name, price: item.price } as any)}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                          </Button>
+                    selectedItems.map((item) => {
+                      const fullItem = items.find(i => i.id === item.itemId);
+                      const stockDisplay = fullItem 
+                        ? (typeof fullItem.stockQuantity === 'number' ? `${fullItem.stockQuantity} un.` : 'Ilimitado')
+                        : 'Ilimitado';
+                      return (
+                        <div key={item.itemId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-100 shadow-sm">
+                          <div className="flex flex-col min-w-0 flex-1 pr-2">
+                            <span className="text-sm font-medium text-slate-700 truncate" title={item.name}>{item.name}</span>
+                            <span className="text-[10px] text-muted-foreground">Estoque: {stockDisplay}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-muted-foreground font-medium">R$ {item.price.toFixed(2)}</span>
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
+                              onClick={() => handleToggleItem({ id: item.itemId, name: item.name, price: item.price } as any)}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
