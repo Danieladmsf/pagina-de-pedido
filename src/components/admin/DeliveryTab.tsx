@@ -507,7 +507,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               {[
                 { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { 
                   updateOrderStatus(selectedOrder.id, 'received'); 
-                  if (storeProfile?.manualPrint) triggerPrint(selectedOrder); 
+                  if (storeProfile?.general?.manualPrint || storeProfile?.manualPrint) triggerPrint(selectedOrder); 
                 } },
                 { key: 'ready', label: 'Preparo', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
                 { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
