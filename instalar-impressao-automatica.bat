@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title Cardapio Digital - Instalador Master de Impressao Automatica
 
-set "APP_URL=https://limalimao.vercel.app/admin"
+set "APP_URL=https://polarispdv.vercel.app/admin"
 set "APP_NAME=Cardapio - App Impressao Automatica"
 set "PROFILE_DIR=%LOCALAPPDATA%\CardapioDigitalPrintChrome"
 set "SHORTCUT=%USERPROFILE%\Desktop\%APP_NAME%.lnk"
