@@ -401,7 +401,7 @@ function buildAutoReply(params: {
   empresaId: string;
   incoming: { phone: string; text?: string };
   requestOrigin: string;
-  contactData?: { firstInboundAt?: string | number; firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
+  contactData?: { firstInboundAt?: string | number; lastInboundAt?: string | number; firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
   hasPriorContact?: boolean;
 }) {
   const storeProfile = params.storeProfile || {};

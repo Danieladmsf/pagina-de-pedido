@@ -319,11 +319,11 @@ export default function AdminPage() {
       } catch {}
 
       // ── Impressão Automática de Pedidos ──
-      if (typeof window !== 'undefined' && !storeProfile?.general?.manualPrint) {
-        const ps = storeProfile?.general?.printerSize || '80mm';
+      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
+        const ps = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
         const mw = ps === '58mm' ? '58mm' : '80mm';
         const fs = ps === '58mm' ? '10px' : '12px';
-        const sn = storeProfile?.general?.name || 'Loja';
+        const sn = storeProfile?.general?.name || storeProfile?.name || storeProfile?.storeName || 'Loja';
         pendingNewOnes.forEach((ord: any) => {
           const itemsHtml = (ord.items || []).map((it: any) => {
             const adds = (it.addons || []).map((a: any) => `<div style="padding-left:8px;font-size:10px;">&gt; ${a.name}${a.price > 0 ? ` (+R$ ${a.price.toFixed(2)})` : ''}</div>`).join('');
