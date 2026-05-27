@@ -306,8 +306,8 @@ export default function AdminPage() {
     // Todos os pedidos novos que entraram agora
     const allNewOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id));
     
-    // Filtro para apitar: apenas pendentes e que não sejam de mesa
-    const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending' && o.orderType !== 'dine_in');
+    // Filtro para apitar: apenas pendentes
+    const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending');
     
     if (pendingNewOnes.length > 0) {
       playNewOrderBeep();
@@ -479,7 +479,7 @@ export default function AdminPage() {
   // Som constante enquanto houver pedidos pendentes
   useEffect(() => {
     if (!ordersRaw) return;
-    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending' && o.orderType !== 'dine_in');
+    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending');
     if (!hasPending) return;
 
     let isPlaying = true;
