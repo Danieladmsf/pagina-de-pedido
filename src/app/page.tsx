@@ -310,7 +310,10 @@ export default function AdminPage() {
     const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending');
     
     if (pendingNewOnes.length > 0) {
-      playNewOrderBeep();
+      const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
+      if (isManualPrint) {
+        playNewOrderBeep();
+      }
       toast({ title: `Novo pedido recebido!`, description: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
       try {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
@@ -406,7 +409,7 @@ export default function AdminPage() {
     });
 
     seenOrderIdsRef.current = currentIds;
-  }, [ordersRaw, playNewOrderBeep, toast, db, user]);
+  }, [ordersRaw, playNewOrderBeep, toast, db, user, storeProfile]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -479,6 +482,9 @@ export default function AdminPage() {
   // Som constante enquanto houver pedidos pendentes
   useEffect(() => {
     if (!ordersRaw) return;
+    const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
+    if (!isManualPrint) return;
+
     const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending');
     if (!hasPending) return;
 
@@ -497,7 +503,7 @@ export default function AdminPage() {
       isPlaying = false;
       clearTimeout(timeoutId);
     };
-  }, [ordersRaw, playLoudAudio]);
+  }, [ordersRaw, playLoudAudio, storeProfile]);
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
