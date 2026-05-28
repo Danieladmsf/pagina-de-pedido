@@ -329,11 +329,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       } else {
         toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status atualizado.' });
       }
-      setOrderToPrint({ ...paymentModalOrder, paymentMethod: paymentString });
-      setTimeout(() => {
-        window.print();
-        setPaymentModalOrder(null);
-      }, 500);
+      setPaymentModalOrder(null);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao registrar.' });
     } finally {
