@@ -15,6 +15,15 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 
+const normalizeName = (name: string) => {
+  if (!name) return '';
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+};
+
 interface ProductModalProps {
   db: any;
   user: any;
@@ -59,7 +68,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   }, [editingProduct, categories]);
 
   const handleAddGroup = () => {
-    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, max: 0 }]);
+    setGroups([...groups, { name: `Etapa ${groups.length + 1}`, addonIds: [], min: 0, max: undefined }]);
   };
 
   const handleRemoveGroup = (index: number) => {
@@ -203,12 +212,44 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   })();
 
   const getContainerForGroup = (group: AddonGroup) => {
-    if (group.addonCategoryId) {
+    if (group.addonCategoryId && group.addonCategoryId !== 'undefined') {
       const containerById = addonContainers.find(container => container.id === group.addonCategoryId);
       if (containerById) return containerById;
     }
-    if (group.addonCategoryName) {
-      return addonContainers.find(container => container.name === group.addonCategoryName);
+    if (group.addonCategoryName && group.addonCategoryName !== 'undefined') {
+      const containerByName = addonContainers.find(container => container.name === group.addonCategoryName);
+      if (containerByName) return containerByName;
+    }
+    // Match by addon overlap
+    if (group.addonIds && group.addonIds.length > 0) {
+      let bestContainer: any = undefined;
+      let maxOverlap = 0;
+      for (const container of addonContainers) {
+        const overlap = group.addonIds.filter(id => container.addonIds.includes(id)).length;
+        if (overlap > maxOverlap) {
+          maxOverlap = overlap;
+          bestContainer = container;
+        }
+      }
+      if (bestContainer && maxOverlap > 0) return bestContainer;
+    }
+    // Match by name
+    if (group.name) {
+      const gName = normalizeName(group.name);
+      if (gName) {
+        const matches = addonContainers.filter(container => {
+          const cName = normalizeName(container.name);
+          return cName.includes(gName) || gName.includes(cName);
+        });
+        if (matches.length === 1) return matches[0];
+        if (matches.length > 1) {
+          return matches.sort((a, b) => {
+            const lenA = Math.abs(normalizeName(a.name).length - gName.length);
+            const lenB = Math.abs(normalizeName(b.name).length - gName.length);
+            return lenA - lenB;
+          })[0];
+        }
+      }
     }
     return undefined;
   };
@@ -216,7 +257,20 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const getGroupAddonIds = (group: AddonGroup) => getContainerForGroup(group)?.addonIds || group.addonIds || [];
 
   const buildCleanAddonGroups = () => groups.map((group) => {
-    const cleanGroup = { ...group, addonIds: getGroupAddonIds(group) } as Record<string, unknown>;
+    const container = getContainerForGroup(group);
+    const cleanGroup = { 
+      ...group, 
+      addonCategoryId: container ? container.id : group.addonCategoryId,
+      addonCategoryName: container ? container.name : group.addonCategoryName,
+      addonIds: getGroupAddonIds(group) 
+    } as Record<string, unknown>;
+
+    // Prevent saving undefined fields to Firestore which would throw errors
+    if (cleanGroup.addonCategoryId === undefined) delete cleanGroup.addonCategoryId;
+    if (cleanGroup.addonCategoryName === undefined) delete cleanGroup.addonCategoryName;
+    if (cleanGroup.max === undefined) delete cleanGroup.max;
+    if (cleanGroup.min === undefined) delete cleanGroup.min;
+
     delete cleanGroup.freeLimit;
     delete cleanGroup.freeAddonIds;
     return cleanGroup;
@@ -423,9 +477,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                   <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
                     {groups.map((group, index) => {
                       const selectedAddons = allAddons.filter(a => getGroupAddonIds(group).includes(a.id));
-                      const currentContainerId = group.addonCategoryId || (group.addonCategoryName
-                        ? addonContainers.find(container => container.name === group.addonCategoryName)?.id || ''
-                        : '');
+                      const currentContainerId = getContainerForGroup(group)?.id || '';
 
                       return (
                         <Draggable key={`group-${index}`} draggableId={`group-${index}`} index={index}>
@@ -444,11 +496,21 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                   placeholder="Nome da etapa..."
                                 />
                                 <div className="flex items-center gap-1.5">
-                                  <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
-                                    <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
-                                    <Input type="number" min="0" value={group.max || getContainerForGroup(group)?.max || 0} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de escolhas (0 = Ilimitado)" />
-                                  </div>
-                                </div>
+                                   <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                     <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
+                                     <Input
+                                       type="number"
+                                       min="0"
+                                       value={group.max !== undefined && group.max !== null ? group.max : (getContainerForGroup(group)?.max ?? '')}
+                                       onChange={e => {
+                                         const val = e.target.value;
+                                         handleUpdateGroup(index, 'max', val === '' ? undefined : parseInt(val) || 0);
+                                       }}
+                                       className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0"
+                                       title="Limite máximo de escolhas (0 = Ilimitado)"
+                                     />
+                                   </div>
+                                 </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
