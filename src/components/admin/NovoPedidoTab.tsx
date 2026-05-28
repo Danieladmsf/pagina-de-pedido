@@ -357,28 +357,33 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       const orderData = {
         id: newOrderRef.id,
-        ownerId: user.uid,
+        ownerId: user?.uid || 'default',
         customerName: customerName || 'Cliente Balcão',
         customerPhone: customerPhone || '',
-        deliveryAddress: fullDeliveryAddress,
+        deliveryAddress: fullDeliveryAddress || '',
         orderType: orderType,
         items: cart.map(i => ({
-          id: i.id,
-          name: i.name,
-          quantity: i.quantity,
-          unitPrice: i.price,
-          addons: i.addons,
-          notes: i.notes,
+          id: i.id || '',
+          name: i.name || '',
+          quantity: Number(i.quantity) || 1,
+          unitPrice: Number(i.unitPrice ?? i.price) || 0,
+          addons: (i.addons || []).map((addon: any) => ({
+            id: addon.id || '',
+            name: addon.name || '',
+            description: addon.description || '',
+            price: Number(addon.price) || 0
+          })),
+          notes: i.notes || '',
           isCombo: !!i.isCombo,
           comboItems: i.comboItems || null
         })),
         status: orderType === 'delivery' ? 'received' : 'delivered',
         paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
-        subtotal: cartTotal,
+        subtotal: cartTotal || 0,
         deliveryFee: Number(deliveryFeeInput) || 0,
-        distanceKm: distanceInfo?.distanceKm || null,
-        totalAmount: finalTotal,
-        paymentMethod: paymentString,
+        distanceKm: (distanceInfo && typeof distanceInfo.distanceKm === 'number') ? distanceInfo.distanceKm : null,
+        totalAmount: finalTotal || 0,
+        paymentMethod: paymentString || '',
         orderDateTime: new Date().toISOString(),
       };
 
