@@ -74,7 +74,7 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
                   <td className="py-1">
                     <div className="font-bold text-sm">{item.name}</div>
                     {item.addons?.map((addon: any, aidx: number) => (
-                      <div key={aidx} className="text-[10px] pl-2 whitespace-nowrap overflow-hidden text-ellipsis">
+                      <div key={aidx} className="text-[10px] font-bold pl-2 whitespace-nowrap overflow-hidden text-ellipsis">
                         &gt; {addon.name} {!isKitchen && addon.price ? `(+R$ ${addon.price.toFixed(2)})` : ''}
                       </div>
                     ))}
