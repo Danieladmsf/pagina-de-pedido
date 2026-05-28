@@ -27,6 +27,7 @@ interface MesasTabProps {
   onOpenCaixa?: () => void;
   addons?: any[];
   addonCategories?: any[];
+  onUnsavedChangesChange?: (hasChanges: boolean) => void;
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -36,7 +37,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [] }: MesasTabProps) {
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange }: MesasTabProps) {
   const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active && m.id !== 'conta_casa');
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
@@ -74,21 +75,45 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   
   const activeTableNumbers = activeOrders.map(o => o.tableNumber).filter(Boolean);
 
+  const lastSelectedTableRef = React.useRef<number | null>(null);
+  const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart);
+
+  useEffect(() => {
+    onUnsavedChangesChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onUnsavedChangesChange]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     if (selectedTable) {
       const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
-      if (activeOrder) {
-        setCart(activeOrder.items || []);
-        setOriginalCart(activeOrder.items || []);
-        setActiveOrderId(activeOrder.id);
-        setReceiptPrinted(activeOrder.status === 'awaiting_payment');
-      } else {
-        setCart([]);
-        setOriginalCart([]);
-        setActiveOrderId(null);
-        setReceiptPrinted(false);
+      const tableChanged = lastSelectedTableRef.current !== selectedTable;
+      lastSelectedTableRef.current = selectedTable;
+
+      if (tableChanged || !hasUnsavedChanges) {
+        if (activeOrder) {
+          setCart(activeOrder.items || []);
+          setOriginalCart(activeOrder.items || []);
+          setActiveOrderId(activeOrder.id);
+          setReceiptPrinted(activeOrder.status === 'awaiting_payment');
+        } else {
+          setCart([]);
+          setOriginalCart([]);
+          setActiveOrderId(null);
+          setReceiptPrinted(false);
+        }
       }
     } else {
+      lastSelectedTableRef.current = null;
       setCart([]);
       setOriginalCart([]);
       setActiveOrderId(null);
@@ -147,6 +172,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const removeFromCart = (cartItemId: string) => {
     setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
+  };
+
+  const handleBackToGrid = () => {
+    if (hasUnsavedChanges) {
+      if (confirm(`Você tem alterações não salvas na Mesa ${selectedTable}! Deseja realmente sair sem salvar?`)) {
+        setSelectedTable(null);
+      }
+    } else {
+      setSelectedTable(null);
+    }
   };
 
   const handleCancelTable = async () => {
@@ -608,7 +643,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           
           <div className="bg-slate-800 text-white p-3 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={handleBackToGrid}>
                 <ArrowLeft className="h-5 w-5" />
               </Button>
               <div>
@@ -622,7 +657,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   <X className="h-3.5 w-3.5" /> Cancelar Mesa
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={() => setSelectedTable(null)}>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={handleBackToGrid}>
                 <X className="h-5 w-5" />
               </Button>
             </div>
