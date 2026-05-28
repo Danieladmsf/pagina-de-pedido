@@ -1661,6 +1661,7 @@ export default function AdminPage() {
                 ownerId: user!.uid,
                 addonIds: Array.from(new Set(seedIds)),
                 usePrice: true,
+                max: 0,
               };
               await setDoc(newDoc, data);
               return { ref: newDoc, data };
@@ -1848,7 +1849,7 @@ export default function AdminPage() {
                             if (!db || !user || !newAddonCategoryName.trim()) return;
                             try {
                               const newDoc = doc(collection(db, 'addonCategories'));
-                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true });
+                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, max: 0 });
                               toast({ title: 'Container criado com sucesso!' });
                               setIsAddonCategoryModalOpen(false);
                               setNewAddonCategoryName('');
@@ -1934,7 +1935,7 @@ export default function AdminPage() {
                                 } else {
                                   // It was an implicit category, let's create it explicitly with the new name
                                   const newDoc = doc(collection(db, 'addonCategories'));
-                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true });
+                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true, max: 0 });
                                 }
                                 (addons || [])
                                   .filter((addon: any) => getAddonLegacyGroup(addon) === oldName)
@@ -1968,29 +1969,52 @@ export default function AdminPage() {
                     <div className="flex w-full flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="font-bold text-slate-700">Configuração do container: {addonCategoryFilter}</p>
-                        <p className="text-slate-500">Define se os itens deste container somam preço no pedido.</p>
+                        <p className="text-slate-500">Define o limite máximo e se os itens deste container somam preço no pedido.</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!db || !user) return;
-                          try {
-                            const currentIds = getContainerAddonIds(addonCategoryFilter);
-                            const { ref } = await ensureAddonCategory(addonCategoryFilter, currentIds);
-                            await updateDoc(ref, { usePrice: !usePrice });
-                            toast({ title: !usePrice ? 'Preços ativados' : 'Preços desativados' });
-                          } catch (err: any) {
-                            toast({ variant: 'destructive', title: 'Erro', description: err.message });
-                          }
-                        }}
-                        className={`h-8 rounded-full px-3 text-xs font-bold transition-colors ${
-                          usePrice
-                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                            : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                        }`}
-                      >
-                        {usePrice ? 'Usa preço' : 'Sem preço'}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                          <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            value={category?.max || 0} 
+                            onChange={async (e) => {
+                              if (!db || !user) return;
+                              const val = parseInt(e.target.value) || 0;
+                              try {
+                                const currentIds = getContainerAddonIds(addonCategoryFilter);
+                                const { ref } = await ensureAddonCategory(addonCategoryFilter, currentIds);
+                                await updateDoc(ref, { max: val });
+                              } catch (err: any) {
+                                toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                              }
+                            }} 
+                            className="w-10 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" 
+                            title="Limite máximo de escolhas (0 = Ilimitado)" 
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!db || !user) return;
+                            try {
+                              const currentIds = getContainerAddonIds(addonCategoryFilter);
+                              const { ref } = await ensureAddonCategory(addonCategoryFilter, currentIds);
+                              await updateDoc(ref, { usePrice: !usePrice });
+                              toast({ title: !usePrice ? 'Preços ativados' : 'Preços desativados' });
+                            } catch (err: any) {
+                              toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                            }
+                          }}
+                          className={`h-8 rounded-full px-3 text-xs font-bold transition-colors ${
+                            usePrice
+                              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                              : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                          }`}
+                        >
+                          {usePrice ? 'Usa preço' : 'Sem preço'}
+                        </button>
+                      </div>
                     </div>
                   );
                 })()}
