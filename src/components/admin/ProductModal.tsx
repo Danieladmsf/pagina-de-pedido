@@ -288,10 +288,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     ? replicateTargets
     : replicateTargets.filter((item: any) => item.categoryId === replicateCategoryId || item.category === selectedReplicateCategory?.name);
 
-  const eligibleReplicateTargets = filteredReplicateTargets.filter((item: any) => !productHasAddonGroups(item));
+  const eligibleReplicateTargets = filteredReplicateTargets;
 
   const toggleReplicateTarget = (item: any) => {
-    if (productHasAddonGroups(item)) return;
     const itemId = item.id;
     setReplicateTargetIds(prev =>
       prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
@@ -311,30 +310,14 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     try {
       const batch = writeBatch(db);
       const addonGroups = buildCleanAddonGroups();
-      const targetDocs = await Promise.all(Array.from(new Set(replicateTargetIds)).map(async (itemId) => {
-        const ref = doc(db, 'menuItems', itemId);
-        const snapshot = await getDoc(ref);
-        return { ref, snapshot };
-      }));
-      const targetsWithoutGroups = targetDocs.filter(({ snapshot }) => {
-        if (!snapshot.exists()) return false;
-        return !productHasAddonGroups(snapshot.data());
-      });
-
-      if (targetsWithoutGroups.length === 0) {
-        toast({
-          title: 'Nenhum produto atualizado',
-          description: 'Os produtos selecionados ja possuem etapas.',
-        });
-        return;
+      
+      for (const itemId of Array.from(new Set(replicateTargetIds))) {
+        batch.update(doc(db, 'menuItems', itemId), { addonGroups });
       }
 
-      targetsWithoutGroups.forEach(({ ref }) => batch.update(ref, { addonGroups }));
       await batch.commit();
-      const skippedCount = replicateTargetIds.length - targetsWithoutGroups.length;
       toast({
-        title: `Etapas replicadas em ${targetsWithoutGroups.length} produto(s).`,
-        description: skippedCount > 0 ? `${skippedCount} produto(s) com etapas existentes foram ignorados.` : undefined,
+        title: `Etapas replicadas em ${replicateTargetIds.length} produto(s).`,
       });
       setIsReplicateModalOpen(false);
       setReplicateTargetIds([]);
@@ -607,7 +590,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
           <div className="space-y-3">
             <div className="rounded-lg border bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
               <span className="font-bold">{groups.length}</span> etapa(s) de <span className="font-bold">{editingProduct?.name}</span>.
-              Produtos que ja possuem etapas ficam bloqueados.
+              Produtos selecionados terão suas etapas substituídas pelas etapas atuais.
             </div>
 
             <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
@@ -674,17 +657,16 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                   return (
                     <div
                       key={item.id}
-                      className={`flex items-center gap-3 border-b px-3 py-2.5 text-sm last:border-b-0 ${hasGroups ? 'bg-slate-50 text-slate-400' : 'cursor-pointer hover:bg-slate-50'}`}
+                      className="flex items-center gap-3 border-b px-3 py-2.5 text-sm last:border-b-0 cursor-pointer hover:bg-slate-50"
                     >
                       <Checkbox
                         id={checkboxId}
                         checked={isChecked}
                         onCheckedChange={() => toggleReplicateTarget(item)}
-                        disabled={hasGroups}
                         className="h-4 w-4"
                       />
-                      <Label htmlFor={checkboxId} className={`flex min-w-0 flex-1 items-center gap-3 font-normal ${hasGroups ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                        <span className={`min-w-0 flex-1 truncate font-medium ${hasGroups ? 'text-slate-400' : 'text-slate-700'}`} title={item.name}>
+                      <Label htmlFor={checkboxId} className="flex min-w-0 flex-1 items-center gap-3 font-normal cursor-pointer">
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-700" title={item.name}>
                           {item.name}
                         </span>
                         <span className="hidden w-44 truncate text-xs text-slate-500 md:block" title={getCategoryNameForItem(item)}>
@@ -692,7 +674,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                         </span>
                         {hasGroups && (
                           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            Ja possui etapas
+                            Sobrescreve etapas
                           </span>
                         )}
                       </Label>
