@@ -260,9 +260,25 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       let finalOrderId = activeOrderId;
       const batch = writeBatch(db);
       
+      const sanitizedItems = cart.map(i => ({
+        id: i.id || '',
+        name: i.name || '',
+        quantity: Number(i.quantity) || 1,
+        unitPrice: Number(i.unitPrice ?? i.price) || 0,
+        addons: (i.addons || []).map((addon: any) => ({
+          id: addon.id || '',
+          name: addon.name || '',
+          description: addon.description || '',
+          price: Number(addon.price) || 0
+        })),
+        notes: i.notes || '',
+        isCombo: !!i.isCombo,
+        comboItems: i.comboItems || null
+      }));
+
       if (activeOrderId) {
         batch.update(doc(db, 'orders', activeOrderId), {
-          items: cart,
+          items: sanitizedItems,
           totalAmount: cartTotal,
           subtotal: cartTotal,
         });
@@ -270,13 +286,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
         batch.set(doc(db, 'orders', finalOrderId), {
           id: finalOrderId,
-          ownerId: user.uid,
+          ownerId: user?.uid || 'default',
           customerName: `Mesa ${selectedTable}`,
           tableNumber: selectedTable,
           orderType: 'dine_in',
           status: 'pending',
           paymentStatus: 'pending',
-          items: cart,
+          items: sanitizedItems,
           totalAmount: cartTotal,
           subtotal: cartTotal,
           orderDateTime: new Date().toISOString(),
