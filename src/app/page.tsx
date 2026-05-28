@@ -34,6 +34,7 @@ import { PromotionsTab } from '@/components/admin/PromotionsTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { ComboModal } from '@/components/admin/ComboModal';
+import { PrintReceipt } from '@/components/admin/PrintReceipt';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
@@ -52,6 +53,7 @@ export default function AdminPage() {
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<string>('delivery');
+  const [autoOrderToPrint, setAutoOrderToPrint] = useState<any>(null);
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -323,29 +325,16 @@ export default function AdminPage() {
 
       // ── Impressão Automática de Pedidos ──
       if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
-        const ps = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
-        const mw = ps === '58mm' ? '58mm' : '80mm';
-        const fs = ps === '58mm' ? '10px' : '12px';
-        const sn = storeProfile?.general?.name || storeProfile?.name || storeProfile?.storeName || 'Loja';
-        pendingNewOnes.forEach((ord: any) => {
-          const itemsHtml = (ord.items || []).map((it: any) => {
-            const adds = (it.addons || []).map((a: any) => `<div style="padding-left:8px;font-size:10px;">&gt; ${a.name}${a.price > 0 ? ` (+R$ ${a.price.toFixed(2)})` : ''}</div>`).join('');
-            const nts = it.notes ? `<div style="padding-left:8px;font-size:10px;font-style:italic;font-weight:bold;">Obs: ${it.notes}</div>` : '';
-            return `<tr><td style="vertical-align:top;padding:2px 0;">${it.quantity}</td><td style="padding:2px 0;"><b>${it.name}</b>${adds}${nts}</td><td style="text-align:right;vertical-align:top;padding:2px 0;">R$ ${((it.unitPrice||0)*it.quantity).toFixed(2)}</td></tr>`;
-          }).join('');
-          const dt = new Date(ord.orderDateTime || Date.now());
-          const tp = ord.orderType === 'pickup' ? '*** RETIRADA ***' : ord.orderType === 'dine_in' ? '*** COMER NO LOCAL ***' : '*** ENTREGA ***';
-          const bdy = `<div style="text-align:center;margin-bottom:4px;"><h1 style="font-size:14px;font-weight:bold;text-transform:uppercase;">${sn}</h1><p style="font-size:11px;">Pedido: #${(ord.id||'').substring(0,5)}</p><p style="font-size:11px;">Data: ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</p></div><div style="text-align:center;font-weight:bold;margin:4px 0;text-transform:uppercase;">${tp}</div><div style="border-top:1px dashed #000;padding-top:4px;margin-bottom:4px;"><p style="font-weight:bold;">Dados do Cliente</p><p>Nome: ${ord.customerName||'-'}</p><p>Celular: ${ord.customerPhone||'-'}</p>${ord.deliveryAddress?`<p>Endereço: ${ord.deliveryAddress}</p>`:''}</div><table style="width:100%;border-collapse:collapse;border-top:1px dashed #000;margin-bottom:4px;"><thead><tr style="border-bottom:1px solid #000;"><th style="text-align:left;padding:2px 0;">Qtd</th><th style="text-align:left;padding:2px 0;">Item</th><th style="text-align:right;padding:2px 0;">Valor</th></tr></thead><tbody>${itemsHtml}</tbody></table><div style="border-top:1px dashed #000;padding-top:4px;"><div style="display:flex;justify-content:space-between;font-weight:bold;font-size:14px;"><span>TOTAL</span><span>R$ ${(ord.totalAmount||0).toFixed(2)}</span></div><p style="margin-top:4px;">Forma: ${ord.paymentMethod||'Não informado'}</p></div><div style="text-align:center;margin-top:12px;font-size:10px;"><p>Obrigado pela preferência!</p><p>${sn}</p></div>`;
-          const css = `*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Courier New',Courier,monospace;padding:8px;color:#000;font-size:${fs};line-height:1.4;max-width:${mw};margin:0 auto;background:#fff;}@media print{body{padding:0;width:${mw}!important;max-width:${mw}!important;}@page{size:${mw} auto!important;margin:0!important;}}`;
-          const ifr = document.createElement('iframe');
-          ifr.style.display = 'none';
-          document.body.appendChild(ifr);
-          const iDoc = ifr.contentWindow?.document;
-          if (iDoc) {
-            iDoc.write(`<html><head><title>Pedido</title><style>${css}</style></head><body>${bdy}</body></html>`);
-            iDoc.close();
-            setTimeout(() => { ifr.contentWindow?.focus(); ifr.contentWindow?.print(); setTimeout(() => { if (document.body.contains(ifr)) document.body.removeChild(ifr); }, 2000); }, 500);
-          }
+        pendingNewOnes.forEach((ord: any, index: number) => {
+          setTimeout(() => {
+            setAutoOrderToPrint(ord);
+            setTimeout(() => {
+              window.print();
+              if (index === pendingNewOnes.length - 1) {
+                setTimeout(() => setAutoOrderToPrint(null), 1000);
+              }
+            }, 500);
+          }, index * 2000);
         });
       }
     }
@@ -2559,6 +2548,9 @@ export default function AdminPage() {
         storeName={storeProfile?.general?.name}
         onComplete={() => setWizardDismissed(true)}
       />
+    )}
+    {autoOrderToPrint && (
+      <PrintReceipt order={autoOrderToPrint} storeInfo={storeProfile} />
     )}
     </>
   );
