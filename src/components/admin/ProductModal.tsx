@@ -162,7 +162,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
 
   const allAddons = [...(addons || [])].sort((a, b) => a.name.localeCompare(b.name));
   const addonContainers = (() => {
-    const byName = new Map<string, { id: string; name: string; addonIds: string[]; removedAddonIds: string[]; usePrice: boolean }>();
+    const byName = new Map<string, { id: string; name: string; addonIds: string[]; removedAddonIds: string[]; usePrice: boolean; max: number }>();
 
     for (const category of addonCategories || []) {
       const ids = Array.isArray(category.addonIds) ? category.addonIds : [];
@@ -173,6 +173,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         addonIds: ids.filter(id => !removedAddonIds.includes(id)),
         removedAddonIds,
         usePrice: category.usePrice !== false,
+        max: category.max || 0,
       });
     }
 
@@ -188,6 +189,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
           addonIds: [addon.id],
           removedAddonIds: [],
           usePrice: true,
+          max: 0,
         });
       }
     }
@@ -444,7 +446,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                 <div className="flex items-center gap-1.5">
                                   <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
                                     <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
-                                    <Input type="number" min="0" value={group.max || 0} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de escolhas (0 = Ilimitado)" />
+                                    <Input type="number" min="0" value={group.max || getContainerForGroup(group)?.max || 0} onChange={e => handleUpdateGroup(index, 'max', parseInt(e.target.value)||0)} className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" title="Limite máximo de escolhas (0 = Ilimitado)" />
                                   </div>
                                 </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>

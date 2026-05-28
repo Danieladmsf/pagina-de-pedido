@@ -19,6 +19,7 @@ export interface AddonCategory {
   addonIds?: string[];
   removedAddonIds?: string[];
   usePrice?: boolean;
+  max?: number;
 }
 
 export interface ComboItem {
