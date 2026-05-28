@@ -44,6 +44,7 @@ interface CartDrawerProps {
   enableInventory?: boolean;
   themeId?: string | null;
   promoItemsMap?: Record<string, { promoPrice: number }>;
+  disableDelivery?: boolean;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
@@ -131,7 +132,7 @@ const formatDate = (val: string) => {
   return f;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   // 🔍 DEBUG: Verificar props recebidas
   console.log('[CartDrawer] Props recebidas:', {
@@ -140,7 +141,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     deliveryFeeRules,
     maxDeliveryRadius,
     freeDeliveryOver,
-    rulesCount: deliveryFeeRules?.length || 0
+    rulesCount: deliveryFeeRules?.length || 0,
+    disableDelivery
   });
   const [contaCasaEnabled, setContaCasaEnabled] = useState(false);
   
@@ -161,7 +163,13 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerBirthDate, setCustomerBirthDate] = useState('');
-  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>('delivery');
+  const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>(disableDelivery ? 'pickup' : 'delivery');
+
+  useEffect(() => {
+    if (disableDelivery && orderType === 'delivery') {
+      setOrderType('pickup');
+    }
+  }, [disableDelivery, orderType]);
   
   // Pagamento
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -980,14 +988,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                 <>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold">Como você quer receber?</Label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => { setOrderType('delivery'); setDynamicFee(null); setDistanceInfo(null); }}
-                        className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
-                      >
-                        🛵 Entrega
-                      </button>
+                    <div className={`grid ${disableDelivery ? 'grid-cols-2' : 'grid-cols-3'} gap-1.5`}>
+                      {!disableDelivery && (
+                        <button
+                          type="button"
+                          onClick={() => { setOrderType('delivery'); setDynamicFee(null); setDistanceInfo(null); }}
+                          className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'delivery' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
+                        >
+                          🛵 Entrega
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => { setOrderType('pickup'); setDynamicFee(null); setDistanceInfo(null); }}
