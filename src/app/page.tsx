@@ -626,6 +626,25 @@ export default function AdminPage() {
     }
   };
 
+  const isDeliveryDisabled = storeProfile?.general?.disableDelivery || false;
+
+  const handleToggleDelivery = async () => {
+    if (!db || !user || !storeProfileRef) return;
+    try {
+      const newStatus = !isDeliveryDisabled;
+      await updateDoc(storeProfileRef, { 'general.disableDelivery': newStatus });
+      toast({
+        title: newStatus ? '🛵 Delivery Desativado' : '🛵 Delivery Ativado',
+        description: newStatus 
+          ? 'Apenas opções de retirar ou comer no local ficarão disponíveis.' 
+          : 'Clientes já podem escolher a opção de entrega.',
+      });
+    } catch (err: any) {
+      console.error('Erro ao alternar status do delivery:', err);
+      toast({ variant: 'destructive', title: 'Erro ao atualizar', description: err.message });
+    }
+  };
+
   const sendOrderWhatsAppNotification = async (order: any, status: string) => {
     if (!user || !order?.customerPhone) return;
     if (!['received', 'ready', 'out_for_delivery'].includes(status)) return;
@@ -1021,6 +1040,18 @@ export default function AdminPage() {
             <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
               {caixaAberto ? 'Aberto' : 'Fechado'}
             </Badge>
+            <button
+              onClick={handleToggleDelivery}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                isDeliveryDisabled
+                  ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+              }`}
+              title={isDeliveryDisabled ? "Ligar Delivery" : "Desligar Delivery"}
+            >
+              <span>🛵</span>
+              <span>Delivery: {isDeliveryDisabled ? 'DESLIGADO' : 'LIGADO'}</span>
+            </button>
           </div>
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
           <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">

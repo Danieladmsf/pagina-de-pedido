@@ -57,6 +57,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     printerSize: '80mm' as '80mm' | '58mm',
     autoPrint: false,
     manualPrint: false,
+    disableDelivery: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -165,6 +166,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           printerSize: formData.printerSize,
           autoPrint: formData.autoPrint,
           manualPrint: formData.manualPrint,
+          disableDelivery: formData.disableDelivery || false,
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -690,6 +692,24 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                     checked={formData.enableInventory}
                     onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
                     className="data-[state=checked]:bg-violet-600"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Serviço de Delivery (Entrega)
+                      {!formData.disableDelivery && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ligado</Badge>}
+                      {formData.disableDelivery && <Badge className="bg-red-500 hover:bg-red-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Desligado</Badge>}
+                    </Label>
+                    <p className="text-[11px] text-slate-500 max-w-md">
+                      Permitir que clientes façam pedidos com a opção de entrega em domicílio. Se desativado, apenas Retirada e Comer no Local estarão disponíveis.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={!formData.disableDelivery}
+                    onCheckedChange={(checked) => setFormData({ ...formData, disableDelivery: !checked })}
+                    className="data-[state=checked]:bg-emerald-600"
                   />
                 </div>
               </div>

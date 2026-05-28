@@ -888,6 +888,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               enableInventory={storeProfile?.general?.enableInventory || false}
               themeId={(storeProfile as any)?.theme}
               promoItemsMap={promoItemsMap}
+              disableDelivery={storeProfile?.general?.disableDelivery || false}
             />
           </div>
         </div>
