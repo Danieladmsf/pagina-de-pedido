@@ -1099,6 +1099,10 @@ export default function AdminPage() {
               isCaixaHistorico={!!caixaSelecionadoId}
               onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
               storeProfile={storeProfile}
+              items={items || []}
+              categories={categories || []}
+              addons={addons || []}
+              addonCategories={addonCategories || []}
             />
           </div>
         )}

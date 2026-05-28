@@ -5,7 +5,7 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, increment } from 'fireb
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Calculator } from 'lucide-react';
+import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Calculator, Plus, X, Minus, ShoppingCart } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { validateCustomerCredit } from '@/lib/customer-credit';
+import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -24,6 +25,10 @@ interface DeliveryTabProps {
   storeProfile?: any;
   db?: any;
   user?: any;
+  items?: any[];
+  categories?: any[];
+  addons?: any[];
+  addonCategories?: any[];
 }
 
 const DEFAULT_FORMAS_PAGAMENTO = [
@@ -33,7 +38,7 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
-export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user }: DeliveryTabProps) {
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [] }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
@@ -58,6 +63,14 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [selectedMotoboyId, setSelectedMotoboyId] = useState<string>('');
   const [valorRecebido, setValorRecebido] = useState<string>('');
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
+
+  // Estados para edição de itens do pedido
+  const [isEditItemsOpen, setIsEditItemsOpen] = useState(false);
+  const [editItemsCart, setEditItemsCart] = useState<any[]>([]);
+  const [editCategory, setEditCategory] = useState<string>('all');
+  const [editSearch, setEditSearch] = useState<string>('');
+  const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
+  const [isSavingItems, setIsSavingItems] = useState(false);
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
   
@@ -148,6 +161,94 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     setValorRecebido('');
     setPaymentSplits([]);
     setIsSplitMode(false);
+  };
+
+  const handleOpenEditItems = () => {
+    if (!selectedOrder) return;
+    setEditItemsCart(
+      (selectedOrder.items || []).map((i: any) => ({
+        ...i,
+        cartItemId: i.cartItemId || `${i.id}-${Date.now()}-${Math.random()}`
+      }))
+    );
+    setEditCategory('all');
+    setEditSearch('');
+    setIsEditItemsOpen(true);
+  };
+
+  const handleEditDialogAddToCart = (item: any, quantity: number, options: any) => {
+    const cartItemId = `${item.id}-${Date.now()}`;
+    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+    setEditItemsCart(prev => [
+      ...prev,
+      {
+        ...item,
+        cartItemId,
+        quantity,
+        addons: options.addons || [],
+        notes: options.notes || '',
+        unitPrice
+      }
+    ]);
+  };
+
+  const updateEditQuantity = (cartItemId: string, delta: number) => {
+    setEditItemsCart(prev => {
+      return prev.map(i => {
+        if ((i.cartItemId || i.id) === cartItemId) {
+          const newQ = i.quantity + delta;
+          return newQ > 0 ? { ...i, quantity: newQ } : i;
+        }
+        return i;
+      });
+    });
+  };
+
+  const removeFromEditCart = (cartItemId: string) => {
+    setEditItemsCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
+  };
+
+  const handleSaveEditedItems = async () => {
+    if (!db || !selectedOrder) return;
+    setIsSavingItems(true);
+
+    try {
+      const sanitizedItems = editItemsCart.map(i => ({
+        id: i.id || '',
+        name: i.name || '',
+        quantity: Number(i.quantity) || 1,
+        unitPrice: Number(i.unitPrice ?? i.price) || 0,
+        addons: (i.addons || []).map((addon: any) => ({
+          id: addon.id || '',
+          name: addon.name || '',
+          description: addon.description || '',
+          price: Number(addon.price) || 0
+        })),
+        notes: i.notes || '',
+        isCombo: !!i.isCombo,
+        comboItems: i.comboItems || null
+      }));
+
+      const subtotal = sanitizedItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+      const deliveryFee = Number(selectedOrder.deliveryFee) || 0;
+      const totalAmount = subtotal + deliveryFee;
+
+      const success = await updateOrderStatus(selectedOrder.id, {
+        items: sanitizedItems,
+        subtotal,
+        totalAmount
+      });
+
+      if (success !== false) {
+        toast({ title: 'Sucesso', description: 'Itens do pedido atualizados!' });
+        setIsEditItemsOpen(false);
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar edição de itens:', err);
+      toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao atualizar itens.' });
+    } finally {
+      setIsSavingItems(false);
+    }
   };
 
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
@@ -553,6 +654,20 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               )}
             </div>
 
+            <div className="flex justify-between items-center mb-1.5 shrink-0">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Itens do Pedido</span>
+              {!isReadOnlyHistorico && selectedOrder.status !== 'delivered' && selectedOrder.status !== 'canceled' && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-7 text-xs border-primary text-primary hover:bg-primary/5 font-bold gap-1 px-2.5"
+                  onClick={handleOpenEditItems}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Adicionar / Remover Itens
+                </Button>
+              )}
+            </div>
+
             {/* Tabela de Itens */}
             <div className="flex-1 overflow-y-auto border rounded-lg">
               <table className="w-full text-sm text-left">
@@ -831,6 +946,149 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
           initialAddress={quickRegisterModal.address}
         />
       )}
+      
+      {/* Modal: Editar Itens do Pedido */}
+      <Dialog open={isEditItemsOpen} onOpenChange={setIsEditItemsOpen}>
+        <DialogContent className="max-w-[850px] w-[90vw] h-[85vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="p-4 border-b shrink-0 bg-slate-50">
+            <DialogTitle className="text-base font-bold text-slate-800 flex justify-between items-center">
+              <span>🛒 Editar Itens do Pedido #{selectedOrder?.id?.substring(0, 5)}</span>
+              <span className="text-xs font-normal text-muted-foreground">Preços e adicionais do cardápio ativo</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Adicione novos itens do cardápio ou ajuste as quantidades dos itens já incluídos neste pedido.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 flex overflow-hidden min-h-0">
+            {/* Esquerda: Carrinho/Itens do Pedido atualizado localmente */}
+            <div className="w-1/2 flex flex-col border-r bg-slate-50/50 min-h-0 overflow-hidden">
+              <div className="p-3 border-b shrink-0 bg-slate-100 flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-600 uppercase">Resumo da Comanda</span>
+                <span className="text-xs font-bold text-slate-500">Qtd Itens: {editItemsCart.reduce((sum, i) => sum + i.quantity, 0)}</span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                {editItemsCart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                    <ShoppingCart className="h-10 w-10 text-slate-300" />
+                    <p className="text-sm">Nenhum item no pedido. Adicione itens do cardápio ao lado.</p>
+                  </div>
+                ) : (
+                  editItemsCart.map((item, index) => (
+                    <div key={item.cartItemId || item.id || index} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm font-medium">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{item.name}</p>
+                        <p className="text-xs text-green-600 font-bold">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                        {item.addons && item.addons.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                            {item.addons.map((a: any) => a.name).join(', ')}
+                          </div>
+                        )}
+                        {item.notes && <div className="text-[10px] text-orange-500 mt-0.5">Obs: {item.notes}</div>}
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-100 rounded-md p-0.5 border shrink-0">
+                        <button onClick={() => updateEditQuantity(item.cartItemId || item.id, -1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-3 w-3" /></button>
+                        <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
+                        <button onClick={() => updateEditQuantity(item.cartItemId || item.id, 1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-3 w-3" /></button>
+                      </div>
+                      <button onClick={() => removeFromEditCart(item.cartItemId || item.id)} className="h-8 w-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="p-4 border-t bg-white shrink-0">
+                <div className="flex justify-between items-center text-sm font-black text-slate-800 mb-1">
+                  <span>Subtotal:</span>
+                  <span>R$ {editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0).toFixed(2)}</span>
+                </div>
+                {selectedOrder?.orderType === 'delivery' && (
+                  <div className="flex justify-between items-center text-xs text-muted-foreground mb-3">
+                    <span>Taxa de Entrega:</span>
+                    <span>R$ {Number(selectedOrder.deliveryFee || 0).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-base font-black text-slate-900 border-t pt-2">
+                  <span>Total Geral:</span>
+                  <span>R$ {(editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0) + Number(selectedOrder?.deliveryFee || 0)).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Direita: Seleção rápida de itens do cardápio */}
+            <div className="w-1/2 flex flex-col bg-white min-h-0 overflow-hidden">
+              <div className="p-3 border-b shrink-0 flex gap-2 overflow-x-auto custom-scrollbar bg-slate-50">
+                <Badge 
+                  variant="secondary" 
+                  className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  onClick={() => setEditCategory('all')}
+                >
+                  Todos
+                </Badge>
+                {categories.map(cat => (
+                  <Badge 
+                    key={cat.id} 
+                    variant="secondary" 
+                    className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => setEditCategory(cat.id)}
+                  >
+                    {cat.name}
+                  </Badge>
+                ))}
+              </div>
+              <div className="p-3 border-b shrink-0 flex items-center bg-white">
+                <Input
+                  placeholder="Pesquisar produto..."
+                  value={editSearch}
+                  onChange={(e) => setEditSearch(e.target.value)}
+                  className="h-8 text-xs font-medium"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-2 gap-2 content-start bg-slate-50/30">
+                {items?.filter(item => {
+                  if (item.isAvailable === false) return false;
+                  const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
+                  const matchesSearch = item.name.toLowerCase().includes(editSearch.toLowerCase());
+                  return matchesCat && matchesSearch;
+                }).map(item => (
+                  <button 
+                    key={item.id} 
+                    onClick={() => setSelectedItemForDialog(item)}
+                    className="text-left border bg-white p-2.5 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[75px]"
+                  >
+                    <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
+                    <span className="text-xs font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="p-3 border-t shrink-0 bg-slate-50 flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsEditItemsOpen(false)}>Cancelar</Button>
+            <Button 
+              size="sm"
+              disabled={isSavingItems} 
+              onClick={handleSaveEditedItems}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold"
+            >
+              {isSavingItems ? 'Salvando...' : '💾 Salvar Alterações'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <MenuItemDialog
+        item={selectedItemForDialog}
+        isOpen={!!selectedItemForDialog}
+        onClose={() => setSelectedItemForDialog(null)}
+        allAddons={addons}
+        addonCategories={addonCategories}
+        onAddToCart={handleEditDialogAddToCart}
+        menuItems={items}
+        enableInventory={storeProfile?.general?.enableInventory || false}
+      />
     </>
   );
 }
