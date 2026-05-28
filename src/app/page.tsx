@@ -2151,9 +2151,6 @@ export default function AdminPage() {
                       <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('name')}>
                         Nome {addonSortConfig?.key === 'name' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
                       </TableHead>
-                      <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('group')}>
-                        Categoria {addonSortConfig?.key === 'group' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </TableHead>
                       <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleAddonSort('price')}>
                         Preço {addonSortConfig?.key === 'price' && (addonSortConfig.direction === 'asc' ? '↑' : '↓')}
                       </TableHead>
@@ -2163,7 +2160,7 @@ export default function AdminPage() {
                   <TableBody>
                     {filteredAddons.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
                           {addons?.length === 0 ? 'Nenhum adicional cadastrado.' : 'Nenhum adicional encontrado na busca.'}
                         </TableCell>
                       </TableRow>
@@ -2207,7 +2204,6 @@ export default function AdminPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-muted-foreground text-sm">{getAddonContainerNames(addon).join(', ')}</TableCell>
                           <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6">
                             {isContainerView ? (
