@@ -949,7 +949,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       
       {/* Modal: Editar Itens do Pedido */}
       <Dialog open={isEditItemsOpen} onOpenChange={setIsEditItemsOpen}>
-        <DialogContent className="max-w-[850px] w-[90vw] h-[85vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-none w-screen h-screen m-0 rounded-none border-none p-0 flex flex-col">
           <DialogHeader className="p-4 border-b shrink-0 bg-slate-50">
             <DialogTitle className="text-base font-bold text-slate-800 flex justify-between items-center">
               <span>🛒 Editar Itens do Pedido #{selectedOrder?.id?.substring(0, 5)}</span>
