@@ -53,6 +53,17 @@ export default function AdminPage() {
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<string>('delivery');
+  const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
+
+  const handleTabChange = (newTab: string) => {
+    if (hasUnsavedMesaChanges) {
+      if (!confirm('Você tem alterações não salvas na Mesa. Se sair, essas alterações serão perdidas. Deseja sair?')) {
+        return;
+      }
+      setHasUnsavedMesaChanges(false);
+    }
+    setActiveTab(newTab);
+  };
   const [autoOrderToPrint, setAutoOrderToPrint] = useState<any>(null);
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
@@ -1004,31 +1015,31 @@ export default function AdminPage() {
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
-      <SidebarNav activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} />
+      <SidebarNav activeTab={activeTab} setActiveTab={handleTabChange} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} />
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
         {/* Dark Top Navigation Bar */}
         <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
           <div className="flex h-full items-center">
             <button
-              onClick={() => setActiveTab('caixa')}
+              onClick={() => handleTabChange('caixa')}
               className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
             >
             Caixa
           </button>
           <button 
-            onClick={() => setActiveTab('delivery')}
+            onClick={() => handleTabChange('delivery')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'delivery' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
             Delivery
           </button>
           <button 
-            onClick={() => setActiveTab('novo_pedido')}
+            onClick={() => handleTabChange('novo_pedido')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
             Balcão
           </button>
           <button 
-            onClick={() => setActiveTab('mesas')}
+            onClick={() => handleTabChange('mesas')}
             className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
             Mesa
@@ -1086,7 +1097,7 @@ export default function AdminPage() {
               registrarLancamento={registrarLancamento}
               caixaAberto={!!caixaAberto}
               isCaixaHistorico={!!caixaSelecionadoId}
-              onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
+              onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
               storeProfile={storeProfile}
             />
           </div>
@@ -1117,7 +1128,7 @@ export default function AdminPage() {
             storeProfile={storeProfile}
             addons={addons || []}
             addonCategories={addonCategories || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
           />
           </div>
         )}
@@ -1134,7 +1145,8 @@ export default function AdminPage() {
             caixaAberto={!!caixaAberto}
             addons={addons || []}
             addonCategories={addonCategories || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); setActiveTab('caixa'); }}
+            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
+            onUnsavedChangesChange={setHasUnsavedMesaChanges}
           />
           </div>
         )}
@@ -1153,7 +1165,7 @@ export default function AdminPage() {
               setEditingCombo={(combo) => {
                 setEditingCombo(combo);
                 if (combo) {
-                  setActiveTab('produtos');
+                  handleTabChange('produtos');
                 }
               }} 
             />
