@@ -95,17 +95,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
   if (!item) return null;
 
-  const getCategoryForGroup = (group: AddonGroup) => {
-    if (group.addonCategoryId) {
-      const categoryById = addonCategories.find(item => item.id === group.addonCategoryId);
-      if (categoryById) return categoryById;
-    }
-    if (group.addonCategoryName) {
-      return addonCategories.find(item => item.name === group.addonCategoryName);
-    }
-    return undefined;
-  };
-
   const getCategoryAddonIds = (category: AddonCategory) => {
     const removedIds = new Set(category.removedAddonIds || []);
     const legacyIds = allAddons
@@ -113,6 +102,59 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       .map(addon => addon.id);
     return Array.from(new Set([...(category.addonIds || []), ...legacyIds]))
       .filter(id => !removedIds.has(id));
+  };
+
+  const normalizeName = (name: string) => {
+    if (!name) return '';
+    return name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  };
+
+  const getCategoryForGroup = (group: AddonGroup) => {
+    if (group.addonCategoryId && group.addonCategoryId !== 'undefined') {
+      const categoryById = addonCategories.find(item => item.id === group.addonCategoryId);
+      if (categoryById) return categoryById;
+    }
+    if (group.addonCategoryName && group.addonCategoryName !== 'undefined') {
+      const categoryByName = addonCategories.find(item => item.name === group.addonCategoryName);
+      if (categoryByName) return categoryByName;
+    }
+    // Match by addon overlap
+    if (group.addonIds && group.addonIds.length > 0) {
+      let bestCategory: AddonCategory | undefined = undefined;
+      let maxOverlap = 0;
+      for (const category of addonCategories) {
+        const catAddonIds = getCategoryAddonIds(category);
+        const overlap = group.addonIds.filter(id => catAddonIds.includes(id)).length;
+        if (overlap > maxOverlap) {
+          maxOverlap = overlap;
+          bestCategory = category;
+        }
+      }
+      if (bestCategory && maxOverlap > 0) return bestCategory;
+    }
+    // Match by name
+    if (group.name) {
+      const gName = normalizeName(group.name);
+      if (gName) {
+        const matches = addonCategories.filter(category => {
+          const cName = normalizeName(category.name);
+          return cName.includes(gName) || gName.includes(cName);
+        });
+        if (matches.length === 1) return matches[0];
+        if (matches.length > 1) {
+          return matches.sort((a, b) => {
+            const lenA = Math.abs(normalizeName(a.name).length - gName.length);
+            const lenB = Math.abs(normalizeName(b.name).length - gName.length);
+            return lenA - lenB;
+          })[0];
+        }
+      }
+    }
+    return undefined;
   };
 
   const getGroupAddonIds = (group: AddonGroup) => {
@@ -152,7 +194,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       const current = prev[groupIndex] || [];
       let next = [...current];
       if (delta > 0) {
-        const limit = getNumericGroupValue(group.max || getCategoryForGroup(group)?.max);
+        const limit = getNumericGroupValue((group.max !== undefined && group.max !== null) ? group.max : getCategoryForGroup(group)?.max);
         
         if (limit === 1) {
           next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
@@ -342,7 +384,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const availableAddons = allAddons.filter(a => groupAddonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
             const usesPrice = groupUsesPrice(group);
-            const maxChoices = getNumericGroupValue(group.max || getCategoryForGroup(group)?.max);
+            const maxChoices = getNumericGroupValue((group.max !== undefined && group.max !== null) ? group.max : getCategoryForGroup(group)?.max);
             const minChoices = getNumericGroupValue(group.min);
             
             if (availableAddons.length === 0) return null;

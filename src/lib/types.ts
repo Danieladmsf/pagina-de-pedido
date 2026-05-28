@@ -35,7 +35,7 @@ export interface AddonGroup {
   addonCategoryName?: string;
   usePrice?: boolean;
   min: number;        // Mínimo de seleção obrigatória
-  max: number;        // Máximo de seleção
+  max?: number;        // Máximo de seleção
 }
 
 export interface MenuItem {
