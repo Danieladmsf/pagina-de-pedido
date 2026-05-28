@@ -15,15 +15,6 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 
-const normalizeName = (name: string) => {
-  if (!name) return '';
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-};
-
 interface ProductModalProps {
   db: any;
   user: any;
@@ -217,39 +208,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       if (containerById) return containerById;
     }
     if (group.addonCategoryName && group.addonCategoryName !== 'undefined') {
-      const containerByName = addonContainers.find(container => container.name === group.addonCategoryName);
-      if (containerByName) return containerByName;
-    }
-    // Match by addon overlap
-    if (group.addonIds && group.addonIds.length > 0) {
-      let bestContainer: any = undefined;
-      let maxOverlap = 0;
-      for (const container of addonContainers) {
-        const overlap = group.addonIds.filter(id => container.addonIds.includes(id)).length;
-        if (overlap > maxOverlap) {
-          maxOverlap = overlap;
-          bestContainer = container;
-        }
-      }
-      if (bestContainer && maxOverlap > 0) return bestContainer;
-    }
-    // Match by name
-    if (group.name) {
-      const gName = normalizeName(group.name);
-      if (gName) {
-        const matches = addonContainers.filter(container => {
-          const cName = normalizeName(container.name);
-          return cName.includes(gName) || gName.includes(cName);
-        });
-        if (matches.length === 1) return matches[0];
-        if (matches.length > 1) {
-          return matches.sort((a, b) => {
-            const lenA = Math.abs(normalizeName(a.name).length - gName.length);
-            const lenB = Math.abs(normalizeName(b.name).length - gName.length);
-            return lenA - lenB;
-          })[0];
-        }
-      }
+      return addonContainers.find(container => container.name === group.addonCategoryName);
     }
     return undefined;
   };
