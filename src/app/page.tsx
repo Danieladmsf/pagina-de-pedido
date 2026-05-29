@@ -593,6 +593,7 @@ export default function AdminPage() {
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
+  const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
@@ -733,6 +734,20 @@ export default function AdminPage() {
       };
     }
   }, [isBulkCategoryModalOpen]);
+
+  // Manage quick price edit dialog
+  useEffect(() => {
+    const isOpen = quickPriceEdit !== null;
+    if (isOpen) {
+      window.history.pushState({ type: 'admin-quick-price' }, '');
+      const handlePop = () => setQuickPriceEdit(null);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-quick-price') window.history.back();
+      };
+    }
+  }, [quickPriceEdit !== null]);
 
   const reportData = React.useMemo(() => {
     if (!orders) return null;
@@ -1552,7 +1567,13 @@ export default function AdminPage() {
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">R$ {(item.price || 0).toFixed(2)}</TableCell>
+                          <TableCell
+                            className="text-primary font-semibold cursor-pointer hover:bg-primary/5 hover:underline transition-colors rounded"
+                            title="Clique para editar preço"
+                            onClick={() => {
+                              setQuickPriceEdit({ id: item.id, name: item.name, price: item.price || 0 });
+                            }}
+                          >R$ {(item.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-center">
                             <Input 
                               type="number" 
@@ -1655,6 +1676,49 @@ export default function AdminPage() {
             )}
             </div>
           )}
+
+          {/* Quick Price Edit Dialog */}
+          <Dialog open={quickPriceEdit !== null} onOpenChange={(open) => { if (!open) setQuickPriceEdit(null); }}>
+            <DialogContent className="sm:max-w-[320px]">
+              <DialogHeader>
+                <DialogTitle className="text-base">Editar Preço</DialogTitle>
+              </DialogHeader>
+              {quickPriceEdit && (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!db || !quickPriceEdit) return;
+                  const formData = new FormData(e.currentTarget);
+                  const newPrice = parseFloat(formData.get('quickPrice') as string);
+                  if (isNaN(newPrice) || newPrice < 0) {
+                    toast({ variant: 'destructive', title: 'Preço inválido' });
+                    return;
+                  }
+                  try {
+                    await updateDoc(doc(db, 'menuItems', quickPriceEdit.id), { price: newPrice });
+                    toast({ title: 'Preço atualizado!', description: `${quickPriceEdit.name}: R$ ${newPrice.toFixed(2)}` });
+                    setQuickPriceEdit(null);
+                  } catch (err: any) {
+                    toast({ variant: 'destructive', title: 'Erro', description: err?.message });
+                  }
+                }} className="space-y-4 pt-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3 font-medium">{quickPriceEdit.name}</p>
+                    <Label htmlFor="quickPrice">Novo preço (R$)</Label>
+                    <CurrencyInput
+                      id="quickPrice"
+                      name="quickPrice"
+                      defaultValue={quickPriceEdit.price}
+                      required
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" className="w-full h-11 font-bold">Salvar Preço</Button>
+                  </DialogFooter>
+                </form>
+              )}
+            </DialogContent>
+          </Dialog>
 
           {activeTab === 'categorias' && (
             <div className="mt-6">
