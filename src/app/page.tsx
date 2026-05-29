@@ -1510,7 +1510,7 @@ export default function AdminPage() {
                       <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
-                      <TableHead className="w-[100px] text-center">Ativo</TableHead>
+                      <TableHead className="w-[160px] text-center">Visibilidade</TableHead>
                       <TableHead className="text-right pr-6 w-[150px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1524,10 +1524,13 @@ export default function AdminPage() {
                     ) : filteredItems.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
-                      const isAvailable = item.isAvailable !== false; // Default is true se não estiver definido
-                      
+                      const showDelivery = item.showDelivery !== false;
+                      const showPickup = item.showPickup !== false;
+                      const showDineIn = item.showDineIn !== false;
+                      const allOff = !showDelivery && !showPickup && !showDineIn;
+                       
                       return (
-                        <TableRow key={item.id} className={!isAvailable ? 'opacity-60 bg-slate-50/50' : ''}>
+                        <TableRow key={item.id} className={allOff ? 'opacity-60 bg-slate-50/50' : ''}>
                           <TableCell className="pl-6 text-muted-foreground text-xs">{item.id.slice(-6).toUpperCase()}</TableCell>
                           <TableCell>
                             <div className="relative h-10 w-10 rounded overflow-hidden border bg-muted/30 flex items-center justify-center">
@@ -1586,14 +1589,41 @@ export default function AdminPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
-                            <Switch 
-                              checked={isAvailable}
-                              onCheckedChange={async (checked) => {
-                                if (!db) return;
-                                await updateDoc(doc(db, 'menuItems', item.id), { isAvailable: checked });
-                                toast({ title: checked ? 'Produto Ativado' : 'Produto Desativado' });
-                              }}
-                            />
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                title="Delivery"
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showDelivery ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
+                                onClick={async () => {
+                                  if (!db) return;
+                                  const newVal = !showDelivery;
+                                  await updateDoc(doc(db, 'menuItems', item.id), { showDelivery: newVal, isAvailable: newVal || showPickup || showDineIn });
+                                  toast({ title: newVal ? 'Delivery ativado' : 'Delivery desativado' });
+                                }}
+                              >🛵</button>
+                              <button
+                                type="button"
+                                title="Balcão"
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showPickup ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
+                                onClick={async () => {
+                                  if (!db) return;
+                                  const newVal = !showPickup;
+                                  await updateDoc(doc(db, 'menuItems', item.id), { showPickup: newVal, isAvailable: showDelivery || newVal || showDineIn });
+                                  toast({ title: newVal ? 'Balcão ativado' : 'Balcão desativado' });
+                                }}
+                              >🏪</button>
+                              <button
+                                type="button"
+                                title="Mesa"
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showDineIn ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
+                                onClick={async () => {
+                                  if (!db) return;
+                                  const newVal = !showDineIn;
+                                  await updateDoc(doc(db, 'menuItems', item.id), { showDineIn: newVal, isAvailable: showDelivery || showPickup || newVal });
+                                  toast({ title: newVal ? 'Mesa ativado' : 'Mesa desativado' });
+                                }}
+                              >🍽️</button>
+                            </div>
                           </TableCell>
                           <TableCell className="text-right pr-6 whitespace-nowrap">
                             <div className="flex items-center justify-end gap-0.5">
