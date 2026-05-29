@@ -134,16 +134,6 @@ const formatDate = (val: string) => {
 
 export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
-  // 🔍 DEBUG: Verificar props recebidas
-  console.log('[CartDrawer] Props recebidas:', {
-    storeAddress: storeAddress?.substring(0, 30),
-    deliveryFee,
-    deliveryFeeRules,
-    maxDeliveryRadius,
-    freeDeliveryOver,
-    rulesCount: deliveryFeeRules?.length || 0,
-    disableDelivery
-  });
   const [contaCasaEnabled, setContaCasaEnabled] = useState(false);
   
   const basePaymentMethods = (paymentMethods && paymentMethods.length > 0 ? paymentMethods : DEFAULT_PAYMENT_METHODS).filter(m => m.active);
@@ -252,8 +242,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     closeItemNoteEditor();
   };
   
-  // 🔍 DEBUG: Estado da taxa
-  console.log('[CartDrawer] Taxa:', { orderType, dynamicFee, deliveryFee, appliedDeliveryFee, isFreeDelivery, grandTotal });
+
 
   const { firestore: db, auth, user } = useCustomerFirebase();
 
@@ -329,7 +318,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
   const calculateDeliveryFee = useCallback(async (customerAddress: string, neighborhoodHint?: string) => {
     const effectiveNeighborhood = neighborhoodHint || neighborhood;
-    console.log('[CartDrawer] calculateDeliveryFee chamado:', { customerAddress, effectiveNeighborhood, storeAddress: storeAddress?.substring(0, 30), rulesCount: deliveryFeeRules?.length, rules: deliveryFeeRules });
     
     const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
     if (!storeAddress || !hasRules) {
@@ -355,7 +343,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         }),
       });
       const data = await res.json();
-      console.log('[CartDrawer] Resposta da API delivery-fee:', data);
       if (res.ok) {
         if (maxDeliveryRadius > 0 && data.distanceKm > maxDeliveryRadius) {
           setDeliveryBlocked(true);
@@ -395,7 +382,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
     if (!storeAddress || !hasRules) return;
     
-    console.log('[CartDrawer] ✅ Auto-cálculo: endereço salvo + regras prontos. Calculando taxa...');
     const addr = [savedStreet, savedNumber, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
     calculateDeliveryFee(addr);
     setAutoCalcDone(true);
@@ -432,7 +418,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
-    console.log('[CartDrawer] handleAddressSelected chamado:', { selectedAddress, neighborhoodAtual: neighborhood, cityAtual: city });
     if (!selectedAddress) return;
 
     if (selectedAddress.includes(',')) {
@@ -455,40 +440,32 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         newStreet = relevantParts[0];
       }
 
-      console.log('[CartDrawer] handleAddressSelected parseou:', { newStreet, newNeighborhood, newCity, relevantParts });
-
       setStreet(newStreet);
       setNeighborhood(newNeighborhood);
       setCity(newCity);
 
       if (orderType === 'delivery') {
         const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
-        console.log('[CartDrawer] handleAddressSelected montou fullAddr:', fullAddr);
         setTimeout(() => calculateDeliveryFee(fullAddr), 300);
       }
     } else {
       setStreet(selectedAddress);
       if (orderType === 'delivery') {
         const fullAddr = [selectedAddress, number, neighborhood, city, 'Brasil'].filter(Boolean).join(', ');
-        console.log('[CartDrawer] handleAddressSelected (sem vírgula) montou fullAddr:', fullAddr);
         calculateDeliveryFee(fullAddr);
       }
     }
   }, [orderType, number, neighborhood, city, calculateDeliveryFee]);
 
   const handlePlaceSelected = useCallback(async (placeId: string, description: string) => {
-    console.log('[CartDrawer] handlePlaceSelected chamado:', { placeId, description });
     try {
       const res = await fetch(`/api/place-details?placeId=${placeId}`);
       if (!res.ok) throw new Error('Falha ao buscar detalhes do endereço');
       const data = await res.json();
-      console.log('[CartDrawer] handlePlaceSelected recebeu do place-details:', data);
       
       let newStreet = data.street || description.split(',')[0];
       let newNeighborhood = data.neighborhood || neighborhood;
       let newCity = data.city || city;
-
-      console.log('[CartDrawer] handlePlaceSelected atualizando states:', { newStreet, newNeighborhood, newCity });
 
       setStreet(newStreet);
       if (data.neighborhood) setNeighborhood(data.neighborhood);
@@ -496,7 +473,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       if (orderType === 'delivery') {
         const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
-        console.log('[CartDrawer] handlePlaceSelected chamando calculateDeliveryFee com fullAddr:', fullAddr);
         setTimeout(() => calculateDeliveryFee(fullAddr), 300);
       }
     } catch (err) {
@@ -647,7 +623,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       }
 
       const authUser = await ensureAuthenticated(auth);
-      console.log('[CartDrawer] 🚀 Enviando pedido com uid:', authUser.uid, authUser.isAnonymous ? '(anônimo)' : `(email: ${authUser.email})`);
       // Salva/atualiza perfil do cliente no Firebase
       await setDoc(doc(db, 'customers', authUser.uid), {
         uid: authUser.uid,

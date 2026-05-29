@@ -150,7 +150,6 @@ export default function AdminPage() {
 
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    console.log('[admin] building ordersQuery for uid:', user!.uid);
     return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
   }, [db, isRealUser]);
 
@@ -258,11 +257,7 @@ export default function AdminPage() {
     return result;
   }, [items, productCategoryFilter, productSearch, sortConfig, categories]);
 
-  useEffect(() => {
-    console.log('[admin] user:', user?.uid, 'isRealUser:', isRealUser);
-    console.log('[admin] orders loading:', loadingOrders, 'count:', ordersRaw?.length, 'error:', ordersError);
-    if (ordersRaw) console.log('[admin] orders data:', ordersRaw);
-  }, [user, isRealUser, loadingOrders, ordersRaw, ordersError]);
+
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
   const whatsappWebhookSyncRef = useRef(false);

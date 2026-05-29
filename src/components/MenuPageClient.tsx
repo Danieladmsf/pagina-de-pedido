@@ -385,12 +385,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     document.title = storeDisplayName ? `${storeDisplayName} - Cardápio Digital` : 'Cardápio Digital';
   }, [storeDisplayName]);
 
-  // 🔍 DEBUG: Ver storeId e storeProfile completo
-  if (storeProfile) {
-    console.log('[MenuPageClient] ✅ storeId=' + storeId + ' | address=' + (storeProfile?.general?.address || 'VAZIO') + ' | feeRules(root)=' + JSON.stringify(storeProfile?.feeRules) + ' | feeRules(fees)=' + JSON.stringify(storeProfile?.fees?.feeRules) + ' | deliveryFee=' + storeProfile?.fees?.deliveryFee);
-  } else {
-    console.log('[MenuPageClient] ❌ storeProfile é NULL/UNDEFINED | storeId=' + storeId);
-  }
+
 
   // Controle de Presença (Cliente Online)
   React.useEffect(() => {
@@ -941,18 +936,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
             >
               <Info className="h-5 w-5" />
             </button>
-            {/* 🔍 DEBUG */}
-            {(() => {
-              console.log('[MenuPageClient] storeProfile para CartDrawer:', {
-                fees: storeProfile?.fees,
-                feeRules_root: storeProfile?.feeRules,
-                feeRules_fees: storeProfile?.fees?.feeRules,
-                address: storeProfile?.general?.address?.substring(0, 30),
-                deliveryFee: storeProfile?.fees?.deliveryFee,
-                maxRadius: storeProfile?.fees?.maxDeliveryRadius,
-              });
-              return null;
-            })()}
+
             <CartDrawer
               storeOwnerId={storeId}
               deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0}
