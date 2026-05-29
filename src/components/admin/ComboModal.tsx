@@ -26,6 +26,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
   const [hasExpiration, setHasExpiration] = useState(!!(editingCombo?.startDate || editingCombo?.endDate));
   const [startDate, setStartDate] = useState(editingCombo?.startDate || '');
   const [endDate, setEndDate] = useState(editingCombo?.endDate || '');
+  const [searchTerm, setSearchTerm] = useState('');
   
   const handleToggleItem = (item: MenuItem) => {
     if (selectedItems.find(i => i.itemId === item.id)) {
@@ -145,8 +146,15 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Selecione os Produtos do Combo</Label>
-                <div className="border rounded-md p-2 h-[200px] overflow-y-auto space-y-1">
-                  {items?.filter(i => !i.isCombo && !i.isMarmita).map((item) => (
+                <Input 
+                  type="text" 
+                  placeholder="Pesquisar produto..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="h-9 text-sm"
+                />
+                <div className="border rounded-md p-2 h-[155px] overflow-y-auto space-y-1">
+                  {items?.filter(i => !i.isCombo && !i.isMarmita && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map((item) => (
                     <div key={item.id} className="flex items-center space-x-2 p-1.5 hover:bg-slate-50 rounded">
                       <Checkbox 
                         id={`combo-item-${item.id}`} 
@@ -158,6 +166,11 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                       </Label>
                     </div>
                   ))}
+                  {items?.filter(i => !i.isCombo && !i.isMarmita && i.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground italic text-center py-4">
+                      Nenhum produto encontrado.
+                    </div>
+                  )}
                 </div>
               </div>
 
