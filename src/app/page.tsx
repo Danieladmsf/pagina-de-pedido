@@ -351,9 +351,60 @@ export default function AdminPage() {
       }
     }
 
-    // Lógica para cadastrar clientes e disparar confetes (processado sequencialmente para evitar condições de corrida assíncronas)
-    const registerNewClients = async () => {
+    // Lógica para cadastrar clientes, abater estoque e disparar confetes (processado sequencialmente para evitar condições de corrida assíncronas)
+    const processIncomingOrders = async () => {
+      const isInventoryEnabled = !!(storeProfile?.general?.enableInventory || storeProfile?.enableInventory);
       for (const order of allNewOnes) {
+        // --- 1. ABATIMENTO DE ESTOQUE IMEDIATO ---
+        if (isInventoryEnabled && order.stockDeducted !== true && order.status !== 'canceled') {
+          try {
+            const batch = writeBatch(db);
+            let hasStockUpdates = false;
+
+            for (const item of order.items || []) {
+              const qty = Number(item.quantity) || 0;
+              if (qty <= 0) continue;
+
+              if (item.isCombo && item.comboItems) {
+                for (const ci of item.comboItems) {
+                  if (ci.itemId) {
+                    const itemRef = doc(db, 'menuItems', ci.itemId);
+                    const itemSnap = await getDoc(itemRef);
+                    if (itemSnap.exists()) {
+                      const currentStock = getManagedStock(itemSnap.data().stockQuantity);
+                      if (currentStock !== null) {
+                        batch.update(itemRef, {
+                          stockQuantity: increment(-qty)
+                        });
+                        hasStockUpdates = true;
+                      }
+                    }
+                  }
+                }
+              } else if (item.id) {
+                const itemRef = doc(db, 'menuItems', item.id);
+                const itemSnap = await getDoc(itemRef);
+                if (itemSnap.exists()) {
+                  const currentStock = getManagedStock(itemSnap.data().stockQuantity);
+                  if (currentStock !== null) {
+                    batch.update(itemRef, {
+                      stockQuantity: increment(-qty)
+                    });
+                    hasStockUpdates = true;
+                  }
+                }
+              }
+            }
+
+            // Atualiza o documento do pedido indicando que o estoque já foi abatido
+            batch.update(doc(db, 'orders', order.id), { stockDeducted: true });
+            await batch.commit();
+          } catch (err) {
+            console.error("Erro ao abater estoque do pedido novo:", order.id, err);
+          }
+        }
+
+        // --- 2. CADASTRO DE CLIENTE ---
         const rawTelefone = (order.customerPhone || '').trim();
         const telefone = normalizeCreditPhone(rawTelefone);
         const nome = (order.customerName || '').trim();
@@ -409,7 +460,7 @@ export default function AdminPage() {
         }
       }
     };
-    void registerNewClients();
+    void processIncomingOrders();
 
     seenOrderIdsRef.current = currentIds;
   }, [ordersRaw, playNewOrderBeep, toast, db, user, storeProfile]);
