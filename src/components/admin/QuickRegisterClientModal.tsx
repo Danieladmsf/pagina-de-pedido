@@ -79,12 +79,14 @@ export function QuickRegisterClientModal({
 
     try {
       setIsSubmitting(true);
-      const newRef = doc(collection(db, 'clientes'));
+      const phoneNormalized = normalizeCreditPhone(phoneRaw);
+      const docId = phoneNormalized ? `${ownerId}_${phoneNormalized}` : doc(collection(db, 'clientes')).id;
+      const newRef = doc(db, 'clientes', docId);
       await setDoc(newRef, {
-        id: newRef.id,
+        id: docId,
         ownerId,
         nome: formNome,
-        celular: normalizeCreditPhone(phoneRaw),
+        celular: phoneNormalized,
         dataNascimento: formNascimento,
         logradouro: formLogradouro,
         numero: formNumero,
@@ -98,7 +100,7 @@ export function QuickRegisterClientModal({
         creditLimit: 0,
         creditPayDay: 0,
         creditBalance: 0
-      });
+      }, { merge: true });
 
       toast({ title: 'Sucesso', description: 'Cliente cadastrado com Prazo ativado!' });
       onSuccess(); // Close and let parent continue or re-trigger

@@ -627,8 +627,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         const variants = getPhoneVariants(customerPhone);
         const qClientes = query(collection(db, 'clientes'), where('ownerId', '==', effectiveStoreOwnerId), where('celular', 'in', variants));
         const snapClientes = await getDocs(qClientes);
-        let clienteRef;
+        
+        let docId = normalizedPhone ? `${effectiveStoreOwnerId}_${normalizedPhone}` : doc(collection(db, 'clientes')).id;
+        if (!snapClientes.empty) {
+          docId = snapClientes.docs[0].id;
+        }
+
+        const clienteRef = doc(db, 'clientes', docId);
         const clienteData: any = {
+          id: docId,
           ownerId: effectiveStoreOwnerId,
           nome: customerName,
           celular: normalizedPhone,
@@ -641,11 +648,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           updatedAt: new Date().toISOString(),
         };
         
-        if (!snapClientes.empty) {
-          clienteRef = doc(db, 'clientes', snapClientes.docs[0].id);
-        } else {
-          clienteRef = doc(collection(db, 'clientes'));
-          clienteData.id = clienteRef.id;
+        if (snapClientes.empty) {
           clienteData.createdAt = new Date().toISOString();
           clienteData.totalPedidos = 0;
           clienteData.totalPontos = 0;

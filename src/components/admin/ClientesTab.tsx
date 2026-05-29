@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
-import { normalizeCreditPhone } from '@/lib/customer-credit';
+import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 
 interface ClientesTabProps {
   db: any;
@@ -189,18 +189,34 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         await updateDoc(doc(db, 'clientes', editingCliente.id), data);
         toast({ title: 'Cliente atualizado!' });
       } else {
-        const newDoc = doc(collection(db, 'clientes'));
+        // Busca híbrida para novos registros para evitar duplicados se o celular já existir
+        let docId = doc(collection(db, 'clientes')).id;
+        let isExisting = false;
+
+        if (data.celular) {
+          const variants = getPhoneVariants(data.celular);
+          const q = query(collection(db, 'clientes'), where('ownerId', '==', user.uid), where('celular', 'in', variants));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            docId = snap.docs[0].id;
+            isExisting = true;
+          } else {
+            docId = `${user.uid}_${data.celular}`;
+          }
+        }
+
+        const newDoc = doc(db, 'clientes', docId);
         await setDoc(newDoc, {
           ...data,
-          id: newDoc.id,
+          id: docId,
           totalPedidos: 0,
           totalPontos: 0,
           ticketMedio: 0,
           creditBalance: 0,
           clienteDesde: new Date().toLocaleDateString('pt-BR'),
           ultimoPedido: '',
-        });
-        toast({ title: 'Cliente cadastrado!' });
+        }, { merge: true });
+        toast({ title: isExisting ? 'Cliente atualizado (já cadastrado)!' : 'Cliente cadastrado!' });
       }
       setEditingCliente(null);
     } catch (err: any) {
@@ -309,11 +325,13 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         const nome = (cols[nameIdx] || '').trim();
         if (!nome) continue;
 
-        const ref = doc(collection(db, 'clientes'));
+        const normalizedPhone = normalizeCreditPhone(cols[phoneIdx] || '');
+        const docId = normalizedPhone ? `${user.uid}_${normalizedPhone}` : doc(collection(db, 'clientes')).id;
+        const ref = doc(db, 'clientes', docId);
         batch.set(ref, {
-          id: ref.id,
+          id: docId,
           nome,
-          celular: normalizeCreditPhone(cols[phoneIdx] || ''),
+          celular: normalizedPhone,
           dataNascimento: (cols[birthIdx] || '').trim(),
           logradouro: (cols[streetIdx] || '').trim(),
           logradouroNumero: (cols[numIdx] || '').trim(),

@@ -420,12 +420,17 @@ export default function AdminPage() {
           
           try {
             const snap = await getDocs(q);
+            let docId = telefone ? `${user.uid}_${telefone}` : doc(clientesRef).id;
+            if (!snap.empty) {
+              docId = snap.docs[0].id;
+            }
+
             if (snap.empty) {
               // É um CLIENTE NOVO!
               const hoje = new Date().toLocaleDateString('pt-BR');
-              const newRef = doc(clientesRef);
+              const newRef = doc(db, 'clientes', docId);
               await setDoc(newRef, {
-                id: newRef.id,
+                id: docId,
                 ownerId: user.uid,
                 nome: nome,
                 celular: telefone,
@@ -440,7 +445,7 @@ export default function AdminPage() {
                 totalPedidos: 0, // Será incrementado quando o pedido for entregue
                 totalPontos: 0,
                 ticketMedio: 0
-              });
+              }, { merge: true });
               
               // Comemorar cliente novo no delivery!
               if (order.orderType === 'delivery') {
@@ -896,8 +901,13 @@ export default function AdminPage() {
             }
             
             const snap = await getDocs(q);
+            let docId = telefone ? `${user.uid}_${telefone}` : doc(clientesRef).id;
             if (!snap.empty) {
-              const docRef = snap.docs[0].ref;
+              docId = snap.docs[0].id;
+            }
+
+            if (!snap.empty) {
+              const docRef = doc(db, 'clientes', docId);
               const data = snap.docs[0].data();
               const oldPedidos = data.totalPedidos || 0;
               const oldTicket = data.ticketMedio || 0;
@@ -925,9 +935,9 @@ export default function AdminPage() {
 
               await updateDoc(docRef, updateData);
             } else {
-              const newRef = doc(clientesRef);
+              const newRef = doc(db, 'clientes', docId);
               await setDoc(newRef, {
-                id: newRef.id,
+                id: docId,
                 ownerId: user.uid,
                 nome: nome,
                 celular: telefone,
@@ -942,7 +952,7 @@ export default function AdminPage() {
                 totalPedidos: 1,
                 totalPontos: 0,
                 ticketMedio: valor
-              });
+              }, { merge: true });
             }
           }
         }
