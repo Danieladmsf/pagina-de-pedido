@@ -1510,7 +1510,7 @@ export default function AdminPage() {
                       <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
-                      <TableHead className="w-[160px] text-center">Visibilidade</TableHead>
+                      <TableHead className="w-[220px] text-center">Visibilidade</TableHead>
                       <TableHead className="text-right pr-6 w-[150px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1528,6 +1528,44 @@ export default function AdminPage() {
                       const showPickup = item.showPickup !== false;
                       const showDineIn = item.showDineIn !== false;
                       const allOff = !showDelivery && !showPickup && !showDineIn;
+                      const visibilityChannels = [
+                        {
+                          label: 'Delivery',
+                          active: showDelivery,
+                          activeClasses: 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100',
+                          activeTrack: 'bg-blue-500',
+                          onToggle: async () => {
+                            if (!db) return;
+                            const newVal = !showDelivery;
+                            await updateDoc(doc(db, 'menuItems', item.id), { showDelivery: newVal, isAvailable: newVal || showPickup || showDineIn });
+                            toast({ title: newVal ? 'Delivery ativado' : 'Delivery desativado' });
+                          },
+                        },
+                        {
+                          label: 'Balcão',
+                          active: showPickup,
+                          activeClasses: 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100',
+                          activeTrack: 'bg-amber-500',
+                          onToggle: async () => {
+                            if (!db) return;
+                            const newVal = !showPickup;
+                            await updateDoc(doc(db, 'menuItems', item.id), { showPickup: newVal, isAvailable: showDelivery || newVal || showDineIn });
+                            toast({ title: newVal ? 'Balcão ativado' : 'Balcão desativado' });
+                          },
+                        },
+                        {
+                          label: 'Mesa',
+                          active: showDineIn,
+                          activeClasses: 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100',
+                          activeTrack: 'bg-green-500',
+                          onToggle: async () => {
+                            if (!db) return;
+                            const newVal = !showDineIn;
+                            await updateDoc(doc(db, 'menuItems', item.id), { showDineIn: newVal, isAvailable: showDelivery || showPickup || newVal });
+                            toast({ title: newVal ? 'Mesa ativada' : 'Mesa desativada' });
+                          },
+                        },
+                      ];
                        
                       return (
                         <TableRow key={item.id} className={allOff ? 'opacity-60 bg-slate-50/50' : ''}>
@@ -1589,40 +1627,28 @@ export default function AdminPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                title="Delivery"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showDelivery ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
-                                onClick={async () => {
-                                  if (!db) return;
-                                  const newVal = !showDelivery;
-                                  await updateDoc(doc(db, 'menuItems', item.id), { showDelivery: newVal, isAvailable: newVal || showPickup || showDineIn });
-                                  toast({ title: newVal ? 'Delivery ativado' : 'Delivery desativado' });
-                                }}
-                              >🛵</button>
-                              <button
-                                type="button"
-                                title="Balcão"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showPickup ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
-                                onClick={async () => {
-                                  if (!db) return;
-                                  const newVal = !showPickup;
-                                  await updateDoc(doc(db, 'menuItems', item.id), { showPickup: newVal, isAvailable: showDelivery || newVal || showDineIn });
-                                  toast({ title: newVal ? 'Balcão ativado' : 'Balcão desativado' });
-                                }}
-                              >🏪</button>
-                              <button
-                                type="button"
-                                title="Mesa"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${showDineIn ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-100 text-slate-400 border-slate-200 line-through'}`}
-                                onClick={async () => {
-                                  if (!db) return;
-                                  const newVal = !showDineIn;
-                                  await updateDoc(doc(db, 'menuItems', item.id), { showDineIn: newVal, isAvailable: showDelivery || showPickup || newVal });
-                                  toast({ title: newVal ? 'Mesa ativado' : 'Mesa desativado' });
-                                }}
-                              >🍽️</button>
+                            <div className="mx-auto grid w-[190px] gap-1">
+                              {visibilityChannels.map((channel) => (
+                                <button
+                                  key={channel.label}
+                                  type="button"
+                                  aria-pressed={channel.active}
+                                  aria-label={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
+                                  title={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
+                                  className={`flex h-7 w-full items-center justify-between gap-2 rounded-full border px-2 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                    channel.active
+                                      ? channel.activeClasses
+                                      : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                  onClick={channel.onToggle}
+                                >
+                                  <span className="w-12 text-left">{channel.label}</span>
+                                  <span className={`relative h-4 w-8 rounded-full transition-colors ${channel.active ? channel.activeTrack : 'bg-slate-300'}`}>
+                                    <span className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${channel.active ? 'translate-x-4' : 'translate-x-0'}`} />
+                                  </span>
+                                  <span className="w-14 text-right uppercase">{channel.active ? 'Ligado' : 'Desligado'}</span>
+                                </button>
+                              ))}
                             </div>
                           </TableCell>
                           <TableCell className="text-right pr-6 whitespace-nowrap">
