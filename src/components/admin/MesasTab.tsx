@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
+import { getPhoneVariants } from '@/lib/customer-credit';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -527,7 +528,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
              setQuickRegisterModal({ isOpen: true, name: `Cliente Mesa ${selectedTable}`, phone: '', address: '' });
              return;
           }
-          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', phone));
+          const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', 'in', getPhoneVariants(phone)));
           const snap = await getDocs(q);
           if (snap.empty) {
              setIsSubmitting(false);
@@ -544,7 +545,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       for (const split of splitsToProcess) {
         if (split.methodId === 'conta_casa') {
              const ownerId = storeInfo?.id || user?.uid || 'default';
-             const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', '==', quickRegisterModal?.phone || ''));
+             const q = query(collection(db, 'clientes'), where('ownerId', '==', ownerId), where('celular', 'in', getPhoneVariants(quickRegisterModal?.phone || '')));
              const snap = await getDocs(q);
              if (!snap.empty) {
                 const cId = snap.docs[0].id;

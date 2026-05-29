@@ -33,6 +33,7 @@ import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
+import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { ComboModal } from '@/components/admin/ComboModal';
 import { PrintReceipt } from '@/components/admin/PrintReceipt';
 import { ProductModal } from '@/components/admin/ProductModal';
@@ -350,63 +351,65 @@ export default function AdminPage() {
       }
     }
 
-    // Lógica para cadastrar clientes e disparar confetes
-    allNewOnes.forEach(async (order) => {
-      const rawTelefone = (order.customerPhone || '').trim();
-      // Normalizar telefone: remover +55, espaços, traços, parênteses
-      const telefone = rawTelefone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
-      const nome = (order.customerName || '').trim();
-      
-      if (telefone || nome) {
-        const clientesRef = collection(db, 'clientes');
-        let q;
-        if (telefone) {
-          q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', '==', telefone));
-        } else {
-          q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
-        }
+    // Lógica para cadastrar clientes e disparar confetes (processado sequencialmente para evitar condições de corrida assíncronas)
+    const registerNewClients = async () => {
+      for (const order of allNewOnes) {
+        const rawTelefone = (order.customerPhone || '').trim();
+        const telefone = normalizeCreditPhone(rawTelefone);
+        const nome = (order.customerName || '').trim();
         
-        try {
-          const snap = await getDocs(q);
-          if (snap.empty) {
-            // É um CLIENTE NOVO!
-            const hoje = new Date().toLocaleDateString('pt-BR');
-            const newRef = doc(clientesRef);
-            await setDoc(newRef, {
-              id: newRef.id,
-              ownerId: user.uid,
-              nome: nome,
-              celular: telefone,
-              logradouro: order.address?.street || '',
-              logradouroNumero: order.address?.number || '',
-              complemento: order.address?.complement || '',
-              bairro: order.address?.neighborhood || '',
-              cidade: order.address?.city || '',
-              dataNascimento: order.customerBirthDate || '',
-              clienteDesde: hoje,
-              ultimoPedido: hoje,
-              totalPedidos: 0, // Será incrementado quando o pedido for entregue
-              totalPontos: 0,
-              ticketMedio: 0
-            });
-            
-            // Comemorar cliente novo no delivery!
-            if (order.orderType === 'delivery') {
-              setIsCelebrating(true);
-              const { id } = toast({ 
-                title: "🎉 CLIENTE NOVO!", 
-                description: `${nome} acabou de fazer o primeiro pedido!`,
-                className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
-                duration: 999999
-              });
-              newClientToastIdRef.current = id;
-            }
+        if (telefone || nome) {
+          const clientesRef = collection(db, 'clientes');
+          let q;
+          if (telefone) {
+            q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', 'in', getPhoneVariants(rawTelefone)));
+          } else {
+            q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
           }
-        } catch (err) {
-          console.error("Erro ao verificar/cadastrar cliente automático:", err);
+          
+          try {
+            const snap = await getDocs(q);
+            if (snap.empty) {
+              // É um CLIENTE NOVO!
+              const hoje = new Date().toLocaleDateString('pt-BR');
+              const newRef = doc(clientesRef);
+              await setDoc(newRef, {
+                id: newRef.id,
+                ownerId: user.uid,
+                nome: nome,
+                celular: telefone,
+                logradouro: order.address?.street || '',
+                logradouroNumero: order.address?.number || '',
+                complemento: order.address?.complement || '',
+                bairro: order.address?.neighborhood || '',
+                cidade: order.address?.city || '',
+                dataNascimento: order.customerBirthDate || '',
+                clienteDesde: hoje,
+                ultimoPedido: hoje,
+                totalPedidos: 0, // Será incrementado quando o pedido for entregue
+                totalPontos: 0,
+                ticketMedio: 0
+              });
+              
+              // Comemorar cliente novo no delivery!
+              if (order.orderType === 'delivery') {
+                setIsCelebrating(true);
+                const { id } = toast({ 
+                  title: "🎉 CLIENTE NOVO!", 
+                  description: `${nome} acabou de fazer o primeiro pedido!`,
+                  className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
+                  duration: 999999
+                });
+                newClientToastIdRef.current = id;
+              }
+            }
+          } catch (err) {
+            console.error("Erro ao verificar/cadastrar cliente automático:", err);
+          }
         }
       }
-    });
+    };
+    void registerNewClients();
 
     seenOrderIdsRef.current = currentIds;
   }, [ordersRaw, playNewOrderBeep, toast, db, user, storeProfile]);
@@ -827,8 +830,7 @@ export default function AdminPage() {
         // Só sincroniza se o pedido existe e não estava como entregue antes
         if (order && order.status !== 'delivered') {
           const rawTelefone = (order.customerPhone || '').trim();
-          // Normalizar telefone: remover +55, espaços, traços, parênteses
-          const telefone = rawTelefone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
+          const telefone = normalizeCreditPhone(rawTelefone);
           const nome = (order.customerName || '').trim();
           const hoje = new Date().toLocaleDateString('pt-BR');
           const valor = order.totalAmount || 0;
@@ -837,7 +839,7 @@ export default function AdminPage() {
             const clientesRef = collection(db, 'clientes');
             let q;
             if (telefone) {
-              q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', '==', telefone));
+              q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', 'in', getPhoneVariants(rawTelefone)));
             } else {
               q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
             }
@@ -859,6 +861,11 @@ export default function AdminPage() {
                 ticketMedio: novoTicket,
                 ultimoPedido: hoje
               };
+
+              // Atualiza celular para o padrão normalizado caso esteja no formato antigo
+              if (data.celular !== telefone) {
+                updateData.celular = telefone;
+              }
 
               // Atualiza data de nascimento se o cliente informou agora e antes não tinha
               if (order.customerBirthDate && !oldBirth) {

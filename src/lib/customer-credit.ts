@@ -28,7 +28,7 @@ const formatBrazilPhone = (digits: string) => {
   return '';
 };
 
-const getPhoneVariants = (phone: string) => {
+export const getPhoneVariants = (phone: string) => {
   const raw = (phone || '').trim();
   const normalized = normalizeCreditPhone(phone);
   const compact = raw.replace(/[\s\-()+]/g, '');
@@ -40,6 +40,7 @@ const getPhoneVariants = (phone: string) => {
     compact,
     formatted,
     normalized ? `+55${normalized}` : '',
+    normalized ? `55${normalized}` : '',
   ].filter(Boolean)));
 };
 

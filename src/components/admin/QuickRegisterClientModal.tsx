@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { UserPlus, Loader2 } from 'lucide-react';
+import { normalizeCreditPhone } from '@/lib/customer-credit';
 
 interface QuickRegisterClientModalProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export function QuickRegisterClientModal({
         id: newRef.id,
         ownerId,
         nome: formNome,
-        celular: phoneRaw,
+        celular: normalizeCreditPhone(phoneRaw),
         dataNascimento: formNascimento,
         logradouro: formLogradouro,
         numero: formNumero,
