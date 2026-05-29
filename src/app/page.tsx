@@ -56,6 +56,25 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<string>('delivery');
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
 
+  // Synchronize history state with activeTab
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.type === 'admin-tab') {
+        setActiveTab(event.state.tab);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    
+    // Replace initial state with current tab if no state exists
+    if (!window.history.state) {
+      window.history.replaceState({ type: 'admin-tab', tab: activeTab }, '');
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [activeTab]);
+
   const handleTabChange = (newTab: string) => {
     if (hasUnsavedMesaChanges) {
       if (!confirm('Você tem alterações não salvas na Mesa. Se sair, essas alterações serão perdidas. Deseja sair?')) {
@@ -64,6 +83,10 @@ export default function AdminPage() {
       setHasUnsavedMesaChanges(false);
     }
     setActiveTab(newTab);
+    const currentState = window.history.state;
+    if (!currentState || currentState.type !== 'admin-tab' || currentState.tab !== newTab) {
+      window.history.pushState({ type: 'admin-tab', tab: newTab }, '');
+    }
   };
   const [autoOrderToPrint, setAutoOrderToPrint] = useState<any>(null);
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
@@ -583,6 +606,131 @@ export default function AdminPage() {
   const [customTo, setCustomTo] = useState<string>('');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+
+  // Manage history state for product edit screen
+  useEffect(() => {
+    const isOpen = editingProduct !== null;
+    if (isOpen) {
+      window.history.pushState({ type: 'admin-product' }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        setEditingProduct(null);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (window.history.state?.type === 'admin-product') {
+          window.history.back();
+        }
+      };
+    }
+  }, [editingProduct !== null]);
+
+  // Manage history state for combo edit screen
+  useEffect(() => {
+    const isOpen = editingCombo !== null;
+    if (isOpen) {
+      window.history.pushState({ type: 'admin-combo' }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        setEditingCombo(null);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (window.history.state?.type === 'admin-combo') {
+          window.history.back();
+        }
+      };
+    }
+  }, [editingCombo !== null]);
+
+  // Manage history state for addon edit dialog
+  useEffect(() => {
+    const isOpen = editingAddon !== null;
+    if (isOpen) {
+      window.history.pushState({ type: 'admin-addon' }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        setEditingAddon(null);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (window.history.state?.type === 'admin-addon') {
+          window.history.back();
+        }
+      };
+    }
+  }, [editingAddon !== null]);
+
+  // Manage category creation dialog
+  useEffect(() => {
+    if (isCategoryModalOpen) {
+      window.history.pushState({ type: 'admin-category-modal' }, '');
+      const handlePop = () => setIsCategoryModalOpen(false);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-category-modal') window.history.back();
+      };
+    }
+  }, [isCategoryModalOpen]);
+
+  // Manage category config dialog
+  useEffect(() => {
+    if (isCategoryConfigModalOpen) {
+      window.history.pushState({ type: 'admin-category-config' }, '');
+      const handlePop = () => setIsCategoryConfigModalOpen(false);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-category-config') window.history.back();
+      };
+    }
+  }, [isCategoryConfigModalOpen]);
+
+  // Manage addon category dialog
+  useEffect(() => {
+    if (isAddonCategoryModalOpen) {
+      window.history.pushState({ type: 'admin-addon-category' }, '');
+      const handlePop = () => setIsAddonCategoryModalOpen(false);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-addon-category') window.history.back();
+      };
+    }
+  }, [isAddonCategoryModalOpen]);
+
+  // Manage edit category dialog
+  useEffect(() => {
+    if (isEditCategoryModalOpen) {
+      window.history.pushState({ type: 'admin-edit-category' }, '');
+      const handlePop = () => setIsEditCategoryModalOpen(false);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-edit-category') window.history.back();
+      };
+    }
+  }, [isEditCategoryModalOpen]);
+
+  // Manage bulk category assignment dialog
+  useEffect(() => {
+    if (isBulkCategoryModalOpen) {
+      window.history.pushState({ type: 'admin-bulk-category' }, '');
+      const handlePop = () => setIsBulkCategoryModalOpen(false);
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+        if (window.history.state?.type === 'admin-bulk-category') window.history.back();
+      };
+    }
+  }, [isBulkCategoryModalOpen]);
 
   const reportData = React.useMemo(() => {
     if (!orders) return null;

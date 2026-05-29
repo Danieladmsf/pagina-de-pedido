@@ -165,6 +165,44 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [customerBirthDate, setCustomerBirthDate] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>(disableDelivery ? 'pickup' : 'delivery');
 
+  // Synchronize history state for back-button handling in CartDrawer
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      if (state && state.type === 'cart-drawer') {
+        setStep(state.step);
+        setCheckoutStep(state.checkoutStep || 1);
+      } else {
+        setIsOpen(false);
+        setStep('cart');
+        setCheckoutStep(1);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    
+    // Initial push for the drawer
+    window.history.pushState({ type: 'cart-drawer', step: 'cart', checkoutStep: 1 }, '');
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isOpen]);
+
+  // Push new state when step or checkoutStep changes, so we can back out of them
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const currentState = window.history.state;
+    if (currentState && currentState.type === 'cart-drawer') {
+      if (currentState.step !== step || (step === 'info' && currentState.checkoutStep !== checkoutStep)) {
+        window.history.pushState({ type: 'cart-drawer', step, checkoutStep }, '');
+      }
+    }
+  }, [isOpen, step, checkoutStep]);
+
   useEffect(() => {
     if (disableDelivery && orderType === 'delivery') {
       setOrderType('pickup');
@@ -814,8 +852,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       } catch {}
 
       clearCart();
-      setIsOpen(false);
-      setStep('cart');
+      const pushedCount = step === 'cart' ? 1 : (1 + checkoutStep);
+      window.history.go(-pushedCount);
 
       setDynamicFee(null);
       setDistanceInfo(null);
@@ -838,8 +876,14 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
-      setIsOpen(open);
-      if (!open) { setStep('cart'); setCheckoutStep(1); }
+      if (!open) {
+        if (isOpen) {
+          const pushedCount = step === 'cart' ? 1 : (1 + checkoutStep);
+          window.history.go(-pushedCount);
+        }
+      } else {
+        setIsOpen(true);
+      }
     }}>
       <SheetTrigger asChild>
         <Button data-cart-trigger variant="outline" size="icon" className="relative bg-white border-primary/20 text-primary hover:bg-primary/5 rounded-full h-12 w-12 shadow-md">
