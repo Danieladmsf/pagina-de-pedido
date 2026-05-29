@@ -440,17 +440,45 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                 <div className="flex items-center gap-1.5">
                                    <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
                                      <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
-                                     <Input
-                                       type="number"
-                                       min="0"
-                                       value={group.max !== undefined && group.max !== null ? group.max : (getContainerForGroup(group)?.max ?? '')}
-                                       onChange={e => {
-                                         const val = e.target.value;
-                                         handleUpdateGroup(index, 'max', val === '' ? undefined : parseInt(val) || 0);
-                                       }}
-                                       className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0"
-                                       title="Limite máximo de escolhas (0 = Ilimitado)"
-                                     />
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        value={(() => {
+                                          const container = getContainerForGroup(group);
+                                          return container ? (container.max ?? 0) : (group.max ?? 0);
+                                        })()}
+                                        onChange={async (e) => {
+                                          const val = e.target.value;
+                                          const numVal = val === '' ? 0 : parseInt(val) || 0;
+                                          handleUpdateGroup(index, 'max', numVal);
+                                          
+                                          const container = getContainerForGroup(group);
+                                          if (container && db && user) {
+                                            try {
+                                              const existing = (addonCategories || []).find((c: any) => c.id === container.id || c.name === container.name);
+                                              if (existing) {
+                                                await updateDoc(doc(db, 'addonCategories', existing.id), { max: numVal });
+                                              } else if (!container.id.startsWith('legacy:')) {
+                                                await updateDoc(doc(db, 'addonCategories', container.id), { max: numVal });
+                                              } else {
+                                                const newDoc = doc(collection(db, 'addonCategories'));
+                                                await setDoc(newDoc, {
+                                                  id: newDoc.id,
+                                                  name: container.name,
+                                                  ownerId: user.uid,
+                                                  addonIds: container.addonIds,
+                                                  usePrice: container.usePrice !== false,
+                                                  max: numVal
+                                                });
+                                              }
+                                            } catch (err) {
+                                              console.error('Erro ao sincronizar limite max com container:', err);
+                                            }
+                                          }
+                                        }}
+                                        className="w-8 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0"
+                                        title="Limite máximo de escolhas (0 = Ilimitado)"
+                                      />
                                    </div>
                                  </div>
                                 <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-destructive" onClick={() => handleRemoveGroup(index)}>

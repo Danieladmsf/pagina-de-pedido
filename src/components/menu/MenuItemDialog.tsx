@@ -152,7 +152,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       const current = prev[groupIndex] || [];
       let next = [...current];
       if (delta > 0) {
-        const limit = getNumericGroupValue((group.max !== undefined && group.max !== null) ? group.max : getCategoryForGroup(group)?.max);
+        const category = getCategoryForGroup(group);
+        const limit = getNumericGroupValue(category ? category.max : group.max);
         
         if (limit === 1) {
           next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
@@ -342,7 +343,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const availableAddons = allAddons.filter(a => groupAddonIds.includes(a.id) && a.active !== false);
             const currentSelected = marmitaSelections[groupIndex] || [];
             const usesPrice = groupUsesPrice(group);
-            const maxChoices = getNumericGroupValue((group.max !== undefined && group.max !== null) ? group.max : getCategoryForGroup(group)?.max);
+            const category = getCategoryForGroup(group);
+            const maxChoices = getNumericGroupValue(category ? category.max : group.max);
             const minChoices = getNumericGroupValue(group.min);
             
             if (availableAddons.length === 0) return null;
