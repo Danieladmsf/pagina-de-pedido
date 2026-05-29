@@ -442,12 +442,15 @@ export function CaixaTab({
     pedidosDaSessao.forEach((o: any) => {
       if (!o.motoboyId) return;
       const mb = motoboys.find((m: any) => m.id === o.motoboyId);
+      const mbName = mb?.name || '';
+      const isSemTaxa = mbName.toLowerCase().includes('sem cobrar taxa') || mbName.toLowerCase().includes('sem taxa');
+
       if (!map[o.motoboyId]) {
         map[o.motoboyId] = { 
           id: o.motoboyId,
-          name: mb?.name || 'Desconhecido', 
+          name: mbName || 'Desconhecido', 
           entregas: 0, 
-          taxa: Number(mb?.fee || 0), // Diária Fixa
+          taxa: isSemTaxa ? 0 : Number(mb?.fee || 0), // Diária Fixa (0 se "sem cobrar taxa")
           somaFretes: 0,
           total: 0,
           jaPago: 0,
@@ -455,7 +458,11 @@ export function CaixaTab({
         };
       }
       map[o.motoboyId].entregas++;
-      map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0); // Soma os fretes cobrados dos clientes
+      
+      // Não soma o frete se o motoboy for "sem cobrar taxa" ou se o frete foi pago direto ao motoboy (payDeliveryToMotoboy === true)
+      if (!isSemTaxa && o.payDeliveryToMotoboy !== true) {
+        map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0); // Soma os fretes cobrados dos clientes
+      }
     });
     
     return Object.values(map).map(m => {
