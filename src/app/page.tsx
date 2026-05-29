@@ -1516,7 +1516,7 @@ export default function AdminPage() {
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[100px] text-center">Ativo</TableHead>
-                      <TableHead className="text-right pr-6 w-[120px]">Ações</TableHead>
+                      <TableHead className="text-right pr-6 w-[150px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1600,70 +1600,72 @@ export default function AdminPage() {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="text-right pr-6 space-x-1 whitespace-nowrap">
-                            {uploadingImageProductId === item.id ? (
-                              <Button variant="ghost" size="icon" disabled>
-                                <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                          <TableCell className="text-right pr-6 whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-0.5">
+                              {uploadingImageProductId === item.id ? (
+                                <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                                  <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                                </Button>
+                              ) : (
+                                <label className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-8 w-8 cursor-pointer" title="Adicionar Imagem Rápido">
+                                  <Upload className="h-4 w-4 text-emerald-600" />
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file || !db) return;
+                                      setUploadingImageProductId(item.id);
+                                      try {
+                                        toast({ title: "Enviando imagem...", description: "Por favor, aguarde." });
+                                        const url = await uploadImage(file);
+                                        await updateDoc(doc(db, 'menuItems', item.id), { imageUrl: url });
+                                        toast({ title: "Sucesso!", description: "Imagem do produto atualizada." });
+                                      } catch (err: any) {
+                                        toast({ variant: "destructive", title: "Erro ao enviar", description: err?.message || "Ocorreu um erro." });
+                                      } finally {
+                                        setUploadingImageProductId(null);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              )}
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                if (item.isCombo) {
+                                  setEditingCombo(item);
+                                } else {
+                                  setEditingProduct(item);
+                                }
+                              }} title="Editar">
+                                <Pencil className="h-4 w-4 text-blue-500" />
                               </Button>
-                            ) : (
-                              <label className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9 cursor-pointer" title="Adicionar Imagem Rápido">
-                                <Upload className="h-4 w-4 text-emerald-600" />
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file || !db) return;
-                                    setUploadingImageProductId(item.id);
-                                    try {
-                                      toast({ title: "Enviando imagem...", description: "Por favor, aguarde." });
-                                      const url = await uploadImage(file);
-                                      await updateDoc(doc(db, 'menuItems', item.id), { imageUrl: url });
-                                      toast({ title: "Sucesso!", description: "Imagem do produto atualizada." });
-                                    } catch (err: any) {
-                                      toast({ variant: "destructive", title: "Erro ao enviar", description: err?.message || "Ocorreu um erro." });
-                                    } finally {
-                                      setUploadingImageProductId(null);
-                                    }
-                                  }}
-                                />
-                              </label>
-                            )}
-                            <Button variant="ghost" size="icon" onClick={() => {
-                              if (item.isCombo) {
-                                setEditingCombo(item);
-                              } else {
-                                setEditingProduct(item);
-                              }
-                            }} title="Editar">
-                              <Pencil className="h-4 w-4 text-blue-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={async () => {
-                              const newName = prompt(`Nome da cópia de "${item.name}":`, `${item.name} (Cópia)`);
-                              if (!newName || !db || !user) return;
-                              try {
-                                const newDoc = doc(collection(db, 'menuItems'));
-                                const { id, ...itemWithoutId } = item;
-                                await setDoc(newDoc, {
-                                  ...itemWithoutId,
-                                  id: newDoc.id,
-                                  name: newName,
-                                  createdAt: Date.now()
-                                });
-                                toast({ title: "Produto duplicado com sucesso!" });
-                              } catch(e: any) {
-                                toast({ variant: 'destructive', title: "Erro ao duplicar", description: e.message });
-                              }
-                            }} title="Duplicar">
-                              <Copy className="h-4 w-4 text-emerald-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={async () => {
-                              if (!db) return;
-                              if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
-                            }} title="Excluir">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => {
+                                const newName = prompt(`Nome da cópia de "${item.name}":`, `${item.name} (Cópia)`);
+                                if (!newName || !db || !user) return;
+                                try {
+                                  const newDoc = doc(collection(db, 'menuItems'));
+                                  const { id, ...itemWithoutId } = item;
+                                  await setDoc(newDoc, {
+                                    ...itemWithoutId,
+                                    id: newDoc.id,
+                                    name: newName,
+                                    createdAt: Date.now()
+                                  });
+                                  toast({ title: "Produto duplicado com sucesso!" });
+                                } catch(e: any) {
+                                  toast({ variant: 'destructive', title: "Erro ao duplicar", description: e.message });
+                                }
+                              }} title="Duplicar">
+                                <Copy className="h-4 w-4 text-emerald-500" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => {
+                                if (!db) return;
+                                if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
+                              }} title="Excluir">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
