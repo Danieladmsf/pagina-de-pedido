@@ -266,6 +266,36 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   const finalTotal = cartTotal + (Number(deliveryFeeInput) || 0);
 
+  const handleAddSplit = () => {
+    if (!selectedPayment) return;
+    const remaining = Math.max(0, finalTotal - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
+    let amount = remaining;
+    let received: number | undefined = undefined;
+    if (selectedPayment === 'dinheiro' && valorRecebido) {
+      const valRec = Number(valorRecebido);
+      if (valRec >= remaining) {
+        received = valRec;
+        amount = remaining;
+      } else {
+        amount = valRec;
+        received = valRec;
+      }
+    } else if (valorRecebido) {
+      const valRec = Number(valorRecebido);
+      if (valRec > 0) {
+        amount = Math.min(valRec, remaining);
+      }
+    }
+
+    if (amount <= 0) return;
+
+    let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
+    if (selectedPayment === 'conta_casa') label = 'Prazo';
+    setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
+    setSelectedPayment('');
+    setValorRecebido('');
+  };
+
   const handleCheckout = () => {
     if (cart.length === 0) return;
     setSelectedPayment('');
