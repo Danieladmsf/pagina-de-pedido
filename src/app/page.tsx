@@ -1013,7 +1013,7 @@ export default function AdminPage() {
     e.preventDefault();
     if (!user || !db) return;
     const formData = new FormData(e.currentTarget);
-    const selectedGroup = formData.get('addonGroup') as string || 'Geral';
+    const selectedGroup = editingAddon?.group || '';
     const addonData = {
       name: formData.get('addonName') as string,
       description: ((formData.get('addonDescription') as string) || '').trim(),
@@ -2163,21 +2163,6 @@ export default function AdminPage() {
                             placeholder="Ex: fatias de abacaxi fresco, porcao extra, molho especial..."
                             className="min-h-[80px] resize-none text-sm"
                           />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="addonGroup">Categoria</Label>
-                          <select 
-                            id="addonGroup" 
-                            name="addonGroup" 
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            defaultValue={editingAddon?.group || ''}
-                            required
-                          >
-                            <option value="">Selecione uma categoria...</option>
-                            {allGroups.map(g => (
-                              <option key={g} value={g}>{g}</option>
-                            ))}
-                          </select>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="addonPrice">Preço (R$)</Label>
