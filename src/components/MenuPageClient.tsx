@@ -97,6 +97,44 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  // Manage history state for product detail dialog (selectedItem)
+  useEffect(() => {
+    if (selectedItem) {
+      window.history.pushState({ type: 'product-dialog' }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        setSelectedItem(null);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (window.history.state?.type === 'product-dialog') {
+          window.history.back();
+        }
+      };
+    }
+  }, [selectedItem !== null]);
+
+  // Manage history state for store info view (showStoreInfo)
+  useEffect(() => {
+    if (showStoreInfo) {
+      window.history.pushState({ type: 'store-info' }, '');
+
+      const handlePopState = (event: PopStateEvent) => {
+        setShowStoreInfo(false);
+      };
+
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (window.history.state?.type === 'store-info') {
+          window.history.back();
+        }
+      };
+    }
+  }, [showStoreInfo]);
   const categorySectionsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const isScrollingToCategory = useRef(false);
 
