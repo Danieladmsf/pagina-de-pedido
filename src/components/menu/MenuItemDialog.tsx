@@ -456,7 +456,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
               onClick={handleAdd}
               disabled={!isStoreOpen || !canAddToCart}
             >
-              {isStoreOpen ? `Adicionar • R$ ${total.toFixed(2)}` : 'Loja Fechada'}
+              {isStoreOpen ? (total > 0 ? `Adicionar • R$ ${total.toFixed(2)}` : 'Adicionar') : 'Loja Fechada'}
             </Button>
           </div>
         </DialogFooter>
