@@ -42,6 +42,7 @@ import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
+import { uploadImage } from '@/lib/upload';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -591,6 +592,7 @@ export default function AdminPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);
+  const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
@@ -1578,6 +1580,35 @@ export default function AdminPage() {
                             />
                           </TableCell>
                           <TableCell className="text-right pr-6 space-x-1 whitespace-nowrap">
+                            {uploadingImageProductId === item.id ? (
+                              <Button variant="ghost" size="icon" disabled>
+                                <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                              </Button>
+                            ) : (
+                              <label className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9 cursor-pointer" title="Adicionar Imagem Rápido">
+                                <Upload className="h-4 w-4 text-emerald-600" />
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file || !db) return;
+                                    setUploadingImageProductId(item.id);
+                                    try {
+                                      toast({ title: "Enviando imagem...", description: "Por favor, aguarde." });
+                                      const url = await uploadImage(file);
+                                      await updateDoc(doc(db, 'menuItems', item.id), { imageUrl: url });
+                                      toast({ title: "Sucesso!", description: "Imagem do produto atualizada." });
+                                    } catch (err: any) {
+                                      toast({ variant: "destructive", title: "Erro ao enviar", description: err?.message || "Ocorreu um erro." });
+                                    } finally {
+                                      setUploadingImageProductId(null);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
                             <Button variant="ghost" size="icon" onClick={() => {
                               if (item.isCombo) {
                                 setEditingCombo(item);
