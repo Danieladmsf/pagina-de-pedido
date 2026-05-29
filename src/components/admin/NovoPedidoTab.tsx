@@ -187,6 +187,45 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     }
   }, [addressObj.street, addressObj.city, addressObj.neighborhood, addressObj.number, orderType, dynamicFee, calculatingFee, calculateDeliveryFee]);
 
+  // Efeito para carregar o rascunho salvo do localStorage na inicialização (somente cliente)
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('balcao_draft_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.cart) setCart(parsed.cart);
+        if (parsed.customerName) setCustomerName(parsed.customerName);
+        if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
+        if (parsed.orderType) setOrderType(parsed.orderType);
+        if (parsed.addressObj) setAddressObj(parsed.addressObj);
+        if (parsed.deliveryFeeInput) setDeliveryFeeInput(parsed.deliveryFeeInput);
+        if (parsed.distanceInfo) setDistanceInfo(parsed.distanceInfo);
+        if (parsed.dynamicFee) setDynamicFee(parsed.dynamicFee);
+      }
+    } catch (e) {
+      console.error('Erro ao ler rascunho do balcão:', e);
+    }
+  }, []);
+
+  // Efeito para salvar o rascunho no localStorage a cada alteração
+  React.useEffect(() => {
+    try {
+      const draft = {
+        cart,
+        customerName,
+        customerPhone,
+        orderType,
+        addressObj,
+        deliveryFeeInput,
+        distanceInfo,
+        dynamicFee
+      };
+      localStorage.setItem('balcao_draft_order', JSON.stringify(draft));
+    } catch (e) {
+      console.error('Erro ao salvar rascunho do balcão:', e);
+    }
+  }, [cart, customerName, customerPhone, orderType, addressObj, deliveryFeeInput, distanceInfo, dynamicFee]);
+
   const handleAddressSelected = (addr: string) => {
     setAddressObj(prev => ({ ...prev, street: addr }));
     const fullAddr = addressObj.number ? `${addr}, ${addressObj.number}` : addr;
@@ -441,13 +480,18 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       setTimeout(() => {
         window.print();
         setCart([]);
-        setCustomerName('');
+        setCustomerName('Cliente Balcão');
         setCustomerPhone('');
         setDeliveryFeeInput('');
         setAddressObj({ street: '', number: '', neighborhood: '', city: '' });
         setDynamicFee(null);
         setDistanceInfo(null);
         setPaymentModalOpen(false);
+        try {
+          localStorage.removeItem('balcao_draft_order');
+        } catch (e) {
+          console.error(e);
+        }
       }, 500);
 
     } catch (e: any) {

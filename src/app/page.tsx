@@ -1123,7 +1123,7 @@ export default function AdminPage() {
         {activeTab === 'novo_pedido' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <NovoPedidoTab 
-            categories={categories || []} 
+            categories={sortedProductCategories || []} 
             items={items || []} 
             db={db} 
             user={user}
@@ -1141,7 +1141,7 @@ export default function AdminPage() {
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <MesasTab 
             orders={orders || []} 
-            categories={categories || []}
+            categories={sortedProductCategories || []}
             items={items || []}
             db={db}
             user={user}

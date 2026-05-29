@@ -71,6 +71,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [editSearch, setEditSearch] = useState<string>('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [isSavingItems, setIsSavingItems] = useState(false);
+  const [feePaidDirectly, setFeePaidDirectly] = useState(false);
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
   
@@ -161,6 +162,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     setValorRecebido('');
     setPaymentSplits([]);
     setIsSplitMode(false);
+    setFeePaidDirectly(false);
   };
 
   const handleOpenEditItems = () => {
@@ -309,6 +311,16 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     
     setIsProcessing(true);
     try {
+      let isFeePaidDirectlyLocal = feePaidDirectly;
+
+      // Se pgto simples for Prazo e houver taxa de entrega
+      if (!isSplitMode && selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0) {
+        if (confirm(`O cliente já pagou a taxa de entrega de R$ ${Number(paymentModalOrder.deliveryFee).toFixed(2)} diretamente ao motoboy?\n\n(Se "Sim", a taxa será descontada e a dívida a Prazo será apenas de R$ ${Number(paymentModalOrder.totalAmount - paymentModalOrder.deliveryFee).toFixed(2)})`)) {
+          isFeePaidDirectlyLocal = true;
+          setFeePaidDirectly(true);
+        }
+      }
+
       let paymentString = '';
       const splitsToProcess = isSplitMode ? [...paymentSplits] : [];
       
@@ -324,10 +336,17 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         }
         let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
         if (selectedPayment === 'conta_casa') label = 'Prazo';
-        paymentString = selectedPayment === 'dinheiro' && change > 0 
-           ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
-           : label;
-        splitsToProcess.push({ methodId: selectedPayment, label, amount: paymentModalOrder.totalAmount });
+        
+        let amount = paymentModalOrder.totalAmount;
+        if (isFeePaidDirectlyLocal && selectedPayment === 'conta_casa') {
+          amount = paymentModalOrder.totalAmount - (Number(paymentModalOrder.deliveryFee) || 0);
+          paymentString = `${label} (Taxa de entrega paga direto ao motoboy)`;
+        } else {
+          paymentString = selectedPayment === 'dinheiro' && change > 0 
+             ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
+             : label;
+        }
+        splitsToProcess.push({ methodId: selectedPayment, label, amount });
       } else {
         // Fluxo MÚLTIPLO (Split)
         if (selectedPayment) {
@@ -356,6 +375,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         }
 
         paymentString = splitsToProcess.map(s => `${s.label}: R$ ${s.amount.toFixed(2)}`).join(' | ');
+        if (isFeePaidDirectlyLocal) {
+          paymentString += ' (Taxa de entrega paga direto ao motoboy)';
+        }
         const totalReceived = splitsToProcess.reduce((acc, s) => acc + (s.received || s.amount), 0);
         if (totalReceived > paymentModalOrder.totalAmount) {
            paymentString += ` (Troco para R$ ${totalReceived.toFixed(2)})`;
@@ -396,7 +418,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       }
 
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
-      const statusUpdated = await updateOrderStatus(paymentModalOrder.id, { status: 'delivered', paymentMethod: paymentString });
+      const updates: any = { status: 'delivered', paymentMethod: paymentString };
+      if (isFeePaidDirectlyLocal) {
+        updates.totalAmount = paymentModalOrder.totalAmount - (Number(paymentModalOrder.deliveryFee) || 0);
+        updates.payDeliveryToMotoboy = true;
+      }
+      const statusUpdated = await updateOrderStatus(paymentModalOrder.id, updates);
       if (statusUpdated === false) return;
       
       // 2. Registrar venda no caixa (se caixa estiver aberto) ou Conta da Casa
@@ -426,9 +453,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             });
           }
         }
-        toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${selectedPayment}).` });
+        toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada in ${splitsToProcess.length} partes.` : `Venda registrada (${selectedPayment}).` });
       } else {
-        toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status atualizado.' });
+        toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status updated.' });
       }
       setPaymentModalOrder(null);
     } catch (err: any) {
@@ -440,7 +467,18 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   const handleAddSplit = () => {
     if (!selectedPayment || !paymentModalOrder) return;
-    const remaining = Math.max(0, paymentModalOrder.totalAmount - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
+    
+    let isFeePaidDirectlyLocal = feePaidDirectly;
+    if (selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0 && !feePaidDirectly) {
+      if (confirm(`O cliente já pagou a taxa de entrega de R$ ${Number(paymentModalOrder.deliveryFee).toFixed(2)} diretamente ao motoboy?\n\n(Se "Sim", a taxa será descontada e o valor cobrado a Prazo não incluirá a taxa)`)) {
+        isFeePaidDirectlyLocal = true;
+        setFeePaidDirectly(true);
+      }
+    }
+
+    const currentTotalOrder = paymentModalOrder.totalAmount - (isFeePaidDirectlyLocal ? (Number(paymentModalOrder.deliveryFee) || 0) : 0);
+    const remaining = Math.max(0, currentTotalOrder - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
+    
     let amount = remaining;
     let received: number | undefined = undefined;
     const valRec = valorRecebido ? Number(valorRecebido) : 0;
@@ -707,7 +745,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
       <DialogContent className="sm:max-w-[380px] p-4">
         {(() => {
-          const totalOrder = paymentModalOrder?.totalAmount || 0;
+          const totalOrder = (paymentModalOrder?.totalAmount || 0) - (feePaidDirectly ? (Number(paymentModalOrder?.deliveryFee) || 0) : 0);
           const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
           const remaining = Math.max(0, totalOrder - totalPaid);
           const isFullyPaid = remaining <= 0;

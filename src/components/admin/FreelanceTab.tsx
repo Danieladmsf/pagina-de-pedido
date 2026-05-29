@@ -82,11 +82,13 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
 
     // Inicializa todos os motoboys cadastrados
     motoboys.forEach((mb: any) => {
+      const mbName = mb.name || '';
+      const isSemTaxa = mbName.toLowerCase().includes('sem cobrar taxa') || mbName.toLowerCase().includes('sem taxa');
       map[mb.id] = {
         id: mb.id,
-        name: mb.name,
+        name: mbName,
         entregas: 0,
-        taxa: Number(mb.fee || 0),
+        taxa: isSemTaxa ? 0 : Number(mb.fee || 0),
         somaFretes: 0,
         total: 0,
         jaPago: 0,
@@ -100,12 +102,16 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     // Soma entregas da sessão
     pedidosFiltrados.forEach((o: any) => {
       if (!o.motoboyId) return;
+      const mb = motoboys.find((m: any) => m.id === o.motoboyId);
+      const mbName = mb?.name || '';
+      const isSemTaxa = mbName.toLowerCase().includes('sem cobrar taxa') || mbName.toLowerCase().includes('sem taxa');
+
       if (!map[o.motoboyId]) {
         map[o.motoboyId] = { 
           id: o.motoboyId,
-          name: 'Desconhecido', 
+          name: mbName || 'Desconhecido', 
           entregas: 0, 
-          taxa: 0,
+          taxa: isSemTaxa ? 0 : Number(mb?.fee || 0),
           somaFretes: 0,
           total: 0,
           jaPago: 0,
@@ -116,7 +122,12 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
         };
       }
       map[o.motoboyId].entregas++;
-      map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0);
+      
+      // Não soma o frete se for "sem cobrar taxa" ou se o frete foi pago direto ao motoboy (payDeliveryToMotoboy === true)
+      if (!isSemTaxa && o.payDeliveryToMotoboy !== true) {
+        map[o.motoboyId].somaFretes += Number(o.deliveryFee || 0);
+      }
+      
       map[o.motoboyId].pedidosLista.push(o);
     });
     
@@ -127,8 +138,9 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
         diasSet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
       });
       
+      const isSemTaxaName = (m.name || '').toLowerCase().includes('sem cobrar taxa') || (m.name || '').toLowerCase().includes('sem taxa');
       m.diasTrabalhados = diasSet.size;
-      const taxaAplicada = m.diasTrabalhados > 0 ? (m.taxa * m.diasTrabalhados) : 0;
+      const taxaAplicada = m.diasTrabalhados > 0 && !isSemTaxaName ? (m.taxa * m.diasTrabalhados) : 0;
       m.total = taxaAplicada + m.somaFretes;
       
       const adiantamentosLista = lancamentosFiltrados.filter((l: any) => l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId === m.id);
