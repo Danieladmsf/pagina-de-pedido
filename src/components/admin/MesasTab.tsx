@@ -585,16 +585,21 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     if (!selectedPayment) return;
     const remaining = Math.max(0, cartTotal - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
     let amount = remaining;
-    let received = undefined;
-    if (selectedPayment === 'dinheiro' && valorRecebido) {
-      const valRec = Number(valorRecebido);
-      if (valRec >= remaining) {
-        received = valRec;
-        amount = remaining;
-      } else {
-        amount = valRec;
-        received = valRec;
+    let received: number | undefined = undefined;
+    const valRec = valorRecebido ? Number(valorRecebido) : 0;
+
+    if (selectedPayment === 'dinheiro') {
+      if (valRec > 0) {
+        if (valRec >= remaining) {
+          received = valRec;
+          amount = remaining;
+        } else {
+          amount = valRec;
+          received = valRec;
+        }
       }
+    } else if (valRec > 0) {
+      amount = Math.min(valRec, remaining);
     }
     
     if (amount <= 0) return;
