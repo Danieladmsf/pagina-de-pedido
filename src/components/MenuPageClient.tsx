@@ -1133,11 +1133,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                           </span>
                         </div>
                       </>
-                    ) : (
+                    ) : item.price > 0 ? (
                       <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
                         R$ {item.price.toFixed(2)}
                       </Badge>
-                    )}
+                    ) : null}
                     {isOutOfStock && (
                       <Badge className="absolute bottom-3 right-3 bg-red-600 text-white font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs">
                         Esgotado
