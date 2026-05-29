@@ -584,31 +584,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     }
   };
 
-  const handleAddSplit = () => {
-    if (!selectedPayment) return;
-    const remaining = Math.max(0, finalTotal - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
-    let amount = remaining;
-    let received = undefined;
-    if (selectedPayment === 'dinheiro' && valorRecebido) {
-      const valRec = Number(valorRecebido);
-      if (valRec >= remaining) {
-        received = valRec;
-        amount = remaining;
-      } else {
-        amount = valRec;
-        received = valRec;
-      }
-    }
-    
-    if (amount <= 0) return;
-    
-    let label = FORMAS_PAGAMENTO.find((f:any) => f.id === selectedPayment)?.label || selectedPayment;
-    if (selectedPayment === 'conta_casa') label = 'Prazo';
-    setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
-    setSelectedPayment('');
-    setValorRecebido('');
-  };
-
 
   if (!caixaAberto) {
     return (
