@@ -456,25 +456,46 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         totalAmount: finalTotal || 0,
         paymentMethod: paymentString || '',
         orderDateTime: new Date().toISOString(),
+        stockDeducted: !!storeProfile?.general?.enableInventory
       };
 
       const batch = writeBatch(db);
       batch.set(newOrderRef, orderData);
 
       if (storeProfile?.general?.enableInventory) {
-        cart.forEach((item) => {
+        const getManagedStock = (value: unknown): number | null => {
+          return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+        };
+
+        for (const item of cart) {
           if (item.isCombo && item.comboItems) {
-            item.comboItems.forEach((ci: any) => {
-              batch.update(doc(db, 'menuItems', ci.itemId), {
-                stockQuantity: increment(-item.quantity)
-              });
-            });
+            for (const ci of item.comboItems) {
+              if (ci.itemId) {
+                const itemRef = doc(db, 'menuItems', ci.itemId);
+                const itemSnap = await getDoc(itemRef);
+                if (itemSnap.exists()) {
+                  const currentStock = getManagedStock(itemSnap.data().stockQuantity);
+                  if (currentStock !== null) {
+                    batch.update(itemRef, {
+                      stockQuantity: increment(-item.quantity)
+                    });
+                  }
+                }
+              }
+            }
           } else if (item.id) {
-            batch.update(doc(db, 'menuItems', item.id), {
-              stockQuantity: increment(-item.quantity)
-            });
+            const itemRef = doc(db, 'menuItems', item.id);
+            const itemSnap = await getDoc(itemRef);
+            if (itemSnap.exists()) {
+              const currentStock = getManagedStock(itemSnap.data().stockQuantity);
+              if (currentStock !== null) {
+                batch.update(itemRef, {
+                  stockQuantity: increment(-item.quantity)
+                });
+              }
+            }
           }
-        });
+        }
       }
 
       await batch.commit();
