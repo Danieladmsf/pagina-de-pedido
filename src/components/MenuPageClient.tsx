@@ -9,11 +9,12 @@ import { CustomerAccountButton } from '@/components/customer/CustomerAccountButt
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { Toaster } from '@/components/ui/toaster';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { Plus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp } from 'lucide-react';
+import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -85,7 +86,8 @@ function PromoCountdown({ endDate, noEndDate }: { endDate?: Date; noEndDate?: bo
 
 export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const db = useFirestore();
-  const { addToCart, totalItems, totalPrice } = useCart();
+  const { toast } = useToast();
+  const { cart, addToCart, updateQuantity, totalItems, totalPrice } = useCart();
   const searchParams = useSearchParams();
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +227,46 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }, [activePromotions]);
 
   const hasActivePromos = Object.keys(promoItemsMap).length > 0;
+
+  const checkCartStock = useCallback((
+    projectedCart: any[],
+    menuItemsList: any[],
+    enableInventory: boolean
+  ): { allowed: boolean; message?: string } => {
+    if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
+
+    const demand: Record<string, number> = {};
+
+    projectedCart.forEach(item => {
+      const qty = Number(item.quantity) || 0;
+      if (qty <= 0) return;
+
+      if (item.isCombo && item.comboItems) {
+        item.comboItems.forEach((ci: any) => {
+          demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+        });
+      } else {
+        demand[item.id] = (demand[item.id] || 0) + qty;
+      }
+    });
+
+    for (const [productId, reqQty] of Object.entries(demand)) {
+      const matchedProduct = menuItemsList.find(m => m.id === productId);
+      if (!matchedProduct) continue;
+
+      const rawStock = matchedProduct.stockQuantity;
+      const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+
+      if (availableStock !== null && reqQty > availableStock) {
+        return {
+          allowed: false,
+          message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
+        };
+      }
+    }
+
+    return { allowed: true };
+  }, []);
 
   const itemNeedsCustomization = useCallback((item: any) => {
     const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
@@ -1030,6 +1072,8 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               const displayPrice = isPromoItem ? promo.promoPrice : item.price;
               const discountPct = isPromoItem && promo.originalPrice > 0 ? Math.round((1 - promo.promoPrice / promo.originalPrice) * 100) : 0;
 
+              const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+
               return (
                 <Card 
                   key={item.id} 
@@ -1048,6 +1092,11 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                       fill 
                       className="object-contain group-hover:scale-105 transition-transform duration-700 p-2"
                     />
+                    {qtyInCart > 0 && (
+                      <Badge className={`absolute ${isPromoItem ? 'top-14 md:top-16' : 'top-3 md:top-4'} left-3 md:left-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] md:text-xs px-2 py-0.5 rounded-full z-10 shadow-md`}>
+                        {qtyInCart}
+                      </Badge>
+                    )}
                     {isPromoItem ? (
                       <>
                         <Badge className="absolute top-3 left-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:left-4 gap-1">
@@ -1094,14 +1143,59 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                       <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
                         {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
                       </span>
-                      <Button
-                        disabled={isOutOfStock}
-                        size="sm"
-                        className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
-                        onClick={(event) => handleProductPlusClick(event, item)}
-                      >
-                        <Plus className="h-5 w-5 md:h-6 md:w-6" />
-                      </Button>
+                      {qtyInCart > 0 && !itemNeedsCustomization(item) ? (
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-md text-slate-600 hover:bg-white hover:text-primary transition-all shrink-0 p-0"
+                            onClick={() => {
+                              const simpleItem = cart.find(i => i.id === item.id && (!i.customization?.addons || i.customization.addons.length === 0));
+                              if (simpleItem) updateQuantity(simpleItem.cartId, simpleItem.quantity - 1);
+                            }}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                          <span className="font-bold text-xs text-slate-800 w-4 text-center shrink-0">{qtyInCart}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-md text-slate-600 hover:bg-white hover:text-primary transition-all shrink-0 p-0"
+                            onClick={() => {
+                              const simpleItem = cart.find(i => i.id === item.id && (!i.customization?.addons || i.customization.addons.length === 0));
+                              if (simpleItem) {
+                                const enableInventory = storeProfile?.general?.enableInventory || false;
+                                if (enableInventory) {
+                                  const projectedCart = cart.map(i =>
+                                    i.cartId === simpleItem.cartId ? { ...i, quantity: i.quantity + 1 } : i
+                                  );
+                                  const check = checkCartStock(projectedCart, items || [], enableInventory);
+                                  if (!check.allowed) {
+                                    toast({
+                                      title: "Estoque insuficiente",
+                                      description: check.message,
+                                      variant: "destructive"
+                                    });
+                                    return;
+                                  }
+                                }
+                                updateQuantity(simpleItem.cartId, simpleItem.quantity + 1);
+                              }
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          disabled={isOutOfStock}
+                          size="sm"
+                          className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
+                          onClick={(event) => handleProductPlusClick(event, item)}
+                        >
+                          <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -130,6 +130,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     return matchesCat && matchesSearch;
   });
 
+  const itemNeedsCustomization = (item: any) => {
+    const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
+    const hasAddonGroups = Array.isArray(item.addonGroups) && item.addonGroups.some((group: any) => {
+      return (Array.isArray(group.addonIds) && group.addonIds.length > 0)
+        || group.addonCategoryId
+        || group.addonCategoryName;
+    });
+    return hasNormalAddons || hasAddonGroups;
+  };
+
   const addToCart = (item: any) => {
     if (activeOrderId) {
       const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
@@ -139,7 +149,29 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         return;
       }
     }
-    setSelectedItemForDialog(item);
+    
+    if (itemNeedsCustomization(item)) {
+      setSelectedItemForDialog(item);
+    } else {
+      setCart(prev => {
+        const existingIndex = prev.findIndex(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+        if (existingIndex > -1) {
+          return prev.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i);
+        } else {
+          return [
+            ...prev,
+            {
+              ...item,
+              cartItemId: `${item.id}-${Date.now()}`,
+              quantity: 1,
+              addons: [],
+              notes: '',
+              unitPrice: item.price
+            }
+          ];
+        }
+      });
+    }
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
@@ -161,7 +193,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const updateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => {
       return prev.map(i => {
-        if ((i.cartItemId || i.id) === cartItemId) {
+        const key = i.cartItemId || i.id;
+        if (key === cartItemId) {
           const newQ = i.quantity + delta;
           return newQ > 0 ? { ...i, quantity: newQ } : i;
         }
@@ -775,16 +808,24 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 ))}
               </div>
               <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
-                {filteredItems.map(item => (
-                  <button 
-                    key={item.id} 
-                    onClick={() => addToCart(item)}
-                    className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[90px]"
-                  >
-                    <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
-                    <span className="text-sm font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
-                  </button>
-                ))}
+                {filteredItems.map(item => {
+                  const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+                  return (
+                    <button 
+                      key={item.id} 
+                      onClick={() => addToCart(item)}
+                      className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[90px] relative"
+                    >
+                      {qtyInCart > 0 && (
+                        <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
+                          {qtyInCart}
+                        </Badge>
+                      )}
+                      <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
+                      <span className="text-sm font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
+                    </button>
+                  );
+                })}
                 {filteredItems.length === 0 && (
                   <div className="col-span-full text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
                 )}

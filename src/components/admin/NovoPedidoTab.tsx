@@ -64,8 +64,39 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     return matchesCat && matchesSearch;
   });
 
+  const itemNeedsCustomization = (item: any) => {
+    const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
+    const hasAddonGroups = Array.isArray(item.addonGroups) && item.addonGroups.some((group: any) => {
+      return (Array.isArray(group.addonIds) && group.addonIds.length > 0)
+        || group.addonCategoryId
+        || group.addonCategoryName;
+    });
+    return hasNormalAddons || hasAddonGroups;
+  };
+
   const addToCart = (item: any) => {
-    setSelectedItemForDialog(item);
+    if (itemNeedsCustomization(item)) {
+      setSelectedItemForDialog(item);
+    } else {
+      setCart(prev => {
+        const existingIndex = prev.findIndex(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+        if (existingIndex > -1) {
+          return prev.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i);
+        } else {
+          return [
+            ...prev,
+            {
+              ...item,
+              cartItemId: `${item.id}-${Date.now()}`,
+              quantity: 1,
+              addons: [],
+              notes: '',
+              unitPrice: item.price
+            }
+          ];
+        }
+      });
+    }
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
@@ -87,7 +118,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const updateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => {
       return prev.map(i => {
-        if ((i.cartItemId || i.id) === cartItemId) {
+        const key = i.cartItemId || i.id;
+        if (key === cartItemId) {
           const newQ = i.quantity + delta;
           return newQ > 0 ? { ...i, quantity: newQ } : i;
         }
@@ -589,9 +621,19 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pr-2 pb-4">
             {filteredItems?.map(item => {
-              const inCart = cart.find(i => i.id === item.id);
+              const needsCust = itemNeedsCustomization(item);
+              const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+              const simpleItemInCart = cart.find(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+              const simpleCartItemId = simpleItemInCart ? (simpleItemInCart.cartItemId || simpleItemInCart.id) : item.id;
+
               return (
-                <Card key={item.id} className="overflow-hidden hover:shadow-md transition-all cursor-pointer flex flex-col group border-slate-200">
+                <Card key={item.id} className="overflow-hidden hover:shadow-md transition-all cursor-pointer flex flex-col group border-slate-200 relative" onClick={() => addToCart(item)}>
+                  {qtyInCart > 0 && (
+                    <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
+                      {qtyInCart}
+                    </Badge>
+                  )}
+                  
                   <div className="flex gap-2 p-2">
                     {item.imageUrl ? (
                       <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
@@ -610,23 +652,29 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     </div>
                   </div>
                   
-                  {inCart ? (
-                    <div className="border-t bg-slate-50 p-2 flex justify-between items-center px-4">
-                       <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={(e) => { e.stopPropagation(); updateQuantity(item.id, -1); }}>
-                         <Minus className="h-3 w-3" />
-                       </Button>
-                       <span className="font-bold text-sm">{inCart.quantity}</span>
-                       <Button variant="default" size="icon" className="h-6 w-6 rounded-full" onClick={(e) => { e.stopPropagation(); updateQuantity(item.id, 1); }}>
-                         <Plus className="h-3 w-3" />
-                       </Button>
-                    </div>
-                  ) : (
-                    <div className="border-t p-2">
+                  <div className="border-t p-2" onClick={(e) => e.stopPropagation()}>
+                    {needsCust ? (
                       <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
                          <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
                       </Button>
-                    </div>
-                  )}
+                    ) : (
+                      qtyInCart > 0 ? (
+                        <div className="flex justify-between items-center px-4 h-8 bg-slate-50 rounded">
+                           <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, -1)}>
+                             <Minus className="h-3 w-3" />
+                           </Button>
+                           <span className="font-bold text-sm">{qtyInCart}</span>
+                           <Button variant="default" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, 1)}>
+                             <Plus className="h-3 w-3" />
+                           </Button>
+                        </div>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
+                           <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
+                        </Button>
+                      )
+                    )}
+                  </div>
                 </Card>
               );
             })}
