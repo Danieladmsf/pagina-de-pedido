@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
+import { normalizeCreditPhone } from '@/lib/customer-credit';
 
 interface ClientesTabProps {
   db: any;
@@ -171,7 +172,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     try {
       const data = {
         nome: formNome.trim(),
-        celular: formCelular.trim(),
+        celular: normalizeCreditPhone(formCelular),
         dataNascimento: formNascimento.trim(),
         logradouro: formLogradouro.trim(),
         logradouroNumero: formNumero.trim(),
@@ -312,7 +313,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         batch.set(ref, {
           id: ref.id,
           nome,
-          celular: (cols[phoneIdx] || '').trim(),
+          celular: normalizeCreditPhone(cols[phoneIdx] || ''),
           dataNascimento: (cols[birthIdx] || '').trim(),
           logradouro: (cols[streetIdx] || '').trim(),
           logradouroNumero: (cols[numIdx] || '').trim(),

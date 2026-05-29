@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
 import { Textarea } from '@/components/ui/textarea';
-import { validateCustomerCredit } from '@/lib/customer-credit';
+import { validateCustomerCredit, normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 
 interface PaymentMethodConfig {
   id: string;
@@ -623,8 +623,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       // Sincroniza também com a coleção de clientes (Painel Admin)
       try {
-        const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
-        const qClientes = query(collection(db, 'clientes'), where('ownerId', '==', effectiveStoreOwnerId), where('celular', '==', normalizedPhone));
+        const normalizedPhone = normalizeCreditPhone(customerPhone);
+        const variants = getPhoneVariants(customerPhone);
+        const qClientes = query(collection(db, 'clientes'), where('ownerId', '==', effectiveStoreOwnerId), where('celular', 'in', variants));
         const snapClientes = await getDocs(qClientes);
         let clienteRef;
         const clienteData: any = {
