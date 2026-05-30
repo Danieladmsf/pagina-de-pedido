@@ -43,6 +43,7 @@ import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
+import { MENU_VISIBILITY_CHANNELS, getItemVisibilityState, getVisibilityToggleUpdate, hasAnyVisibleChannel } from '@/lib/menu-visibility';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -1545,45 +1546,18 @@ export default function AdminPage() {
                     ) : filteredItems.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
-                      const showDelivery = item.showDelivery !== false;
-                      const showPickup = item.showPickup !== false;
-                      const showDineIn = item.showDineIn !== false;
-                      const allOff = !showDelivery && !showPickup && !showDineIn;
-                      const visibilityChannels = [
-                        {
-                          label: 'Delivery',
-                          active: showDelivery,
-                          activeTrack: 'bg-blue-500',
-                          onToggle: async () => {
-                            if (!db) return;
-                            const newVal = !showDelivery;
-                            await updateDoc(doc(db, 'menuItems', item.id), { showDelivery: newVal, isAvailable: newVal || showPickup || showDineIn });
-                            toast({ title: newVal ? 'Delivery ativado' : 'Delivery desativado' });
-                          },
+                      const visibilityState = getItemVisibilityState(item);
+                      const allOff = !hasAnyVisibleChannel(item);
+                      const visibilityChannels = MENU_VISIBILITY_CHANNELS.map((channel) => ({
+                        ...channel,
+                        active: visibilityState[channel.id],
+                        onToggle: async () => {
+                          if (!db) return;
+                          const newVal = !visibilityState[channel.id];
+                          await updateDoc(doc(db, 'menuItems', item.id), getVisibilityToggleUpdate(item, channel.id, newVal));
+                          toast({ title: `${channel.label} ${newVal ? 'ativado' : 'desativado'}` });
                         },
-                        {
-                          label: 'Balcão',
-                          active: showPickup,
-                          activeTrack: 'bg-amber-500',
-                          onToggle: async () => {
-                            if (!db) return;
-                            const newVal = !showPickup;
-                            await updateDoc(doc(db, 'menuItems', item.id), { showPickup: newVal, isAvailable: showDelivery || newVal || showDineIn });
-                            toast({ title: newVal ? 'Balcão ativado' : 'Balcão desativado' });
-                          },
-                        },
-                        {
-                          label: 'Mesa',
-                          active: showDineIn,
-                          activeTrack: 'bg-green-500',
-                          onToggle: async () => {
-                            if (!db) return;
-                            const newVal = !showDineIn;
-                            await updateDoc(doc(db, 'menuItems', item.id), { showDineIn: newVal, isAvailable: showDelivery || showPickup || newVal });
-                            toast({ title: newVal ? 'Mesa ativada' : 'Mesa desativada' });
-                          },
-                        },
-                      ];
+                      }));
                        
                       return (
                         <TableRow key={item.id} className={allOff ? 'opacity-60 bg-slate-50/50' : ''}>
@@ -1654,7 +1628,7 @@ export default function AdminPage() {
                                   aria-label={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
                                   title={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
                                   className={`relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
-                                    channel.active ? `${channel.activeTrack} border-transparent` : 'border-slate-300 bg-slate-200 hover:bg-slate-300'
+                                    channel.active ? `${channel.trackClass} border-transparent` : 'border-slate-300 bg-slate-200 hover:bg-slate-300'
                                   }`}
                                   onClick={channel.onToggle}
                                 >

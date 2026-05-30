@@ -16,6 +16,7 @@ import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { validateCustomerCredit } from '@/lib/customer-credit';
+import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -56,13 +57,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   
   // Carrinho
   const [cart, setCart] = useState<any[]>([]);
-
-  const filteredItems = items?.filter(item => {
-    if (item.isAvailable === false) return false;
-    const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCat && matchesSearch;
-  });
 
   const itemNeedsCustomization = (item: any) => {
     const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
@@ -147,6 +141,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
   const [customerName, setCustomerName] = useState('Cliente Balcão');
   const [customerPhone, setCustomerPhone] = useState('');
+  const filteredItems = items?.filter(item => {
+    if (item.isAvailable === false) return false;
+    if (!isItemVisibleInChannel(item, orderType)) return false;
+    const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
   
   // Endereço e cálculo de frete
   const storeAddress = storeProfile?.general?.address || '';
