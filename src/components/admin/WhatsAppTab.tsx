@@ -75,7 +75,7 @@ interface Integration {
 function statusLabel(status?: IntegrationStatus) {
   switch (status) {
     case 'connected': return 'Conectado';
-    case 'pending_qr': return 'Aguardando QR Code';
+    case 'pending_qr': return 'Aguardando conexao';
     case 'disconnected': return 'Desconectado';
     case 'error': return 'Erro';
     default: return 'Nao configurado';
