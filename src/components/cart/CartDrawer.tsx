@@ -775,7 +775,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
           name: officialItem ? officialItem.name : item.name,
           quantity: item.quantity,
           unitPrice: safeUnitPrice,
-          addons: addons.map(a => ({ name: a.name, price: a.price })),
+          addons: addons.map(a => ({ name: a.name, price: a.price, group: a.group || '' })),
           notes: item.customization?.notes || '',
           isCombo: !!officialItem?.isCombo,
           comboItems: officialItem?.comboItems || null,

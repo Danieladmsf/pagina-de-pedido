@@ -34,7 +34,7 @@ export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
   firstContact:
     'Ol\u00e1! Seja bem-vindo(a) \u00e0 {loja}.\n\nFa\u00e7a seu pedido pelo nosso card\u00e1pio digital:\n{link}',
   orderReceived:
-    'Ol\u00e1, {primeiro_nome}! tudo bem?\u{1F60A}\nSeu pedido n\u00ba #{pedido} foi recebido com sucesso!\n\n\u{1F4E6} Resumo do pedido:\n{itens}\n\n\u{1F4B5} Total: {total}\n\u{1F4B3} Pagamento: {pagamento}{tempo_estimado}\n\nAgradecemos pela prefer\u00eancia e esperamos que aproveite seu docinho ao m\u00e1ximo! \u{1F90E}',
+    'Olá, {primeiro_nome}! tudo bem?😊\nSeu pedido nº #{pedido} foi recebido com sucesso!\n\n{itens}\n------------------------------\n\nNome: {cliente}\n------------------------------\nCelular: {celular}\n------------------------------\nFormas de Pagamento: {pagamento}\n{endereco}\n\n------------------------------\nSubtotal: {subtotal}\nTaxa de entrega: {taxa_entrega}\nValor Total: {total}{tempo_estimado}',
   orderReadyDelivery:
     'Ol\u00e1, {primeiro_nome}! \u2705\nSeu pedido n\u00ba #{pedido} est\u00e1 sendo finalizado! Em breve sair\u00e1 para entrega. \u{1F6F5}',
   orderReadyPickup:

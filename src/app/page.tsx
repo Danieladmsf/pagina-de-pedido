@@ -369,6 +369,11 @@ export default function AdminPage() {
           }, index * 2000);
         });
       }
+
+      // ── Envio Automático de Notificação WhatsApp ──
+      pendingNewOnes.forEach((ord: any) => {
+        void sendOrderWhatsAppNotification(ord, 'received');
+      });
     }
 
     // Lógica para cadastrar clientes, abater estoque e disparar confetes (processado sequencialmente para evitar condições de corrida assíncronas)
@@ -880,24 +885,118 @@ export default function AdminPage() {
     if (!user || !order?.customerPhone) return;
     if (!['received', 'ready', 'out_for_delivery'].includes(status)) return;
 
+    if (status === 'received') {
+      if (order.receivedMessageSent) {
+        console.log('[WhatsApp] Mensagem de recebido ja enviada para o pedido:', order.id);
+        return;
+      }
+      if (db) {
+        try {
+          order.receivedMessageSent = true;
+          await updateDoc(doc(db, 'orders', order.id), { receivedMessageSent: true });
+        } catch (err) {
+          console.error('[WhatsApp] Falha ao marcar receivedMessageSent no Firestore:', err);
+        }
+      }
+    }
+
     const firstName = order.customerName ? order.customerName.split(' ')[0] : 'Cliente';
     const shortId = order.id ? order.id.slice(-6).toUpperCase() : '000000';
-    const totalStr = typeof order.totalAmount === 'number' ? order.totalAmount.toFixed(2).replace('.', ',') : '0,00';
+    const totalStr = typeof order.totalAmount === 'number' ? `R$ ${order.totalAmount.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
     
     let itemsList = '';
     if (order.items && Array.isArray(order.items)) {
       itemsList = order.items.map((item: any) => {
-         const qty = item.quantity || 1;
-         const price = typeof item.unitPrice === 'number' ? (item.unitPrice * qty).toFixed(2).replace('.', ',') : '0,00';
-         return `${qty} x ${item.name} - ${price}`;
-      }).join('\n');
+        const groups: Record<string, any[]> = {};
+        if (item.addons && Array.isArray(item.addons)) {
+          item.addons.forEach((addon: any) => {
+            const gName = addon.group || '';
+            if (!groups[gName]) {
+              groups[gName] = [];
+            }
+            groups[gName].push(addon);
+          });
+        }
+
+        let itemLine = `${item.name}`;
+        if (groups[''] && groups[''].length > 0) {
+          const inlineAddons = groups[''].map((a: any) => `*${a.name}*`).join(', ');
+          if (inlineAddons) {
+            itemLine += ` - ${inlineAddons}`;
+          }
+        }
+
+        let groupLines = '';
+        Object.entries(groups).forEach(([groupName, groupAddons]) => {
+          if (groupName === '') return;
+          groupLines += `>${groupName}\n`;
+          
+          const addonCounts: Record<string, { count: number; price: number }> = {};
+          groupAddons.forEach((a: any) => {
+            if (!addonCounts[a.name]) {
+              addonCounts[a.name] = { count: 0, price: a.price || 0 };
+            }
+            addonCounts[a.name].count += 1;
+          });
+
+          Object.entries(addonCounts).forEach(([name, info]) => {
+            const priceStr = info.price > 0 
+              ? `R$ ${(info.price * info.count).toFixed(2).replace('.', ',')}` 
+              : 'R$0,00';
+            groupLines += `${info.count}x ${name} - ${priceStr}\n`;
+          });
+        });
+
+        let result = itemLine;
+        if (groupLines) {
+          result = `${itemLine} ${groupLines.trim()}`;
+        }
+        
+        const itemTotal = (item.unitPrice || 0) * (item.quantity || 1);
+        const itemTotalStr = itemTotal.toFixed(2).replace('.', ',');
+
+        return `${result}\n\nOBS: ${item.notes || 'Nenhuma'}\nQuantidade: ${item.quantity || 1}\nValor: R$${itemTotalStr}`;
+      }).join('\n------------------------------\n\n');
     }
     
     let paymentText = order.paymentMethod || 'Dinheiro';
-    if (order.paymentMethod === 'credit_card') paymentText = 'Cartão de Crédito';
-    if (order.paymentMethod === 'debit_card') paymentText = 'Cartão de Débito';
-    if (order.paymentMethod === 'pix') paymentText = 'PIX';
-    if (order.paymentMethod === 'cash') paymentText = 'Dinheiro';
+    if (order.paymentMethod === 'credit_card' || order.paymentMethod === 'credito') paymentText = 'Crédito';
+    if (order.paymentMethod === 'debit_card' || order.paymentMethod === 'debito') paymentText = 'Débito';
+    if (order.paymentMethod === 'pix') paymentText = 'Pix';
+    if (order.paymentMethod === 'cash' || order.paymentMethod === 'dinheiro') paymentText = 'Dinheiro';
+
+    let addressLine = '';
+    if (order.orderType === 'delivery') {
+      addressLine = `Entregar em: ${order.deliveryAddress || 'Não informado'}`;
+    } else if (order.orderType === 'dine_in') {
+      addressLine = `Comer no local: ${order.deliveryAddress || 'Mesa não informada'}`;
+    } else if (order.orderType === 'pickup') {
+      addressLine = `Retirar no local`;
+    }
+
+    const subtotalVal = order.subtotal !== undefined ? order.subtotal : ((order.totalAmount || 0) - (order.deliveryFee || 0));
+    const subtotalStr = `R$ ${subtotalVal.toFixed(2).replace('.', ',')}`;
+    const feeVal = order.deliveryFee || 0;
+    const feeStr = `R$ ${feeVal.toFixed(2).replace('.', ',')}`;
+
+    const formatPhoneDisplay = (phoneStr: string) => {
+      const digits = phoneStr.replace(/\D/g, '');
+      if (digits.length === 11) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      }
+      if (digits.length === 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      }
+      return phoneStr;
+    };
+    const phoneFormatted = formatPhoneDisplay(order.customerPhone || '');
+
+    let msgTempo = '';
+    if (order.orderType === 'delivery' && storeProfile?.fees?.deliveryTime) {
+      msgTempo = `\n⏳ Tempo estimado de entrega: ${storeProfile.fees.deliveryTime}`;
+    } else if (order.orderType === 'pickup' && storeProfile?.fees?.pickupTime) {
+      msgTempo = `\n⏳ Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`;
+    }
 
     let message = '';
     let msgType = '';
@@ -949,18 +1048,14 @@ export default function AdminPage() {
         itens: itemsList,
         total: totalStr,
         pagamento: paymentText,
-        tempo_estimado: status === 'received'
-          ? (
-              order.orderType === 'delivery' && storeProfile?.fees?.deliveryTime
-                ? `\n\u23f3 Tempo estimado de entrega: ${storeProfile.fees.deliveryTime}`
-                : order.orderType === 'pickup' && storeProfile?.fees?.pickupTime
-                  ? `\n\u23f3 Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`
-                  : ''
-            )
-          : '',
+        tempo_estimado: msgTempo,
         loja: storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja',
         link: buildStoreLink(storeProfile, user.uid, typeof window !== 'undefined' ? window.location.origin : undefined),
         horarios: formatWorkingHours(storeProfile?.workingHours),
+        celular: phoneFormatted,
+        endereco: addressLine,
+        subtotal: subtotalStr,
+        taxa_entrega: feeStr,
       });
     }
 
