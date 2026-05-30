@@ -12,7 +12,6 @@ import {
   Phone,
   Power,
   QrCode,
-  RefreshCw,
   Save,
   Send,
   Smartphone,
@@ -234,23 +233,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     return () => clearInterval(timer);
   }, [integration?.wapiInstanceId, integration?.connected, refreshQrCode]);
 
-  async function createInstance() {
-    setLoading(true);
-    try {
-      const data = await apiFetch('/wapi/create-instance', {
-        method: 'POST',
-        body: JSON.stringify({ empresaId, instanceName: storeName }),
-      });
-      setIntegration(data.integration);
-      setQrCode(data.qrCode || data.integration?.qrCode || '');
-      toast({ title: 'WhatsApp pronto para conectar', description: 'Escaneie o QR Code para conectar o numero da loja.' });
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao preparar WhatsApp', description: error.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function linkInstance(wapiInstanceId: string, token: string) {
     setLoading(true);
     try {
@@ -263,23 +245,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       toast({ title: 'WhatsApp vinculado', description: 'A conexao foi vinculada a esta loja com sucesso.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function reconnect() {
-    setLoading(true);
-    try {
-      const data = await apiFetch('/wapi/reconnect', {
-        method: 'POST',
-        body: JSON.stringify({ empresaId }),
-      });
-      setIntegration(data.integration);
-      setQrCode(data.qrCode || '');
-      toast({ title: 'Reconexao iniciada', description: 'Escaneie o novo QR Code se necessario.' });
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao reconectar', description: error.message });
     } finally {
       setLoading(false);
     }
@@ -433,11 +398,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                   />
 
                   <ConnectionSupportActions
-                    connected={isConnected}
                     loading={loading || loadingStatus}
-                    status={status}
-                    onRefreshQr={() => refreshQrCode()}
-                    onReconnect={reconnect}
                     onDisconnect={disconnect}
                   />
 
@@ -520,37 +481,14 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 }
 
 function ConnectionSupportActions({
-  connected,
   loading,
-  status,
-  onRefreshQr,
-  onReconnect,
   onDisconnect,
 }: {
-  connected: boolean;
   loading: boolean;
-  status?: IntegrationStatus;
-  onRefreshQr: () => void;
-  onReconnect: () => void;
   onDisconnect: () => void;
 }) {
-  const needsQr = !connected && status !== 'connected';
-  const needsReconnect = !connected || status === 'disconnected' || status === 'error';
-
   return (
     <div className="flex flex-wrap gap-2">
-      {needsQr && (
-        <Button variant="outline" onClick={onRefreshQr} disabled={loading} className="h-9 rounded-lg bg-white">
-          <QrCode className="h-4 w-4" />
-          Novo QR
-        </Button>
-      )}
-      {needsReconnect && (
-        <Button variant="outline" onClick={onReconnect} disabled={loading} className="h-9 rounded-lg bg-white">
-          <RefreshCw className="h-4 w-4" />
-          Reconectar
-        </Button>
-      )}
       <Button
         variant="ghost"
         onClick={onDisconnect}
@@ -867,7 +805,7 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
           </div>
           <p className="font-bold text-slate-900">QR Code indisponivel no momento</p>
           <p className="text-sm text-slate-600 mt-1">
-            {status === 'error' ? 'Houve um erro na conexao.' : 'Use Novo QR ou Reconectar para gerar um novo codigo.'}
+            {status === 'error' ? 'Houve um erro na conexao.' : 'A tela atualiza o codigo automaticamente.'}
           </p>
         </div>
       )}
