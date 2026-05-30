@@ -81,6 +81,36 @@ const getStockDemand = (cartItems: any[]): Record<string, number> => {
   return demand;
 };
 
+const getChannelLabel = (orderType: 'delivery' | 'pickup' | 'dine_in') => {
+  if (orderType === 'delivery') return 'Delivery';
+  if (orderType === 'pickup') return 'Balcão';
+  return 'Mesa';
+};
+
+const isItemVisibleForOrderType = (item: any, orderType: 'delivery' | 'pickup' | 'dine_in') => {
+  if (orderType === 'delivery') return item.showDelivery !== false;
+  if (orderType === 'pickup') return item.showPickup !== false;
+  return item.showDineIn !== false;
+};
+
+const checkCartChannelVisibility = (
+  cartItems: any[],
+  menuItemsList: any[],
+  orderType: 'delivery' | 'pickup' | 'dine_in'
+): { allowed: boolean; message?: string } => {
+  const hiddenItem = cartItems.find((cartItem) => {
+    const officialItem = menuItemsList.find((item) => item.id === cartItem.id) || cartItem;
+    return !isItemVisibleForOrderType(officialItem, orderType);
+  });
+
+  if (!hiddenItem) return { allowed: true };
+
+  return {
+    allowed: false,
+    message: `"${hiddenItem.name}" não está disponível para ${getChannelLabel(orderType)}.`
+  };
+};
+
 const checkCartStock = (
   projectedCart: any[],
   menuItemsList: any[],
@@ -697,6 +727,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
       const orderRef = doc(collection(db, 'orders'), orderId);
+
+      const channelCheck = checkCartChannelVisibility(cart, menuItems, orderType);
+      if (!channelCheck.allowed) {
+        toast({
+          variant: "destructive",
+          title: "Item indisponível",
+          description: channelCheck.message
+        });
+        return;
+      }
 
       // Validação de estoque antes de enviar
       if (enableInventory) {

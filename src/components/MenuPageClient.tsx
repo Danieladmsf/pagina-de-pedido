@@ -350,6 +350,13 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
   const { data: storeProfile } = useDoc(storeProfileRef);
   const { data: cashRegisters, isLoading: loadingCashRegisters } = useCollection(cashRegistersQuery);
+  const isVisibleForCustomerMenu = useCallback((item: any) => {
+    if (storeProfile?.general?.disableDelivery) {
+      return item.showPickup !== false || item.showDineIn !== false;
+    }
+
+    return item.showDelivery !== false;
+  }, [storeProfile?.general?.disableDelivery]);
 
   const hasOpenCashRegister = useMemo(() => {
     if (!storeId || loadingCashRegisters) return null;
@@ -462,11 +469,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     const now = new Date();
     return items.some(item => {
       if (!item.isCombo || item.isAvailable === false) return false;
+      if (!isVisibleForCustomerMenu(item)) return false;
       if (item.startDate && now < new Date(item.startDate)) return false;
       if (item.endDate && now > new Date(item.endDate)) return false;
       return true;
     });
-  }, [items]);
+  }, [items, isVisibleForCustomerMenu]);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -476,6 +484,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
     return items.filter(item => {
       if (item.isAvailable === false) return false;
+      if (!isVisibleForCustomerMenu(item)) return false;
       
       if (item.startDate || item.endDate) {
         const now = new Date();
@@ -498,7 +507,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
 
       return matchesSearch;
     });
-  }, [searchQuery, items, visibleCategories, promoOnlyIds]);
+  }, [searchQuery, items, visibleCategories, promoOnlyIds, isVisibleForCustomerMenu]);
 
   // Group items by category for section-based display
   const groupedItems = useMemo(() => {
@@ -510,7 +519,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         const cleanSearchQuery = removeAccents(searchQuery.toLowerCase());
         const cleanItemName = removeAccents(item.name.toLowerCase());
         const cleanItemDesc = removeAccents(item.description.toLowerCase());
-        return item.isAvailable !== false && promoItemsMap[item.id] &&
+        return item.isAvailable !== false && isVisibleForCustomerMenu(item) && promoItemsMap[item.id] &&
         (!searchQuery || cleanItemName.includes(cleanSearchQuery) || cleanItemDesc.includes(cleanSearchQuery))
       });
       if (promoItems.length > 0) {
@@ -535,7 +544,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     });
 
     return groups;
-  }, [filteredItems, visibleCategories, hasActivePromos, hasCombos, items, promoItemsMap, searchQuery]);
+  }, [filteredItems, visibleCategories, hasActivePromos, hasCombos, items, promoItemsMap, searchQuery, isVisibleForCustomerMenu]);
 
   // Scroll to category section when clicking a tab
   const scrollToCategory = useCallback((categoryId: string) => {
