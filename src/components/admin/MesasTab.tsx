@@ -38,6 +38,10 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
 
+const getManagedStock = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+};
+
 export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange }: MesasTabProps) {
   const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active && m.id !== 'conta_casa');
   const { toast } = useToast();
@@ -238,11 +242,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
             }
           });
-          Object.entries(stockRestore).forEach(([itemId, qty]) => {
-            batch.update(doc(db, 'menuItems', itemId), {
-              stockQuantity: increment(qty)
-            });
-          });
+          for (const [itemId, qty] of Object.entries(stockRestore)) {
+            const itemRef = doc(db, 'menuItems', itemId);
+            const itemSnap = await getDoc(itemRef);
+            const currentStock = itemSnap.exists() ? getManagedStock(itemSnap.data().stockQuantity) : null;
+            if (currentStock !== null) {
+              batch.update(itemRef, {
+                stockQuantity: increment(qty)
+              });
+            }
+          }
         }
 
         await batch.commit();
@@ -266,6 +275,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     // Calcula diferença para impressão da cozinha e controle de estoque
     const newItemsToPrint: any[] = [];
     const stockDiffs: Record<string, number> = {};
+    let managedStockDiffs: Record<string, number> = {};
 
     cart.forEach(item => {
       const originalItem = originalCart.find(oi => (oi.cartItemId || oi.id) === (item.cartItemId || item.id));
@@ -298,7 +308,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     });
 
     if (storeInfo?.general?.enableInventory) {
-      const itemsToValidate = Object.entries(stockDiffs).filter(([_, diff]) => diff > 0);
+      const itemsToValidate = Object.entries(stockDiffs).filter(([_, diff]) => diff !== 0);
       if (itemsToValidate.length > 0) {
         try {
           for (const [itemId, diff] of itemsToValidate) {
@@ -306,9 +316,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             const itemSnap = await getDoc(itemRef);
             if (itemSnap.exists()) {
               const itemData = itemSnap.data();
-              const rawStock = itemData.stockQuantity;
-              const currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-              if (currentStock !== null && diff > currentStock) {
+              const currentStock = getManagedStock(itemData.stockQuantity);
+              if (currentStock === null) continue;
+
+              if (diff > 0 && diff > currentStock) {
                 toast({
                   variant: 'destructive',
                   title: 'Estoque insuficiente',
@@ -317,6 +328,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 setIsSubmitting(false);
                 return;
               }
+
+              managedStockDiffs[itemId] = diff;
             }
           }
         } catch (err) {
@@ -370,7 +383,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       }
 
       if (storeInfo?.general?.enableInventory) {
-        Object.entries(stockDiffs).forEach(([itemId, diff]) => {
+        Object.entries(managedStockDiffs).forEach(([itemId, diff]) => {
           if (diff !== 0) {
             batch.update(doc(db, 'menuItems', itemId), {
               stockQuantity: increment(-diff)
