@@ -142,16 +142,24 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const loadSavedIntegration = React.useCallback(async () => {
     if (!empresaId) {
       setInitialLoading(false);
-      return;
+      return false;
     }
     try {
       const data = await apiFetch(`/wapi/integration/${empresaId}`);
-      if (data.integration) {
+      if (data.integration?.tokenConfigured) {
         setIntegration(data.integration);
         if (data.integration.qrCode) setQrCode(data.integration.qrCode);
+        return true;
       }
+
+      setIntegration(null);
+      setQrCode('');
+      return false;
     } catch {
       // Sem dados salvos; mostra tela de criacao
+      setIntegration(null);
+      setQrCode('');
+      return false;
     } finally {
       setInitialLoading(false);
     }
@@ -193,10 +201,14 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   }, [empresaId, user]);
 
   useEffect(() => {
-    loadSavedIntegration().then(() => {
+    let cancelled = false;
+    loadSavedIntegration().then((hasIntegration) => {
       // Depois de carregar do Firestore, faz checagem ao vivo em background
-      loadStatus(true);
+      if (!cancelled && hasIntegration) loadStatus(true);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [loadSavedIntegration, loadStatus]);
 
   useEffect(() => {
@@ -701,31 +713,34 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
         </p>
 
         {!showManual ? (
-          <>
+          <div className="mt-6 flex flex-col gap-2 max-w-sm mx-auto">
             <Button
+              type="button"
+              onClick={() => setShowManual(true)}
+              disabled={loading || disabled}
+              className="rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6 w-full"
+            >
+              <QrCode className="h-4 w-4 mr-2" />
+              Usar instancia ja paga
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
               onClick={onCreate}
               disabled={loading || disabled}
-              className="mt-6 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6 w-full max-w-sm mx-auto"
+              className="rounded-full h-10 bg-white"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
-              Conectar WhatsApp
+              Criar nova instancia
             </Button>
-            
-            <div className="mt-4">
-              <button 
-                onClick={() => setShowManual(true)} 
-                className="text-xs text-emerald-700 font-medium hover:underline"
-              >
-                Conectar com dados existentes
-              </button>
-            </div>
-          </>
+          </div>
         ) : (
           <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Conectar manualmente</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Usar instancia ja paga</h3>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">Codigo da conexao</Label>
+                <Label className="text-xs text-slate-600">ID da instancia</Label>
                 <Input 
                   id="wapiInstanceId"
                   name="wapiInstanceId"
@@ -739,7 +754,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">Chave de acesso</Label>
+                <Label className="text-xs text-slate-600">Token da instancia</Label>
                 <Input 
                   id="wapiToken"
                   name="wapiToken"
@@ -767,7 +782,7 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
                   onClick={() => onLink(manualId.trim(), manualToken.trim())}
                 >
                   {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
-                  Conectar e gerar QR
+                  Salvar e gerar QR
                 </Button>
               </div>
             </div>

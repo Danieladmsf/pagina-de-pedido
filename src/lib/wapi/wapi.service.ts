@@ -27,6 +27,7 @@ async function requestWapi<T>(
     token: string;
     query?: Record<string, string | number | boolean | undefined>;
     body?: Record<string, unknown>;
+    context?: 'qrcode' | 'status' | 'disconnect' | 'restart' | 'webhook' | 'message';
   },
 ): Promise<T> {
   if (!options.token) {
@@ -48,19 +49,67 @@ async function requestWapi<T>(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const text = await response.text();
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
+  const data = await parseWapiResponse(response);
 
   if (!response.ok || data?.error === true) {
-    throw new ApiError(response.status || 500, data?.message || data?.error || 'Erro na API W-API.', data);
+    throw buildWapiError(response, data, 'Erro na API W-API.', options.context);
   }
 
   return data as T;
+}
+
+async function parseWapiResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text;
+  }
+}
+
+function getProviderMessage(data: any) {
+  if (typeof data === 'string') return data;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error === 'string') return data.error;
+  if (typeof data?.data?.message === 'string') return data.data.message;
+  if (typeof data?.data?.error === 'string') return data.data.error;
+  return '';
+}
+
+function buildWapiError(
+  response: Response,
+  data: any,
+  fallback: string,
+  context?: 'create-instance' | 'qrcode' | 'status' | 'disconnect' | 'restart' | 'webhook' | 'message',
+) {
+  const status = response.ok ? 502 : response.status || 500;
+  const providerMessage = getProviderMessage(data);
+
+  if (status === 403 && context === 'create-instance') {
+    return new ApiError(
+      403,
+      'A W-API recusou a criacao automatica da instancia. O token configurado no servidor precisa ser um token integrador com permissao para /integrator/create-instance. Se sua conta W-API nao tiver essa permissao, use "Conectar com dados existentes" com o codigo da conexao e a chave da instancia.',
+      data,
+    );
+  }
+
+  if (status === 403) {
+    return new ApiError(
+      403,
+      providerMessage || 'A W-API recusou a operacao. Confira se o token da instancia esta correto e ativo.',
+      data,
+    );
+  }
+
+  if (status === 404 && (context === 'qrcode' || context === 'status')) {
+    return new ApiError(
+      404,
+      providerMessage || 'A instancia W-API nao foi encontrada ou o token salvo nao pertence a ela. Desconecte e vincule o WhatsApp novamente.',
+      data,
+    );
+  }
+
+  return new ApiError(status, providerMessage || fallback, data);
 }
 
 export interface CreateWapiInstanceInput {
@@ -113,7 +162,7 @@ export interface WapiStatusResponse {
 }
 
 export function extractWapiQrCode(response: WapiQrCodeResponse | any) {
-  return (
+  const qrCode = (
     response?.qrcode ||
     response?.qrCode ||
     response?.qr_code ||
@@ -126,6 +175,18 @@ export function extractWapiQrCode(response: WapiQrCodeResponse | any) {
     response?.data?.image ||
     ''
   );
+
+  return normalizeQrCodeImage(qrCode);
+}
+
+function normalizeQrCodeImage(value: unknown) {
+  const qrCode = String(value || '').trim();
+  if (!qrCode) return '';
+  if (/^(data:image\/|https?:\/\/|blob:)/i.test(qrCode)) return qrCode;
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(qrCode) && qrCode.length > 100) {
+    return `data:image/png;base64,${qrCode}`;
+  }
+  return qrCode;
 }
 
 function normalizeStatus(value: unknown) {
@@ -252,9 +313,9 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
       callMessage: 'Nao estamos disponiveis para chamadas. Envie uma mensagem por texto.',
     }),
   }).then(async (response) => {
-    const data = await response.json().catch(() => null);
+    const data = await parseWapiResponse(response);
     if (!response.ok || data?.error === true) {
-      throw new ApiError(response.status || 500, data?.message || data?.error || 'Erro ao criar instancia na W-API.', data);
+      throw buildWapiError(response, data, 'Erro ao criar instancia na W-API.', 'create-instance');
     }
     return data as CreateWapiInstanceResponse;
   });
@@ -264,6 +325,7 @@ export function getWapiQrCode(instanceId: string, token: string) {
   return requestWapi<WapiQrCodeResponse>(getQrCodePath(), {
     token,
     query: { instanceId, syncContacts: 'disable' },
+    context: 'qrcode',
   });
 }
 
@@ -271,6 +333,7 @@ export function getWapiStatus(instanceId: string, token: string) {
   return requestWapi<WapiStatusResponse>('/instance/status-instance', {
     token,
     query: { instanceId },
+    context: 'status',
   });
 }
 
@@ -278,6 +341,7 @@ export function disconnectWapiInstance(instanceId: string, token: string) {
   return requestWapi<{ error?: boolean; message?: string }>('/instance/disconnect', {
     token,
     query: { instanceId },
+    context: 'disconnect',
   });
 }
 
@@ -285,6 +349,7 @@ export function restartWapiInstance(instanceId: string, token: string) {
   return requestWapi<{ error?: boolean; message?: string }>('/instance/restart', {
     token,
     query: { instanceId },
+    context: 'restart',
   });
 }
 
@@ -294,6 +359,7 @@ export function updateWapiWebhook(instanceId: string, token: string, endpoint: s
     token,
     query: { instanceId },
     body: { value: webhookUrl },
+    context: 'webhook',
   });
 }
 
@@ -343,6 +409,7 @@ export function sendWapiTextMessage(
     method: 'POST',
     token,
     query: { instanceId },
+    context: 'message',
     body: {
       phone: input.phone,
       message: input.message,
@@ -362,6 +429,7 @@ export function sendWapiImageMessage(
     method: 'POST',
     token,
     query: { instanceId },
+    context: 'message',
     body: {
       phone: input.phone,
       image: input.image,
@@ -380,6 +448,7 @@ export function sendWapiDocumentMessage(
     method: 'POST',
     token,
     query: { instanceId },
+    context: 'message',
     body: {
       phone: input.phone,
       document: input.document,
