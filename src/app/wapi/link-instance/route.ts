@@ -44,17 +44,23 @@ export async function POST(request: Request) {
       let status = statusFromWapi(false);
       let numeroWhatsapp = '';
 
-      try {
-        const [qr, liveStatus] = await Promise.all([
-          getWapiQrCode(wapiInstanceId, token).catch(() => null),
-          getWapiStatus(wapiInstanceId, token).catch(() => null),
-        ]);
-        qrCode = extractWapiQrCode(qr);
-        connected = isWapiConnectedStatus(liveStatus);
+      const [qrResult, statusResult] = await Promise.allSettled([
+        getWapiQrCode(wapiInstanceId, token),
+        getWapiStatus(wapiInstanceId, token),
+      ]);
+
+      if (qrResult.status === 'fulfilled') {
+        qrCode = extractWapiQrCode(qrResult.value);
+      } else {
+        console.warn('[W-API] Link manual: QR inicial falhou:', qrResult.reason);
+      }
+
+      if (statusResult.status === 'fulfilled') {
+        connected = isWapiConnectedStatus(statusResult.value);
         status = statusFromWapi(connected);
-        numeroWhatsapp = getWapiConnectedPhone(liveStatus);
-      } catch (error) {
-        console.warn('[W-API] Link manual: QR/status inicial falhou:', error);
+        numeroWhatsapp = getWapiConnectedPhone(statusResult.value);
+      } else {
+        console.warn('[W-API] Link manual: status inicial falhou:', statusResult.reason);
       }
 
       const finalInstanceName = instanceName || `Loja vinculada - ${empresaId.slice(0, 10)}`;

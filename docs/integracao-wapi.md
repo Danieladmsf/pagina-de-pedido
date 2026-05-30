@@ -12,6 +12,10 @@ WAPI_WEBHOOK_SECRET=um-segredo-interno
 WAPI_INSTANCE_PLAN=lite
 ```
 
+Em ambiente multi-loja, nao configure `WAPI_INSTANCE_ID` ou `WAPI_INSTANCE_TOKEN` como variaveis globais da Vercel. Esses dados pertencem a uma loja especifica.
+
+Para usar uma instancia W-API ja paga, abra Admin > WhatsApp > "Usar instancia ja paga", informe o ID/token da instancia daquela loja e salve. O sistema grava esses dados criptografados em `roles_admin/{uid}.whatsappIntegration` e passa a buscar o QR Code dessa loja sempre que precisar relogar.
+
 Opcional, para usar uma chave de criptografia separada:
 
 ```env
