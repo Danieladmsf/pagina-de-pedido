@@ -1555,7 +1555,6 @@ export default function AdminPage() {
                           if (!db) return;
                           const newVal = !visibilityState[channel.id];
                           await updateDoc(doc(db, 'menuItems', item.id), getVisibilityToggleUpdate(item, channel.id, newVal));
-                          toast({ title: `${channel.label} ${newVal ? 'ativado' : 'desativado'}` });
                         },
                       }));
                        
