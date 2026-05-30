@@ -566,12 +566,16 @@ function MessageTemplatesSection({
     cliente: 'Maria Silva',
     primeiro_nome: 'Maria',
     pedido: 'A1B2C3',
-    itens: '2 x Bolo de Pote - 28,00\n1 x Refrigerante - 6,00',
-    total: '34,00',
-    pagamento: 'Pix',
-    tempo_estimado: '\n\u23f3 Tempo estimado de entrega: 00:50',
+    itens: 'Prato Feito - *PF: Filé de peixe *>Escolha sua Guarnição\n1x Batata frita  - R$0,00\n>Preferências \n1x Com feijão  Tradicional - R$0,00\n\nOBS: Nenhuma\nQuantidade: 1\nValor: R$28,90',
+    total: 'R$ 28,90',
+    pagamento: 'Crédito',
+    tempo_estimado: '\n⏳ Tempo estimado de entrega: 00:50',
     proxima_abertura: formatNextOpeningTime(workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
     horarios: formatWorkingHours(workingHours),
+    celular: '(14) 99766-4759',
+    endereco: 'Comer no local: Antonio Pizzi, 21, João Berbel II',
+    subtotal: 'R$ 28,90',
+    taxa_entrega: 'R$ 0,00',
   };
 
   return (
@@ -585,7 +589,7 @@ function MessageTemplatesSection({
                 Mensagens automaticas
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}.
+                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}, {'{celular}'}, {'{endereco}'}, {'{subtotal}'}, {'{taxa_entrega}'}.
               </p>
             </div>
             <div className="flex gap-2">

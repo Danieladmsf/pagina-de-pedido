@@ -143,7 +143,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     setSelectedAddons(prev => {
       const exists = prev.find(a => a.id === addon.id);
       if (exists) return prev.filter(a => a.id !== addon.id);
-      return [...prev, { id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
+      return [...prev, { id: addon.id, name: addon.name, description: addon.description, price: addon.price, group: addon.group }];
     });
   };
 
@@ -156,11 +156,11 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
         const limit = getNumericGroupValue(category ? category.max : group.max);
         
         if (limit === 1) {
-          next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price }];
+          next = [{ id: addon.id, name: addon.name, description: addon.description, price: addon.price, group: group.name }];
         } else if (limit > 0 && next.length >= limit) {
           return prev;
         } else {
-          next.push({ id: addon.id, name: addon.name, description: addon.description, price: addon.price });
+          next.push({ id: addon.id, name: addon.name, description: addon.description, price: addon.price, group: group.name });
         }
       } else {
         let removeIndex = -1;
@@ -191,7 +191,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       arr.forEach((a) => {
         const effectivePrice = groupUsesPrice(group) ? Number(a.price) || 0 : 0;
         addonsTotal += effectivePrice;
-        finalAddonsList.push({ ...a, price: effectivePrice });
+        finalAddonsList.push({ ...a, price: effectivePrice, group: group.name });
       });
     });
   }

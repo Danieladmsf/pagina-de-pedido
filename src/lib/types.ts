@@ -66,6 +66,7 @@ export interface SelectedAddon {
   name: string;
   description?: string;
   price: number;
+  group?: string;
 }
 
 export interface CartItem extends MenuItem {
