@@ -456,6 +456,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       const newOrderRef = doc(collection(db, 'orders'));
       const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
 
+      const stockDeductedItems: Record<string, number> = {};
       const orderData = {
         id: newOrderRef.id,
         ownerId: user?.uid || 'default',
@@ -486,11 +487,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         totalAmount: finalTotal || 0,
         paymentMethod: paymentString || '',
         orderDateTime: new Date().toISOString(),
-        stockDeducted: !!storeProfile?.general?.enableInventory
+        stockDeducted: !!storeProfile?.general?.enableInventory,
+        stockDeductedItems
       };
 
       const batch = writeBatch(db);
-      batch.set(newOrderRef, orderData);
 
       if (storeProfile?.general?.enableInventory) {
         const getManagedStock = (value: unknown): number | null => {
@@ -509,6 +510,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     batch.update(itemRef, {
                       stockQuantity: increment(-item.quantity)
                     });
+                    stockDeductedItems[ci.itemId] = (stockDeductedItems[ci.itemId] || 0) + item.quantity;
                   }
                 }
               }
@@ -522,12 +524,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 batch.update(itemRef, {
                   stockQuantity: increment(-item.quantity)
                 });
+                stockDeductedItems[item.id] = (stockDeductedItems[item.id] || 0) + item.quantity;
               }
             }
           }
         }
       }
 
+      batch.set(newOrderRef, orderData);
       await batch.commit();
 
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa

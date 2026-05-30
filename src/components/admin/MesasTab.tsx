@@ -229,19 +229,32 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     try {
       if (activeOrderId) {
         const batch = writeBatch(db);
-        batch.update(doc(db, 'orders', activeOrderId), { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 });
+        const orderCancelUpdate: any = { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 };
 
         if (storeInfo?.general?.enableInventory) {
           const stockRestore: Record<string, number> = {};
-          cart.forEach(item => {
-            if (item.isCombo && item.comboItems) {
-              item.comboItems.forEach((ci: any) => {
-                stockRestore[ci.itemId] = (stockRestore[ci.itemId] || 0) + item.quantity;
-              });
-            } else if (item.id) {
-              stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
-            }
-          });
+          const activeOrder = activeOrders.find(o => o.id === activeOrderId);
+          const hasExactMovements = activeOrder && Object.prototype.hasOwnProperty.call(activeOrder, 'stockDeductedItems');
+
+          if (hasExactMovements) {
+            Object.entries(activeOrder.stockDeductedItems || {}).forEach(([itemId, quantity]) => {
+              const qty = Number(quantity) || 0;
+              if (qty > 0) {
+                stockRestore[itemId] = qty;
+              }
+            });
+          } else {
+            cart.forEach(item => {
+              if (item.isCombo && item.comboItems) {
+                item.comboItems.forEach((ci: any) => {
+                  stockRestore[ci.itemId] = (stockRestore[ci.itemId] || 0) + item.quantity;
+                });
+              } else if (item.id) {
+                stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
+              }
+            });
+          }
+
           for (const [itemId, qty] of Object.entries(stockRestore)) {
             const itemRef = doc(db, 'menuItems', itemId);
             const itemSnap = await getDoc(itemRef);
@@ -252,8 +265,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               });
             }
           }
+          orderCancelUpdate.stockDeducted = false;
+          orderCancelUpdate.stockDeductedItems = {};
         }
 
+        batch.update(doc(db, 'orders', activeOrderId), orderCancelUpdate);
         await batch.commit();
       }
       setCart([]);
@@ -341,6 +357,19 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     try {
       let finalOrderId = activeOrderId;
       const batch = writeBatch(db);
+      const activeOrder = activeOrderId ? activeOrders.find(o => o.id === activeOrderId) : null;
+      const nextStockDeductedItems: Record<string, number> = { ...(activeOrder?.stockDeductedItems || {}) };
+
+      if (storeInfo?.general?.enableInventory) {
+        Object.entries(managedStockDiffs).forEach(([itemId, diff]) => {
+          const nextQty = (Number(nextStockDeductedItems[itemId]) || 0) + diff;
+          if (nextQty > 0) {
+            nextStockDeductedItems[itemId] = nextQty;
+          } else {
+            delete nextStockDeductedItems[itemId];
+          }
+        });
+      }
       
       const sanitizedItems = cart.map(i => ({
         id: i.id || '',
@@ -363,6 +392,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           items: sanitizedItems,
           totalAmount: cartTotal,
           subtotal: cartTotal,
+          stockDeducted: !!storeInfo?.general?.enableInventory,
+          stockDeductedItems: nextStockDeductedItems,
         });
       } else {
         finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -379,6 +410,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           subtotal: cartTotal,
           orderDateTime: new Date().toISOString(),
           createdAt: new Date(),
+          stockDeducted: !!storeInfo?.general?.enableInventory,
+          stockDeductedItems: nextStockDeductedItems,
         });
       }
 

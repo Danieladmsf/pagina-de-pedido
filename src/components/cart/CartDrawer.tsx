@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
-import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -60,6 +60,27 @@ const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 };
 
+const getStockDemand = (cartItems: any[]): Record<string, number> => {
+  const demand: Record<string, number> = {};
+
+  cartItems.forEach(item => {
+    const qty = Number(item.quantity) || 0;
+    if (qty <= 0) return;
+
+    if (item.isCombo && item.comboItems) {
+      item.comboItems.forEach((ci: any) => {
+        if (ci.itemId) {
+          demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
+        }
+      });
+    } else if (item.id) {
+      demand[item.id] = (demand[item.id] || 0) + qty;
+    }
+  });
+
+  return demand;
+};
+
 const checkCartStock = (
   projectedCart: any[],
   menuItemsList: any[],
@@ -67,20 +88,7 @@ const checkCartStock = (
 ): { allowed: boolean; message?: string } => {
   if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
 
-  const demand: Record<string, number> = {};
-
-  projectedCart.forEach(item => {
-    const qty = Number(item.quantity) || 0;
-    if (qty <= 0) return;
-
-    if (item.isCombo && item.comboItems) {
-      item.comboItems.forEach((ci: any) => {
-        demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-      });
-    } else {
-      demand[item.id] = (demand[item.id] || 0) + qty;
-    }
-  });
+  const demand = getStockDemand(projectedCart);
 
   for (const [productId, reqQty] of Object.entries(demand)) {
     const matchedProduct = menuItemsList.find(m => m.id === productId);
@@ -692,42 +700,18 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       // Validação de estoque antes de enviar
       if (enableInventory) {
-        // Find all unique product IDs we need to check stock for
-        const uniqueProductIds = new Set<string>();
-        cart.forEach(item => {
-          if (item.isCombo && item.comboItems) {
-            item.comboItems.forEach((ci: any) => uniqueProductIds.add(ci.itemId));
-          } else {
-            uniqueProductIds.add(item.id);
-          }
-        });
+        const demand = getStockDemand(cart);
 
         // Fetch latest stock quantities from Firestore
         const latestStocks: Record<string, { stock: number | null; name: string }> = {};
-        for (const pId of Array.from(uniqueProductIds)) {
+        for (const pId of Object.keys(demand)) {
           const itemDoc = await getDoc(doc(db, 'menuItems', pId));
           if (itemDoc.exists()) {
             const data = itemDoc.data();
-            const rawStock = data.stockQuantity;
-            const stock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
+            const stock = getManagedStock(data.stockQuantity);
             latestStocks[pId] = { stock, name: data.name || pId };
           }
         }
-
-        // Calculate aggregated demand in current cart
-        const demand: Record<string, number> = {};
-        cart.forEach(item => {
-          const qty = Number(item.quantity) || 0;
-          if (qty <= 0) return;
-
-          if (item.isCombo && item.comboItems) {
-            item.comboItems.forEach((ci: any) => {
-              demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-            });
-          } else {
-            demand[item.id] = (demand[item.id] || 0) + qty;
-          }
-        });
 
         // Validate
         for (const [pId, reqQty] of Object.entries(demand)) {
@@ -813,10 +797,46 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         items: safeItems
       };
 
-      const batch = writeBatch(db);
-      batch.set(orderRef, orderData);
+      if (enableInventory) {
+        await runTransaction(db, async (transaction) => {
+          const stockDemand = getStockDemand(safeItems);
+          const stockUpdates: Array<{ itemRef: any; productId: string; quantity: number; nextStock: number }> = [];
 
-      await batch.commit();
+          for (const [productId, reqQty] of Object.entries(stockDemand)) {
+            const itemRef = doc(db, 'menuItems', productId);
+            const itemSnap = await transaction.get(itemRef);
+            if (!itemSnap.exists()) continue;
+
+            const itemData = itemSnap.data();
+            const currentStock = getManagedStock(itemData.stockQuantity);
+            if (currentStock === null) continue;
+
+            if (reqQty > currentStock) {
+              const error = new Error(`"${itemData.name || productId}" tem apenas ${currentStock} unidade(s) disponÃ­vel(is).`);
+              (error as any).code = 'insufficient-stock';
+              throw error;
+            }
+
+            stockUpdates.push({ itemRef, productId, quantity: reqQty, nextStock: currentStock - reqQty });
+          }
+
+          const stockDeductedItems = stockUpdates.reduce<Record<string, number>>((acc, update) => {
+            acc[update.productId] = (acc[update.productId] || 0) + update.quantity;
+            return acc;
+          }, {});
+
+          transaction.set(orderRef, {
+            ...orderData,
+            stockDeducted: true,
+            stockDeductedItems
+          });
+          stockUpdates.forEach(({ itemRef, nextStock }) => {
+            transaction.update(itemRef, { stockQuantity: nextStock });
+          });
+        });
+      } else {
+        await setDoc(orderRef, orderData);
+      }
 
       toast({ title: "Pedido Enviado!", description: `Pedido #${orderId} foi recebido.` });
 
@@ -834,7 +854,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       setDistanceInfo(null);
     } catch (error: any) {
       console.error(error);
-      toast({ variant: "destructive", title: "Erro ao enviar", description: error?.message || "Erro ao processar o pedido." });
+      toast({
+        variant: "destructive",
+        title: error?.code === 'insufficient-stock' ? "Estoque insuficiente" : "Erro ao enviar",
+        description: error?.message || "Erro ao processar o pedido."
+      });
     } finally {
       setIsSubmitting(false);
     }
