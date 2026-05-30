@@ -907,56 +907,19 @@ export default function AdminPage() {
     let itemsList = '';
     if (order.items && Array.isArray(order.items)) {
       itemsList = order.items.map((item: any) => {
-        const groups: Record<string, any[]> = {};
-        if (item.addons && Array.isArray(item.addons)) {
-          item.addons.forEach((addon: any) => {
-            const gName = addon.group || '';
-            if (!groups[gName]) {
-              groups[gName] = [];
-            }
-            groups[gName].push(addon);
-          });
-        }
-
-        let itemLine = `${item.name}`;
-        if (groups[''] && groups[''].length > 0) {
-          const inlineAddons = groups[''].map((a: any) => `*${a.name}*`).join(', ');
-          if (inlineAddons) {
-            itemLine += ` - ${inlineAddons}`;
-          }
-        }
-
-        let groupLines = '';
-        Object.entries(groups).forEach(([groupName, groupAddons]) => {
-          if (groupName === '') return;
-          groupLines += `>${groupName}\n`;
-          
-          const addonCounts: Record<string, { count: number; price: number }> = {};
-          groupAddons.forEach((a: any) => {
-            if (!addonCounts[a.name]) {
-              addonCounts[a.name] = { count: 0, price: a.price || 0 };
-            }
-            addonCounts[a.name].count += 1;
-          });
-
-          Object.entries(addonCounts).forEach(([name, info]) => {
-            const priceStr = info.price > 0 
-              ? `R$ ${(info.price * info.count).toFixed(2).replace('.', ',')}` 
-              : 'R$0,00';
-            groupLines += `${info.count}x ${name} - ${priceStr}\n`;
-          });
-        });
-
-        let result = itemLine;
-        if (groupLines) {
-          result = `${itemLine} ${groupLines.trim()}`;
-        }
-        
         const itemTotal = (item.unitPrice || 0) * (item.quantity || 1);
         const itemTotalStr = itemTotal.toFixed(2).replace('.', ',');
+        let line = `${item.quantity}x ${item.name} - R$ ${itemTotalStr}`;
 
-        return `${result}\n\nOBS: ${item.notes || 'Nenhuma'}\nQuantidade: ${item.quantity || 1}\nValor: R$${itemTotalStr}`;
-      }).join('\n------------------------------\n\n');
+        if (item.addons && Array.isArray(item.addons)) {
+          item.addons.forEach((addon: any) => {
+            line += `\n > ${addon.name}`;
+          });
+        }
+
+        line += `\n Obs: ${item.notes || 'Nenhuma'}`;
+        return line;
+      }).join('\n\n');
     }
     
     let paymentText = order.paymentMethod || 'Dinheiro';
