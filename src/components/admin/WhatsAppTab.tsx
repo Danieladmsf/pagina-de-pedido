@@ -55,6 +55,8 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
 ];
 
 const QR_CODE_REFRESH_INTERVAL_MS = 12000;
+const CONNECTED_STATUS_REFRESH_INTERVAL_MS = 15000;
+const DISCONNECTED_STATUS_REFRESH_INTERVAL_MS = 8000;
 
 type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'disconnected' | 'error';
 
@@ -216,7 +218,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 
   useEffect(() => {
     if (!integration) return;
-    const interval = integration.connected ? 60000 : 8000;
+    const interval = integration.connected ? CONNECTED_STATUS_REFRESH_INTERVAL_MS : DISCONNECTED_STATUS_REFRESH_INTERVAL_MS;
     const timer = setInterval(() => loadStatus(true), interval);
     return () => clearInterval(timer);
   }, [integration?.wapiInstanceId, integration?.connected, loadStatus]);
