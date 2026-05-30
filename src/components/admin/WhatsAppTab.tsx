@@ -54,6 +54,8 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'storeClosed',
 ];
 
+const QR_CODE_REFRESH_INTERVAL_MS = 12000;
+
 type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'disconnected' | 'error';
 
 interface Integration {
@@ -191,7 +193,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     try {
       const data = await apiFetch(`/wapi/qrcode/${empresaId}`);
       setIntegration(data.integration);
-      setQrCode(data.qrCode || '');
+      const nextQrCode = data.qrCode || data.integration?.qrCode || '';
+      if (nextQrCode || !silent) setQrCode(nextQrCode);
       if (!silent) toast({ title: 'QR Code atualizado' });
     } catch (error: any) {
       if (!silent) toast({ variant: 'destructive', title: 'Erro ao buscar QR Code', description: error.message });
@@ -222,6 +225,12 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     if (!integration || integration.connected || qrCode) return;
     refreshQrCode(true);
   }, [integration?.wapiInstanceId, integration?.connected, qrCode, refreshQrCode]);
+
+  useEffect(() => {
+    if (!integration || integration.connected) return;
+    const timer = setInterval(() => refreshQrCode(true), QR_CODE_REFRESH_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [integration?.wapiInstanceId, integration?.connected, refreshQrCode]);
 
   async function createInstance() {
     setLoading(true);
