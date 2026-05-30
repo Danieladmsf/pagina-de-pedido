@@ -32,15 +32,23 @@ export const getPhoneVariants = (phone: string) => {
   const raw = (phone || '').trim();
   const normalized = normalizeCreditPhone(phone);
   const compact = raw.replace(/[\s\-()+]/g, '');
-  const formatted = formatBrazilPhone(normalized);
+  const withoutNinthDigit = normalized.length === 11 && normalized[2] === '9'
+    ? `${normalized.slice(0, 2)}${normalized.slice(3)}`
+    : '';
+  const withNinthDigit = normalized.length === 10
+    ? `${normalized.slice(0, 2)}9${normalized.slice(2)}`
+    : '';
+  const localNumbers = Array.from(new Set([normalized, withoutNinthDigit, withNinthDigit].filter(Boolean)));
 
   return Array.from(new Set([
-    normalized,
     raw,
     compact,
-    formatted,
-    normalized ? `+55${normalized}` : '',
-    normalized ? `55${normalized}` : '',
+    ...localNumbers.flatMap((localNumber) => [
+      localNumber,
+      formatBrazilPhone(localNumber),
+      `+55${localNumber}`,
+      `55${localNumber}`,
+    ]),
   ].filter(Boolean)));
 };
 

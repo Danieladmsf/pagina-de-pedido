@@ -43,13 +43,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
   }
-  // Ocultar pedidos de Balcão/Mesas criados manualmente no painel, mostrando apenas pedidos do App
-  // Mostrar todos os pedidos de delivery, além de pedidos do App de outros tipos
-  const onlyDeliveryAppOrders = orders?.filter(o => {
-    if (o.orderType === 'delivery') return true;
-    const nameLower = o.customerName?.toLowerCase() || '';
-    return !nameLower.includes('balcão') && !nameLower.includes('mesa');
-  }) || [];
+  // A aba Delivery acompanha apenas pedidos de entrega, inclusive os criados pelo Balcao.
+  const onlyDeliveryAppOrders = orders?.filter(o => o.orderType === 'delivery') || [];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);

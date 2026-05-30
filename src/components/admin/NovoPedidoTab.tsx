@@ -15,7 +15,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
-import { validateCustomerCredit } from '@/lib/customer-credit';
+import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 
 interface NovoPedidoTabProps {
@@ -37,6 +37,31 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'debito', label: 'Débito', icon: '💳', active: true },
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
+
+type CustomerLookupStatus = 'idle' | 'searching' | 'found' | 'not_found' | 'error';
+
+const asText = (value: unknown) => value === undefined || value === null ? '' : String(value);
+
+const getCustomerDisplayName = (customerData: any) => {
+  return asText(customerData?.nome || customerData?.name || customerData?.customerName).trim();
+};
+
+const getCustomerAddress = (customerData: any) => {
+  return {
+    street: asText(customerData?.logradouro || customerData?.street || customerData?.address?.street).trim(),
+    number: asText(customerData?.logradouroNumero || customerData?.numero || customerData?.number || customerData?.address?.number).trim(),
+    neighborhood: asText(customerData?.bairro || customerData?.neighborhood || customerData?.address?.neighborhood).trim(),
+    city: asText(customerData?.cidade || customerData?.city || customerData?.address?.city).trim(),
+  };
+};
+
+const hasAddressData = (address: { street: string; number: string; neighborhood: string; city: string }) => {
+  return !!(address.street || address.number || address.neighborhood || address.city);
+};
+
+const buildAddressLine = (address: { street: string; number: string; neighborhood: string; city: string }) => {
+  return [address.street, address.number, address.neighborhood, address.city].filter(Boolean).join(', ');
+};
 
 export function NovoPedidoTab({ categories, items, db, user, registrarLancamento,
   caixaAberto = false,
@@ -141,6 +166,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
   const [customerName, setCustomerName] = useState('Cliente Balcão');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
+  const [matchedCustomerName, setMatchedCustomerName] = useState('');
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
@@ -206,6 +233,70 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     }
   }, [storeAddress, deliveryFeeRules, maxDeliveryRadius, toast]);
 
+  React.useEffect(() => {
+    const normalizedPhone = normalizeCreditPhone(customerPhone);
+    const ownerId = storeProfile?.id || user?.uid || 'default';
+
+    if (orderType !== 'delivery' || !db || !ownerId || normalizedPhone.length < 10) {
+      setCustomerLookupStatus('idle');
+      setMatchedCustomerName('');
+      return;
+    }
+
+    let ignore = false;
+    const lookupTimeout = window.setTimeout(async () => {
+      setCustomerLookupStatus('searching');
+      setMatchedCustomerName('');
+
+      try {
+        const customers = await findCreditCustomers(db, ownerId, customerPhone);
+        if (ignore) return;
+
+        if (customers.length === 0) {
+          setCustomerLookupStatus('not_found');
+          return;
+        }
+
+        const customerData = customers[0].data || {};
+        const displayName = getCustomerDisplayName(customerData);
+        const savedAddress = getCustomerAddress(customerData);
+
+        if (displayName) {
+          setCustomerName(displayName);
+          setMatchedCustomerName(displayName);
+        }
+
+        if (hasAddressData(savedAddress)) {
+          setAddressObj(prev => ({
+            street: savedAddress.street || prev.street,
+            number: savedAddress.number || prev.number,
+            neighborhood: savedAddress.neighborhood || prev.neighborhood,
+            city: savedAddress.city || prev.city,
+          }));
+          setDynamicFee(null);
+          setDistanceInfo(null);
+          setDeliveryBlocked(false);
+
+          const fullAddr = buildAddressLine(savedAddress);
+          if (fullAddr) {
+            calculateDeliveryFee(fullAddr);
+          }
+        }
+
+        setCustomerLookupStatus('found');
+      } catch (err) {
+        if (ignore) return;
+        console.error('Erro ao buscar cliente pelo telefone:', err);
+        setCustomerLookupStatus('error');
+      }
+    }, 500);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(lookupTimeout);
+    };
+  }, [customerPhone, orderType, db, storeProfile?.id, user?.uid, calculateDeliveryFee]);
+
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   React.useEffect(() => {
     if (orderType !== 'delivery') return;
@@ -265,7 +356,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     calculateDeliveryFee(fullAddr);
   };
 
-  const finalTotal = cartTotal + (Number(deliveryFeeInput) || 0);
+  const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
+  const finalTotal = cartTotal + deliveryFee;
 
   const handleAddSplit = () => {
     if (!selectedPayment) return;
@@ -483,7 +575,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         status: orderType === 'delivery' ? 'received' : 'delivered',
         paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
         subtotal: cartTotal || 0,
-        deliveryFee: Number(deliveryFeeInput) || 0,
+        deliveryFee,
         distanceKm: (distanceInfo && typeof distanceInfo.distanceKm === 'number') ? distanceInfo.distanceKm : null,
         totalAmount: finalTotal || 0,
         paymentMethod: paymentString || '',
@@ -756,6 +848,23 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             <div className="space-y-1.5">
               <Input autoComplete="name" placeholder="Nome do Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-7 text-xs" />
               <Input autoComplete="tel" placeholder="Telefone / WhatsApp" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-7 text-xs" />
+              {orderType === 'delivery' && customerLookupStatus !== 'idle' && (
+                <p
+                  aria-live="polite"
+                  className={`text-[10px] font-bold ${
+                    customerLookupStatus === 'not_found' || customerLookupStatus === 'error'
+                      ? 'text-red-600'
+                      : customerLookupStatus === 'found'
+                        ? 'text-emerald-600'
+                        : 'text-slate-500'
+                  }`}
+                >
+                  {customerLookupStatus === 'searching' && 'Buscando cadastro...'}
+                  {customerLookupStatus === 'found' && `Cadastro encontrado${matchedCustomerName ? `: ${matchedCustomerName}` : ''}.`}
+                  {customerLookupStatus === 'not_found' && 'Sem cadastro para este telefone.'}
+                  {customerLookupStatus === 'error' && 'Nao foi possivel consultar cadastro.'}
+                </p>
+              )}
               
               {orderType === 'delivery' && (
                 <div className="pt-1.5 border-t space-y-1.5 mt-1.5">
