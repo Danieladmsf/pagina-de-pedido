@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants } from '@/lib/customer-credit';
+import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -130,6 +131,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
+    if (!isItemVisibleInChannel(item, 'dine_in')) return false;
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCat && matchesSearch;

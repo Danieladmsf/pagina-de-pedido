@@ -21,6 +21,7 @@ import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
+import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 
 function promoDateToMillis(value: any) {
   if (!value) return NaN;
@@ -351,7 +352,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const { data: storeProfile } = useDoc(storeProfileRef);
   const { data: cashRegisters, isLoading: loadingCashRegisters } = useCollection(cashRegistersQuery);
   const isVisibleForCustomerMenu = useCallback((item: any) => {
-    return item.showDelivery !== false;
+    return isItemVisibleInChannel(item, 'delivery');
   }, []);
 
   const hasOpenCashRegister = useMemo(() => {
