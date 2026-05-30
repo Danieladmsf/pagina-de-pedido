@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/firebase-auth-rest';
+import { Buffer } from 'buffer';
 
 const DEFAULT_BASE_URL = 'https://api.w-api.app/v1';
 const DEFAULT_CREATE_INSTANCE_PATH = '/integrator/create-instance';
@@ -62,6 +63,15 @@ async function requestWapi<T>(
 }
 
 async function parseWapiResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.toLowerCase().startsWith('image/')) {
+    const imageType = contentType.split(';')[0] || 'image/png';
+    const imageBuffer = Buffer.from(await response.arrayBuffer());
+    return {
+      qrcode: `data:${imageType};base64,${imageBuffer.toString('base64')}`,
+    };
+  }
+
   const text = await response.text();
   try {
     return text ? JSON.parse(text) : null;
