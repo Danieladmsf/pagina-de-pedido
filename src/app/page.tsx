@@ -1510,7 +1510,7 @@ export default function AdminPage() {
                       <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
-                      <TableHead className="w-[220px] text-center">Visibilidade</TableHead>
+                      <TableHead className="w-[240px] text-center">Visibilidade</TableHead>
                       <TableHead className="text-right pr-6 w-[150px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1627,7 +1627,7 @@ export default function AdminPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
-                            <div className="mx-auto grid w-[190px] gap-1">
+                            <div className="mx-auto flex w-[220px] items-center justify-center gap-1.5">
                               {visibilityChannels.map((channel) => (
                                 <button
                                   key={channel.label}
@@ -1635,18 +1635,18 @@ export default function AdminPage() {
                                   aria-pressed={channel.active}
                                   aria-label={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
                                   title={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
-                                  className={`flex h-7 w-full items-center justify-between gap-2 rounded-full border px-2 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                  className={`flex h-11 w-[68px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-[9px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                     channel.active
                                       ? channel.activeClasses
                                       : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'
                                   }`}
                                   onClick={channel.onToggle}
                                 >
-                                  <span className="w-12 text-left">{channel.label}</span>
+                                  <span className="max-w-full truncate leading-none">{channel.label}</span>
                                   <span className={`relative h-4 w-8 rounded-full transition-colors ${channel.active ? channel.activeTrack : 'bg-slate-300'}`}>
                                     <span className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${channel.active ? 'translate-x-4' : 'translate-x-0'}`} />
                                   </span>
-                                  <span className="w-14 text-right uppercase">{channel.active ? 'Ligado' : 'Desligado'}</span>
+                                  <span className="text-[8px] uppercase leading-none">{channel.active ? 'Ligado' : 'Desl.'}</span>
                                 </button>
                               ))}
                             </div>
