@@ -413,7 +413,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
             </CardHeader>
             <CardContent className="p-5 md:p-6 space-y-5">
               {!integration ? (
-                <EmptyState onCreate={createInstance} onLink={linkInstance} loading={loading} disabled={!user} />
+                <EmptyState onLink={linkInstance} loading={loading} disabled={!user} />
               ) : (
                 <>
                   <InfoGrid
@@ -695,8 +695,7 @@ function LoadingState() {
   );
 }
 
-function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => void; onLink: (id: string, token: string) => void; loading: boolean; disabled: boolean }) {
-  const [showManual, setShowManual] = useState(false);
+function EmptyState({ onLink, loading, disabled }: { onLink: (id: string, token: string) => void; loading: boolean; disabled: boolean }) {
   const [manualId, setManualId] = useState('');
   const [manualToken, setManualToken] = useState('');
 
@@ -712,82 +711,61 @@ function EmptyState({ onCreate, onLink, loading, disabled }: { onCreate: () => v
           Gere o QR Code e conecte o numero que a loja vai usar para falar com os clientes.
         </p>
 
-        {!showManual ? (
-          <div className="mt-6 flex flex-col gap-2 max-w-sm mx-auto">
-            <Button
-              type="button"
-              onClick={() => setShowManual(true)}
-              disabled={loading || disabled}
-              className="rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-lg shadow-emerald-500/30 h-11 px-6 w-full"
-            >
-              <QrCode className="h-4 w-4 mr-2" />
-              Usar instancia ja paga
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCreate}
-              disabled={loading || disabled}
-              className="rounded-full h-10 bg-white"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
-              Criar nova instancia
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Usar instancia ja paga</h3>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">ID da instancia</Label>
-                <Input 
-                  id="wapiInstanceId"
-                  name="wapiInstanceId"
-                  autoComplete="off"
-                  data-lpignore="true"
-                  value={manualId} 
-                  onChange={(e) => setManualId(e.target.value)} 
-                  placeholder="Ex: LITE-HYYZ0N..." 
-                  className="text-xs h-9"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-600">Token da instancia</Label>
-                <Input 
-                  id="wapiToken"
-                  name="wapiToken"
-                  type="password"
-                  autoComplete="new-password"
-                  data-lpignore="true"
-                  value={manualToken} 
-                  onChange={(e) => setManualToken(e.target.value)} 
-                  placeholder="Cole a chave aqui" 
-                  className="text-xs h-9"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="pt-2 flex gap-2">
-                <Button 
-                  variant="outline" 
-                  className="flex-1 h-9 text-xs" 
-                  onClick={() => setShowManual(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  className="flex-1 h-9 text-xs bg-emerald-600 hover:bg-emerald-700" 
-                  disabled={!manualId.trim() || !manualToken.trim() || loading || disabled}
-                  onClick={() => onLink(manualId.trim(), manualToken.trim())}
-                >
-                  {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
-                  Salvar e gerar QR
-                </Button>
-              </div>
+        <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
+          <h3 className="text-sm font-bold text-slate-800 mb-3">Usar instancia ja paga</h3>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-600">ID da instancia</Label>
+              <Input
+                id="wapiInstanceId"
+                name="wapiInstanceId"
+                autoComplete="off"
+                data-lpignore="true"
+                value={manualId}
+                onChange={(e) => setManualId(e.target.value)}
+                placeholder="Ex: LITE-HYYZ0N..."
+                className="text-xs h-9"
+                disabled={disabled}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-600">Token da instancia</Label>
+              <Input
+                id="wapiToken"
+                name="wapiToken"
+                type="password"
+                autoComplete="new-password"
+                data-lpignore="true"
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                placeholder="Cole a chave aqui"
+                className="text-xs h-9"
+                disabled={disabled}
+              />
+            </div>
+            <div className="pt-2 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 h-9 text-xs"
+                onClick={() => {
+                  setManualId('');
+                  setManualToken('');
+                }}
+                disabled={loading || disabled}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 h-9 text-xs bg-emerald-600 hover:bg-emerald-700"
+                disabled={!manualId.trim() || !manualToken.trim() || loading || disabled}
+                onClick={() => onLink(manualId.trim(), manualToken.trim())}
+              >
+                {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
+                Salvar e gerar QR
+              </Button>
             </div>
           </div>
-        )}
+        </div>
 
         <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
           {[
