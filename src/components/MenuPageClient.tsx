@@ -351,12 +351,8 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   const { data: storeProfile } = useDoc(storeProfileRef);
   const { data: cashRegisters, isLoading: loadingCashRegisters } = useCollection(cashRegistersQuery);
   const isVisibleForCustomerMenu = useCallback((item: any) => {
-    if (storeProfile?.general?.disableDelivery) {
-      return item.showPickup !== false || item.showDineIn !== false;
-    }
-
     return item.showDelivery !== false;
-  }, [storeProfile?.general?.disableDelivery]);
+  }, []);
 
   const hasOpenCashRegister = useMemo(() => {
     if (!storeId || loadingCashRegisters) return null;
@@ -508,6 +504,10 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       return matchesSearch;
     });
   }, [searchQuery, items, visibleCategories, promoOnlyIds, isVisibleForCustomerMenu]);
+
+  const deliveryVisibleItems = useMemo(() => {
+    return (items || []).filter(isVisibleForCustomerMenu);
+  }, [items, isVisibleForCustomerMenu]);
 
   // Group items by category for section-based display
   const groupedItems = useMemo(() => {
@@ -957,7 +957,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
               pixKey={storeProfile?.creditPixKey}
               pixName={storeProfile?.creditPixName}
               isStoreOpen={isStoreOpenRightNow.isOpen}
-              menuItems={items || []}
+              menuItems={deliveryVisibleItems}
               enableInventory={storeProfile?.general?.enableInventory || false}
               themeId={(storeProfile as any)?.theme}
               promoItemsMap={promoItemsMap}
@@ -1200,7 +1200,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
                                   const projectedCart = cart.map(i =>
                                     i.cartId === simpleItem.cartId ? { ...i, quantity: i.quantity + 1 } : i
                                   );
-                                  const check = checkCartStock(projectedCart, items || [], enableInventory);
+                                  const check = checkCartStock(projectedCart, deliveryVisibleItems, enableInventory);
                                   if (!check.allowed) {
                                     toast({
                                       title: "Estoque insuficiente",
@@ -1264,7 +1264,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
         allAddons={addons || []}
         addonCategories={addonCategories || []}
         isStoreOpen={isStoreOpenRightNow.isOpen}
-        menuItems={items || []}
+        menuItems={deliveryVisibleItems}
         enableInventory={storeProfile?.general?.enableInventory || false}
       />
       </div>
