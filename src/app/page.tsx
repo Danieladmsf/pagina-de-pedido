@@ -378,7 +378,7 @@ export default function AdminPage() {
         if (isInventoryEnabled && order.stockDeducted !== true && order.status !== 'canceled') {
           try {
             const batch = writeBatch(db);
-            let hasStockUpdates = false;
+            const stockDeductedItems: Record<string, number> = {};
 
             for (const item of order.items || []) {
               const qty = Number(item.quantity) || 0;
@@ -395,7 +395,7 @@ export default function AdminPage() {
                         batch.update(itemRef, {
                           stockQuantity: increment(-qty)
                         });
-                        hasStockUpdates = true;
+                        stockDeductedItems[ci.itemId] = (stockDeductedItems[ci.itemId] || 0) + qty;
                       }
                     }
                   }
@@ -409,14 +409,14 @@ export default function AdminPage() {
                     batch.update(itemRef, {
                       stockQuantity: increment(-qty)
                     });
-                    hasStockUpdates = true;
+                    stockDeductedItems[item.id] = (stockDeductedItems[item.id] || 0) + qty;
                   }
                 }
               }
             }
 
             // Atualiza o documento do pedido indicando que o estoque já foi abatido
-            batch.update(doc(db, 'orders', order.id), { stockDeducted: true });
+            batch.update(doc(db, 'orders', order.id), { stockDeducted: true, stockDeductedItems });
             await batch.commit();
           } catch (err) {
             console.error("Erro ao abater estoque do pedido novo:", order.id, err);
@@ -996,7 +996,7 @@ export default function AdminPage() {
       const currentOrder = (ordersRaw as any[])?.find(o => o.id === orderId);
       const finalizingSale = updates.status === 'delivered' && currentOrder && currentOrder.status !== 'delivered';
       const shouldDeductStock = !!(finalizingSale && storeProfile?.general?.enableInventory && currentOrder.stockDeducted !== true);
-      let stockDeductionUpdates: Array<{ itemRef: any; quantity: number }> = [];
+      let stockDeductionUpdates: Array<{ itemRef: any; itemId: string; quantity: number }> = [];
 
       const orderItemQuantities = (order: any) => {
         const quantities = new Map<string, number>();
@@ -1014,6 +1014,20 @@ export default function AdminPage() {
             quantities.set(item.id, (quantities.get(item.id) || 0) + quantity);
           }
         }
+        return quantities;
+      };
+
+      const stockQuantitiesToRestore = (order: any) => {
+        const hasExactMovements = order && Object.prototype.hasOwnProperty.call(order, 'stockDeductedItems');
+        if (!hasExactMovements) return orderItemQuantities(order);
+
+        const quantities = new Map<string, number>();
+        Object.entries(order.stockDeductedItems || {}).forEach(([itemId, quantity]) => {
+          const qty = Number(quantity) || 0;
+          if (qty > 0) {
+            quantities.set(itemId, qty);
+          }
+        });
         return quantities;
       };
 
@@ -1036,7 +1050,7 @@ export default function AdminPage() {
             return false;
           }
 
-          stockDeductionUpdates.push({ itemRef, quantity });
+          stockDeductionUpdates.push({ itemRef, itemId, quantity });
         }
       }
       
@@ -1121,8 +1135,8 @@ export default function AdminPage() {
       if (updates.status === 'canceled' && currentOrder && currentOrder.status !== 'canceled') {
         if (storeProfile?.general?.enableInventory && currentOrder.stockDeducted === true) {
           const batch = writeBatch(db);
-          batch.update(doc(db, 'orders', orderId), { ...updates, stockDeducted: false });
-          for (const [itemId, quantity] of orderItemQuantities(currentOrder)) {
+          batch.update(doc(db, 'orders', orderId), { ...updates, stockDeducted: false, stockDeductedItems: {} });
+          for (const [itemId, quantity] of stockQuantitiesToRestore(currentOrder)) {
             const itemRef = doc(db, 'menuItems', itemId);
             const itemSnap = await getDoc(itemRef);
             const currentStock = itemSnap.exists() ? getManagedStock(itemSnap.data().stockQuantity) : null;
@@ -1149,9 +1163,14 @@ export default function AdminPage() {
             stockQuantity: increment(-stockUpdate.quantity)
           });
         }
+        const stockDeductedItems = stockDeductionUpdates.reduce<Record<string, number>>((acc, update) => {
+          acc[update.itemId] = (acc[update.itemId] || 0) + update.quantity;
+          return acc;
+        }, {});
         batch.update(doc(db, 'orders', orderId), {
           ...updates,
-          stockDeducted: stockDeductionUpdates.length > 0
+          stockDeducted: true,
+          stockDeductedItems
         });
         await batch.commit();
       } else {
