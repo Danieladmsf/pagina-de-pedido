@@ -2,7 +2,8 @@ import { ApiError } from '@/lib/firebase-auth-rest';
 
 const DEFAULT_BASE_URL = 'https://api.w-api.app/v1';
 const DEFAULT_CREATE_INSTANCE_PATH = '/integrator/create-instance';
-const DEFAULT_QR_CODE_PATH = '/instance/qrcode';
+const DEFAULT_QR_CODE_PATH = '/instance/qr-code';
+const LEGACY_QR_CODE_PATH = '/instance/qrcode';
 
 function getBaseUrl() {
   return (process.env.WAPI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
@@ -13,7 +14,9 @@ function getCreateInstancePath() {
 }
 
 function getQrCodePath() {
-  return process.env.WAPI_QR_CODE_PATH || DEFAULT_QR_CODE_PATH;
+  const configuredPath = process.env.WAPI_QR_CODE_PATH?.trim();
+  if (!configuredPath || configuredPath === LEGACY_QR_CODE_PATH) return DEFAULT_QR_CODE_PATH;
+  return configuredPath;
 }
 
 export function getWapiMainToken() {
@@ -68,7 +71,10 @@ async function parseWapiResponse(response: Response) {
 }
 
 function getProviderMessage(data: any) {
-  if (typeof data === 'string') return data;
+  if (typeof data === 'string') {
+    const message = data.trim();
+    return message.startsWith('<') ? '' : message;
+  }
   if (typeof data?.message === 'string') return data.message;
   if (typeof data?.error === 'string') return data.error;
   if (typeof data?.data?.message === 'string') return data.data.message;
@@ -324,7 +330,7 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
 export function getWapiQrCode(instanceId: string, token: string) {
   return requestWapi<WapiQrCodeResponse>(getQrCodePath(), {
     token,
-    query: { instanceId, syncContacts: 'disable' },
+    query: { instanceId, image: 'enable', syncContacts: 'disable' },
     context: 'qrcode',
   });
 }

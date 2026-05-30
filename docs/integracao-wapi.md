@@ -35,7 +35,7 @@ Variaveis opcionais para compatibilidade se a W-API alterar nomes de rotas:
 
 ```env
 WAPI_CREATE_INSTANCE_PATH=/integrator/create-instance
-WAPI_QR_CODE_PATH=/instance/qrcode
+WAPI_QR_CODE_PATH=/instance/qr-code
 ```
 
 Use `WAPI_INSTANCE_PLAN=pro` para solicitar criacao PRO quando o token/plano W-API permitir. Qualquer outro valor usa LITE.
