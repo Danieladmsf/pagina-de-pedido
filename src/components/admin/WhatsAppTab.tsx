@@ -6,7 +6,6 @@ import { doc, setDoc } from 'firebase/firestore';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
   Loader2,
   MessageCircle,
   Phone,
@@ -463,15 +462,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                 </p>
               )}
 
-              {/* Help block */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Como funciona</p>
-                <ul className="text-xs text-slate-600 space-y-1.5">
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Cada loja usa o seu proprio WhatsApp.</li>
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />A conexao e acompanhada automaticamente.</li>
-                  <li className="flex gap-2"><ChevronRight className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />Mantenha o celular online para nao perder notificacoes.</li>
-                </ul>
-              </div>
             </CardContent>
           </Card>
         </div>
