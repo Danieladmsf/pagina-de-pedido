@@ -886,21 +886,23 @@ export default function AdminPage() {
   };
 
   const sendOrderWhatsAppNotification = async (order: any, status: string) => {
-    if (!user || !order?.customerPhone) return;
-    if (!['received', 'ready', 'out_for_delivery'].includes(status)) return;
+    if (!user) return { sent: false, skipped: true, reason: 'Usuario indisponivel.' };
+    if (!order?.customerPhone) return { sent: false, skipped: true, reason: 'Pedido sem telefone do cliente.' };
+    if (!['received', 'ready', 'out_for_delivery'].includes(status)) {
+      return { sent: false, skipped: true, reason: 'Status sem notificacao automatica.' };
+    }
 
     if (status === 'received') {
       if (order.receivedMessageSent) {
         console.log('[WhatsApp] Mensagem de recebido ja enviada para o pedido:', order.id);
-        return;
+        return { sent: false, skipped: true, reason: 'Mensagem de recebido ja enviada.' };
       }
-      if (db) {
-        try {
-          order.receivedMessageSent = true;
-          await updateDoc(doc(db, 'orders', order.id), { receivedMessageSent: true });
-        } catch (err) {
-          console.error('[WhatsApp] Falha ao marcar receivedMessageSent no Firestore:', err);
-        }
+    }
+
+    if (status === 'out_for_delivery') {
+      if (order.outForDeliveryMessageSent) {
+        console.log('[WhatsApp] Mensagem de saiu para entrega ja enviada para o pedido:', order.id);
+        return { sent: false, skipped: true, reason: 'Mensagem de saiu para entrega ja enviada.' };
       }
     }
 
@@ -1026,7 +1028,7 @@ export default function AdminPage() {
       });
     }
 
-    if (!message) return;
+    if (!message) return { sent: false, skipped: true, reason: 'Mensagem vazia.' };
 
     try {
       const token = await user.getIdToken();
@@ -1044,11 +1046,30 @@ export default function AdminPage() {
           orderId: order.id,
         }),
       });
-      if (!response.ok) {
-        console.warn('[WhatsApp] API recusou notificacao do pedido:', await response.text());
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.error) {
+        const reason = data?.error || 'API recusou notificacao do pedido.';
+        console.warn('[WhatsApp] API recusou notificacao do pedido:', reason, data);
+        return { sent: false, skipped: false, reason };
       }
+
+      if (db && order.id) {
+        try {
+          if (status === 'received') {
+            await updateDoc(doc(db, 'orders', order.id), { receivedMessageSent: true });
+          } else if (status === 'out_for_delivery') {
+            await updateDoc(doc(db, 'orders', order.id), { outForDeliveryMessageSent: true });
+          }
+        } catch (err) {
+          console.error('[WhatsApp] Falha ao marcar notificacao enviada no Firestore:', err);
+        }
+      }
+
+      return { sent: true, skipped: false };
     } catch (error) {
       console.warn('[WhatsApp] Falha ao enviar notificacao do pedido:', error);
+      const reason = error instanceof Error ? error.message : 'Falha ao enviar notificacao do pedido.';
+      return { sent: false, skipped: false, reason };
     }
   };
 
@@ -1241,7 +1262,12 @@ export default function AdminPage() {
       }
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
       if (updates.status && currentOrder?.status !== updates.status) {
-        void sendOrderWhatsAppNotification(currentOrder, updates.status);
+        const notificationResult = await sendOrderWhatsAppNotification({ ...currentOrder, ...updates }, updates.status);
+        if (notificationResult.sent && updates.status === 'out_for_delivery') {
+          toast({ title: 'WhatsApp enviado', description: 'Mensagem de saiu para entrega enviada ao cliente.' });
+        } else if (!notificationResult.skipped && notificationResult.reason && updates.status === 'out_for_delivery') {
+          toast({ variant: 'destructive', title: 'WhatsApp nao enviado', description: notificationResult.reason });
+        }
       }
       return true;
     } catch (err) {
