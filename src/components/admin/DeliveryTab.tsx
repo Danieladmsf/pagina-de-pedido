@@ -44,7 +44,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
   }
   // A aba Delivery acompanha apenas pedidos de entrega, inclusive os criados pelo Balcao.
-  const onlyDeliveryAppOrders = orders?.filter(o => o.orderType === 'delivery') || [];
+  const onlyDeliveryAppOrders = orders?.filter(o => o.orderType === 'delivery' || o.orderType === 'pickup') || [];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);

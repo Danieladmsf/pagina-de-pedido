@@ -207,14 +207,14 @@ export default function AdminPage() {
   const deliveryOrders = React.useMemo(() => {
     const merged = new Map<string, any>();
     for (const order of orders) {
-      if (order.orderType === 'delivery') {
+      if (order.orderType === 'delivery' || order.orderType === 'pickup') {
         merged.set(order.id, order);
       }
     }
 
     if (!caixaSelecionadoId) {
       for (const order of ordersRawSorted) {
-        if (order.orderType === 'delivery' && !['delivered', 'canceled'].includes(order.status)) {
+        if ((order.orderType === 'delivery' || order.orderType === 'pickup') && !['delivered', 'canceled'].includes(order.status)) {
           merged.set(order.id, order);
         }
       }

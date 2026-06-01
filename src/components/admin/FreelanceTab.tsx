@@ -12,6 +12,19 @@ interface FreelanceTabProps {
   storeProfile: any;
 }
 
+const getDateValue = (value: any) => {
+  if (value?.toDate) return value.toDate();
+  return new Date(value || 0);
+};
+
+const getOrderDate = (order: any) => getDateValue(order?.orderDateTime || order?.createdAt);
+
+const getDateTime = (value: any) => {
+  const date = getDateValue(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
 export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
   const { caixaAtual, lancamentos: lancamentosSessao, loading } = useCaixa();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -60,9 +73,9 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     if (!orders || !dateRange) return [];
     return orders.filter((o: any) => {
       if (o.status === 'canceled') return false;
-      const dt = new Date(o.orderDateTime || o.createdAt);
+      const dt = getOrderDate(o);
       return dt >= dateRange.start && dt <= dateRange.end;
-    });
+    }).sort((a: any, b: any) => getOrderDate(b).getTime() - getOrderDate(a).getTime());
   }, [orders, dateRange]);
 
   // Lançamentos (Sangrias/Vales) filtrados
@@ -72,7 +85,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     return source.filter((l: any) => {
       const dt = l.data?.toDate?.() || new Date(0);
       return dt >= dateRange.start && dt <= dateRange.end;
-    });
+    }).sort((a: any, b: any) => getDateTime(b.data) - getDateTime(a.data));
   }, [periodo, lancamentosSessao, allLancamentos, dateRange]);
 
   // Cálculo dos motoboys com histórico
@@ -143,6 +156,8 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
       const taxaAplicada = m.diasTrabalhados > 0 && !isSemTaxaName ? (m.taxa * m.diasTrabalhados) : 0;
       m.total = taxaAplicada + m.somaFretes;
       
+      m.pedidosLista.sort((a: any, b: any) => getOrderDate(b).getTime() - getOrderDate(a).getTime());
+
       const adiantamentosLista = lancamentosFiltrados.filter((l: any) => l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId === m.id);
       m.sangriasLista = adiantamentosLista;
 
