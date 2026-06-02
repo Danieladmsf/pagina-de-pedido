@@ -407,6 +407,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           orderType: 'dine_in',
           status: 'pending',
           paymentStatus: 'pending',
+          // Marca que o pedido nasceu no PDV de mesa, que já imprime o ticket da
+          // cozinha localmente. Sem isso, a impressão automática de novos pedidos
+          // (page.tsx) imprimiria o mesmo cupom de novo — saía em duplicidade.
+          source: 'pdv',
           items: sanitizedItems,
           totalAmount: cartTotal,
           subtotal: cartTotal,

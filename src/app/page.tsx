@@ -344,8 +344,9 @@ export default function AdminPage() {
     // Todos os pedidos novos que entraram agora
     const allNewOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id));
     
-    // Filtro para apitar: apenas pendentes
-    const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending');
+    // Filtro para apitar: apenas pendentes. Pedidos criados no PDV de mesa
+    // (source: 'pdv') já imprimem o ticket localmente — não reimprimir aqui.
+    const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending' && o.source !== 'pdv');
     
     if (pendingNewOnes.length > 0) {
       const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
