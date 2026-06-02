@@ -429,6 +429,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
       await batch.commit();
 
+      // Atualiza o estado local imediatamente, sem depender do "eco" do onSnapshot.
+      // Sem isso, ao criar uma mesa nova o activeOrderId continuava null até o
+      // Firestore devolver o pedido em tempo real — e enquanto isso a mesa não
+      // ficava marcada como ocupada, o botão "Receber" não aparecia e, ao sair
+      // da tela, a comanda local era perdida.
+      setActiveOrderId(finalOrderId);
       setOriginalCart(cart);
 
       if (newItemsToPrint.length > 0) {
