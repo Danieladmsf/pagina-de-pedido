@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import {
   Query,
   onSnapshot,
-  getDocs,
   DocumentData,
   FirestoreError,
   QuerySnapshot,
@@ -54,7 +53,6 @@ export interface InternalQuery extends Query<DocumentData> {
  */
 export function useCollection<T = any>(
     memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
-    options?: { pollMs?: number },
 ): UseCollectionResult<T> {
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
@@ -62,8 +60,6 @@ export function useCollection<T = any>(
   const [data, setData] = useState<StateDataType>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
-
-  const pollMs = options?.pollMs;
 
   useEffect(() => {
     if (!memoizedTargetRefOrQuery) {
@@ -109,41 +105,8 @@ export function useCollection<T = any>(
       }
     );
 
-    // Fallback de polling: em redes que bloqueiam o canal de streaming do Firestore
-    // (antivírus/firewall/proxy), o onSnapshot pode não receber atualizações ao vivo
-    // mesmo com long-polling. Quando pollMs é informado, re-buscamos via getDocs
-    // periodicamente (apenas com a aba visível) para garantir que os dados se
-    // atualizem de qualquer forma. Só atualiza o estado se algo realmente mudou,
-    // evitando re-renders desnecessários.
-    let intervalId: number | undefined;
-    if (pollMs && pollMs > 0) {
-      const refetch = async () => {
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-        try {
-          const snapshot = await getDocs(memoizedTargetRefOrQuery);
-          const results: ResultItemType[] = [];
-          for (const doc of snapshot.docs) {
-            results.push({ ...(doc.data() as T), id: doc.id });
-          }
-          setData((prev) => {
-            const prevStr = prev ? JSON.stringify(prev) : '';
-            const nextStr = JSON.stringify(results);
-            return prevStr === nextStr ? prev : results;
-          });
-          setError(null);
-          setIsLoading(false);
-        } catch {
-          // ignora; o próximo ciclo tenta de novo
-        }
-      };
-      intervalId = window.setInterval(refetch, pollMs);
-    }
-
-    return () => {
-      unsubscribe();
-      if (intervalId !== undefined) window.clearInterval(intervalId);
-    };
-  }, [memoizedTargetRefOrQuery, pollMs]); // Re-run if the target query/reference changes.
+    return () => unsubscribe();
+  }, [memoizedTargetRefOrQuery]); // Re-run if the target query/reference changes.
   if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');
   }

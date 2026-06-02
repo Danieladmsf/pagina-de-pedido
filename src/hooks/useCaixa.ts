@@ -85,8 +85,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     );
   }, [db, isRealUser, user?.uid]);
 
-  // pollMs: fallback para redes que bloqueiam o streaming do Firestore (ver use-collection)
-  const { data: todosCaixas, isLoading: loadingCaixas, error: caixaError } = useCollection(caixaQuery, { pollMs: 20000 });
+  const { data: todosCaixas, isLoading: loadingCaixas, error: caixaError } = useCollection(caixaQuery);
 
   useEffect(() => {
     console.log('[useCaixa] todosCaixas:', todosCaixas?.length, 'loading:', loadingCaixas, 'error:', caixaError);
@@ -137,7 +136,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     );
   }, [db, isRealUser, caixaAtual?.id]);
 
-  const { data: lancamentosData, isLoading: loadingLancamentos, error: lancError } = useCollection(lancamentosQuery, { pollMs: 20000 });
+  const { data: lancamentosData, isLoading: loadingLancamentos, error: lancError } = useCollection(lancamentosQuery);
 
   // Ordena lançamentos client-side (mais recente primeiro)
   const lancamentos = useMemo(() => {
