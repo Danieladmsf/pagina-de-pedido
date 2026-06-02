@@ -3,7 +3,21 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'
+import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore'
+
+// Em redes com antivírus/firewall/proxy que bloqueiam o transporte de streaming
+// (WebChannel) do Firestore, o onSnapshot em tempo real para de receber updates —
+// o app funciona em uma máquina e "não atualiza" em outra. O auto-detect de
+// long-polling identifica o bloqueio e troca de transporte automaticamente.
+function getFirestoreWithLongPolling(app: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  } catch {
+    // initializeFirestore só pode ser chamado uma vez por app; se já inicializado,
+    // retorna a instância existente.
+    return getFirestore(app);
+  }
+}
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -36,7 +50,7 @@ export function getSdks(firebaseApp: FirebaseApp) {
   return {
     firebaseApp,
     auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
+    firestore: getFirestoreWithLongPolling(firebaseApp)
   };
 }
 
