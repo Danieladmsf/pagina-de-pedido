@@ -174,7 +174,8 @@ export default function AdminPage() {
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
-  const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
+  // pollMs: fallback para redes que bloqueiam o streaming do Firestore (ver use-collection)
+  const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery, { pollMs: 15000 });
 
   const ordersRawSorted = React.useMemo(() => {
     if (!ordersRaw) return [];
