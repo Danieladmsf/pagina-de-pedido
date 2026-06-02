@@ -105,18 +105,24 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       const tableChanged = lastSelectedTableRef.current !== selectedTable;
       lastSelectedTableRef.current = selectedTable;
 
-      if (tableChanged || !hasUnsavedChanges) {
-        if (activeOrder) {
+      if (activeOrder) {
+        // Sincroniza com o pedido do servidor (a menos que haja edições locais
+        // ainda não salvas, para não sobrescrever o que o operador está digitando).
+        if (tableChanged || !hasUnsavedChanges) {
           setCart(activeOrder.items || []);
           setOriginalCart(activeOrder.items || []);
           setActiveOrderId(activeOrder.id);
           setReceiptPrinted(activeOrder.status === 'awaiting_payment');
-        } else {
-          setCart([]);
-          setOriginalCart([]);
-          setActiveOrderId(null);
-          setReceiptPrinted(false);
         }
+      } else if (tableChanged) {
+        // Só limpamos ao TROCAR para uma mesa que está realmente vazia.
+        // Importante: se continuamos na MESMA mesa e o pedido ainda não aparece no
+        // snapshot, NÃO limpamos — pode ser um pedido recém-criado que ainda não
+        // voltou pelo tempo real. Sem isso, a comanda era apagada logo após salvar.
+        setCart([]);
+        setOriginalCart([]);
+        setActiveOrderId(null);
+        setReceiptPrinted(false);
       }
     } else {
       lastSelectedTableRef.current = null;
