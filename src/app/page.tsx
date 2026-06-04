@@ -2566,11 +2566,13 @@ export default function AdminPage() {
                         <Plus className="mr-2 h-4 w-4" /> Novo Adicional
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[400px]">
+                    <DialogContent className="sm:max-w-[680px]">
                       <DialogHeader>
                         <DialogTitle>{editingAddon?.id ? 'Editar Adicional' : 'Novo Adicional'}</DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handleSaveAddonWithContainers} className="space-y-4 pt-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="addonName">Nome</Label>
                           <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
@@ -2589,10 +2591,11 @@ export default function AdminPage() {
                           <Label htmlFor="addonPrice">Preço (R$)</Label>
                           <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                         </div>
+                        </div>
                         <div className="space-y-2">
                           <Label>Containers vinculados <span className="font-normal text-muted-foreground">(opcional)</span></Label>
                           {allGroups.length > 0 ? (
-                            <div className="max-h-44 overflow-y-auto rounded-md border border-input divide-y">
+                            <div className="max-h-[260px] overflow-y-auto rounded-md border border-input divide-y">
                               {allGroups.map(name => {
                                 const checked = editingAddonContainers.has(name);
                                 return (
@@ -2621,6 +2624,7 @@ export default function AdminPage() {
                             </p>
                           )}
                           <p className="text-[11px] text-muted-foreground">Marque para vincular, desmarque para remover. Não é obrigatório escolher nenhum.</p>
+                        </div>
                         </div>
                         <DialogFooter>
                           <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
