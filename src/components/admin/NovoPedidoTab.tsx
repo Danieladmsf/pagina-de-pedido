@@ -414,6 +414,20 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     setActiveLookupField(null);
   };
 
+  // Limpa os dados do cliente/endereço de uma vez (para atender outro cliente)
+  const clearCustomerFields = () => {
+    setCustomerName('');
+    setCustomerPhone('');
+    setAddressObj({ street: '', number: '', neighborhood: '', city: '' });
+    setDeliveryFeeInput('');
+    setDynamicFee(null);
+    setDistanceInfo(null);
+    setDeliveryBlocked(false);
+    setCustomerLookupStatus('idle');
+    setMatchedCustomerName('');
+    setActiveLookupField(null);
+  };
+
   const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
   const finalTotal = cartTotal + deliveryFee;
 
@@ -922,6 +936,19 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 🛵 Delivery
               </button>
             </div>
+
+            {(customerName || customerPhone || addressObj.street || addressObj.number || addressObj.neighborhood || addressObj.city) && (
+              <div className="flex justify-end -mb-0.5">
+                <button
+                  type="button"
+                  onClick={clearCustomerFields}
+                  className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-red-600 transition-colors"
+                  title="Limpar dados do cliente e endereço"
+                >
+                  <X className="h-3 w-3" /> Limpar
+                </button>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               {(() => {
