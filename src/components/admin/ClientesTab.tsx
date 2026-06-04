@@ -112,6 +112,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [formCreditPayDay, setFormCreditPayDay] = useState('');
   // Bairros cadastrados em "Taxas por Bairro" (store_profiles), usados como sugestao no campo Bairro
   const [registeredNeighborhoods, setRegisteredNeighborhoods] = useState<string[]>([]);
+  const [showBairroSuggestions, setShowBairroSuggestions] = useState(false);
 
   React.useEffect(() => {
     if (!db || !user?.uid) return;
@@ -641,12 +642,39 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 </div>
                 <div className="space-y-0.5 md:col-span-2">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Bairro</Label>
-                  <Input value={formBairro} onChange={(e) => setFormBairro(e.target.value)} placeholder="Bairro" list="cliente-bairros-cadastrados" className="bg-slate-50/50 h-7 text-xs px-2" />
-                  {registeredNeighborhoods.length > 0 && (
-                    <datalist id="cliente-bairros-cadastrados">
-                      {registeredNeighborhoods.map((b) => <option key={b} value={b} />)}
-                    </datalist>
-                  )}
+                  <div className="relative">
+                    <Input
+                      value={formBairro}
+                      onChange={(e) => { setFormBairro(e.target.value); setShowBairroSuggestions(true); }}
+                      onFocus={() => setShowBairroSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowBairroSuggestions(false), 200)}
+                      placeholder="Bairro"
+                      autoComplete="off"
+                      className="bg-slate-50/50 h-7 text-xs px-2"
+                    />
+                    {showBairroSuggestions && (() => {
+                      const term = formBairro.trim().toLowerCase();
+                      const filtered = term.length > 0
+                        ? registeredNeighborhoods.filter((b) => b.toLowerCase().includes(term))
+                        : registeredNeighborhoods;
+                      if (filtered.length === 0) return null;
+                      return (
+                        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                          {filtered.map((b) => (
+                            <button
+                              key={b}
+                              type="button"
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-emerald-50 border-b last:border-0 transition-colors"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => { setFormBairro(b); setShowBairroSuggestions(false); }}
+                            >
+                              {b}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <div className="space-y-0.5 md:col-span-2">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cidade</Label>
