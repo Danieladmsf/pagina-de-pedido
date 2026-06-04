@@ -43,7 +43,7 @@ import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
-import { MENU_VISIBILITY_CHANNELS, getItemVisibilityState, getVisibilityToggleUpdate, hasAnyVisibleChannel } from '@/lib/menu-visibility';
+import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 
 const getManagedStock = (value: unknown): number | null => {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -1663,7 +1663,7 @@ export default function AdminPage() {
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
                       <TableHead className="w-[190px] text-center">
-                        <span className="whitespace-nowrap text-[11px]">Delivery / Balcão / Mesa</span>
+                        <span className="whitespace-nowrap text-[11px]">Delivery / Local</span>
                       </TableHead>
                       <TableHead className="text-right pr-6 w-[150px]">Ações</TableHead>
                     </TableRow>
@@ -1678,15 +1678,15 @@ export default function AdminPage() {
                     ) : filteredItems.map((item) => {
                       const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
-                      const visibilityState = getItemVisibilityState(item);
-                      const allOff = !hasAnyVisibleChannel(item);
-                      const visibilityChannels = MENU_VISIBILITY_CHANNELS.map((channel) => ({
-                        ...channel,
-                        active: visibilityState[channel.id],
+                      const allOff = !hasAnyVisibleToggle(item);
+                      const visibilityChannels = MENU_VISIBILITY_TOGGLES.map((toggle) => ({
+                        label: toggle.label,
+                        trackClass: toggle.trackClass,
+                        active: isToggleActive(item, toggle),
                         onToggle: async () => {
                           if (!db) return;
-                          const newVal = !visibilityState[channel.id];
-                          await updateDoc(doc(db, 'menuItems', item.id), getVisibilityToggleUpdate(item, channel.id, newVal));
+                          const newVal = !isToggleActive(item, toggle);
+                          await updateDoc(doc(db, 'menuItems', item.id), getToggleUpdate(item, toggle, newVal));
                         },
                       }));
                        
