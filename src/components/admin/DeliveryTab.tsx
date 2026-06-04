@@ -1087,24 +1087,24 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
                   return matchesCat && matchesSearch;
                 }).map(item => (
-                  <button 
-                    key={item.id} 
+                  <button
+                    key={item.id}
                     onClick={() => setSelectedItemForDialog(item)}
-                    className="text-left border bg-white p-2.5 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[75px]"
+                    className="text-left border bg-white p-2.5 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex items-center gap-3 min-h-[80px]"
                   >
-                    <div className="flex gap-2">
-                      {item.imageUrl ? (
-                        <div className="relative w-12 h-12 rounded-md overflow-hidden shrink-0">
-                          <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="48px" />
-                        </div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-md bg-slate-100 flex items-center justify-center shrink-0">
-                          <Tag className="h-4 w-4 text-slate-300" />
-                        </div>
-                      )}
-                      <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary flex-1">{item.name}</span>
+                    {item.imageUrl ? (
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
+                        <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                        <Tag className="h-5 w-5 text-slate-300" />
+                      </div>
+                    )}
+                    <div className="flex flex-col flex-1 min-w-0 gap-1">
+                      <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
+                      <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}</span>
                     </div>
-                    <span className="text-xs font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
                   </button>
                 ))}
               </div>
