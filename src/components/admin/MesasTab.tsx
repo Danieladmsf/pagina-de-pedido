@@ -953,7 +953,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   </Badge>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
                 {filteredItems.map(item => {
                   const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
                   return (
