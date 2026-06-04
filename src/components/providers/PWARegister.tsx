@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { traceReload, dumpReloadTrace } from '@/lib/reload-trace';
 
 // Versão do bundle que está rodando AGORA (assada no build via next.config.ts).
 const RUNNING_VERSION = process.env.NEXT_PUBLIC_BUILD_ID || 'dev';
@@ -8,6 +9,14 @@ const RUNNING_VERSION = process.env.NEXT_PUBLIC_BUILD_ID || 'dev';
 export function PWARegister() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
+    // DIAGNÓSTICO: mostra os gatilhos de reload registrados na sessão anterior
+    // e marca quando a página está prestes a descarregar (qualquer motivo).
+    dumpReloadTrace();
+    const onBeforeUnload = () => traceReload('beforeunload (página descarregando)');
+    const onPageHide = () => traceReload('pagehide');
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
 
     // Registra o service worker e força uma verificação de atualização logo de
     // cara e sempre que a aba volta a ficar visível.
@@ -31,6 +40,7 @@ export function PWARegister() {
     const reloadIfSafe = () => {
       if (!updatePending) return;
       if (document.visibilityState === 'hidden') {
+        traceReload('pwa: reloadIfSafe (nova versão pendente, aba escondida)');
         window.location.reload();
       }
     };
@@ -65,6 +75,7 @@ export function PWARegister() {
     const onControllerChange = () => {
       if (refreshing) return;
       refreshing = true;
+      traceReload('pwa: controllerchange (novo service worker assumiu)', { visibility: document.visibilityState });
       if (document.visibilityState === 'hidden') {
         window.location.reload();
       } else {
@@ -84,6 +95,8 @@ export function PWARegister() {
     return () => {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       }
