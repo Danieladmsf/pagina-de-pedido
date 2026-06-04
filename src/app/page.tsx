@@ -2906,7 +2906,7 @@ export default function AdminPage() {
                               onChange={() => toggleProductContainer(product, addonCategoryFilter)}
                             />
                             <span className="flex-1 truncate">
-                              <span className={`font-semibold ${product.isAvailable === false ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{product.name}</span>
+                              <span className={`font-semibold ${!hasAnyVisibleToggle(product) ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{product.name}</span>
                               <span className="ml-1 text-[10px] text-slate-400">{categories?.find((c: any) => c.id === product.categoryId)?.name || ''}</span>
                             </span>
                           </label>
