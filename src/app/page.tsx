@@ -2384,7 +2384,7 @@ export default function AdminPage() {
                   <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 w-full md:w-auto">
                     <Button
                       variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
-                      onClick={() => { setAddonCategoryFilter('all'); setHighlightedAddonId(null); }}
+                      onClick={() => { setAddonCategoryFilter('all'); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                       size="sm"
                       className="whitespace-nowrap rounded-full"
                     >
@@ -2394,7 +2394,7 @@ export default function AdminPage() {
                       <Button
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
-                        onClick={() => { setAddonCategoryFilter(g); setHighlightedAddonId(null); }}
+                        onClick={() => { setAddonCategoryFilter(g); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                         size="sm"
                         className={`whitespace-nowrap rounded-full flex items-center group ${
                           highlightedContainers.has(g) && addonCategoryFilter !== g
