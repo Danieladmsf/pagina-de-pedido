@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, writeBatch, onSnapshot, orderBy, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDoc, getDocs, writeBatch, onSnapshot, orderBy, increment } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,24 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [formCreditEnabled, setFormCreditEnabled] = useState(false);
   const [formCreditLimit, setFormCreditLimit] = useState('');
   const [formCreditPayDay, setFormCreditPayDay] = useState('');
+  // Bairros cadastrados em "Taxas por Bairro" (store_profiles), usados como sugestao no campo Bairro
+  const [registeredNeighborhoods, setRegisteredNeighborhoods] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!db || !user?.uid) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'store_profiles', user.uid));
+        const rules = (snap.exists() ? snap.data()?.customAddressRules : null) || [];
+        const bairros = rules
+          .filter((r: any) => r?.type === 'neighborhood' && r?.keyword?.trim())
+          .map((r: any) => r.keyword.trim());
+        setRegisteredNeighborhoods(Array.from(new Set<string>(bairros)).sort((a, b) => a.localeCompare(b)));
+      } catch (err) {
+        console.error('[ClientesTab] Erro ao carregar bairros cadastrados:', err);
+      }
+    })();
+  }, [db, user?.uid]);
 
   // Query Firestore
   const clientesQuery = useMemoFirebase(() => {
@@ -623,7 +641,12 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 </div>
                 <div className="space-y-0.5 md:col-span-2">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Bairro</Label>
-                  <Input value={formBairro} onChange={(e) => setFormBairro(e.target.value)} placeholder="Bairro" className="bg-slate-50/50 h-7 text-xs px-2" />
+                  <Input value={formBairro} onChange={(e) => setFormBairro(e.target.value)} placeholder="Bairro" list="cliente-bairros-cadastrados" className="bg-slate-50/50 h-7 text-xs px-2" />
+                  {registeredNeighborhoods.length > 0 && (
+                    <datalist id="cliente-bairros-cadastrados">
+                      {registeredNeighborhoods.map((b) => <option key={b} value={b} />)}
+                    </datalist>
+                  )}
                 </div>
                 <div className="space-y-0.5 md:col-span-2">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cidade</Label>
