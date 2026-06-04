@@ -648,6 +648,7 @@ export default function AdminPage() {
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
   const [containerProductSearch, setContainerProductSearch] = useState('');
+  const [highlightedAddonId, setHighlightedAddonId] = useState<string | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
   const [bulkCategoryName, setBulkCategoryName] = useState('');
@@ -2233,6 +2234,8 @@ export default function AdminPage() {
               });
             const getAddonContainerSet = (addonId: string) =>
               new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
+            // Containers que usam o item destacado (clicado na Lista Matriz) -> pintados de laranja.
+            const highlightedContainers = highlightedAddonId ? getAddonContainerSet(highlightedAddonId) : new Set<string>();
             const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
               if (!db || !user) return;
               const current = getAddonContainerSet(addonId);
@@ -2388,12 +2391,16 @@ export default function AdminPage() {
                       Lista Matriz
                     </Button>
                     {allGroups.map(g => (
-                      <Button 
+                      <Button
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
                         onClick={() => setAddonCategoryFilter(g)}
                         size="sm"
-                        className="whitespace-nowrap rounded-full flex items-center group"
+                        className={`whitespace-nowrap rounded-full flex items-center group ${
+                          highlightedContainers.has(g) && addonCategoryFilter !== g
+                            ? 'border-orange-400 bg-orange-100 text-orange-700 hover:bg-orange-200'
+                            : ''
+                        }`}
                       >
                         {g}
                         <span className="ml-2 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
@@ -2810,6 +2817,9 @@ export default function AdminPage() {
                     ) : (
                       filteredAddons.map((addon: any) => {
                         let rowClass = selectedAddonIds.has(addon.id) ? 'bg-emerald-50/30' : '';
+                        if (highlightedAddonId === addon.id) {
+                          rowClass = 'bg-orange-50 ring-1 ring-inset ring-orange-300';
+                        }
                         if (unusedDuplicateIds.has(addon.id)) {
                           rowClass = 'bg-red-200 border-2 border-red-500';
                         }
@@ -2828,7 +2838,11 @@ export default function AdminPage() {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="font-bold">
+                          <TableCell
+                            className="font-bold cursor-pointer hover:bg-orange-50/50 transition-colors"
+                            title="Clique para destacar os containers que usam este item"
+                            onClick={() => setHighlightedAddonId(prev => prev === addon.id ? null : addon.id)}
+                          >
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
                                 <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
