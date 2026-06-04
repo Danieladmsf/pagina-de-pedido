@@ -804,18 +804,18 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       {/* Coluna Esquerda: Produtos e Filtros */}
       <div className="w-full md:w-2/3 flex flex-col h-full overflow-hidden bg-white rounded-xl shadow-sm border p-4">
         
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2">
-          <div className="relative min-w-[200px]">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar" 
-              className="pl-9 h-10 bg-slate-50"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          
-          <Badge 
+        <div className="relative mb-3 shrink-0">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar"
+            className="pl-9 h-10 bg-slate-50"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 shrink-0">
+          <Badge
             variant={activeCategory === 'all' ? 'default' : 'outline'}
             className="cursor-pointer h-8 px-4 flex-shrink-0"
             onClick={() => { setActiveCategory('all'); setSearchTerm(''); }}
