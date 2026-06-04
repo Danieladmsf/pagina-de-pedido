@@ -959,7 +959,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
                       className="h-7 text-xs" />
-                    {activeLookupField === 'name' && suggestionsDropdown}
+                    {orderType === 'delivery' && activeLookupField === 'name' && suggestionsDropdown}
                   </div>
                 );
                 const phoneField = (
@@ -969,7 +969,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
                       className={`h-7 text-xs ${orderType === 'delivery' ? 'border-blue-300 focus-visible:ring-blue-400 font-semibold' : ''}`} />
-                    {activeLookupField === 'phone' && suggestionsDropdown}
+                    {orderType === 'delivery' && activeLookupField === 'phone' && suggestionsDropdown}
                   </div>
                 );
                 return orderType === 'delivery'
