@@ -1087,7 +1087,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         onClick={() => { setOrderType('dine_in'); setDynamicFee(null); setDistanceInfo(null); }}
                         className={`border-2 rounded-lg p-2 text-center font-bold text-xs transition-all ${orderType === 'dine_in' ? 'border-primary bg-primary/10 text-primary' : 'border-muted text-muted-foreground'}`}
                       >
-                        🍽️ Local
+                        🍽️ Comer no local
                       </button>
                     </div>
                   </div>
