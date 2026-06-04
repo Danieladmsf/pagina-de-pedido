@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
+import { normalizeSearch } from '@/lib/utils';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1189,7 +1190,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       {showNeighborhoodSuggestions && (() => {
                         const neighborhoodRules = (customAddressRules || []).filter((r: any) => r.type === 'neighborhood' && r.keyword);
                         const filtered = neighborhood.trim().length > 0
-                          ? neighborhoodRules.filter((r: any) => r.keyword.toLowerCase().includes(neighborhood.toLowerCase().trim()))
+                          ? neighborhoodRules.filter((r: any) => normalizeSearch(r.keyword).includes(normalizeSearch(neighborhood.trim())))
                           : neighborhoodRules;
                         if (filtered.length === 0) return null;
                         return (

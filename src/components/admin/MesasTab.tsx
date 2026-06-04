@@ -14,6 +14,7 @@ import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { normalizeSearch } from '@/lib/utils';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -145,7 +146,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, 'dine_in')) return false;
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
     return matchesCat && matchesSearch;
   });
 

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
+import { normalizeSearch } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -331,13 +332,13 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     return (items || []).filter((it: any) => {
       if (addedIds.has(it.id)) return false;
       if (!itemSearchQuery) return true;
-      return it.name?.toLowerCase().includes(itemSearchQuery.toLowerCase());
+      return normalizeSearch(it.name).includes(normalizeSearch(itemSearchQuery));
     });
   }, [items, formItems, itemSearchQuery]);
 
   const filteredPromotions = useMemo(() => {
     if (!searchQuery) return promotions;
-    return promotions.filter((p: any) => p.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    return promotions.filter((p: any) => normalizeSearch(p.name).includes(normalizeSearch(searchQuery)));
   }, [promotions, searchQuery]);
 
   const combos = useMemo(() => {
@@ -346,7 +347,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
 
   const filteredCombos = useMemo(() => {
     if (!searchQuery) return combos;
-    return combos.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    return combos.filter(c => normalizeSearch(c.name).includes(normalizeSearch(searchQuery)));
   }, [combos, searchQuery]);
 
   const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

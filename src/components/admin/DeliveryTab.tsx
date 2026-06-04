@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { validateCustomerCredit } from '@/lib/customer-credit';
+import { normalizeSearch } from '@/lib/utils';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
 interface DeliveryTabProps {
@@ -98,9 +99,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     return () => unsubscribe();
   }, [db, storeProfile?.id]);
 
-  const filteredOrders = onlyDeliveryAppOrders.filter(o => 
-    o.id.includes(searchTerm) || 
-    o.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredOrders = onlyDeliveryAppOrders.filter(o =>
+    o.id.includes(searchTerm) ||
+    normalizeSearch(o.customerName).includes(normalizeSearch(searchTerm)) ||
     o.customerPhone?.includes(searchTerm)
   );
 
@@ -1082,7 +1083,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 {items?.filter(item => {
                   if (item.isAvailable === false) return false;
                   const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
-                  const matchesSearch = item.name.toLowerCase().includes(editSearch.toLowerCase());
+                  const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
                   return matchesCat && matchesSearch;
                 }).map(item => (
                   <button 

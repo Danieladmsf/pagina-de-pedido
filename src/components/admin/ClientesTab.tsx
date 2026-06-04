@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
+import { normalizeSearch } from '@/lib/utils';
 
 interface ClientesTabProps {
   db: any;
@@ -161,12 +162,12 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const filtered = useMemo(() => {
     let result = [...clientes];
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+      const term = normalizeSearch(searchTerm);
       result = result.filter(c =>
-        c.nome?.toLowerCase().includes(term) ||
-        c.celular?.toLowerCase().includes(term) ||
-        c.bairro?.toLowerCase().includes(term) ||
-        c.cidade?.toLowerCase().includes(term)
+        normalizeSearch(c.nome).includes(term) ||
+        normalizeSearch(c.celular).includes(term) ||
+        normalizeSearch(c.bairro).includes(term) ||
+        normalizeSearch(c.cidade).includes(term)
       );
     }
     result.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
@@ -671,9 +672,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                       className="bg-slate-50/50 h-7 text-xs px-2"
                     />
                     {showBairroSuggestions && (() => {
-                      const term = formBairro.trim().toLowerCase();
+                      const term = normalizeSearch(formBairro.trim());
                       const filtered = term.length > 0
-                        ? registeredNeighborhoods.filter((b) => b.toLowerCase().includes(term))
+                        ? registeredNeighborhoods.filter((b) => normalizeSearch(b).includes(term))
                         : registeredNeighborhoods;
                       if (filtered.length === 0) return null;
                       return (

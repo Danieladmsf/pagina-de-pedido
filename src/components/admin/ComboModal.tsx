@@ -6,6 +6,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { MenuItem, ComboItem } from '@/lib/types';
+import { normalizeSearch } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft } from 'lucide-react';
@@ -154,7 +155,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                   className="h-9 text-sm"
                 />
                 <div className="border rounded-md p-2 h-[155px] overflow-y-auto space-y-1">
-                  {items?.filter(i => !i.isCombo && !i.isMarmita && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map((item) => (
+                  {items?.filter(i => !i.isCombo && !i.isMarmita && normalizeSearch(i.name).includes(normalizeSearch(searchTerm))).map((item) => (
                     <div key={item.id} className="flex items-center space-x-2 p-1.5 hover:bg-slate-50 rounded">
                       <Checkbox 
                         id={`combo-item-${item.id}`} 
@@ -166,7 +167,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                       </Label>
                     </div>
                   ))}
-                  {items?.filter(i => !i.isCombo && !i.isMarmita && i.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                  {items?.filter(i => !i.isCombo && !i.isMarmita && normalizeSearch(i.name).includes(normalizeSearch(searchTerm))).length === 0 && (
                     <div className="h-full flex items-center justify-center text-sm text-muted-foreground italic text-center py-4">
                       Nenhum produto encontrado.
                     </div>

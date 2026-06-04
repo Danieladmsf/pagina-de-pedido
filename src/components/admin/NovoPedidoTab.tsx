@@ -17,7 +17,7 @@ import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
-import { removeAccents } from '@/lib/utils';
+import { removeAccents, normalizeSearch } from '@/lib/utils';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -175,7 +175,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
     return matchesCat && matchesSearch;
   });
   

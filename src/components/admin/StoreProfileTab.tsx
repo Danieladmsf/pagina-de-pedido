@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadImage } from '@/lib/upload';
+import { normalizeSearch } from '@/lib/utils';
 
 interface StoreProfileTabProps {
   db: any;
@@ -945,7 +946,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                         </div>
                         <div className="max-h-56 overflow-y-auto">
                           {availableNeighborhoods
-                            .filter(n => n.name.toLowerCase().includes(neighborhoodSearch.toLowerCase()))
+                            .filter(n => normalizeSearch(n.name).includes(normalizeSearch(neighborhoodSearch)))
                             .map((n) => {
                               const selected = isNeighborhoodSelected(n.name);
                               return (
@@ -962,7 +963,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                                 </button>
                               );
                             })}
-                          {availableNeighborhoods.filter(n => n.name.toLowerCase().includes(neighborhoodSearch.toLowerCase())).length === 0 && (
+                          {availableNeighborhoods.filter(n => normalizeSearch(n.name).includes(normalizeSearch(neighborhoodSearch))).length === 0 && (
                             <div className="p-3 text-center text-xs text-violet-400">Nenhum bairro encontrado.</div>
                           )}
                         </div>

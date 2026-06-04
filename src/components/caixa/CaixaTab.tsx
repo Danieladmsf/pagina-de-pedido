@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { normalizeSearch } from '@/lib/utils';
 import { Plus, Minus, Loader2, Calculator, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -177,11 +178,11 @@ export function CaixaTab({
     let result = [...lancamentos];
 
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+      const term = normalizeSearch(searchTerm);
       result = result.filter(l =>
-        l.titulo.toLowerCase().includes(term) ||
-        l.usuario.toLowerCase().includes(term) ||
-        l.formaPagamento.toLowerCase().includes(term)
+        normalizeSearch(l.titulo).includes(term) ||
+        normalizeSearch(l.usuario).includes(term) ||
+        normalizeSearch(l.formaPagamento).includes(term)
       );
     }
 
