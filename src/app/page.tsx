@@ -646,6 +646,7 @@ export default function AdminPage() {
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
+  const [containerProductSearch, setContainerProductSearch] = useState('');
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
   const [bulkCategoryName, setBulkCategoryName] = useState('');
@@ -2172,6 +2173,55 @@ export default function AdminPage() {
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
+
+            // Vínculo produto <-> container: o produto "usa" o container quando tem
+            // um addonGroup apontando para ele (por id ou nome).
+            const productUsesContainer = (product: any, containerName: string, containerId?: string) =>
+              (product.addonGroups || []).some((g: any) => (containerId && g.addonCategoryId === containerId) || g.addonCategoryName === containerName);
+            const linkProductToContainer = async (product: any, containerName: string) => {
+              if (!db) return;
+              const currentIds = getContainerAddonIds(containerName);
+              const { ref, data } = await ensureAddonCategory(containerName, currentIds);
+              const containerId = (data as any)?.id || ref.id;
+              const cat = addonCategoryByName.get(containerName) as any;
+              const newGroup = {
+                name: containerName,
+                addonCategoryId: containerId,
+                addonCategoryName: containerName,
+                addonIds: currentIds,
+                usePrice: cat?.usePrice !== false,
+                min: 0,
+                max: cat?.max || 0,
+              };
+              const groups = (product.addonGroups || []).filter((g: any) => !(g.addonCategoryId === containerId || g.addonCategoryName === containerName));
+              await updateDoc(doc(db, 'menuItems', product.id), { addonGroups: [...groups, newGroup] });
+            };
+            const unlinkProductFromContainer = async (product: any, containerName: string, containerId?: string) => {
+              if (!db) return;
+              const groups = (product.addonGroups || []).filter((g: any) => !((containerId && g.addonCategoryId === containerId) || g.addonCategoryName === containerName));
+              await updateDoc(doc(db, 'menuItems', product.id), { addonGroups: groups });
+            };
+            const toggleProductContainer = async (product: any, containerName: string) => {
+              const cat = addonCategoryByName.get(containerName) as any;
+              const containerId = cat?.id;
+              try {
+                if (productUsesContainer(product, containerName, containerId)) {
+                  await unlinkProductFromContainer(product, containerName, containerId);
+                  toast({ title: `"${product.name}" desvinculado de ${containerName}.` });
+                } else {
+                  await linkProductToContainer(product, containerName);
+                  toast({ title: `"${product.name}" vinculado a ${containerName}.` });
+                }
+              } catch (err: any) {
+                toast({ variant: 'destructive', title: 'Erro', description: err?.message });
+              }
+            };
+            const containerProductList = (items || [])
+              .filter((p: any) => {
+                const q = removeAccents(containerProductSearch.toLowerCase()).trim();
+                return !q || removeAccents(String(p.name || '').toLowerCase()).includes(q);
+              })
+              .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
             const getAddonContainerSet = (addonId: string) =>
               new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
             const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
@@ -2691,6 +2741,8 @@ export default function AdminPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
+                <div className={isContainerView ? 'flex flex-col lg:flex-row' : ''}>
+                <div className={isContainerView ? 'flex-1 min-w-0' : ''}>
                 <div className={`border-b px-4 py-2 text-xs font-semibold ${
                   isContainerView
                     ? 'bg-emerald-50 text-emerald-700'
@@ -2834,6 +2886,41 @@ export default function AdminPage() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
+                {isContainerView && (
+                  <div className="flex flex-col border-t bg-slate-50/40 lg:w-96 lg:border-l lg:border-t-0 max-h-[55vh] lg:max-h-none">
+                    <div className="border-b bg-white px-3 py-2">
+                      <p className="text-xs font-bold text-slate-700">Produtos que usam &quot;{addonCategoryFilter}&quot;</p>
+                      <p className="text-[10px] text-slate-500">Marque para vincular este container ao produto; desmarque para remover.</p>
+                      <div className="relative mt-2">
+                        <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input value={containerProductSearch} onChange={(e) => setContainerProductSearch(e.target.value)} placeholder="Buscar produto..." className="h-8 pl-8 text-xs" />
+                      </div>
+                    </div>
+                    <div className="flex-1 divide-y overflow-y-auto custom-scrollbar">
+                      {containerProductList.length === 0 ? (
+                        <p className="px-3 py-4 text-center text-xs text-muted-foreground">Nenhum produto encontrado.</p>
+                      ) : containerProductList.map((product: any) => {
+                        const checked = productUsesContainer(product, addonCategoryFilter, (addonCategoryByName.get(addonCategoryFilter) as any)?.id);
+                        return (
+                          <label key={product.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-white">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300"
+                              checked={checked}
+                              onChange={() => toggleProductContainer(product, addonCategoryFilter)}
+                            />
+                            <span className="flex-1 truncate">
+                              <span className={`font-semibold ${product.isAvailable === false ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{product.name}</span>
+                              <span className="ml-1 text-[10px] text-slate-400">{categories?.find((c: any) => c.id === product.categoryId)?.name || ''}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                </div>
               </CardContent>
             </Card>
             </div>
