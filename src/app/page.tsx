@@ -641,6 +641,7 @@ export default function AdminPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);
+  const [editingAddonContainers, setEditingAddonContainers] = useState<Set<string>>(new Set());
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
@@ -1321,51 +1322,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleSaveAddon = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!user || !db) return;
-    const formData = new FormData(e.currentTarget);
-    const selectedGroup = editingAddon?.group || '';
-    const addonData = {
-      name: formData.get('addonName') as string,
-      description: ((formData.get('addonDescription') as string) || '').trim(),
-      price: parseFloat(formData.get('addonPrice') as string),
-      group: selectedGroup,
-      ownerId: user.uid,
-    };
-    try {
-      let savedAddonId = editingAddon?.id;
-      if (editingAddon?.id) {
-        await updateDoc(doc(db, 'addons', editingAddon.id), addonData);
-      } else {
-        const newDoc = doc(collection(db, 'addons'));
-        savedAddonId = newDoc.id;
-        await setDoc(newDoc, { ...addonData, id: newDoc.id });
-      }
-      if (savedAddonId && selectedGroup) {
-        const categorySnap = await getDocs(query(collection(db, 'addonCategories'), where('ownerId', '==', user.uid), where('name', '==', selectedGroup)));
-        if (categorySnap.empty) {
-          const newCategoryDoc = doc(collection(db, 'addonCategories'));
-          await setDoc(newCategoryDoc, { id: newCategoryDoc.id, name: selectedGroup, ownerId: user.uid, addonIds: [savedAddonId], usePrice: true });
-        } else {
-          const categoryDoc = categorySnap.docs[0];
-          const categoryData = categoryDoc.data();
-          const currentIds = categoryData.addonIds || [];
-          const removedAddonIds = (categoryData.removedAddonIds || []).filter((id: string) => id !== savedAddonId);
-          if (!currentIds.includes(savedAddonId)) {
-            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { addonIds: [...currentIds, savedAddonId], removedAddonIds });
-          } else if (removedAddonIds.length !== (categoryData.removedAddonIds || []).length) {
-            await updateDoc(doc(db, 'addonCategories', categoryDoc.id), { removedAddonIds });
-          }
-        }
-      }
-      setEditingAddon(null);
-      toast({ title: "Sucesso", description: "Adicional salvo." });
-    } catch (err: any) {
-      console.error('Erro ao salvar adicional:', err);
-      toast({ variant: "destructive", title: "Erro", description: err?.message || "Falha ao salvar adicional." });
-    }
-  };
 
   if (isUserLoading || loadingRole || !db) {
     return (
@@ -2203,6 +2159,58 @@ export default function AdminPage() {
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
+            const getAddonContainerSet = (addonId: string) =>
+              new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
+            const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
+              if (!db || !user) return;
+              const current = getAddonContainerSet(addonId);
+              // Vincular aos containers recém-marcados
+              for (const name of selected) {
+                if (current.has(name)) continue;
+                const currentIds = getContainerAddonIds(name);
+                const { ref } = await ensureAddonCategory(name, currentIds);
+                const existing = addonCategoryByName.get(name) as any;
+                const removedAddonIds = (existing?.removedAddonIds || []).filter((id: string) => id !== addonId);
+                await updateDoc(ref, { addonIds: Array.from(new Set([...currentIds, addonId])), removedAddonIds });
+              }
+              // Remover dos containers desmarcados
+              for (const name of current) {
+                if (selected.has(name)) continue;
+                const nextIds = getContainerAddonIds(name).filter((id: string) => id !== addonId);
+                const { ref } = await ensureAddonCategory(name, getContainerAddonIds(name));
+                const existing = addonCategoryByName.get(name) as any;
+                const removedAddonIds = Array.from(new Set([...(existing?.removedAddonIds || []), addonId]));
+                await updateDoc(ref, { addonIds: nextIds, removedAddonIds });
+              }
+            };
+            const handleSaveAddonWithContainers = async (e: React.FormEvent<HTMLFormElement>) => {
+              e.preventDefault();
+              if (!user || !db) return;
+              const formData = new FormData(e.currentTarget);
+              const addonData = {
+                name: formData.get('addonName') as string,
+                description: ((formData.get('addonDescription') as string) || '').trim(),
+                price: parseFloat(formData.get('addonPrice') as string),
+                group: editingAddon?.group || '',
+                ownerId: user.uid,
+              };
+              try {
+                let savedAddonId = editingAddon?.id;
+                if (editingAddon?.id) {
+                  await updateDoc(doc(db, 'addons', editingAddon.id), addonData);
+                } else {
+                  const newDoc = doc(collection(db, 'addons'));
+                  savedAddonId = newDoc.id;
+                  await setDoc(newDoc, { ...addonData, id: newDoc.id });
+                }
+                if (savedAddonId) await syncAddonContainers(savedAddonId, editingAddonContainers);
+                setEditingAddon(null);
+                toast({ title: 'Sucesso', description: 'Adicional salvo.' });
+              } catch (err: any) {
+                console.error('Erro ao salvar adicional:', err);
+                toast({ variant: 'destructive', title: 'Erro', description: err?.message || 'Falha ao salvar adicional.' });
+              }
+            };
             const normalizeAddonLookup = (value: string) =>
               removeAccents(value.toLowerCase()).replace(/\s+/g, ' ').trim();
             const normalizedAddonSearch = normalizeAddonLookup(addonSearchTerm);
@@ -2554,7 +2562,7 @@ export default function AdminPage() {
                   )}
                   <Dialog open={editingAddon !== null} onOpenChange={(open) => { if (!open) setEditingAddon(null); }}>
                     <DialogTrigger asChild>
-                      <Button onClick={() => setEditingAddon({})} className="bg-primary text-white">
+                      <Button onClick={() => { setEditingAddon({}); setEditingAddonContainers(new Set()); }} className="bg-primary text-white">
                         <Plus className="mr-2 h-4 w-4" /> Novo Adicional
                       </Button>
                     </DialogTrigger>
@@ -2562,7 +2570,7 @@ export default function AdminPage() {
                       <DialogHeader>
                         <DialogTitle>{editingAddon?.id ? 'Editar Adicional' : 'Novo Adicional'}</DialogTitle>
                       </DialogHeader>
-                      <form onSubmit={handleSaveAddon} className="space-y-4 pt-4">
+                      <form onSubmit={handleSaveAddonWithContainers} className="space-y-4 pt-4">
                         <div className="space-y-2">
                           <Label htmlFor="addonName">Nome</Label>
                           <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
@@ -2581,27 +2589,39 @@ export default function AdminPage() {
                           <Label htmlFor="addonPrice">Preço (R$)</Label>
                           <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                         </div>
-                        {editingAddon?.id && (() => {
-                          const containers = allGroups.filter(name => getContainerAddonIds(name).includes(editingAddon.id));
-                          return (
-                            <div className="space-y-2">
-                              <Label>Containers vinculados</Label>
-                              {containers.length > 0 ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {containers.map(name => (
-                                    <span key={name} className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 text-xs font-medium">
-                                      {name}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground italic">
-                                  Nenhum container vinculado. Use "Adicionar ao Container" na lista para vincular (opcional).
-                                </p>
-                              )}
+                        <div className="space-y-2">
+                          <Label>Containers vinculados <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                          {allGroups.length > 0 ? (
+                            <div className="max-h-44 overflow-y-auto rounded-md border border-input divide-y">
+                              {allGroups.map(name => {
+                                const checked = editingAddonContainers.has(name);
+                                return (
+                                  <label key={name} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-gray-300"
+                                      checked={checked}
+                                      onChange={(ev) => {
+                                        setEditingAddonContainers(prev => {
+                                          const next = new Set(prev);
+                                          if (ev.target.checked) next.add(name);
+                                          else next.delete(name);
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <span className={checked ? 'font-medium text-emerald-700' : ''}>{name}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
-                          );
-                        })()}
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">
+                              Nenhum container criado ainda. Crie um em "Novo Container".
+                            </p>
+                          )}
+                          <p className="text-[11px] text-muted-foreground">Marque para vincular, desmarque para remover. Não é obrigatório escolher nenhum.</p>
+                        </div>
                         <DialogFooter>
                           <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
                         </DialogFooter>
@@ -2781,7 +2801,7 @@ export default function AdminPage() {
                                   />
                                   <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => setEditingAddon(addon)}>
+                                <Button variant="ghost" size="icon" onClick={() => { setEditingAddon(addon); setEditingAddonContainers(getAddonContainerSet(addon.id)); }}>
                                   <Pencil className="h-4 w-4 text-blue-500" />
                                 </Button>
                                 <Button variant="ghost" size="icon" onClick={async () => {
