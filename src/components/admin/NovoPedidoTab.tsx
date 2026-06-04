@@ -954,7 +954,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
               {(() => {
                 const nameField = (
                   <div className="relative">
-                    <Input autoComplete="off" placeholder="Nome do Cliente" value={customerName}
+                    <Input autoComplete="new-password" placeholder="Nome do Cliente" value={customerName}
                       onChange={e => setCustomerName(e.target.value)}
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
@@ -964,7 +964,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 );
                 const phoneField = (
                   <div className="relative">
-                    <Input autoComplete="off" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
+                    <Input autoComplete="new-password" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
                       onChange={e => setCustomerPhone(e.target.value)}
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
