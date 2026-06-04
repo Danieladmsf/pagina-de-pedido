@@ -957,29 +957,29 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 {filteredItems.map(item => {
                   const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
                   return (
-                    <button 
-                      key={item.id} 
+                    <button
+                      key={item.id}
                       onClick={() => addToCart(item)}
-                      className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex flex-col justify-between min-h-[90px] relative"
+                      className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex items-center gap-3 min-h-[88px] relative"
                     >
                       {qtyInCart > 0 && (
                         <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
                           {qtyInCart}
                         </Badge>
                       )}
-                      <div className="flex gap-2">
-                        {item.imageUrl ? (
-                          <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                            <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
-                          </div>
-                        ) : (
-                          <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                            <Tag className="h-5 w-5 text-slate-300" />
-                          </div>
-                        )}
-                        <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6 flex-1">{item.name}</span>
+                      {item.imageUrl ? (
+                        <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0">
+                          <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="64px" />
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                          <Tag className="h-6 w-6 text-slate-300" />
+                        </div>
+                      )}
+                      <div className="flex flex-col flex-1 min-w-0 gap-1.5">
+                        <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
+                        <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
                       </div>
-                      <span className="text-sm font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
                     </button>
                   );
                 })}
