@@ -2845,7 +2845,7 @@ export default function AdminPage() {
                           >
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
-                                <span className={addon.active === false ? 'line-through text-red-400' : ''}>{addon.name}</span>
+                                <span className={`text-slate-900 ${addon.active === false ? 'line-through decoration-red-500 decoration-2' : ''}`}>{addon.name}</span>
                                 {addon.active === false && <span className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Pausado</span>}
                                 {unusedDuplicateIds.has(addon.id) && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ml-2">S/ USO (DUPLICADO)</span>}
                               </div>
