@@ -2346,48 +2346,6 @@ export default function AdminPage() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <Dialog open={isAddonCategoryModalOpen} onOpenChange={(open) => {
-                      setIsAddonCategoryModalOpen(open);
-                      if (!open) setNewAddonCategoryName('');
-                    }}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="whitespace-nowrap rounded-full border-dashed text-primary border-primary/50 hover:bg-primary/10">
-                          <Plus className="mr-1 h-3 w-3" /> Novo Container
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Novo Container de Adicionais</DialogTitle>
-                        </DialogHeader>
-                        <div className="py-4 space-y-2">
-                          <Label>Nome do Container</Label>
-                          <Input 
-                            autoFocus
-                            value={newAddonCategoryName} 
-                            onChange={(e) => setNewAddonCategoryName(e.target.value)} 
-                            placeholder="Ex: Opções PF, Bebidas..." 
-                          />
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsAddonCategoryModalOpen(false)}>Cancelar</Button>
-                          <Button onClick={async () => {
-                            if (!db || !user || !newAddonCategoryName.trim()) return;
-                            try {
-                              const newDoc = doc(collection(db, 'addonCategories'));
-                              await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, max: 0 });
-                              toast({ title: 'Container criado com sucesso!' });
-                              setIsAddonCategoryModalOpen(false);
-                              setNewAddonCategoryName('');
-                            } catch (err: any) {
-                              toast({ variant: 'destructive', title: 'Erro', description: err.message });
-                            }
-                          }} className="bg-primary text-white">
-                            Salvar
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-
                     <Dialog open={isEditCategoryModalOpen} onOpenChange={(open) => {
                       setIsEditCategoryModalOpen(open);
                       if (!open) {
@@ -2550,8 +2508,49 @@ export default function AdminPage() {
                     <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
                   </div>
                   <div className="flex gap-2 shrink-0">
+                  <Dialog open={isAddonCategoryModalOpen} onOpenChange={(open) => {
+                    setIsAddonCategoryModalOpen(open);
+                    if (!open) setNewAddonCategoryName('');
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="whitespace-nowrap border-dashed text-primary border-primary/50 hover:bg-primary/10">
+                        <Plus className="mr-2 h-4 w-4" /> Novo Container
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Novo Container de Adicionais</DialogTitle>
+                      </DialogHeader>
+                      <div className="py-4 space-y-2">
+                        <Label>Nome do Container</Label>
+                        <Input
+                          autoFocus
+                          value={newAddonCategoryName}
+                          onChange={(e) => setNewAddonCategoryName(e.target.value)}
+                          placeholder="Ex: Opções PF, Bebidas..."
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddonCategoryModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={async () => {
+                          if (!db || !user || !newAddonCategoryName.trim()) return;
+                          try {
+                            const newDoc = doc(collection(db, 'addonCategories'));
+                            await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, max: 0 });
+                            toast({ title: 'Container criado com sucesso!' });
+                            setIsAddonCategoryModalOpen(false);
+                            setNewAddonCategoryName('');
+                          } catch (err: any) {
+                            toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                          }
+                        }} className="bg-primary text-white">
+                          Salvar
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                   {selectedAddonIds.size > 0 && (
-                    <Button 
+                    <Button
                       onClick={() => setIsBulkCategoryModalOpen(true)}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
