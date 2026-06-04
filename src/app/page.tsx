@@ -2218,12 +2218,19 @@ export default function AdminPage() {
                 toast({ variant: 'destructive', title: 'Erro', description: err?.message });
               }
             };
+            const containerFilterId = (addonCategoryByName.get(addonCategoryFilter) as any)?.id;
             const containerProductList = (items || [])
               .filter((p: any) => {
                 const q = removeAccents(containerProductSearch.toLowerCase()).trim();
                 return !q || removeAccents(String(p.name || '').toLowerCase()).includes(q);
               })
-              .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
+              .sort((a: any, b: any) => {
+                // Selecionados primeiro, depois o restante; cada grupo em ordem alfabetica.
+                const aUses = productUsesContainer(a, addonCategoryFilter, containerFilterId);
+                const bUses = productUsesContainer(b, addonCategoryFilter, containerFilterId);
+                if (aUses !== bUses) return aUses ? -1 : 1;
+                return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
+              });
             const getAddonContainerSet = (addonId: string) =>
               new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
             const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
