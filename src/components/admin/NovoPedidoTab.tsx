@@ -817,7 +817,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           <Badge 
             variant={activeCategory === 'all' ? 'default' : 'outline'}
             className="cursor-pointer h-8 px-4 flex-shrink-0"
-            onClick={() => setActiveCategory('all')}
+            onClick={() => { setActiveCategory('all'); setSearchTerm(''); }}
           >
             Todos
           </Badge>
@@ -826,7 +826,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
               key={cat.id}
               variant={activeCategory === cat.id ? 'default' : 'outline'}
               className="cursor-pointer h-8 px-4 flex-shrink-0"
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => { setActiveCategory(cat.id); setSearchTerm(''); }}
             >
               {cat.name}
             </Badge>

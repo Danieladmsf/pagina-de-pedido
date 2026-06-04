@@ -926,7 +926,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 <Badge 
                   variant="secondary" 
                   className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => setActiveCategory('all')}
+                  onClick={() => { setActiveCategory('all'); setSearchTerm(''); }}
                 >
                   Todos
                 </Badge>
@@ -935,7 +935,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     key={cat.id} 
                     variant="secondary" 
                     className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => setActiveCategory(cat.id)}
+                    onClick={() => { setActiveCategory(cat.id); setSearchTerm(''); }}
                   >
                     {cat.name}
                   </Badge>
