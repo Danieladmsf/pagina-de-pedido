@@ -1573,6 +1573,33 @@ export default function AdminPage() {
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0">
                 <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    title="Ajusta a disponibilidade de cada produto para refletir os canais ligados (corrige itens legados que ficam ocultos do cliente)"
+                    onClick={async () => {
+                      if (!db || !items) return;
+                      const toFix = items.filter((it: any) => (it.isAvailable !== false) !== hasAnyVisibleToggle(it));
+                      if (toFix.length === 0) {
+                        toast({ title: 'Tudo certo', description: 'Nenhum produto precisava de correção.' });
+                        return;
+                      }
+                      if (!confirm(`Corrigir a disponibilidade de ${toFix.length} produto(s)?\n\nA disponibilidade passará a refletir os canais ligados (Delivery/Local). Produtos sem nenhum canal ligado ficarão indisponíveis; os demais voltam a ficar disponíveis.`)) return;
+                      try {
+                        for (let i = 0; i < toFix.length; i += 400) {
+                          const chunk = toFix.slice(i, i + 400);
+                          const batch = writeBatch(db);
+                          chunk.forEach((it: any) => batch.update(doc(db, 'menuItems', it.id), { isAvailable: hasAnyVisibleToggle(it) }));
+                          await batch.commit();
+                        }
+                        toast({ title: 'Disponibilidade corrigida', description: `${toFix.length} produto(s) atualizado(s).` });
+                      } catch (err: any) {
+                        toast({ variant: 'destructive', title: 'Erro ao corrigir', description: err?.message });
+                      }
+                    }}
+                  >
+                    Corrigir disponibilidade
+                  </Button>
                   <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
                     <Plus className="mr-2 h-4 w-4" /> Novo Produto
                   </Button>
