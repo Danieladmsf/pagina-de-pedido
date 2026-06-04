@@ -2898,7 +2898,7 @@ export default function AdminPage() {
                       ) : containerProductList.map((product: any) => {
                         const checked = productUsesContainer(product, addonCategoryFilter, (addonCategoryByName.get(addonCategoryFilter) as any)?.id);
                         return (
-                          <label key={product.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-white">
+                          <label key={product.id} className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-xs transition ${checked ? 'bg-emerald-50' : 'opacity-50 hover:opacity-100 hover:bg-white'}`}>
                             <input
                               type="checkbox"
                               className="h-4 w-4 rounded border-gray-300"
