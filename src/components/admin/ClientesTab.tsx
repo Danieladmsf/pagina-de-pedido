@@ -119,13 +119,31 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'store_profiles', user.uid));
-        const rules = (snap.exists() ? snap.data()?.customAddressRules : null) || [];
-        const bairros = rules
-          .filter((r: any) => r?.type === 'neighborhood' && r?.keyword?.trim())
-          .map((r: any) => r.keyword.trim());
-        setRegisteredNeighborhoods(Array.from(new Set<string>(bairros)).sort((a, b) => a.localeCompare(b)));
+        const data = snap.exists() ? snap.data() : {};
+
+        // Bairros adicionados manualmente (com taxa) em "Taxas por Bairro"
+        const manual: string[] = ((data?.customAddressRules || []) as any[])
+          .filter((r) => r?.type === 'neighborhood' && r?.keyword?.trim())
+          .map((r) => r.keyword.trim());
+
+        // Lista completa de bairros das cidades de entrega (mesma fonte do StoreProfileTab)
+        const cities: string[] = data?.general?.deliveryCities || data?.fees?.deliveryCities || [];
+        const fetched: string[] = [];
+        for (const city of cities) {
+          try {
+            const res = await fetch(`/api/list-neighborhoods?city=${encodeURIComponent(city)}`);
+            if (res.ok) {
+              const d = await res.json();
+              for (const n of (d?.neighborhoods || [])) if (n?.name) fetched.push(n.name);
+            }
+          } catch { /* ignora cidade que falhar */ }
+        }
+
+        const all = Array.from(new Set<string>([...manual, ...fetched]))
+          .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        setRegisteredNeighborhoods(all);
       } catch (err) {
-        console.error('[ClientesTab] Erro ao carregar bairros cadastrados:', err);
+        console.error('[ClientesTab] Erro ao carregar bairros:', err);
       }
     })();
   }, [db, user?.uid]);
