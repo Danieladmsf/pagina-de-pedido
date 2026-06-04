@@ -138,11 +138,6 @@ export default function AdminPage() {
 
   const adminRoleRef = useMemoFirebase(() => (db && isRealUser) ? doc(db, 'roles_admin', user!.uid) : null, [db, isRealUser]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
-  // Latch de "UI admin ja exibida" (ver gate de loading mais abaixo). Reseta no logout.
-  const appShownRef = useRef(false);
-  useEffect(() => {
-    if (!isRealUser) appShownRef.current = false;
-  }, [isRealUser]);
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
   const categoriesQuery = useMemoFirebase(() => {
@@ -909,16 +904,16 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [user, isUserLoading, router, auth]);
 
-  // Evita o flash da tela "Acesso Negado": o useDoc começa com isLoading=false,
-  // então há um instante em que loadingRole=false e adminRole ainda não chegou.
-  // Só mostramos "Acesso Negado" se, após uma janela curta, a role seguir ausente.
+  // Só mostra "Acesso Negado" depois que a role realmente resolveu sem permissão.
+  // Pequena janela de segurança contra erro transitório (ex.: permissão que
+  // se resolve numa nova tentativa) antes de declarar acesso negado.
   const [showAccessDenied, setShowAccessDenied] = useState(false);
   useEffect(() => {
     if (isUserLoading || loadingRole || !db || !isRealUser || adminRole) {
       setShowAccessDenied(false);
       return;
     }
-    const timer = setTimeout(() => setShowAccessDenied(true), 1500);
+    const timer = setTimeout(() => setShowAccessDenied(true), 800);
     return () => clearTimeout(timer);
   }, [isUserLoading, loadingRole, db, isRealUser, adminRole]);
 
@@ -1357,17 +1352,10 @@ export default function AdminPage() {
   };
 
 
-  // Trava: uma vez que a UI admin renderizou (user real + papel carregado), blips
-  // transitorios de loadingRole/adminRole (ex.: re-subscricao do useDoc, que sempre
-  // seta isLoading=true) NAO devem derrubar a arvore inteira — isso fazia modais
-  // abertos (ex.: Pagamento Balcao) "sumirem e voltarem". Login/Acesso Negado seguem
-  // intactos porque !isRealUser/!db continuam derrubando normalmente.
-  if (isRealUser && db && !!adminRole) {
-    appShownRef.current = true;
-  }
-  const appAlreadyShown = appShownRef.current;
-
-  if (isUserLoading || !db || !isRealUser || (!appAlreadyShown && (loadingRole || (!adminRole && !showAccessDenied)))) {
+  // Gate de carregamento. Com useDoc/useCollection em stale-while-revalidate,
+  // loadingRole só é true na primeira carga (não pisca em re-subscrições), então
+  // este gate não derruba mais a UI/modais durante o uso normal.
+  if (isUserLoading || !db || !isRealUser || loadingRole || (!adminRole && !showAccessDenied)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />

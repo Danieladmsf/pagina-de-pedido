@@ -44,7 +44,9 @@ export function useDoc<T = any>(
   type StateDataType = WithId<T> | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // Inicia "carregando" quando já há uma ref no mount — evita a janela de render
+  // em que isLoading=false e data=null antes do efeito rodar (falso "sem dados").
+  const [isLoading, setIsLoading] = useState<boolean>(!!memoizedDocRef);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
   // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
   // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava

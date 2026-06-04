@@ -58,7 +58,9 @@ export function useCollection<T = any>(
   type StateDataType = ResultItemType[] | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // Inicia "carregando" quando já há uma query no mount — evita a janela de render
+  // em que isLoading=false e data=null antes do efeito rodar (falso "lista vazia").
+  const [isLoading, setIsLoading] = useState<boolean>(!!memoizedTargetRefOrQuery);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
   // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
   // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava
