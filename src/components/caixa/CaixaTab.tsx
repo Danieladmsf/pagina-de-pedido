@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useCaixa, type LancamentoCaixa } from '@/hooks/useCaixa';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,10 +73,14 @@ export function CaixaTab({
   // Modal state
   const [modalOpen, setModalOpen] = useState<'abrir' | 'sangria' | 'suprimento' | 'venda' | null>(null);
   const [valorInput, setValorInput] = useState<number>(0);
+  // Marca se o usuário já editou o valor manualmente. Evita que um snapshot do
+  // realtime (caixasOrdenados muda) reescreva/apague o que foi digitado.
+  const valorTouchedRef = useRef(false);
 
   const [ultimoSaldoRef, setUltimoSaldoRef] = useState<number | null>(null);
 
   const openAbrirCaixaModal = () => {
+    valorTouchedRef.current = false; // nova abertura: pode re-inicializar o valor
     setModalOpen('abrir');
   };
 
@@ -92,10 +96,12 @@ export function CaixaTab({
           ultimoApurado = Number(ultimoFechado.valorEmCaixa) || 0;
         }
         setUltimoSaldoRef(ultimoApurado);
-        setValorInput(ultimoApurado);
+        // Só (re)inicializa o valor se o usuário ainda não digitou — assim um
+        // snapshot do realtime não apaga o que foi digitado.
+        if (!valorTouchedRef.current) setValorInput(ultimoApurado);
       } else {
         setUltimoSaldoRef(null);
-        setValorInput(0);
+        if (!valorTouchedRef.current) setValorInput(0);
       }
     }
   }, [modalOpen, caixasOrdenados]);
@@ -916,6 +922,7 @@ export function CaixaTab({
   };
 
   const resetForm = () => {
+    valorTouchedRef.current = false;
     setValorInput(0);
     setFormaPagamentoInput('dinheiro');
     setJustificativaInput('');
@@ -1244,11 +1251,11 @@ export function CaixaTab({
                   R$ {ultimoSaldoRef.toFixed(2)}
                 </div>
               ) : (
-                <CurrencyInput 
-                  value={valorInput} 
-                  onChange={setValorInput} 
-                  placeholder="0,00" 
-                  required 
+                <CurrencyInput
+                  value={valorInput}
+                  onChange={(v) => { valorTouchedRef.current = true; setValorInput(v); }}
+                  placeholder="0,00"
+                  required
                 />
               )}
             </div>
