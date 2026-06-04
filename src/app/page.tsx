@@ -2623,7 +2623,6 @@ export default function AdminPage() {
                               Nenhum container criado ainda. Crie um em "Novo Container".
                             </p>
                           )}
-                          <p className="text-[11px] text-muted-foreground">Marque para vincular, desmarque para remover. Não é obrigatório escolher nenhum.</p>
                         </div>
                         </div>
                         <DialogFooter>
