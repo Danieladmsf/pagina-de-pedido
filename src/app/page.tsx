@@ -651,7 +651,9 @@ export default function AdminPage() {
   const [highlightedAddonId, setHighlightedAddonId] = useState<string | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
-  const [bulkCategoryName, setBulkCategoryName] = useState('');
+  const [bulkCategoryNames, setBulkCategoryNames] = useState<Set<string>>(new Set());
+  const [bulkCategoryInitial, setBulkCategoryInitial] = useState<Set<string>>(new Set());
+  const [bulkCategorySearch, setBulkCategorySearch] = useState('');
   const [isAddonCategoryModalOpen, setIsAddonCategoryModalOpen] = useState(false);
   const [newAddonCategoryName, setNewAddonCategoryName] = useState('');
   const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
@@ -2647,10 +2649,23 @@ export default function AdminPage() {
                   </Dialog>
                   {selectedAddonIds.size > 0 && (
                     <Button
-                      onClick={() => setIsBulkCategoryModalOpen(true)}
+                      onClick={() => {
+                        // Pre-marca os containers que ja contem TODOS os itens selecionados.
+                        const selectedIds = Array.from(selectedAddonIds);
+                        const already = new Set(
+                          allGroups.filter(name => {
+                            const ids = getContainerAddonIds(name);
+                            return selectedIds.every(id => ids.includes(id));
+                          })
+                        );
+                        setBulkCategoryInitial(already);
+                        setBulkCategoryNames(new Set(already));
+                        setBulkCategorySearch('');
+                        setIsBulkCategoryModalOpen(true);
+                      }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
-                      <Tag className="mr-2 h-4 w-4" /> 
+                      <Tag className="mr-2 h-4 w-4" />
                       Adicionar ao Container ({selectedAddonIds.size})
                     </Button>
                   )}
@@ -2727,45 +2742,98 @@ export default function AdminPage() {
                   </Dialog>
                   <Dialog open={isBulkCategoryModalOpen} onOpenChange={(open) => {
                     setIsBulkCategoryModalOpen(open);
-                    if (!open) setBulkCategoryName('');
+                    if (!open) { setBulkCategoryNames(new Set()); setBulkCategoryInitial(new Set()); setBulkCategorySearch(''); }
                   }}>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Adicionar {selectedAddonIds.size} itens ao container</DialogTitle>
+                        <DialogTitle>Containers de {selectedAddonIds.size} {selectedAddonIds.size === 1 ? 'item' : 'itens'}</DialogTitle>
                       </DialogHeader>
-                      <div className="py-4 space-y-2">
-                        <Label>Container</Label>
-                        <select
-                          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          value={bulkCategoryName}
-                          onChange={(e) => setBulkCategoryName(e.target.value)}
-                        >
-                          <option value="">Selecione a categoria...</option>
-                          {allGroups.map(g => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
+                      <div className="space-y-2 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Os containers ja marcados contem os itens selecionados. Marque para adicionar, desmarque para remover.
+                        </p>
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            value={bulkCategorySearch}
+                            onChange={(e) => setBulkCategorySearch(e.target.value)}
+                            placeholder="Buscar container..."
+                            className="h-9 pl-8 text-sm"
+                          />
+                        </div>
+                        {allGroups.length > 0 ? (
+                          <div className="max-h-[300px] overflow-y-auto rounded-md border border-input divide-y custom-scrollbar">
+                            {allGroups
+                              .filter(name => {
+                                const q = removeAccents(bulkCategorySearch.toLowerCase()).trim();
+                                return !q || removeAccents(name.toLowerCase()).includes(q);
+                              })
+                              .map(name => {
+                                const checked = bulkCategoryNames.has(name);
+                                return (
+                                  <label key={name} className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm transition hover:bg-slate-50 ${checked ? 'bg-emerald-50' : ''}`}>
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-gray-300"
+                                      checked={checked}
+                                      onChange={(ev) => {
+                                        setBulkCategoryNames(prev => {
+                                          const next = new Set(prev);
+                                          if (ev.target.checked) next.add(name); else next.delete(name);
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    <span className={`flex-1 ${checked ? 'font-medium text-emerald-700' : 'text-slate-700'}`}>{name}</span>
+                                    <span className="text-[10px] text-slate-400">{getContainerAddonIds(name).length}</span>
+                                  </label>
+                                );
+                              })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic py-4 text-center">
+                            Nenhum container criado ainda. Crie um em &quot;Novo Container&quot;.
+                          </p>
+                        )}
                       </div>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setIsBulkCategoryModalOpen(false)}>Cancelar</Button>
                         <Button onClick={async () => {
-                          if (!db || !bulkCategoryName || selectedAddonIds.size === 0) return;
+                          if (!db || selectedAddonIds.size === 0) return;
+                          const toAdd = Array.from(bulkCategoryNames).filter(name => !bulkCategoryInitial.has(name));
+                          const toRemove = Array.from(bulkCategoryInitial).filter(name => !bulkCategoryNames.has(name));
+                          if (toAdd.length === 0 && toRemove.length === 0) {
+                            setIsBulkCategoryModalOpen(false);
+                            return;
+                          }
                           try {
-                            const currentIds = getContainerAddonIds(bulkCategoryName);
-                            const nextIds = Array.from(new Set([...currentIds, ...Array.from(selectedAddonIds)]));
-                            const { ref } = await ensureAddonCategory(bulkCategoryName, currentIds);
-                            const existing = addonCategoryByName.get(bulkCategoryName) as any;
-                            const removedAddonIds = (existing?.removedAddonIds || []).filter((id: string) => !selectedAddonIds.has(id));
-                            await updateDoc(ref, { addonIds: nextIds, removedAddonIds });
-                            toast({ title: 'Itens adicionados ao container sem duplicar.' });
+                            for (const name of toAdd) {
+                              const currentIds = getContainerAddonIds(name);
+                              const nextIds = Array.from(new Set([...currentIds, ...Array.from(selectedAddonIds)]));
+                              const { ref } = await ensureAddonCategory(name, currentIds);
+                              const existing = addonCategoryByName.get(name) as any;
+                              const removedAddonIds = (existing?.removedAddonIds || []).filter((id: string) => !selectedAddonIds.has(id));
+                              await updateDoc(ref, { addonIds: nextIds, removedAddonIds });
+                            }
+                            for (const name of toRemove) {
+                              const currentIds = getContainerAddonIds(name);
+                              const nextIds = currentIds.filter((id: string) => !selectedAddonIds.has(id));
+                              const { ref } = await ensureAddonCategory(name, currentIds);
+                              const existing = addonCategoryByName.get(name) as any;
+                              const removedAddonIds = Array.from(new Set([...(existing?.removedAddonIds || []), ...Array.from(selectedAddonIds)]));
+                              await updateDoc(ref, { addonIds: nextIds, removedAddonIds });
+                            }
+                            toast({ title: `Containers atualizados (${toAdd.length} adicionado(s), ${toRemove.length} removido(s)).` });
                             setIsBulkCategoryModalOpen(false);
                             setSelectedAddonIds(new Set());
-                            setBulkCategoryName('');
+                            setBulkCategoryNames(new Set());
+                            setBulkCategoryInitial(new Set());
+                            setBulkCategorySearch('');
                           } catch (err: any) {
                             toast({ variant: 'destructive', title: 'Erro', description: err.message });
                           }
                         }} className="bg-emerald-600 text-white hover:bg-emerald-700">
-                          Aplicar Container
+                          Salvar
                         </Button>
                       </DialogFooter>
                     </DialogContent>
