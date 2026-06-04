@@ -956,12 +956,19 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
                 {filteredItems.map(item => {
                   const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+                  const outOfStock = !!storeInfo?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
                   return (
                     <button
                       key={item.id}
-                      onClick={() => addToCart(item)}
-                      className="text-left border p-3 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex items-center gap-3 min-h-[88px] relative"
+                      onClick={outOfStock ? undefined : () => addToCart(item)}
+                      disabled={outOfStock}
+                      className={`text-left border p-3 rounded-lg transition-colors group flex items-center gap-3 min-h-[88px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
                     >
+                      {outOfStock && (
+                        <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
+                          Sem estoque
+                        </Badge>
+                      )}
                       {qtyInCart > 0 && (
                         <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
                           {qtyInCart}

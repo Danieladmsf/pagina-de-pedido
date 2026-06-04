@@ -1507,14 +1507,15 @@ export default function AdminPage() {
 
         {activeTab === 'mesas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <MesasTab 
-            orders={orders || []} 
+          <MesasTab
+            orders={orders || []}
             categories={sortedProductCategories || []}
             items={items || []}
             db={db}
             user={user}
             registrarLancamento={registrarLancamento}
             caixaAberto={!!caixaAberto}
+            storeInfo={storeProfile}
             addons={addons || []}
             addonCategories={addonCategories || []}
             onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}

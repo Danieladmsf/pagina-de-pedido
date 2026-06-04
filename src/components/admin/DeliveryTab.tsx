@@ -1091,12 +1091,20 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
                   const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
                   return matchesCat && matchesSearch;
-                }).map(item => (
+                }).map(item => {
+                  const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+                  return (
                   <button
                     key={item.id}
-                    onClick={() => setSelectedItemForDialog(item)}
-                    className="text-left border bg-white p-2.5 rounded-lg hover:border-primary hover:bg-primary/5 transition-colors group flex items-center gap-3 min-h-[80px]"
+                    onClick={outOfStock ? undefined : () => setSelectedItemForDialog(item)}
+                    disabled={outOfStock}
+                    className={`text-left border bg-white p-2.5 rounded-lg transition-colors group flex items-center gap-3 min-h-[80px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
                   >
+                    {outOfStock && (
+                      <Badge className="absolute top-1.5 left-1.5 bg-slate-700 text-white font-bold text-[9px] px-1.5 py-0.5 rounded z-10">
+                        Sem estoque
+                      </Badge>
+                    )}
                     {item.imageUrl ? (
                       <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
                         <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
@@ -1111,7 +1119,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                       <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}</span>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
