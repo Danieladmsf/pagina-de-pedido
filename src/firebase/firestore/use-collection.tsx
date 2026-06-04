@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Query,
   onSnapshot,
@@ -60,16 +60,25 @@ export function useCollection<T = any>(
   const [data, setData] = useState<StateDataType>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
+  // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava
+  // isLoading=true e fazia gates/listas piscarem (stale-while-revalidate).
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!memoizedTargetRefOrQuery) {
+      hasLoadedRef.current = false;
       setData(null);
       setIsLoading(false);
       setError(null);
       return;
     }
 
-    setIsLoading(true);
+    // Só sinaliza "carregando" na primeira carga (quando ainda não há dados).
+    // Em re-subscrições mantém isLoading=false e preserva os dados atuais.
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
     setError(null);
 
     // Directly use memoizedTargetRefOrQuery as it's assumed to be the final query
@@ -81,6 +90,7 @@ export function useCollection<T = any>(
           results.push({ ...(doc.data() as T), id: doc.id });
         }
         setData(results);
+        hasLoadedRef.current = true;
         setError(null);
         setIsLoading(false);
       },
@@ -96,6 +106,7 @@ export function useCollection<T = any>(
           path,
         })
 
+        hasLoadedRef.current = false; // permite re-exibir loading numa nova tentativa
         setError(contextualError)
         setData(null)
         setIsLoading(false)

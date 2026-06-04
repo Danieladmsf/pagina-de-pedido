@@ -1,6 +1,6 @@
 'use client';
     
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   DocumentReference,
   onSnapshot,
@@ -46,18 +46,26 @@ export function useDoc<T = any>(
   const [data, setData] = useState<StateDataType>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
+  // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava
+  // isLoading=true e fazia gates/modais piscarem (stale-while-revalidate).
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!memoizedDocRef) {
+      hasLoadedRef.current = false;
       setData(null);
       setIsLoading(false);
       setError(null);
       return;
     }
 
-    setIsLoading(true);
+    // Só sinaliza "carregando" na primeira carga (quando ainda não há dados).
+    // Em re-subscrições mantém isLoading=false e preserva os dados atuais.
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    }
     setError(null);
-    // Optional: setData(null); // Clear previous data instantly
 
     const unsubscribe = onSnapshot(
       memoizedDocRef,
@@ -68,6 +76,7 @@ export function useDoc<T = any>(
           // Document does not exist
           setData(null);
         }
+        hasLoadedRef.current = true;
         setError(null); // Clear any previous error on successful snapshot (even if doc doesn't exist)
         setIsLoading(false);
       },
@@ -77,6 +86,7 @@ export function useDoc<T = any>(
           path: memoizedDocRef.path,
         })
 
+        hasLoadedRef.current = false; // permite re-exibir loading numa nova tentativa
         setError(contextualError)
         setData(null)
         setIsLoading(false)
