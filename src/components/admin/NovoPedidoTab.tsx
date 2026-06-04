@@ -1091,26 +1091,28 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 <span className="text-slate-500">Subtotal</span>
                 <span className="font-semibold text-slate-700">R$ {cartTotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500 flex items-center gap-1">
-                  Taxa Entrega {calculatingFee && <span className="text-[9px] text-teal-600">(Calculando...)</span>}
-                </span>
-                <div className="flex items-center gap-1 w-20">
-                  <span className="text-slate-400 text-[10px]">R$</span>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    value={deliveryFeeInput}
-                    onChange={(e) => {
-                      let val = e.target.value.replace(/[^0-9.]/g, '');
-                      setDeliveryFeeInput(val);
-                      setDynamicFee(null); // O usuário sobrescreveu manualmente
-                    }}
-                    className={`h-6 text-xs text-right px-1 font-semibold ${dynamicFee !== null ? 'text-teal-600 bg-teal-50 border-teal-200' : 'text-slate-700'}`}
-                  />
+              {orderType === 'delivery' && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 flex items-center gap-1">
+                    Taxa Entrega {calculatingFee && <span className="text-[9px] text-teal-600">(Calculando...)</span>}
+                  </span>
+                  <div className="flex items-center gap-1 w-20">
+                    <span className="text-slate-400 text-[10px]">R$</span>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={deliveryFeeInput}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/[^0-9.]/g, '');
+                        setDeliveryFeeInput(val);
+                        setDynamicFee(null); // O usuário sobrescreveu manualmente
+                      }}
+                      className={`h-6 text-xs text-right px-1 font-semibold ${dynamicFee !== null ? 'text-teal-600 bg-teal-50 border-teal-200' : 'text-slate-700'}`}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             
             <div className="flex justify-between items-center text-sm">
