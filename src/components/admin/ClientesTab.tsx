@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
+import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 
 interface ClientesTabProps {
   db: any;
@@ -164,6 +165,21 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     setFormCreditLimit(c.creditLimit ? c.creditLimit.toString() : '');
     setFormCreditPayDay(c.creditPayDay ? c.creditPayDay.toString() : '');
     setEditingCliente(c);
+  };
+
+  // Preenche logradouro/bairro/cidade automaticamente ao selecionar uma sugestão do Maps
+  const handlePlaceSelected = async (placeId: string, description: string) => {
+    try {
+      const res = await fetch(`/api/place-details?placeId=${placeId}`);
+      if (!res.ok) throw new Error('Falha ao buscar detalhes do endereço');
+      const data = await res.json();
+      setFormLogradouro(data.street || description.split(',')[0] || '');
+      if (data.neighborhood) setFormBairro(data.neighborhood);
+      if (data.city) setFormCidade(data.city);
+    } catch (err) {
+      console.error('[ClientesTab] Erro ao buscar detalhes do place:', err);
+      setFormLogradouro(description.split(',')[0] || description);
+    }
   };
 
   const handleSave = async () => {
@@ -589,7 +605,13 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                 <div className="space-y-0.5 md:col-span-2">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Logradouro</Label>
-                  <Input value={formLogradouro} onChange={(e) => setFormLogradouro(e.target.value)} placeholder="Rua, Av..." className="bg-slate-50/50 h-7 text-xs px-2" />
+                  <AddressAutocomplete
+                    value={formLogradouro}
+                    onChange={setFormLogradouro}
+                    onSelectPlace={handlePlaceSelected}
+                    placeholder="Buscar endereço no Maps..."
+                    className="bg-slate-50/50 h-7 text-xs"
+                  />
                 </div>
                 <div className="space-y-0.5">
                   <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nº</Label>
