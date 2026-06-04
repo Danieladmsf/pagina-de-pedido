@@ -642,7 +642,7 @@ export default function AdminPage() {
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
-  const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number } | null>(null);
+  const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
@@ -1864,7 +1864,7 @@ export default function AdminPage() {
                     return;
                   }
                   try {
-                    await updateDoc(doc(db, 'menuItems', quickPriceEdit.id), { price: newPrice });
+                    await updateDoc(doc(db, quickPriceEdit.collection || 'menuItems', quickPriceEdit.id), { price: newPrice });
                     toast({ title: 'Preço atualizado!', description: `${quickPriceEdit.name}: R$ ${newPrice.toFixed(2)}` });
                     setQuickPriceEdit(null);
                   } catch (err: any) {
@@ -2581,6 +2581,27 @@ export default function AdminPage() {
                           <Label htmlFor="addonPrice">Preço (R$)</Label>
                           <CurrencyInput id="addonPrice" name="addonPrice" defaultValue={editingAddon?.price} required placeholder="0,00" />
                         </div>
+                        {editingAddon?.id && (() => {
+                          const containers = allGroups.filter(name => getContainerAddonIds(name).includes(editingAddon.id));
+                          return (
+                            <div className="space-y-2">
+                              <Label>Containers vinculados</Label>
+                              {containers.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {containers.map(name => (
+                                    <span key={name} className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 text-xs font-medium">
+                                      {name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground italic">
+                                  Nenhum container vinculado. Use "Adicionar ao Container" na lista para vincular (opcional).
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <DialogFooter>
                           <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
                         </DialogFooter>
@@ -2717,7 +2738,11 @@ export default function AdminPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-primary font-semibold">R$ {(addon.price || 0).toFixed(2)}</TableCell>
+                          <TableCell
+                            className="text-primary font-semibold cursor-pointer hover:bg-primary/5 hover:underline transition-colors rounded"
+                            title="Clique para editar preço"
+                            onClick={() => setQuickPriceEdit({ id: addon.id, name: addon.name, price: addon.price || 0, collection: 'addons' })}
+                          >R$ {(addon.price || 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right pr-6">
                             {isContainerView ? (
                               <div className="flex items-center justify-end gap-2">
