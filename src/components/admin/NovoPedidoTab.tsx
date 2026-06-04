@@ -323,7 +323,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         if (parsed.cart) setCart(parsed.cart);
         if (parsed.customerName && parsed.customerName !== 'Cliente Balcão') setCustomerName(parsed.customerName);
         if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
-        if (parsed.orderType) setOrderType(parsed.orderType);
+        // orderType nao e restaurado: a pagina sempre abre em Balcao/Retirada (pickup)
         if (parsed.addressObj) setAddressObj(parsed.addressObj);
         if (parsed.deliveryFeeInput) setDeliveryFeeInput(parsed.deliveryFeeInput);
         if (parsed.distanceInfo) setDistanceInfo(parsed.distanceInfo);
