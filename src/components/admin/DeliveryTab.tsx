@@ -45,8 +45,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
   }
-  // A aba Delivery acompanha apenas pedidos de entrega, inclusive os criados pelo Balcao.
-  const onlyDeliveryAppOrders = orders?.filter(o => o.orderType === 'delivery' || o.orderType === 'pickup') || [];
+  // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
+  // - qualquer pedido de entrega (delivery), de qualquer origem;
+  // - pickup do app do cliente (source 'cardapio'), que ainda precisa ser preparado.
+  // NÃO inclui pickup do PDV (Balcão/Retirada), que já é finalizado no caixa.
+  const onlyDeliveryAppOrders = orders?.filter(o =>
+    o.orderType === 'delivery' || (o.orderType === 'pickup' && o.source === 'cardapio')
+  ) || [];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);

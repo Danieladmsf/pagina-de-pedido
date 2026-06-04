@@ -645,6 +645,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           comboItems: i.comboItems || null
         })),
         status: orderType === 'delivery' ? 'received' : 'delivered',
+        source: 'pdv', // origem: criado no PDV (Balcão/Retirada/Delivery interno)
         paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
         subtotal: cartTotal || 0,
         deliveryFee,
