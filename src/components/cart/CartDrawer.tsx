@@ -822,6 +822,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         paymentStatus: 'pending',
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
         orderType,
+        source: 'cardapio', // origem: pedido feito pelo cliente no cardápio (online)
         stockDeducted: false,
         items: safeItems
       };

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator, Globe, ArrowLeftRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment, writeBatch, getDoc } from 'firebase/firestore';
@@ -75,11 +75,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const [valorRecebido, setValorRecebido] = useState<string>('');
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Seletor de mesa: usado tanto para "Trocar de mesa" (currentTable preenchido)
+  // quanto para "Atribuir mesa" a um pedido online sem mesa (currentTable null).
+  const [tablePickerFor, setTablePickerFor] = useState<{ orderId: string; currentTable: number | null } | null>(null);
 
   // Derivando mesas
   const tables = Array.from({ length: 15 }, (_, i) => i + 1);
   
   const activeTableNumbers = activeOrders.map(o => o.tableNumber).filter(Boolean);
+  // Pedidos de mesa ativos que ainda não têm mesa (ex.: pedido online quando todas
+  // as mesas estavam ocupadas no momento da auto-atribuição).
+  const ordersSemMesa = activeOrders.filter(o => !o.tableNumber);
 
   const lastSelectedTableRef = React.useRef<number | null>(null);
   const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart);
@@ -289,6 +295,26 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     } catch (err: any) {
       console.error('Erro ao cancelar mesa:', err);
       toast({ title: 'Erro ao cancelar mesa', description: err?.message || '', variant: 'destructive' });
+    }
+  };
+
+  const handlePickTable = async (orderId: string, targetTable: number) => {
+    if (!db || !orderId) return;
+    try {
+      setIsSubmitting(true);
+      const estavaNaMesa = tablePickerFor?.currentTable;
+      await updateDoc(doc(db, 'orders', orderId), { tableNumber: targetTable });
+      toast({ title: `Pedido movido para a Mesa ${targetTable}.` });
+      setTablePickerFor(null);
+      // Se estávamos com uma mesa aberta (troca de mesa), volta para a grade para
+      // refletir o novo layout sem depender do eco do tempo real.
+      if (estavaNaMesa) {
+        setSelectedTable(null);
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível mover o pedido.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -713,23 +739,56 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             </div>
           </div>
 
+          {ordersSemMesa.length > 0 && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 shrink-0">
+              <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
+                <Globe className="h-3.5 w-3.5" /> Pedidos online sem mesa ({ordersSemMesa.length})
+              </p>
+              <div className="space-y-1.5">
+                {ordersSemMesa.map(o => (
+                  <div key={o.id} className="flex items-center justify-between bg-white border rounded p-2 text-sm gap-2">
+                    <div className="min-w-0">
+                      <span className="font-bold text-slate-700 truncate">{o.customerName || 'Cliente'}</span>
+                      <span className="text-xs text-slate-500 ml-2">R$ {(o.totalAmount || 0).toFixed(2)} · {(o.items || []).length} item(ns)</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100 shrink-0"
+                      onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
+                    >
+                      Atribuir mesa
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
             {tables.map(num => {
               const activeOrder = activeOrders.find(o => o.tableNumber === num);
               const isOpen = !!activeOrder;
               const isAwaitingPayment = activeOrder?.status === 'awaiting_payment';
+              const isOnline = activeOrder?.source === 'cardapio';
 
               return (
                 <button
                   key={num}
                   onClick={() => setSelectedTable(num)}
                   className={`
-                    h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
+                    relative h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
                     ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105'}
                     ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
                   `}
                 >
+                  {isOnline && (
+                    <span className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-white/25 rounded px-1 py-0.5" title="Pedido feito pelo cardápio (online)">
+                      <Globe className="h-3 w-3" />
+                      <span className="text-[8px] font-bold uppercase">Online</span>
+                    </span>
+                  )}
                   <span className="text-2xl font-black">{num}</span>
                   {isOpen && <span className="text-[10px] uppercase font-bold bg-black/20 px-1.5 py-0.5 rounded mt-1 truncate max-w-[90%]">{isAwaitingPayment ? 'Aguardando Pagamento' : 'Ocupada'}</span>}
                 </button>
@@ -755,6 +814,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {activeOrderId && (
+                <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/20 text-xs gap-1" onClick={() => setTablePickerFor({ orderId: activeOrderId, currentTable: selectedTable })}>
+                  <ArrowLeftRight className="h-3.5 w-3.5" /> Trocar Mesa
+                </Button>
+              )}
               {activeOrderId && (
                 <Button variant="ghost" size="sm" className="text-red-300 hover:text-red-100 hover:bg-red-500/30 text-xs gap-1" onClick={handleCancelTable}>
                   <X className="h-3.5 w-3.5" /> Cancelar Mesa
@@ -1111,6 +1175,39 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             <Button onClick={confirmReopenTable} disabled={isSubmitting}>
               Sim, Reabrir Mesa
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Trocar / Atribuir Mesa */}
+      <Dialog open={!!tablePickerFor} onOpenChange={(open) => { if (!open) setTablePickerFor(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>
+              {tablePickerFor?.currentTable ? `Trocar Mesa ${tablePickerFor.currentTable} para:` : 'Atribuir pedido a uma mesa:'}
+            </DialogTitle>
+            <DialogDescription>Escolha uma mesa livre (as ocupadas ficam desabilitadas).</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 py-2">
+            {tables.map(num => {
+              const ocupada = activeTableNumbers.includes(num);
+              const isCurrent = tablePickerFor?.currentTable === num;
+              const disabled = ocupada || isCurrent || isSubmitting;
+              return (
+                <button
+                  key={num}
+                  disabled={disabled}
+                  onClick={() => tablePickerFor && handlePickTable(tablePickerFor.orderId, num)}
+                  className={`h-14 rounded-lg border-2 font-black text-lg transition-all ${
+                    disabled
+                      ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed'
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  {num}
+                </button>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>
