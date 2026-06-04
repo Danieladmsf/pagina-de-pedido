@@ -889,6 +889,19 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [user, isUserLoading, router, auth]);
 
+  // Evita o flash da tela "Acesso Negado": o useDoc começa com isLoading=false,
+  // então há um instante em que loadingRole=false e adminRole ainda não chegou.
+  // Só mostramos "Acesso Negado" se, após uma janela curta, a role seguir ausente.
+  const [showAccessDenied, setShowAccessDenied] = useState(false);
+  useEffect(() => {
+    if (isUserLoading || loadingRole || !db || !isRealUser || adminRole) {
+      setShowAccessDenied(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowAccessDenied(true), 1500);
+    return () => clearTimeout(timer);
+  }, [isUserLoading, loadingRole, db, isRealUser, adminRole]);
+
   const handleLogout = async () => {
     if (!auth) return;
     await signOut(auth);
@@ -1323,7 +1336,7 @@ export default function AdminPage() {
   };
 
 
-  if (isUserLoading || loadingRole || !db) {
+  if (isUserLoading || !db || !isRealUser || loadingRole || (!adminRole && !showAccessDenied)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1331,7 +1344,7 @@ export default function AdminPage() {
     );
   }
 
-  if (user && !adminRole && !loadingRole) {
+  if (showAccessDenied) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-4 text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
