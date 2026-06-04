@@ -2304,9 +2304,9 @@ export default function AdminPage() {
                 <p className="text-muted-foreground mt-1 font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
               </div>
               <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between border-b bg-white p-4 gap-4 flex-wrap">
-                <div className="w-full flex flex-col md:flex-row items-start md:items-center justify-between border-b mb-4 pb-2 gap-4">
-                  <div className="flex items-center gap-2 overflow-x-auto flex-1 w-full md:w-auto">
+              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 w-full md:w-auto">
                     <Button 
                       variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
                       onClick={() => setAddonCategoryFilter('all')}
@@ -2544,13 +2544,12 @@ export default function AdminPage() {
                   );
                 })()}
                 
-                <div className="flex gap-2 flex-1 min-w-[300px]">
-                  <div className="relative flex-1 max-w-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative w-full sm:max-w-sm">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
                   </div>
-                </div>
-                <div className="flex gap-2">
+                  <div className="flex gap-2 shrink-0">
                   {selectedAddonIds.size > 0 && (
                     <Button 
                       onClick={() => setIsBulkCategoryModalOpen(true)}
@@ -2676,6 +2675,7 @@ export default function AdminPage() {
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
+                </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
