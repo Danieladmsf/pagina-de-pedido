@@ -1057,7 +1057,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 <Badge 
                   variant="secondary" 
                   className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => setEditCategory('all')}
+                  onClick={() => { setEditCategory('all'); setEditSearch(''); }}
                 >
                   Todos
                 </Badge>
@@ -1066,7 +1066,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                     key={cat.id} 
                     variant="secondary" 
                     className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => setEditCategory(cat.id)}
+                    onClick={() => { setEditCategory(cat.id); setEditSearch(''); }}
                   >
                     {cat.name}
                   </Badge>
