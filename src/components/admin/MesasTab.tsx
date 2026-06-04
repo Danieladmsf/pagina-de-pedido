@@ -923,6 +923,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
             {/* Menu Rápido (Bottom / Right) */}
             <div className="w-full md:w-1/2 flex flex-col shrink-0 bg-white">
+              <div className="p-3 pb-0 shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar produto..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 h-9 bg-slate-50"
+                  />
+                </div>
+              </div>
               <div className="p-3 border-b flex gap-2 overflow-x-auto custom-scrollbar shrink-0">
                 <Badge 
                   variant="secondary" 
