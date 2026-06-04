@@ -1004,7 +1004,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             return (
               <>
                 <DialogHeader className="pb-1 border-b">
-                  <DialogTitle className="text-sm flex items-center justify-between">
+                  <DialogTitle className="text-sm flex items-center justify-between pr-6">
                     <span>💰 Encerrar Mesa {selectedTable}</span>
                     <div className="flex flex-col items-end">
                       <span className="text-xs text-muted-foreground font-normal">Total: R$ {cartTotal.toFixed(2)}</span>

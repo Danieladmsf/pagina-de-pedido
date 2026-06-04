@@ -1135,7 +1135,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             return (
               <>
                 <DialogHeader className="pb-1 border-b">
-                  <DialogTitle className="text-sm flex items-center justify-between">
+                  <DialogTitle className="text-sm flex items-center justify-between pr-6">
                     <span>💰 Pagamento Balcão</span>
                     <div className="flex flex-col items-end">
                       <span className="text-xs text-muted-foreground font-normal">Total: R$ {finalTotal.toFixed(2)}</span>
