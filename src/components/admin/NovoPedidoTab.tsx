@@ -321,7 +321,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.cart) setCart(parsed.cart);
-        if (parsed.customerName) setCustomerName(parsed.customerName);
+        if (parsed.customerName && parsed.customerName !== 'Cliente Balcão') setCustomerName(parsed.customerName);
         if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
         if (parsed.orderType) setOrderType(parsed.orderType);
         if (parsed.addressObj) setAddressObj(parsed.addressObj);
