@@ -7,7 +7,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, increment, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, writeBatch, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -17,6 +17,7 @@ import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { removeAccents } from '@/lib/utils';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -164,10 +165,12 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   // Estados para entrega
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
-  const [customerName, setCustomerName] = useState('Cliente Balcão');
+  const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
+  const [allCustomers, setAllCustomers] = useState<any[]>([]);
+  const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
@@ -354,6 +357,61 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     setAddressObj(prev => ({ ...prev, street: addr }));
     const fullAddr = addressObj.number ? `${addr}, ${addressObj.number}` : addr;
     calculateDeliveryFee(fullAddr);
+  };
+
+  // Carrega a lista de clientes (uma vez) para o autocomplete por nome/telefone
+  React.useEffect(() => {
+    const ownerId = storeProfile?.id || user?.uid;
+    if (!db || !ownerId) return;
+    let ignore = false;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
+        if (!ignore) setAllCustomers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        console.error('Erro ao carregar clientes para autocomplete:', e);
+      }
+    })();
+    return () => { ignore = true; };
+  }, [db, storeProfile?.id, user?.uid]);
+
+  // Sugestões de cliente conforme o campo ativo (nome ou telefone)
+  const customerMatches = React.useMemo(() => {
+    if (!activeLookupField || allCustomers.length === 0) return [] as any[];
+    if (activeLookupField === 'phone') {
+      const term = normalizeCreditPhone(customerPhone);
+      if (term.length < 3) return [];
+      return allCustomers.filter(c => normalizeCreditPhone(String(c.celular || '')).includes(term)).slice(0, 6);
+    }
+    const term = removeAccents(customerName.toLowerCase()).trim();
+    if (term.length < 2) return [];
+    return allCustomers
+      .filter(c => removeAccents(String(c.nome || c.name || '').toLowerCase()).includes(term))
+      .slice(0, 6);
+  }, [activeLookupField, customerName, customerPhone, allCustomers]);
+
+  const applyCustomer = (c: any) => {
+    const name = getCustomerDisplayName(c);
+    const phone = String(c.celular || '');
+    if (name) setCustomerName(name);
+    if (phone) setCustomerPhone(phone);
+    if (orderType === 'delivery') {
+      const addr = getCustomerAddress(c);
+      if (hasAddressData(addr)) {
+        setAddressObj(prev => ({
+          street: addr.street || prev.street,
+          number: addr.number || prev.number,
+          neighborhood: addr.neighborhood || prev.neighborhood,
+          city: addr.city || prev.city,
+        }));
+        setDynamicFee(null);
+        setDistanceInfo(null);
+        setDeliveryBlocked(false);
+        const fullAddr = [addr.street, addr.number, addr.neighborhood, addr.city].filter(Boolean).join(', ');
+        if (fullAddr) calculateDeliveryFee(fullAddr);
+      }
+    }
+    setActiveLookupField(null);
   };
 
   const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
@@ -660,7 +718,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       setTimeout(() => {
         window.print();
         setCart([]);
-        setCustomerName('Cliente Balcão');
+        setCustomerName('');
         setCustomerPhone('');
         setDeliveryFeeInput('');
         setAddressObj({ street: '', number: '', neighborhood: '', city: '' });
@@ -705,6 +763,26 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       </div>
     );
   }
+
+  const suggestionsDropdown = customerMatches.length > 0 ? (
+    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
+      {customerMatches.map((c: any) => {
+        const addr = getCustomerAddress(c);
+        const addrLine = [addr.street, addr.neighborhood].filter(Boolean).join(', ');
+        return (
+          <button
+            type="button"
+            key={c.id}
+            onMouseDown={(e) => { e.preventDefault(); applyCustomer(c); }}
+            className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 border-b last:border-b-0"
+          >
+            <div className="text-xs font-semibold text-slate-800">{getCustomerDisplayName(c) || 'Sem nome'}</div>
+            <div className="text-[10px] text-slate-500">{c.celular || 'sem telefone'}{addrLine ? ` · ${addrLine}` : ''}</div>
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   return (
     <div className="flex flex-col md:flex-row gap-4 flex-1 w-full overflow-hidden">
@@ -818,8 +896,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
           
           {/* Dados do Cliente e Tipo de Pedido */}
-          <div className="space-y-2 bg-white p-2 rounded border border-slate-100 shadow-sm">
-            <div className="flex bg-slate-100 p-0.5 rounded">
+          <div className={`space-y-2 p-2 rounded border shadow-sm transition-colors ${orderType === 'delivery' ? 'border-blue-300 bg-blue-50/50' : 'border-amber-200 bg-amber-50/40'}`}>
+            <div className="flex bg-slate-100 p-0.5 rounded gap-0.5">
               <button
                 onClick={() => {
                   setOrderType('pickup');
@@ -827,9 +905,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   setDynamicFee(null);
                   setDistanceInfo(null);
                 }}
-                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'pickup' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'pickup' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                Balcão / Retirada
+                🏪 Balcão / Retirada
               </button>
               <button
                 onClick={() => {
@@ -839,15 +917,38 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     calculateDeliveryFee(addr);
                   }
                 }}
-                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'delivery' ? 'bg-white shadow-sm text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 text-sm font-bold py-1.5 rounded transition-colors ${orderType === 'delivery' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                Delivery
+                🛵 Delivery
               </button>
             </div>
-            
+
             <div className="space-y-1.5">
-              <Input autoComplete="name" placeholder="Nome do Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-7 text-xs" />
-              <Input autoComplete="tel" placeholder="Telefone / WhatsApp" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-7 text-xs" />
+              {(() => {
+                const nameField = (
+                  <div className="relative">
+                    <Input autoComplete="off" placeholder="Nome do Cliente" value={customerName}
+                      onChange={e => setCustomerName(e.target.value)}
+                      onFocus={() => setActiveLookupField('name')}
+                      onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
+                      className="h-7 text-xs" />
+                    {activeLookupField === 'name' && suggestionsDropdown}
+                  </div>
+                );
+                const phoneField = (
+                  <div className="relative">
+                    <Input autoComplete="off" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
+                      onChange={e => setCustomerPhone(e.target.value)}
+                      onFocus={() => setActiveLookupField('phone')}
+                      onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
+                      className={`h-7 text-xs ${orderType === 'delivery' ? 'border-blue-300 focus-visible:ring-blue-400 font-semibold' : ''}`} />
+                    {activeLookupField === 'phone' && suggestionsDropdown}
+                  </div>
+                );
+                return orderType === 'delivery'
+                  ? (<>{phoneField}{nameField}</>)
+                  : (<>{nameField}{phoneField}</>);
+              })()}
               {orderType === 'delivery' && customerLookupStatus !== 'idle' && (
                 <p
                   aria-live="polite"
