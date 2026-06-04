@@ -2311,7 +2311,7 @@ export default function AdminPage() {
               if (isAddonListSearch) {
                 return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
               }
-              if (!addonSortConfig) return 0;
+              if (!addonSortConfig) return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
               let valA: any = a[addonSortConfig.key];
               let valB: any = b[addonSortConfig.key];
               
