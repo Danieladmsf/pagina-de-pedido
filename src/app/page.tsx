@@ -138,6 +138,11 @@ export default function AdminPage() {
 
   const adminRoleRef = useMemoFirebase(() => (db && isRealUser) ? doc(db, 'roles_admin', user!.uid) : null, [db, isRealUser]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
+  // Latch de "UI admin ja exibida" (ver gate de loading mais abaixo). Reseta no logout.
+  const appShownRef = useRef(false);
+  useEffect(() => {
+    if (!isRealUser) appShownRef.current = false;
+  }, [isRealUser]);
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
   const categoriesQuery = useMemoFirebase(() => {
@@ -1352,7 +1357,17 @@ export default function AdminPage() {
   };
 
 
-  if (isUserLoading || !db || !isRealUser || loadingRole || (!adminRole && !showAccessDenied)) {
+  // Trava: uma vez que a UI admin renderizou (user real + papel carregado), blips
+  // transitorios de loadingRole/adminRole (ex.: re-subscricao do useDoc, que sempre
+  // seta isLoading=true) NAO devem derrubar a arvore inteira — isso fazia modais
+  // abertos (ex.: Pagamento Balcao) "sumirem e voltarem". Login/Acesso Negado seguem
+  // intactos porque !isRealUser/!db continuam derrubando normalmente.
+  if (isRealUser && db && !!adminRole) {
+    appShownRef.current = true;
+  }
+  const appAlreadyShown = appShownRef.current;
+
+  if (isUserLoading || !db || !isRealUser || (!appAlreadyShown && (loadingRole || (!adminRole && !showAccessDenied)))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/30">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
