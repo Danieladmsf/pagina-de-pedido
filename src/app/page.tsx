@@ -646,8 +646,6 @@ export default function AdminPage() {
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
-  const [groupContainersByCategory, setGroupContainersByCategory] = useState(false);
-  const [collapsedAddonCats, setCollapsedAddonCats] = useState<Set<string>>(new Set());
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
   const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
   const [bulkCategoryName, setBulkCategoryName] = useState('');
@@ -2174,89 +2172,6 @@ export default function AdminPage() {
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
-
-            // Vínculo automático container -> categorias de produto:
-            // um container "pertence" a uma categoria se algum produto daquela
-            // categoria usa qualquer adicional do container.
-            const ORPHAN_CAT = '__sem_categoria__';
-            const containerAddonIdSets = new Map<string, Set<string>>(
-              allGroups.map(name => [name, new Set(getContainerAddonIds(name))] as [string, Set<string>])
-            );
-            const containerCatsMap = new Map<string, Set<string>>(); // container -> set(categoryId)
-            for (const item of (items || [])) {
-              const itemAddonIds: string[] = [
-                ...((item.addonIds as string[]) || []),
-                ...(((item.addonGroups as any[]) || []).flatMap((g: any) => (g.addonIds as string[]) || [])),
-              ];
-              if (itemAddonIds.length === 0) continue;
-              const catId = item.categoryId || ORPHAN_CAT;
-              for (const name of allGroups) {
-                const ids = containerAddonIdSets.get(name)!;
-                if (itemAddonIds.some(aid => ids.has(aid))) {
-                  if (!containerCatsMap.has(name)) containerCatsMap.set(name, new Set());
-                  containerCatsMap.get(name)!.add(catId);
-                }
-              }
-            }
-            const productCategoryName = (catId: string) =>
-              catId === ORPHAN_CAT ? 'Sem categoria' : ((categories || []).find((c: any) => c.id === catId)?.name || 'Sem categoria');
-            // categoria de produto -> containers usados (com repetição entre categorias)
-            const containersByProductCat = new Map<string, string[]>();
-            for (const name of allGroups) {
-              const cats = containerCatsMap.get(name);
-              const targetCats = cats && cats.size > 0 ? Array.from(cats) : [ORPHAN_CAT];
-              for (const catId of targetCats) {
-                if (!containersByProductCat.has(catId)) containersByProductCat.set(catId, []);
-                containersByProductCat.get(catId)!.push(name);
-              }
-            }
-            const orderedProductCats = (sortedProductCategories || [])
-              .map((c: any) => c.id)
-              .filter((id: string) => containersByProductCat.has(id));
-            if (containersByProductCat.has(ORPHAN_CAT)) orderedProductCats.push(ORPHAN_CAT);
-            const toggleCollapsedCat = (catId: string) => {
-              setCollapsedAddonCats(prev => {
-                const next = new Set(prev);
-                if (next.has(catId)) next.delete(catId); else next.add(catId);
-                return next;
-              });
-            };
-            const renderContainerPill = (g: string) => {
-              const usedInCount = containerCatsMap.get(g)?.size || 0;
-              return (
-                <Button
-                  key={g}
-                  variant={addonCategoryFilter === g ? 'default' : 'outline'}
-                  onClick={() => setAddonCategoryFilter(g)}
-                  size="sm"
-                  className="whitespace-nowrap rounded-full flex items-center group"
-                >
-                  {g}
-                  <span className="ml-2 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
-                    {getContainerAddonIds(g).length}
-                  </span>
-                  {usedInCount > 1 && (
-                    <span className="ml-1 rounded-full bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[9px] font-bold" title={`Mesmo container usado em ${usedInCount} categorias — editar/excluir afeta todas`}>
-                      {usedInCount} cat.
-                    </span>
-                  )}
-                  {addonCategoryFilter === g && (
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditCategoryName(g);
-                        setEditCategoryNewName(g);
-                        setIsEditCategoryModalOpen(true);
-                      }}
-                      className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
-                      title="Editar Container"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </div>
-                  )}
-                </Button>
-              );
-            };
             const getAddonContainerSet = (addonId: string) =>
               new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
             const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
@@ -2405,7 +2320,7 @@ export default function AdminPage() {
               <CardHeader className="flex flex-col gap-3 border-b bg-white p-4">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
                   <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 w-full md:w-auto">
-                    <Button
+                    <Button 
                       variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
                       onClick={() => setAddonCategoryFilter('all')}
                       size="sm"
@@ -2413,17 +2328,34 @@ export default function AdminPage() {
                     >
                       Lista Matriz
                     </Button>
-                    <Button
-                      variant={groupContainersByCategory ? 'default' : 'outline'}
-                      onClick={() => setGroupContainersByCategory(v => !v)}
-                      size="sm"
-                      className="whitespace-nowrap rounded-full"
-                      title="Agrupar os containers pelas categorias de produto que os usam"
-                    >
-                      <LayoutDashboard className="h-3.5 w-3.5 mr-1" />
-                      {groupContainersByCategory ? 'Agrupado por categoria' : 'Agrupar por categoria'}
-                    </Button>
-                    {!groupContainersByCategory && allGroups.map(g => renderContainerPill(g))}
+                    {allGroups.map(g => (
+                      <Button 
+                        key={g}
+                        variant={addonCategoryFilter === g ? 'default' : 'outline'}
+                        onClick={() => setAddonCategoryFilter(g)}
+                        size="sm"
+                        className="whitespace-nowrap rounded-full flex items-center group"
+                      >
+                        {g}
+                        <span className="ml-2 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
+                          {getContainerAddonIds(g).length}
+                        </span>
+                        {addonCategoryFilter === g && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditCategoryName(g);
+                              setEditCategoryNewName(g);
+                              setIsEditCategoryModalOpen(true);
+                            }}
+                            className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
+                            title="Editar Container"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </div>
+                        )}
+                      </Button>
+                    ))}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -2525,37 +2457,6 @@ export default function AdminPage() {
                     </Dialog>
                 </div>
                 </div>
-
-                {groupContainersByCategory && (
-                  <div className="space-y-2">
-                    {orderedProductCats.length === 0 ? (
-                      <p className="px-1 text-xs italic text-muted-foreground">Nenhum container vinculado a produtos ainda. Vincule adicionais a produtos para vê-los agrupados.</p>
-                    ) : orderedProductCats.map((catId: string) => {
-                      const collapsed = collapsedAddonCats.has(catId);
-                      const conts = containersByProductCat.get(catId) || [];
-                      return (
-                        <div key={catId} className="rounded-lg border border-slate-200 bg-slate-50/60">
-                          <button
-                            type="button"
-                            onClick={() => toggleCollapsedCat(catId)}
-                            className="flex w-full items-center justify-between px-3 py-2 text-left"
-                          >
-                            <span className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              {productCategoryName(catId)}
-                              <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{conts.length}</span>
-                            </span>
-                          </button>
-                          {!collapsed && (
-                            <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-                              {conts.map(g => renderContainerPill(g))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
 
                 {addonCategoryFilter !== 'all' && (() => {
                   const category = addonCategoryByName.get(addonCategoryFilter) as any;
