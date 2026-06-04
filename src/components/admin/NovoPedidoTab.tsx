@@ -841,9 +841,15 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
               const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
               const simpleItemInCart = cart.find(i => i.id === item.id && (!i.addons || i.addons.length === 0));
               const simpleCartItemId = simpleItemInCart ? (simpleItemInCart.cartItemId || simpleItemInCart.id) : item.id;
+              const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
 
               return (
-                <Card key={item.id} className="overflow-hidden hover:shadow-md transition-all cursor-pointer flex flex-col group border-slate-200 relative" onClick={() => addToCart(item)}>
+                <Card key={item.id} className={`overflow-hidden transition-all flex flex-col group border-slate-200 relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`} onClick={outOfStock ? undefined : () => addToCart(item)}>
+                  {outOfStock && (
+                    <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
+                      Sem estoque
+                    </Badge>
+                  )}
                   {qtyInCart > 0 && (
                     <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
                       {qtyInCart}
@@ -869,7 +875,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   </div>
                   
                   <div className="border-t p-2" onClick={(e) => e.stopPropagation()}>
-                    {needsCust ? (
+                    {outOfStock ? (
+                      <Button variant="ghost" size="sm" disabled className="w-full h-8 text-xs font-bold text-slate-400 cursor-not-allowed">
+                         Sem estoque
+                      </Button>
+                    ) : needsCust ? (
                       <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
                          <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
                       </Button>
