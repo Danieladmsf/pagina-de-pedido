@@ -967,7 +967,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           {qtyInCart}
                         </Badge>
                       )}
-                      <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
+                      <div className="flex gap-2">
+                        {item.imageUrl ? (
+                          <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
+                            <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                            <Tag className="h-5 w-5 text-slate-300" />
+                          </div>
+                        )}
+                        <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6 flex-1">{item.name}</span>
+                      </div>
                       <span className="text-sm font-black text-green-600 mt-2">R$ {item.price.toFixed(2)}</span>
                     </button>
                   );
