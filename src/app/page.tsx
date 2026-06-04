@@ -870,11 +870,18 @@ export default function AdminPage() {
   }, [orders, reportPeriod, customFrom, customTo]);
 
   // Debounce o redirect para login para evitar que flutuações temporárias de auth
-  // (ex: outra aba abrindo o cardápio do cliente) desloguem o admin indevidamente.
-  const wasEverLoggedIn = useRef(false);
+  // (ex: reload antes do Firebase restaurar a sessão do IndexedDB, ou outra aba)
+  // desloguem o admin indevidamente.
+  // Persistimos no localStorage para que o "já esteve logado" sobreviva ao reload:
+  // sem isso, todo reload zera o ref e um null transitório redireciona na hora.
+  const WAS_LOGGED_KEY = 'admin_was_logged_in';
+  const wasEverLoggedIn = useRef<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(WAS_LOGGED_KEY) === '1'
+  );
   useEffect(() => {
     if (user && !user.isAnonymous) {
       wasEverLoggedIn.current = true;
+      try { localStorage.setItem(WAS_LOGGED_KEY, '1'); } catch { /* ignore */ }
     }
   }, [user]);
 
@@ -882,12 +889,14 @@ export default function AdminPage() {
     if (isUserLoading) return; // Ainda carregando, não faz nada
     if (user && !user.isAnonymous) return; // Logado normalmente, tudo certo
 
-    // Se o user sumiu mas ele JÁ ESTAVA logado, espera 2s antes de redirecionar
-    // para dar tempo do Firebase Auth se estabilizar entre abas
-    const delay = wasEverLoggedIn.current ? 2000 : 0;
+    // Se ele JÁ ESTEVE logado (inclusive antes de um reload), damos uma janela de
+    // 2.5s e re-checamos auth.currentUser antes de redirecionar — evita o
+    // "carrega e desloga" causado pela restauração tardia/transitória da sessão.
+    const delay = wasEverLoggedIn.current ? 2500 : 0;
     const timer = setTimeout(() => {
       // Re-checa o auth atual antes de redirecionar
       if (!auth?.currentUser || auth.currentUser.isAnonymous) {
+        try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
         traceReload('page: redirect para /login', { wasEverLoggedIn: wasEverLoggedIn.current, delay });
         router.push('/login');
       }
@@ -910,6 +919,7 @@ export default function AdminPage() {
 
   const handleLogout = async () => {
     if (!auth) return;
+    try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
     await signOut(auth);
     router.push('/login');
   };
