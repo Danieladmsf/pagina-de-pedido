@@ -36,3 +36,7 @@ firebase-debug.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# arquivos locais de trabalho/diagnostico e prints
+/scratch/
+/image*.png
