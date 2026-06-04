@@ -2769,15 +2769,11 @@ export default function AdminPage() {
               <CardContent className="p-0">
                 <div className={isContainerView ? 'flex flex-col lg:flex-row' : ''}>
                 <div className={isContainerView ? 'flex-1 min-w-0' : ''}>
-                <div className={`border-b px-4 py-2 text-xs font-semibold ${
-                  isContainerView
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-slate-50 text-slate-600'
-                }`}>
-                  {isContainerView
-                    ? `Container "${addonCategoryFilter}": a lixeira remove so deste container; Ativo/Pausado altera o item globalmente.`
-                    : 'Lista Matriz: editar, pausar ou excluir aqui altera o adicional globalmente.'}
-                </div>
+                {!isContainerView && (
+                  <div className="border-b px-4 py-2 text-xs font-semibold bg-slate-50 text-slate-600">
+                    Lista Matriz: editar, pausar ou excluir aqui altera o adicional globalmente.
+                  </div>
+                )}
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
