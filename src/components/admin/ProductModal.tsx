@@ -5,9 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { doc, setDoc, updateDoc, collection, writeBatch, getDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { AddonGroup, Addon, AddonCategory } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power, PowerOff } from 'lucide-react';
@@ -23,10 +21,9 @@ interface ProductModalProps {
   editingProduct: any;
   setEditingProduct: (v: any) => void;
   categories: any[];
-  items?: any[];
 }
 
-export function ProductModal({ db, user, addons, addonCategories = [], editingProduct, setEditingProduct, categories, items = [] }: ProductModalProps) {
+export function ProductModal({ db, user, addons, addonCategories = [], editingProduct, setEditingProduct, categories }: ProductModalProps) {
   const { toast } = useToast();
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
@@ -35,10 +32,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [isReplicateModalOpen, setIsReplicateModalOpen] = useState(false);
-  const [replicateTargetIds, setReplicateTargetIds] = useState<string[]>([]);
-  const [replicateCategoryId, setReplicateCategoryId] = useState('all');
-  const [isReplicating, setIsReplicating] = useState(false);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
@@ -52,9 +45,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       setImageFile(null);
       setImagePreview(editingProduct.imageUrl || '');
       setUploadingImage(false);
-      setIsReplicateModalOpen(false);
-      setReplicateTargetIds([]);
-      setReplicateCategoryId('all');
     }
   }, [editingProduct, categories]);
 
@@ -235,58 +225,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     return cleanGroup;
   });
 
-  const productHasAddonGroups = (item: any) => Array.isArray(item?.addonGroups) && item.addonGroups.length > 0;
-  const selectedReplicateCategory = categories?.find((cat: any) => cat.id === replicateCategoryId);
-  const getCategoryNameForItem = (item: any) => categories?.find((cat: any) => cat.id === item.categoryId)?.name || item.category || 'Sem categoria';
-
-  // Produtos elegiveis para receber a replicacao, ja filtrados pela categoria escolhida.
-  const replicateTargets = (items || [])
-    .filter((item: any) => item.id && item.id !== editingProduct?.id && !item.isCombo)
-    .filter((item: any) =>
-      replicateCategoryId === 'all' ||
-      item.categoryId === replicateCategoryId ||
-      item.category === selectedReplicateCategory?.name
-    )
-    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
-
-  const toggleReplicateTarget = (itemId: string) => {
-    setReplicateTargetIds(prev =>
-      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
-    );
-  };
-
-  const allReplicateTargetsSelected = replicateTargets.length > 0
-    && replicateTargets.every((item: any) => replicateTargetIds.includes(item.id));
-
-  const toggleAllReplicateTargets = () => {
-    setReplicateTargetIds(allReplicateTargetsSelected ? [] : replicateTargets.map((item: any) => item.id));
-  };
-
-  const handleReplicateAddonGroups = async () => {
-    if (!db || replicateTargetIds.length === 0) return;
-    setIsReplicating(true);
-    try {
-      const batch = writeBatch(db);
-      const addonGroups = buildCleanAddonGroups();
-
-      for (const itemId of replicateTargetIds) {
-        batch.update(doc(db, 'menuItems', itemId), { addonGroups });
-      }
-
-      await batch.commit();
-      toast({
-        title: `Etapas replicadas em ${replicateTargetIds.length} produto(s).`,
-      });
-      setIsReplicateModalOpen(false);
-      setReplicateTargetIds([]);
-      setReplicateCategoryId('all');
-    } catch (err: any) {
-      toast({ title: 'Erro ao replicar etapas', description: err.message, variant: 'destructive' });
-    } finally {
-      setIsReplicating(false);
-    }
-  };
-
   const handleSelectAddonContainer = (groupIndex: number, containerId: string) => {
     const container = addonContainers.find(item => item.id === containerId);
     if (!container) return;
@@ -395,16 +333,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                onClick={() => setIsReplicateModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={groups.length === 0 || replicateTargets.length === 0}
-              >
-                <Check className="h-4 w-4"/> Replicar
-              </Button>
               <Button type="button" onClick={handleAddGroup} variant="outline" size="sm" className="gap-1.5">
                 <Plus className="h-4 w-4"/> Etapa
               </Button>
@@ -560,126 +488,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={isReplicateModalOpen} onOpenChange={(open) => {
-        setIsReplicateModalOpen(open);
-        if (!open) {
-          setReplicateTargetIds([]);
-          setReplicateCategoryId('all');
-        }
-      }}>
-        <DialogContent className="sm:max-w-[860px]">
-          <DialogHeader>
-            <DialogTitle>Replicar etapas para produtos</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="rounded-lg border bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-              <span className="font-bold">{groups.length}</span> etapa(s) de <span className="font-bold">{editingProduct?.name}</span>.
-              Produtos selecionados terão suas etapas substituídas pelas etapas atuais.
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</Label>
-                <select
-                  value={replicateCategoryId}
-                  onChange={(e) => {
-                    setReplicateCategoryId(e.target.value);
-                    setReplicateTargetIds([]);
-                  }}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="all">Todas as categorias</option>
-                  {categories?.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center md:justify-end md:pb-2.5">
-                <span className="text-xs font-semibold text-slate-500">
-                  {replicateTargetIds.length} selecionado(s) de {replicateTargets.length} disponiveis
-                </span>
-              </div>
-            </div>
-
-            <div className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${replicateTargets.length === 0 ? 'bg-slate-50 text-slate-400' : 'bg-emerald-50 text-emerald-800'}`}>
-              <Checkbox
-                id="replicate-select-all"
-                checked={allReplicateTargetsSelected}
-                onCheckedChange={toggleAllReplicateTargets}
-                disabled={replicateTargets.length === 0}
-                className="h-4 w-4"
-              />
-              <Label
-                htmlFor="replicate-select-all"
-                className={`flex-1 text-sm font-bold ${replicateTargets.length === 0 ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                Selecionar tudo disponivel nesta categoria
-              </Label>
-              <span className="text-xs font-semibold">
-                {replicateTargets.length} produto(s)
-              </span>
-            </div>
-
-            <div className="max-h-[320px] overflow-y-auto rounded-lg border bg-white">
-              {replicateTargets.length > 0 ? (
-                replicateTargets.map((item: any) => {
-                  const checkboxId = `replicate-product-${item.id}`;
-                  const isChecked = replicateTargetIds.includes(item.id);
-                  const hasGroups = productHasAddonGroups(item);
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 border-b px-3 py-2.5 text-sm last:border-b-0 cursor-pointer hover:bg-slate-50"
-                    >
-                      <Checkbox
-                        id={checkboxId}
-                        checked={isChecked}
-                        onCheckedChange={() => toggleReplicateTarget(item.id)}
-                        className="h-4 w-4"
-                      />
-                      <Label htmlFor={checkboxId} className="flex min-w-0 flex-1 items-center gap-3 font-normal cursor-pointer">
-                        <span className="min-w-0 flex-1 truncate font-medium text-slate-700" title={item.name}>
-                          {item.name}
-                        </span>
-                        <span className="hidden w-44 truncate text-xs text-slate-500 md:block" title={getCategoryNameForItem(item)}>
-                          {getCategoryNameForItem(item)}
-                        </span>
-                        {hasGroups && (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            Sobrescreve etapas
-                          </span>
-                        )}
-                      </Label>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="px-3 py-8 text-center text-sm text-slate-400">
-                  Nenhum produto nesta categoria.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsReplicateModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={handleReplicateAddonGroups}
-              disabled={replicateTargetIds.length === 0 || isReplicating}
-              className="bg-primary text-white"
-            >
-              {isReplicating ? 'Replicando...' : `Replicar (${replicateTargetIds.length})`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Botões de ação */}
       <div className="flex justify-end gap-3">

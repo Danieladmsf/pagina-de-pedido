@@ -1563,7 +1563,6 @@ export default function AdminPage() {
                   addonCategories={addonCategories || []}
                   editingProduct={editingProduct} setEditingProduct={setEditingProduct}
                   categories={categories || []}
-                  items={items || []}
                 />
               </div>
             ) : editingCombo !== null ? (
