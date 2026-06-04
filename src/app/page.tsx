@@ -2818,11 +2818,6 @@ export default function AdminPage() {
                                   {addon.description}
                                 </div>
                               )}
-                              {addonUsageMap.has(addon.id) && addonUsageMap.get(addon.id)!.size > 0 && (
-                                <div className="text-[10px] text-muted-foreground mt-0.5 font-normal max-w-[200px] sm:max-w-xs md:max-w-md truncate" title={Array.from(addonUsageMap.get(addon.id)!).join(', ')}>
-                                  <span className="font-semibold text-slate-500">Usado em:</span> {Array.from(addonUsageMap.get(addon.id)!).join(', ')}
-                                </div>
-                              )}
                             </div>
                           </TableCell>
                           <TableCell
@@ -2888,7 +2883,7 @@ export default function AdminPage() {
                 </Table>
                 </div>
                 {isContainerView && (
-                  <div className="flex flex-col border-t bg-slate-50/40 lg:w-96 lg:border-l lg:border-t-0 max-h-[55vh] lg:max-h-none">
+                  <div className="flex flex-col border-t bg-slate-50/40 lg:w-2/5 lg:min-w-[320px] lg:border-l lg:border-t-0 max-h-[55vh] lg:max-h-none">
                     <div className="border-b bg-white px-3 py-2">
                       <p className="text-xs font-bold text-slate-700">Produtos que usam &quot;{addonCategoryFilter}&quot;</p>
                       <p className="text-[10px] text-slate-500">Marque para vincular este container ao produto; desmarque para remover.</p>
