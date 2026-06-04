@@ -2455,6 +2455,23 @@ export default function AdminPage() {
                                   batch.update(doc(db, 'addons', addon.id), { group: '' });
                                 });
 
+                              // 2. Remove as etapas (addonGroups) que apontam para este container
+                              //    em todos os produtos, senao o card "fantasma" continua aparecendo
+                              //    no cardapio do cliente e no ProductModal do admin.
+                              const deletedCatIds = new Set((catDocs || []).map((c: any) => c.id));
+                              (items || []).forEach((product: any) => {
+                                const productGroups = Array.isArray(product.addonGroups) ? product.addonGroups : [];
+                                if (productGroups.length === 0) return;
+                                const remaining = productGroups.filter((g: any) => {
+                                  const matchesName = (g.addonCategoryName || '').trim() === oldName;
+                                  const matchesId = g.addonCategoryId && deletedCatIds.has(g.addonCategoryId);
+                                  return !(matchesName || matchesId);
+                                });
+                                if (remaining.length !== productGroups.length) {
+                                  batch.update(doc(db, 'menuItems', product.id), { addonGroups: remaining });
+                                }
+                              });
+
                               await batch.commit();
                               toast({ title: 'Container excluído com sucesso!' });
                               setIsEditCategoryModalOpen(false);
