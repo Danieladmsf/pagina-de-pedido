@@ -7,7 +7,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, increment, writeBatch, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, getDocs, query, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -18,6 +18,7 @@ import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
+import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -480,57 +481,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       return;
     }
 
-    if (storeProfile?.general?.enableInventory) {
-      // Find all unique product IDs we need to check stock for
-      const uniqueProductIds = new Set<string>();
-      cart.forEach(item => {
-        if (item.isCombo && item.comboItems) {
-          item.comboItems.forEach((ci: any) => uniqueProductIds.add(ci.itemId));
-        } else {
-          uniqueProductIds.add(item.id);
-        }
-      });
-
-      // Fetch latest stock quantities from Firestore
-      const latestStocks: Record<string, { stock: number | null; name: string }> = {};
-      for (const pId of Array.from(uniqueProductIds)) {
-        const itemDoc = await getDoc(doc(db, 'menuItems', pId));
-        if (itemDoc.exists()) {
-          const data = itemDoc.data();
-          const rawStock = data.stockQuantity;
-          const stock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-          latestStocks[pId] = { stock, name: data.name || pId };
-        }
-      }
-
-      // Calculate aggregated demand in current cart
-      const demand: Record<string, number> = {};
-      cart.forEach(item => {
-        const qty = Number(item.quantity) || 0;
-        if (qty <= 0) return;
-
-        if (item.isCombo && item.comboItems) {
-          item.comboItems.forEach((ci: any) => {
-            demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-          });
-        } else {
-          demand[item.id] = (demand[item.id] || 0) + qty;
-        }
-      });
-
-      // Validate
-      for (const [pId, reqQty] of Object.entries(demand)) {
-        const info = latestStocks[pId];
-        if (info && info.stock !== null && reqQty > info.stock) {
-          toast({
-            variant: "destructive",
-            title: "Estoque insuficiente",
-            description: `"${info.name}" tem apenas ${info.stock} unidade(s) disponível(is).`
-          });
-          return;
-        }
-      }
-    }
+    // A validação de estoque é feita de forma atômica em reconcileOrderStock,
+    // dentro da transação que grava o pedido (ver lib/inventory.ts).
 
     setIsSubmitting(true);
 
@@ -621,7 +573,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       const newOrderRef = doc(collection(db, 'orders'));
       const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
 
-      const stockDeductedItems: Record<string, number> = {};
       const orderData = {
         id: newOrderRef.id,
         ownerId: user?.uid || 'default',
@@ -653,52 +604,15 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         totalAmount: finalTotal || 0,
         paymentMethod: paymentString || '',
         orderDateTime: new Date().toISOString(),
-        stockDeducted: !!storeProfile?.general?.enableInventory,
-        stockDeductedItems
       };
 
-      const batch = writeBatch(db);
-
-      if (storeProfile?.general?.enableInventory) {
-        const getManagedStock = (value: unknown): number | null => {
-          return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
-        };
-
-        for (const item of cart) {
-          if (item.isCombo && item.comboItems) {
-            for (const ci of item.comboItems) {
-              if (ci.itemId) {
-                const itemRef = doc(db, 'menuItems', ci.itemId);
-                const itemSnap = await getDoc(itemRef);
-                if (itemSnap.exists()) {
-                  const currentStock = getManagedStock(itemSnap.data().stockQuantity);
-                  if (currentStock !== null) {
-                    batch.update(itemRef, {
-                      stockQuantity: increment(-item.quantity)
-                    });
-                    stockDeductedItems[ci.itemId] = (stockDeductedItems[ci.itemId] || 0) + item.quantity;
-                  }
-                }
-              }
-            }
-          } else if (item.id) {
-            const itemRef = doc(db, 'menuItems', item.id);
-            const itemSnap = await getDoc(itemRef);
-            if (itemSnap.exists()) {
-              const currentStock = getManagedStock(itemSnap.data().stockQuantity);
-              if (currentStock !== null) {
-                batch.update(itemRef, {
-                  stockQuantity: increment(-item.quantity)
-                });
-                stockDeductedItems[item.id] = (stockDeductedItems[item.id] || 0) + item.quantity;
-              }
-            }
-          }
-        }
-      }
-
-      batch.set(newOrderRef, orderData);
-      await batch.commit();
+      // Grava o pedido e abate o estoque de forma atômica (valida e lança
+      // InsufficientStockError se faltar — tratado no catch abaixo).
+      await reconcileOrderStock(db, {
+        enableInventory: !!storeProfile?.general?.enableInventory,
+        targetItems: cart,
+        order: { ref: newOrderRef, mode: 'set', data: orderData },
+      });
 
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
       for (const split of splitsToProcess) {
@@ -748,7 +662,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       }, 500);
 
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Erro', description: e.message });
+      const isStock = e instanceof InsufficientStockError;
+      toast({ variant: 'destructive', title: isStock ? 'Estoque insuficiente' : 'Erro', description: e.message });
     } finally {
       setIsSubmitting(false);
     }
