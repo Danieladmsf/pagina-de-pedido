@@ -618,7 +618,10 @@ export default function AdminPage() {
     const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
     if (!isManualPrint) return;
 
-    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending');
+    // Só toca a campainha para pedidos ONLINE aguardando atenção. Pedidos
+    // criados no PDV (mesa/balcão, source 'pdv') nascem 'pending' mas não devem
+    // disparar o alarme — o operador já os está gerenciando.
+    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending' && o.source !== 'pdv');
     if (!hasPending) return;
 
     let isPlaying = true;
