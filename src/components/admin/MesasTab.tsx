@@ -660,7 +660,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           )}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
             {tables.map(num => {
               const activeOrder = activeOrders.find(o => o.tableNumber === num);
               const isOpen = !!activeOrder;
@@ -672,19 +672,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   key={num}
                   onClick={() => setSelectedTable(num)}
                   className={`
-                    relative h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
+                    relative h-14 md:h-16 rounded-lg flex flex-col items-center justify-center transition-all border-2
                     ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105'}
                     ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
                   `}
                 >
                   {isOnline && (
-                    <span className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-white/25 rounded px-1 py-0.5" title="Pedido feito pelo cardápio (online)">
-                      <Globe className="h-3 w-3" />
-                      <span className="text-[8px] font-bold uppercase">Online</span>
+                    <span className="absolute top-1 left-1 flex items-center bg-white/25 rounded px-0.5" title="Pedido feito pelo cardápio (online)">
+                      <Globe className="h-2.5 w-2.5" />
                     </span>
                   )}
-                  <span className="text-2xl font-black">{num}</span>
-                  {isOpen && <span className="text-[10px] uppercase font-bold bg-black/20 px-1.5 py-0.5 rounded mt-1 truncate max-w-[90%]">{isAwaitingPayment ? 'Aguardando Pagamento' : 'Ocupada'}</span>}
+                  <span className="text-lg font-black leading-none">{num}</span>
+                  {isOpen && <span className="text-[8px] uppercase font-bold bg-black/20 px-1 py-0.5 rounded mt-0.5 truncate max-w-[95%]">{isAwaitingPayment ? 'Pagar' : 'Ocupada'}</span>}
                 </button>
               );
             })}
