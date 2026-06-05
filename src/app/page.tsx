@@ -794,16 +794,37 @@ export default function AdminPage() {
     return { revenue, count: filtered.length, avgTicket, customers, topItems, dailyBreakdown };
   }, [orders, reportPeriod, customFrom, customTo]);
 
-  // Redireciona para o login SOMENTE quando o Firebase já determinou que não há
-  // sessão. `isUserLoading` só vira false depois que a persistência (IndexedDB) foi
-  // lida — então, enquanto carrega, o gate abaixo mostra o loader (sem flash) e nunca
-  // redirecionamos no meio da restauração da sessão. Sem timers/heurística.
+  // Redireciona para o login só quando há CERTEZA de que não há sessão.
+  //
+  // Causa raiz (confirmada): num reload de deploy, o service worker novo assume e o
+  // IndexedDB fica brevemente indisponível. O Firebase então reporta "sem sessão"
+  // (authStateReady resolve com currentUser=null) e só RESTAURA a sessão um instante
+  // depois. Por isso esperamos o estado ficar pronto e re-checamos por ~2s antes de
+  // mandar pro login — é o tratamento de um async conhecido, não um timer no escuro.
   // Logout intencional vai direto via handleLogout.
   useEffect(() => {
-    if (isUserLoading) return;              // sessão ainda sendo determinada
-    if (user && !user.isAnonymous) return;  // logado
-    router.replace('/login');
-  }, [user, isUserLoading, router]);
+    if (!auth) return;
+    if (user && !user.isAnonymous) return; // já logado neste render
+
+    let cancelled = false;
+    let tries = 0;
+    const MAX_TRIES = 8; // ~2s a 250ms
+
+    const decide = () => {
+      if (cancelled) return;
+      if (auth.currentUser && !auth.currentUser.isAnonymous) return; // sessão voltou
+      tries += 1;
+      if (tries >= MAX_TRIES) {
+        router.replace('/login');
+        return;
+      }
+      setTimeout(decide, 250);
+    };
+
+    // authStateReady() resolve quando o Firebase determina o estado inicial.
+    auth.authStateReady().then(decide).catch(() => decide());
+    return () => { cancelled = true; };
+  }, [user, auth, router]);
 
   // Só mostra "Acesso Negado" depois que a role realmente resolveu sem permissão.
   // Pequena janela de segurança contra erro transitório (ex.: permissão que
