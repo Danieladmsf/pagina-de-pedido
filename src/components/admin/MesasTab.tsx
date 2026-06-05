@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator, Globe, ArrowLeftRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
@@ -15,6 +15,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { normalizeSearch } from '@/lib/utils';
+import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -39,10 +40,6 @@ const DEFAULT_FORMAS_PAGAMENTO = [
   { id: 'debito', label: 'Débito', icon: '💳', active: true },
   { id: 'credito', label: 'Crédito', icon: '💳', active: true },
 ];
-
-const getManagedStock = (value: unknown): number | null => {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
-};
 
 export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange }: MesasTabProps) {
   const FORMAS_PAGAMENTO = (storeInfo?.paymentMethods && storeInfo.paymentMethods.length > 0 ? storeInfo.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active && m.id !== 'conta_casa');
@@ -243,49 +240,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     
     try {
       if (activeOrderId) {
-        const batch = writeBatch(db);
-        const orderCancelUpdate: any = { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 };
-
-        if (storeInfo?.general?.enableInventory) {
-          const stockRestore: Record<string, number> = {};
-          const activeOrder = activeOrders.find(o => o.id === activeOrderId);
-          const hasExactMovements = activeOrder && Object.prototype.hasOwnProperty.call(activeOrder, 'stockDeductedItems');
-
-          if (hasExactMovements) {
-            Object.entries(activeOrder.stockDeductedItems || {}).forEach(([itemId, quantity]) => {
-              const qty = Number(quantity) || 0;
-              if (qty > 0) {
-                stockRestore[itemId] = qty;
-              }
-            });
-          } else {
-            cart.forEach(item => {
-              if (item.isCombo && item.comboItems) {
-                item.comboItems.forEach((ci: any) => {
-                  stockRestore[ci.itemId] = (stockRestore[ci.itemId] || 0) + item.quantity;
-                });
-              } else if (item.id) {
-                stockRestore[item.id] = (stockRestore[item.id] || 0) + item.quantity;
-              }
-            });
-          }
-
-          for (const [itemId, qty] of Object.entries(stockRestore)) {
-            const itemRef = doc(db, 'menuItems', itemId);
-            const itemSnap = await getDoc(itemRef);
-            const currentStock = itemSnap.exists() ? getManagedStock(itemSnap.data().stockQuantity) : null;
-            if (currentStock !== null) {
-              batch.update(itemRef, {
-                stockQuantity: increment(qty)
-              });
-            }
-          }
-          orderCancelUpdate.stockDeducted = false;
-          orderCancelUpdate.stockDeductedItems = {};
-        }
-
-        batch.update(doc(db, 'orders', activeOrderId), orderCancelUpdate);
-        await batch.commit();
+        const activeOrder = activeOrders.find(o => o.id === activeOrderId);
+        // Devolve ao estoque exatamente o que o pedido reservou e grava o
+        // cancelamento na mesma transação.
+        await releaseOrderStock(db, {
+          enableInventory: !!storeInfo?.general?.enableInventory,
+          alreadyDeducted: activeOrder?.stockDeductedItems,
+          order: {
+            ref: doc(db, 'orders', activeOrderId),
+            mode: 'update',
+            data: { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 },
+          },
+        });
       }
       setCart([]);
       setOriginalCart([]);
@@ -323,89 +289,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     if (!db || !user || !selectedTable || cart.length === 0) return;
     setIsSubmitting(true);
     
-    // Calcula diferença para impressão da cozinha e controle de estoque
+    // Itens NOVOS (diferença vs comanda atual) para imprimir na cozinha.
     const newItemsToPrint: any[] = [];
-    const stockDiffs: Record<string, number> = {};
-    let managedStockDiffs: Record<string, number> = {};
-
     cart.forEach(item => {
       const originalItem = originalCart.find(oi => (oi.cartItemId || oi.id) === (item.cartItemId || item.id));
       const diffQty = item.quantity - (originalItem ? originalItem.quantity : 0);
-      if (diffQty > 0) {
-        newItemsToPrint.push({ ...item, quantity: diffQty });
-      }
-      if (diffQty !== 0) {
-        if (item.isCombo && item.comboItems) {
-          item.comboItems.forEach((ci: any) => {
-            stockDiffs[ci.itemId] = (stockDiffs[ci.itemId] || 0) + diffQty;
-          });
-        } else if (item.id) {
-          stockDiffs[item.id] = (stockDiffs[item.id] || 0) + diffQty;
-        }
-      }
+      if (diffQty > 0) newItemsToPrint.push({ ...item, quantity: diffQty });
     });
-
-    originalCart.forEach(oi => {
-      const stillInCart = cart.find(item => (item.cartItemId || item.id) === (oi.cartItemId || oi.id));
-      if (!stillInCart) {
-        if (oi.isCombo && oi.comboItems) {
-          oi.comboItems.forEach((ci: any) => {
-            stockDiffs[ci.itemId] = (stockDiffs[ci.itemId] || 0) - oi.quantity;
-          });
-        } else if (oi.id) {
-          stockDiffs[oi.id] = (stockDiffs[oi.id] || 0) - oi.quantity;
-        }
-      }
-    });
-
-    if (storeInfo?.general?.enableInventory) {
-      const itemsToValidate = Object.entries(stockDiffs).filter(([_, diff]) => diff !== 0);
-      if (itemsToValidate.length > 0) {
-        try {
-          for (const [itemId, diff] of itemsToValidate) {
-            const itemRef = doc(db, 'menuItems', itemId);
-            const itemSnap = await getDoc(itemRef);
-            if (itemSnap.exists()) {
-              const itemData = itemSnap.data();
-              const currentStock = getManagedStock(itemData.stockQuantity);
-              if (currentStock === null) continue;
-
-              if (diff > 0 && diff > currentStock) {
-                toast({
-                  variant: 'destructive',
-                  title: 'Estoque insuficiente',
-                  description: `Não foi possível salvar. "${itemData.name || itemId}" tem apenas ${currentStock} unidade(s) disponível(is), mas você tentou adicionar ${diff}.`
-                });
-                setIsSubmitting(false);
-                return;
-              }
-
-              managedStockDiffs[itemId] = diff;
-            }
-          }
-        } catch (err) {
-          console.error("Erro ao validar estoque:", err);
-        }
-      }
-    }
 
     try {
-      let finalOrderId = activeOrderId;
-      const batch = writeBatch(db);
       const activeOrder = activeOrderId ? activeOrders.find(o => o.id === activeOrderId) : null;
-      const nextStockDeductedItems: Record<string, number> = { ...(activeOrder?.stockDeductedItems || {}) };
 
-      if (storeInfo?.general?.enableInventory) {
-        Object.entries(managedStockDiffs).forEach(([itemId, diff]) => {
-          const nextQty = (Number(nextStockDeductedItems[itemId]) || 0) + diff;
-          if (nextQty > 0) {
-            nextStockDeductedItems[itemId] = nextQty;
-          } else {
-            delete nextStockDeductedItems[itemId];
-          }
-        });
-      }
-      
       const sanitizedItems = cart.map(i => ({
         id: i.id || '',
         name: i.name || '',
@@ -422,49 +316,47 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         comboItems: i.comboItems || null
       }));
 
-      if (activeOrderId) {
-        batch.update(doc(db, 'orders', activeOrderId), {
-          items: sanitizedItems,
-          totalAmount: cartTotal,
-          subtotal: cartTotal,
-          stockDeducted: !!storeInfo?.general?.enableInventory,
-          stockDeductedItems: nextStockDeductedItems,
-        });
-      } else {
-        finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
-        batch.set(doc(db, 'orders', finalOrderId), {
-          id: finalOrderId,
-          ownerId: user?.uid || 'default',
-          customerName: `Mesa ${selectedTable}`,
-          tableNumber: selectedTable,
-          orderType: 'dine_in',
-          status: 'pending',
-          paymentStatus: 'pending',
-          // Marca que o pedido nasceu no PDV de mesa, que já imprime o ticket da
-          // cozinha localmente. Sem isso, a impressão automática de novos pedidos
-          // (page.tsx) imprimiria o mesmo cupom de novo — saía em duplicidade.
-          source: 'pdv',
-          items: sanitizedItems,
-          totalAmount: cartTotal,
-          subtotal: cartTotal,
-          orderDateTime: new Date().toISOString(),
-          createdAt: new Date(),
-          stockDeducted: !!storeInfo?.general?.enableInventory,
-          stockDeductedItems: nextStockDeductedItems,
-        });
-      }
-
-      if (storeInfo?.general?.enableInventory) {
-        Object.entries(managedStockDiffs).forEach(([itemId, diff]) => {
-          if (diff !== 0) {
-            batch.update(doc(db, 'menuItems', itemId), {
-              stockQuantity: increment(-diff)
-            });
+      let finalOrderId = activeOrderId;
+      const orderSpec = activeOrderId
+        ? {
+            ref: doc(db, 'orders', activeOrderId),
+            mode: 'update' as const,
+            data: { items: sanitizedItems, totalAmount: cartTotal, subtotal: cartTotal },
           }
-        });
-      }
+        : (() => {
+            finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
+            return {
+              ref: doc(db, 'orders', finalOrderId),
+              mode: 'set' as const,
+              data: {
+                id: finalOrderId,
+                ownerId: user?.uid || 'default',
+                customerName: `Mesa ${selectedTable}`,
+                tableNumber: selectedTable,
+                orderType: 'dine_in',
+                status: 'pending',
+                paymentStatus: 'pending',
+                // Marca que o pedido nasceu no PDV de mesa, que já imprime o ticket
+                // da cozinha localmente. Sem isso, a impressão automática de novos
+                // pedidos (page.tsx) imprimiria o mesmo cupom de novo (duplicidade).
+                source: 'pdv',
+                items: sanitizedItems,
+                totalAmount: cartTotal,
+                subtotal: cartTotal,
+                orderDateTime: new Date().toISOString(),
+                createdAt: new Date(),
+              },
+            };
+          })();
 
-      await batch.commit();
+      // Grava o pedido e abate o estoque (delta vs o que já estava reservado),
+      // de forma atômica. Lança InsufficientStockError se faltar.
+      await reconcileOrderStock(db, {
+        enableInventory: !!storeInfo?.general?.enableInventory,
+        targetItems: sanitizedItems,
+        alreadyDeducted: activeOrder?.stockDeductedItems,
+        order: orderSpec,
+      });
 
       // Atualiza o estado local imediatamente, sem depender do "eco" do onSnapshot.
       // Sem isso, ao criar uma mesa nova o activeOrderId continuava null até o
@@ -490,8 +382,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         toast({ title: 'Sucesso', description: 'Mesa atualizada (sem novos itens).' });
       }
 
-    } catch(e) {
-      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível salvar.' });
+    } catch(e: any) {
+      const isStock = e instanceof InsufficientStockError;
+      toast({ variant: 'destructive', title: isStock ? 'Estoque insuficiente' : 'Erro', description: isStock ? e.message : 'Não foi possível salvar.' });
     } finally {
       setIsSubmitting(false);
     }
