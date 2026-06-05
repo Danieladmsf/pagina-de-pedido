@@ -998,7 +998,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       <Dialog open={isEditItemsOpen} onOpenChange={setIsEditItemsOpen}>
         <DialogContent className="max-w-none w-screen h-screen m-0 rounded-none border-none p-0 flex flex-col">
           <DialogHeader className="p-4 border-b shrink-0 bg-slate-50">
-            <DialogTitle className="text-base font-bold text-slate-800 flex justify-between items-center">
+            <DialogTitle className="text-base font-bold text-slate-800 flex justify-between items-center gap-3 pr-8">
               <span>🛒 Editar Itens do Pedido #{selectedOrder?.id?.substring(0, 5)}</span>
               <span className="text-xs font-normal text-muted-foreground">Preços e adicionais do cardápio ativo</span>
             </DialogTitle>
