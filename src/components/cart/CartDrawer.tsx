@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { normalizeSearch } from '@/lib/utils';
+import { getManagedStock, getStockDemand } from '@/lib/inventory';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -57,31 +58,6 @@ const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
 ];
 
 type Step = 'cart' | 'info';
-
-const getManagedStock = (value: unknown): number | null => {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
-};
-
-const getStockDemand = (cartItems: any[]): Record<string, number> => {
-  const demand: Record<string, number> = {};
-
-  cartItems.forEach(item => {
-    const qty = Number(item.quantity) || 0;
-    if (qty <= 0) return;
-
-    if (item.isCombo && item.comboItems) {
-      item.comboItems.forEach((ci: any) => {
-        if (ci.itemId) {
-          demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-        }
-      });
-    } else if (item.id) {
-      demand[item.id] = (demand[item.id] || 0) + qty;
-    }
-  });
-
-  return demand;
-};
 
 const checkCartChannelVisibility = (
   cartItems: any[],

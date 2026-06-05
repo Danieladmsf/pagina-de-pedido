@@ -218,15 +218,6 @@ async function writeOrder(order: OrderWriteSpec, payload: Record<string, any>): 
   else await updateDoc(order.ref, payload);
 }
 
-/** Conveniência: reserva o estoque dos itens de um pedido novo/editado. */
-export function deductOrderStock(
-  db: Firestore,
-  items: OrderLikeItem[],
-  opts: { enableInventory: boolean; alreadyDeducted?: StockMap; order?: OrderWriteSpec },
-) {
-  return reconcileOrderStock(db, { enableInventory: opts.enableInventory, targetItems: items, alreadyDeducted: opts.alreadyDeducted, order: opts.order });
-}
-
 /** Conveniência: devolve ao estoque tudo que um pedido reservou (cancelamento). */
 export function releaseOrderStock(
   db: Firestore,

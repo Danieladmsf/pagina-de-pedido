@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator, Globe, ArrowLeftRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, deleteDoc, query, where, getDocs, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, query, where, getDocs, increment } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { PrintReceipt } from './PrintReceipt';
