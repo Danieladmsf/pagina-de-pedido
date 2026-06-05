@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, getDoc, increment } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -45,10 +45,7 @@ import { removeAccents } from '@/lib/utils';
 import { traceReload } from '@/lib/reload-trace';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
-
-const getManagedStock = (value: unknown): number | null => {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
-};
+import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -429,50 +426,16 @@ export default function AdminPage() {
     const processIncomingOrders = async () => {
       const isInventoryEnabled = !!(storeProfile?.general?.enableInventory || storeProfile?.enableInventory);
       for (const order of allNewOnes) {
-        // --- 1. ABATIMENTO DE ESTOQUE IMEDIATO ---
+        // --- 1. ABATIMENTO DE ESTOQUE IMEDIATO (rede de segurança p/ pedidos
+        //         que cheguem ainda não abatidos) ---
         if (isInventoryEnabled && order.stockDeducted !== true && order.status !== 'canceled') {
           try {
-            const batch = writeBatch(db);
-            const stockDeductedItems: Record<string, number> = {};
-
-            for (const item of order.items || []) {
-              const qty = Number(item.quantity) || 0;
-              if (qty <= 0) continue;
-
-              if (item.isCombo && item.comboItems) {
-                for (const ci of item.comboItems) {
-                  if (ci.itemId) {
-                    const itemRef = doc(db, 'menuItems', ci.itemId);
-                    const itemSnap = await getDoc(itemRef);
-                    if (itemSnap.exists()) {
-                      const currentStock = getManagedStock(itemSnap.data().stockQuantity);
-                      if (currentStock !== null) {
-                        batch.update(itemRef, {
-                          stockQuantity: increment(-qty)
-                        });
-                        stockDeductedItems[ci.itemId] = (stockDeductedItems[ci.itemId] || 0) + qty;
-                      }
-                    }
-                  }
-                }
-              } else if (item.id) {
-                const itemRef = doc(db, 'menuItems', item.id);
-                const itemSnap = await getDoc(itemRef);
-                if (itemSnap.exists()) {
-                  const currentStock = getManagedStock(itemSnap.data().stockQuantity);
-                  if (currentStock !== null) {
-                    batch.update(itemRef, {
-                      stockQuantity: increment(-qty)
-                    });
-                    stockDeductedItems[item.id] = (stockDeductedItems[item.id] || 0) + qty;
-                  }
-                }
-              }
-            }
-
-            // Atualiza o documento do pedido indicando que o estoque já foi abatido
-            batch.update(doc(db, 'orders', order.id), { stockDeducted: true, stockDeductedItems });
-            await batch.commit();
+            await reconcileOrderStock(db, {
+              enableInventory: true,
+              targetItems: order.items || [],
+              alreadyDeducted: order.stockDeductedItems,
+              order: { ref: doc(db, 'orders', order.id), mode: 'update', data: {} },
+            });
           } catch (err) {
             console.error("Erro ao abater estoque do pedido novo:", order.id, err);
           }
@@ -1157,63 +1120,6 @@ export default function AdminPage() {
       const currentOrder = (ordersRaw as any[])?.find(o => o.id === orderId);
       const finalizingSale = updates.status === 'delivered' && currentOrder && currentOrder.status !== 'delivered';
       const shouldDeductStock = !!(finalizingSale && storeProfile?.general?.enableInventory && currentOrder.stockDeducted !== true);
-      let stockDeductionUpdates: Array<{ itemRef: any; itemId: string; quantity: number }> = [];
-
-      const orderItemQuantities = (order: any) => {
-        const quantities = new Map<string, number>();
-        for (const item of order?.items || []) {
-          const quantity = Number(item.quantity) || 0;
-          if (quantity <= 0) continue;
-
-          if (item.isCombo && item.comboItems) {
-            for (const ci of item.comboItems) {
-              if (ci.itemId) {
-                quantities.set(ci.itemId, (quantities.get(ci.itemId) || 0) + quantity);
-              }
-            }
-          } else if (item.id) {
-            quantities.set(item.id, (quantities.get(item.id) || 0) + quantity);
-          }
-        }
-        return quantities;
-      };
-
-      const stockQuantitiesToRestore = (order: any) => {
-        const hasExactMovements = order && Object.prototype.hasOwnProperty.call(order, 'stockDeductedItems');
-        if (!hasExactMovements) return orderItemQuantities(order);
-
-        const quantities = new Map<string, number>();
-        Object.entries(order.stockDeductedItems || {}).forEach(([itemId, quantity]) => {
-          const qty = Number(quantity) || 0;
-          if (qty > 0) {
-            quantities.set(itemId, qty);
-          }
-        });
-        return quantities;
-      };
-
-      if (shouldDeductStock) {
-        for (const [itemId, quantity] of orderItemQuantities(currentOrder)) {
-          const itemRef = doc(db, 'menuItems', itemId);
-          const itemSnap = await getDoc(itemRef);
-          if (!itemSnap.exists()) continue;
-
-          const itemData = itemSnap.data();
-          const currentStock = getManagedStock(itemData.stockQuantity);
-          if (currentStock === null) continue;
-
-          if (quantity > currentStock) {
-            toast({
-              variant: 'destructive',
-              title: 'Estoque insuficiente',
-              description: `Não foi possível finalizar. "${itemData.name || itemId}" tem apenas ${currentStock} unidade(s).`
-            });
-            return false;
-          }
-
-          stockDeductionUpdates.push({ itemRef, itemId, quantity });
-        }
-      }
       
       // Sincronização de Cliente se o pedido for movido para 'delivered'
       if (updates.status === 'delivered') {
@@ -1294,46 +1200,24 @@ export default function AdminPage() {
       }
 
       if (updates.status === 'canceled' && currentOrder && currentOrder.status !== 'canceled') {
-        if (storeProfile?.general?.enableInventory && currentOrder.stockDeducted === true) {
-          const batch = writeBatch(db);
-          batch.update(doc(db, 'orders', orderId), { ...updates, stockDeducted: false, stockDeductedItems: {} });
-          for (const [itemId, quantity] of stockQuantitiesToRestore(currentOrder)) {
-            const itemRef = doc(db, 'menuItems', itemId);
-            const itemSnap = await getDoc(itemRef);
-            const currentStock = itemSnap.exists() ? getManagedStock(itemSnap.data().stockQuantity) : null;
-            if (currentStock !== null) {
-              batch.update(itemRef, {
-                stockQuantity: increment(quantity)
-              });
-            }
-          }
-          await batch.commit();
-          toast({ title: "Status Atualizado", description: "O pedido foi cancelado e o estoque foi retornado." });
-          return true;
-        }
-
-        await updateDoc(doc(db, 'orders', orderId), updates);
-        toast({ title: "Status Atualizado", description: "O pedido foi cancelado." });
+        // Devolve ao estoque o que o pedido reservou e grava o cancelamento (atômico).
+        const res = await releaseOrderStock(db, {
+          enableInventory: !!storeProfile?.general?.enableInventory,
+          alreadyDeducted: currentOrder.stockDeductedItems,
+          order: { ref: doc(db, 'orders', orderId), mode: 'update', data: updates },
+        });
+        toast({ title: "Status Atualizado", description: res.changed ? "O pedido foi cancelado e o estoque foi retornado." : "O pedido foi cancelado." });
         return true;
       }
 
       if (shouldDeductStock) {
-        const batch = writeBatch(db);
-        for (const stockUpdate of stockDeductionUpdates) {
-          batch.update(stockUpdate.itemRef, {
-            stockQuantity: increment(-stockUpdate.quantity)
-          });
-        }
-        const stockDeductedItems = stockDeductionUpdates.reduce<Record<string, number>>((acc, update) => {
-          acc[update.itemId] = (acc[update.itemId] || 0) + update.quantity;
-          return acc;
-        }, {});
-        batch.update(doc(db, 'orders', orderId), {
-          ...updates,
-          stockDeducted: true,
-          stockDeductedItems
+        // Pedido sendo finalizado sem ter sido abatido antes: abate agora (atômico).
+        await reconcileOrderStock(db, {
+          enableInventory: true,
+          targetItems: currentOrder.items || [],
+          alreadyDeducted: currentOrder.stockDeductedItems,
+          order: { ref: doc(db, 'orders', orderId), mode: 'update', data: updates },
         });
-        await batch.commit();
       } else {
         await updateDoc(doc(db, 'orders', orderId), updates);
       }
@@ -1347,9 +1231,10 @@ export default function AdminPage() {
         }
       }
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast({ variant: "destructive", title: "Erro ao atualizar", description: "Falha na comunicação." });
+      const isStock = err instanceof InsufficientStockError;
+      toast({ variant: "destructive", title: isStock ? "Estoque insuficiente" : "Erro ao atualizar", description: isStock ? err.message : "Falha na comunicação." });
       return false;
     }
   };
