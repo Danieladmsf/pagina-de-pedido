@@ -262,7 +262,6 @@ export default function AdminPage() {
 
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
-  const assigningTablesRef = useRef<Set<string>>(new Set());
   const whatsappWebhookSyncRef = useRef(false);
 
   useEffect(() => {
@@ -331,47 +330,9 @@ export default function AdminPage() {
     playLoudAudio(4.0);
   }, [playLoudAudio]);
 
-  // Auto-atribuição de mesa para pedidos "comer no local" feitos pelo cardápio.
-  // Pedidos dine_in do cliente chegam sem tableNumber; aqui atribuímos a 1ª mesa
-  // livre para que apareçam ocupando uma mesa na aba Mesas (e não fiquem órfãos
-  // travando o fechamento do caixa). O admin pode remanejar depois. Se não houver
-  // mesa livre, o pedido fica sem mesa e aparece na área "sem mesa" do MesasTab.
-  useEffect(() => {
-    if (!orders || !db) return;
-    const TOTAL_MESAS = 15;
-    const ativos = (orders as any[]).filter(
-      (o) => o.orderType === 'dine_in' && o.status !== 'delivered' && o.status !== 'canceled'
-    );
-    const semMesa = ativos.filter(
-      (o) => o.source !== 'pdv'
-        && (o.tableNumber === undefined || o.tableNumber === null || o.tableNumber === '')
-        && !assigningTablesRef.current.has(o.id)
-    );
-    if (semMesa.length === 0) return;
-
-    const ocupadas = new Set<number>(
-      ativos.map((o) => Number(o.tableNumber)).filter((n) => Number.isFinite(n) && n > 0)
-    );
-
-    (async () => {
-      for (const order of semMesa) {
-        let mesaLivre: number | null = null;
-        for (let n = 1; n <= TOTAL_MESAS; n++) {
-          if (!ocupadas.has(n)) { mesaLivre = n; break; }
-        }
-        if (mesaLivre === null) break; // nenhuma mesa livre — fica na área "sem mesa"
-        assigningTablesRef.current.add(order.id);
-        ocupadas.add(mesaLivre);
-        try {
-          await updateDoc(doc(db, 'orders', order.id), { tableNumber: mesaLivre });
-        } catch (e) {
-          console.error('Falha ao atribuir mesa ao pedido', order.id, e);
-          assigningTablesRef.current.delete(order.id);
-          ocupadas.delete(mesaLivre);
-        }
-      }
-    })();
-  }, [orders, db]);
+  // Pedidos "comer no local" do app NÃO recebem mesa automaticamente: ficam na
+  // fila "Novos pedidos online" (purgatório) do MesasTab até o operador aceitar e
+  // escolher a mesa real onde o cliente sentou (padrão dos PDVs profissionais).
 
   useEffect(() => {
     if (!ordersRaw || !db || !user) return;
