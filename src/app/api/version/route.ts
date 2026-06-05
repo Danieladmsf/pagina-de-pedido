@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+// deploy-test: validar fluxo de auth pós-deploy (App Hosting rollout).
 // Sempre dinâmico e sem cache: precisa refletir a versão do deploy atual em tempo
 // real para que clientes abertos há muito tempo percebam que há uma versão nova.
 export const dynamic = 'force-dynamic';
