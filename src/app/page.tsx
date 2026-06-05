@@ -794,53 +794,16 @@ export default function AdminPage() {
     return { revenue, count: filtered.length, avgTicket, customers, topItems, dailyBreakdown };
   }, [orders, reportPeriod, customFrom, customTo]);
 
-  // Debounce o redirect para login para evitar que flutuações temporárias de auth
-  // (ex: reload antes do Firebase restaurar a sessão do IndexedDB, ou outra aba)
-  // desloguem o admin indevidamente.
-  // Persistimos no localStorage para que o "já esteve logado" sobreviva ao reload:
-  // sem isso, todo reload zera o ref e um null transitório redireciona na hora.
-  const WAS_LOGGED_KEY = 'admin_was_logged_in';
-  const wasEverLoggedIn = useRef<boolean>(
-    typeof localStorage !== 'undefined' && localStorage.getItem(WAS_LOGGED_KEY) === '1'
-  );
+  // Redireciona para o login SOMENTE quando o Firebase já determinou que não há
+  // sessão. `isUserLoading` só vira false depois que a persistência (IndexedDB) foi
+  // lida — então, enquanto carrega, o gate abaixo mostra o loader (sem flash) e nunca
+  // redirecionamos no meio da restauração da sessão. Sem timers/heurística.
+  // Logout intencional vai direto via handleLogout.
   useEffect(() => {
-    if (user && !user.isAnonymous) {
-      wasEverLoggedIn.current = true;
-      try { localStorage.setItem(WAS_LOGGED_KEY, '1'); } catch { /* ignore */ }
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (isUserLoading) return; // Ainda carregando, não faz nada
-    if (user && !user.isAnonymous) return; // Logado normalmente, tudo certo
-
-    // Quem JÁ ESTEVE logado (ex.: após um deploy, quando o service worker novo
-    // assume e o IndexedDB está "frio") pode levar alguns segundos para a sessão
-    // do Firebase ser restaurada. Em vez de redirecionar cedo (o que mostrava a
-    // tela de login piscando e voltava), fazemos POLLING da sessão e cancelamos o
-    // redirect assim que ela voltar. Mesmo quem nunca logou tem uma janela mínima
-    // de settle (1.5s) — durante ela mostramos o loader, não o login — para evitar
-    // o flash do login quando a sessão está só restaurando.
-    const hadSession = wasEverLoggedIn.current;
-    const windowMs = hadSession ? 8000 : 1500;
-    const step = 250;
-    let elapsed = 0;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const check = () => {
-      if (auth?.currentUser && !auth.currentUser.isAnonymous) return; // sessão voltou
-      elapsed += step;
-      if (elapsed >= windowMs) {
-        try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
-        router.push('/login');
-        return;
-      }
-      timer = setTimeout(check, step);
-    };
-
-    timer = setTimeout(check, step);
-    return () => clearTimeout(timer);
-  }, [user, isUserLoading, router, auth]);
+    if (isUserLoading) return;              // sessão ainda sendo determinada
+    if (user && !user.isAnonymous) return;  // logado
+    router.replace('/login');
+  }, [user, isUserLoading, router]);
 
   // Só mostra "Acesso Negado" depois que a role realmente resolveu sem permissão.
   // Pequena janela de segurança contra erro transitório (ex.: permissão que
@@ -857,7 +820,6 @@ export default function AdminPage() {
 
   const handleLogout = async () => {
     if (!auth) return;
-    try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
     await signOut(auth);
     router.push('/login');
   };
