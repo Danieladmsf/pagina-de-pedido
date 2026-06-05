@@ -84,6 +84,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // Pedidos de mesa ativos que ainda não têm mesa (ex.: pedido online quando todas
   // as mesas estavam ocupadas no momento da auto-atribuição).
   const ordersSemMesa = activeOrders.filter(o => !o.tableNumber);
+  // Modo manual = sem impressão automática (o operador imprime ao aceitar).
+  const isManualPrint = !!(storeInfo?.general?.manualPrint || storeInfo?.manualPrint);
 
   const lastSelectedTableRef = React.useRef<number | null>(null);
   const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart);
@@ -270,19 +272,23 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const handleAcceptOnlineOrder = async (order: any) => {
     if (!db || !order?.id) return;
     try {
-      setIsKitchenPrint(true);
-      setReceiptPrinted(false);
-      setOrderToPrint({
-        id: order.id,
-        customerName: order.customerName || 'Cliente',
-        orderType: 'dine_in',
-        items: order.items || [],
-        orderDateTime: order.orderDateTime || new Date().toISOString(),
-        tableNumber: order.tableNumber || null,
-      });
-      setTimeout(() => window.print(), 500);
+      // No modo automático o ticket já foi impresso na chegada — não reimprime.
+      // No modo manual, imprime agora.
+      if (isManualPrint) {
+        setIsKitchenPrint(true);
+        setReceiptPrinted(false);
+        setOrderToPrint({
+          id: order.id,
+          customerName: order.customerName || 'Cliente',
+          orderType: 'dine_in',
+          items: order.items || [],
+          orderDateTime: order.orderDateTime || new Date().toISOString(),
+          tableNumber: order.tableNumber || null,
+        });
+        setTimeout(() => window.print(), 500);
+      }
       await updateDoc(doc(db, 'orders', order.id), { accepted: true });
-      toast({ title: 'Pedido aceito', description: 'Ticket enviado para produção.' });
+      toast({ title: 'Pedido aceito', description: isManualPrint ? 'Ticket enviado para produção.' : 'Pedido confirmado.' });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível aceitar o pedido.' });
     }
@@ -684,7 +690,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                             className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                             onClick={() => handleAcceptOnlineOrder(o)}
                           >
-                            <Printer className="h-3.5 w-3.5 mr-1" /> Aceitar e imprimir
+                            {isManualPrint ? <><Printer className="h-3.5 w-3.5 mr-1" /> Aceitar e imprimir</> : 'Aceitar'}
                           </Button>
                         )}
                         <Button
