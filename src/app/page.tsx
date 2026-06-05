@@ -817,11 +817,13 @@ export default function AdminPage() {
     // Quem JÁ ESTEVE logado (ex.: após um deploy, quando o service worker novo
     // assume e o IndexedDB está "frio") pode levar alguns segundos para a sessão
     // do Firebase ser restaurada. Em vez de redirecionar cedo (o que mostrava a
-    // tela de login piscando e voltava), fazemos POLLING da sessão por até 8s e
-    // cancelamos o redirect assim que ela voltar. Quem nunca logou vai direto.
+    // tela de login piscando e voltava), fazemos POLLING da sessão e cancelamos o
+    // redirect assim que ela voltar. Mesmo quem nunca logou tem uma janela mínima
+    // de settle (1.5s) — durante ela mostramos o loader, não o login — para evitar
+    // o flash do login quando a sessão está só restaurando.
     const hadSession = wasEverLoggedIn.current;
-    const windowMs = hadSession ? 8000 : 0;
-    const step = 500;
+    const windowMs = hadSession ? 8000 : 1500;
+    const step = 250;
     let elapsed = 0;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -836,7 +838,7 @@ export default function AdminPage() {
       timer = setTimeout(check, step);
     };
 
-    timer = setTimeout(check, hadSession ? step : 0);
+    timer = setTimeout(check, step);
     return () => clearTimeout(timer);
   }, [user, isUserLoading, router, auth]);
 
