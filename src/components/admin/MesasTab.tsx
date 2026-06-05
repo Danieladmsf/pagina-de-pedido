@@ -294,6 +294,29 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     }
   };
 
+  // Exclui (cancela) um pedido online da fila. Segue o mesmo caminho do
+  // cancelamento de mesa: devolve o estoque reservado e marca como canceled,
+  // o que o tira da fila (activeOrders exclui status 'canceled').
+  const handleRejectOnlineOrder = async (order: any) => {
+    if (!db || !order?.id) return;
+    if (!confirm(`Excluir o pedido online de ${order.customerName || 'Cliente'}? O pedido será cancelado e os itens devolvidos ao estoque.`)) return;
+    try {
+      await releaseOrderStock(db, {
+        enableInventory: !!storeInfo?.general?.enableInventory,
+        alreadyDeducted: order?.stockDeductedItems,
+        order: {
+          ref: doc(db, 'orders', order.id),
+          mode: 'update',
+          data: { status: 'canceled', items: [], totalAmount: 0, subtotal: 0 },
+        },
+      });
+      toast({ title: 'Pedido excluído', description: 'O pedido online foi cancelado.' });
+    } catch (e: any) {
+      console.error('Erro ao excluir pedido online:', e);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível excluir o pedido.' });
+    }
+  };
+
   const handlePickTable = async (orderId: string, targetTable: number) => {
     if (!db || !orderId) return;
     try {
@@ -734,9 +757,19 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           <p className="font-bold text-sm text-slate-800 truncate">{o.customerName || 'Cliente'}</p>
                           <p className="text-[10px] text-slate-400">{time && `${time} · `}#{o.id?.substring(0, 5)}</p>
                         </div>
-                        {needsAttention
-                          ? <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded shrink-0">NOVO</span>
-                          : <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">ACEITO</span>}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {needsAttention
+                            ? <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">NOVO</span>
+                            : <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">ACEITO</span>}
+                          <button
+                            type="button"
+                            onClick={() => handleRejectOnlineOrder(o)}
+                            title="Excluir pedido"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Produtos */}
