@@ -403,6 +403,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           id: finalOrderId,
           customerName: `Mesa ${selectedTable}`,
           orderType: 'dine_in',
+          tableNumber: selectedTable,
           items: newItemsToPrint,
           orderDateTime: new Date().toISOString(),
         });

@@ -41,10 +41,17 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
 
       {/* Tipo de Pedido */}
       <div className="text-center font-bold mb-4 uppercase">
-        {order.orderType === 'pickup' ? '*** RETIRADA NO LOCAL ***' : 
-         order.orderType === 'dine_in' ? '*** COMER NO LOCAL ***' : 
+        {order.orderType === 'pickup' ? '*** RETIRADA NO LOCAL ***' :
+         order.orderType === 'dine_in' ? '*** COMER NO LOCAL ***' :
          '*** ENTREGA ***'}
       </div>
+
+      {/* Mesa (comer no local): número se já atribuída, ou linha para anotar à mão */}
+      {order.orderType === 'dine_in' && (
+        <div className="text-center font-bold mb-4 border-b border-black border-dashed pb-4 uppercase text-lg">
+          {order.tableNumber ? `MESA: ${order.tableNumber}` : 'MESA: ____________'}
+        </div>
+      )}
 
       {/* Dados do Cliente */}
       <div className="mb-4 border-b border-black border-dashed pb-4">
