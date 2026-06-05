@@ -265,12 +265,36 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     }
   };
 
+  // Aceita um pedido online (comer no local): imprime o ticket de produção e
+  // marca como aceito — o que para o alarme (gate em page.tsx) e tira o piscar.
+  const handleAcceptOnlineOrder = async (order: any) => {
+    if (!db || !order?.id) return;
+    try {
+      setIsKitchenPrint(true);
+      setReceiptPrinted(false);
+      setOrderToPrint({
+        id: order.id,
+        customerName: order.customerName || 'Cliente',
+        orderType: 'dine_in',
+        items: order.items || [],
+        orderDateTime: order.orderDateTime || new Date().toISOString(),
+        tableNumber: order.tableNumber || null,
+      });
+      setTimeout(() => window.print(), 500);
+      await updateDoc(doc(db, 'orders', order.id), { accepted: true });
+      toast({ title: 'Pedido aceito', description: 'Ticket enviado para produção.' });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível aceitar o pedido.' });
+    }
+  };
+
   const handlePickTable = async (orderId: string, targetTable: number) => {
     if (!db || !orderId) return;
     try {
       setIsSubmitting(true);
       const estavaNaMesa = tablePickerFor?.currentTable;
-      await updateDoc(doc(db, 'orders', orderId), { tableNumber: targetTable });
+      // Pôr na mesa também aceita o pedido (para o alarme caso ainda não tenha aceitado).
+      await updateDoc(doc(db, 'orders', orderId), { tableNumber: targetTable, accepted: true });
       toast({ title: `Pedido movido para a Mesa ${targetTable}.` });
       setTablePickerFor(null);
       // Se estávamos com uma mesa aberta (troca de mesa), volta para a grade para
@@ -636,25 +660,45 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           {ordersSemMesa.length > 0 && (
             <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 shrink-0">
               <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
-                <Globe className="h-3.5 w-3.5" /> Pedidos online sem mesa ({ordersSemMesa.length})
+                <Globe className="h-3.5 w-3.5" /> Novos pedidos online ({ordersSemMesa.length})
               </p>
               <div className="space-y-1.5">
-                {ordersSemMesa.map(o => (
-                  <div key={o.id} className="flex items-center justify-between bg-white border rounded p-2 text-sm gap-2">
-                    <div className="min-w-0">
-                      <span className="font-bold text-slate-700 truncate">{o.customerName || 'Cliente'}</span>
-                      <span className="text-xs text-slate-500 ml-2">R$ {(o.totalAmount || 0).toFixed(2)} · {(o.items || []).length} item(ns)</span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100 shrink-0"
-                      onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
+                {ordersSemMesa.map(o => {
+                  const needsAttention = o.status === 'pending' && !o.accepted;
+                  return (
+                    <div
+                      key={o.id}
+                      className={`flex items-center justify-between bg-white border rounded p-2 text-sm gap-2 ${needsAttention ? 'border-red-400 ring-2 ring-red-300 animate-pulse' : 'border-slate-200'}`}
                     >
-                      Atribuir mesa
-                    </Button>
-                  </div>
-                ))}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-700 truncate">{o.customerName || 'Cliente'}</span>
+                          {!needsAttention && <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">ACEITO</span>}
+                        </div>
+                        <span className="text-xs text-slate-500">R$ {(o.totalAmount || 0).toFixed(2)} · {(o.items || []).length} item(ns)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {needsAttention && (
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                            onClick={() => handleAcceptOnlineOrder(o)}
+                          >
+                            <Printer className="h-3.5 w-3.5 mr-1" /> Aceitar e imprimir
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100"
+                          onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
+                        >
+                          Pôr na mesa
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
