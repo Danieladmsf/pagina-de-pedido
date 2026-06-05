@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useAuth, useFirestore } from '@/firebase';
+import React, { useState, useEffect } from 'react';
+import { useAuth, useFirestore, useUser } from '@/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
@@ -40,6 +40,17 @@ export default function LoginPage() {
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
+
+  // Guard de auth: se já existe uma sessão válida (ex.: chegou aqui por um redirect
+  // durante a restauração da sessão após um deploy), volta para o painel. Sem isto,
+  // a tela de login virava um beco sem saída mesmo com o usuário logado.
+  const alreadyLoggedIn = !!(user && !user.isAnonymous);
+  useEffect(() => {
+    if (!isUserLoading && alreadyLoggedIn) {
+      router.replace('/');
+    }
+  }, [isUserLoading, alreadyLoggedIn, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +118,16 @@ export default function LoginPage() {
   };
 
   const isLogin = mode === 'login';
+
+  // Enquanto a sessão está sendo resolvida (ou já há sessão e vamos redirecionar),
+  // mostra um loader em vez do formulário — evita o flash do login para quem já está logado.
+  if (isUserLoading || alreadyLoggedIn) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white antialiased relative overflow-hidden">
