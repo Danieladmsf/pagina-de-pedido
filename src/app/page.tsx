@@ -1252,11 +1252,22 @@ export default function AdminPage() {
           >
             Balcão
           </button>
-          <button 
+          <button
             onClick={() => handleTabChange('mesas')}
-            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+            className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
           >
             Mesa
+            {(() => {
+              const novosOnlineMesa = (orders as any[]).filter(
+                (o) => o.orderType === 'dine_in' && o.source === 'cardapio' && o.status === 'pending' && !o.accepted
+              ).length;
+              if (novosOnlineMesa === 0) return null;
+              return (
+                <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
+                  {novosOnlineMesa}
+                </span>
+              );
+            })()}
           </button>
         </div>
         
