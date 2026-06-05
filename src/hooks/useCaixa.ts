@@ -148,6 +148,23 @@ export function useCaixa(options?: UseCaixaOptions) {
     });
   }, [lancamentosData]);
 
+  // Todas as transações do dono (qualquer caixa/sessão). Usado para calcular
+  // saldos que atravessam dias — ex.: quanto ainda se deve a cada motoboy
+  // somando o que foi pago em todas as sessões, não só na atual.
+  const todasTransacoesQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return query(
+      collection(db, 'cash_transactions'),
+      where('ownerId', '==', user!.uid)
+    );
+  }, [db, isRealUser, user?.uid]);
+
+  const { data: todasTransacoesData } = useCollection(todasTransacoesQuery);
+  const todasTransacoes = useMemo(
+    () => (todasTransacoesData || []) as LancamentoCaixa[],
+    [todasTransacoesData]
+  );
+
   // Calcula o próximo número de sessão
   const proximaSessao = useMemo(() => {
     if (!todosCaixas || todosCaixas.length === 0) return 1;
@@ -395,6 +412,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     caixaAtual,
     caixasOrdenados,
     lancamentos,
+    todasTransacoes,
     loading: loadingCaixas || (!!caixaAtual && loadingLancamentos),
     abrirCaixa,
     fecharCaixa,

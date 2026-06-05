@@ -40,6 +40,7 @@ const isFormaPagamentoDinheiro = (formaPagamento?: string) =>
 export function CaixaTab({
   storeProfile,
   orders,
+  allOrders,
   autoOpenAbrirCaixa,
   onModalOpened,
   selectedCaixaId,
@@ -47,6 +48,7 @@ export function CaixaTab({
 }: {
   storeProfile?: any;
   orders?: any[];
+  allOrders?: any[];
   autoOpenAbrirCaixa?: boolean;
   onModalOpened?: () => void;
   selectedCaixaId?: string | null;
@@ -57,6 +59,7 @@ export function CaixaTab({
     caixaAtual,
     caixasOrdenados,
     lancamentos,
+    todasTransacoes,
     loading,
     abrirCaixa,
     fecharCaixa,
@@ -484,6 +487,63 @@ export function CaixaTab({
   }, [storeProfile, pedidosDaSessao, lancamentos]);
 
   const totalMotoboys = motoboysSessao.reduce((s, m) => s + m.saldo, 0);
+
+  // Motoboys com saldo devedor acumulado em QUALQUER sessão (não só a atual).
+  // Usado no seletor da Sangria para permitir pagar dívidas de dias anteriores.
+  // Modelo igual ao da sessão (diária fixa por dia trabalhado + fretes), porém
+  // somado por todas as sessões e abatido por TODAS as sangrias já feitas ao
+  // motoboy. Lista só quem tem saldo > 0.
+  const motoboysComSaldoPendente = useMemo(() => {
+    const motoboys = storeProfile?.motoboys || [];
+    const pedidos = allOrders || [];
+    if (motoboys.length === 0) return [];
+
+    const acc: Record<string, { id: string; name: string; totalDevido: number; totalPago: number; saldo: number }> = {};
+    const ensure = (id: string, name: string) => {
+      if (!acc[id]) acc[id] = { id, name: name || 'Motoboy', totalDevido: 0, totalPago: 0, saldo: 0 };
+      return acc[id];
+    };
+
+    // Devido: para cada sessão (caixa), aplica a diária uma vez por motoboy que
+    // trabalhou + a soma dos fretes daquela sessão.
+    (caixasOrdenados || []).forEach((caixa: any) => {
+      const abertura = caixa.dataAbertura?.toDate?.()?.getTime?.() ?? 0;
+      const fechamento = caixa.dataFechamento?.toDate?.()?.getTime?.() ?? Infinity;
+      const sessao: Record<string, { name: string; taxa: number; somaFretes: number }> = {};
+
+      pedidos.forEach((o: any) => {
+        if (!o.motoboyId || o.status === 'canceled') return;
+        const t = new Date(o.orderDateTime || o.createdAt || 0).getTime();
+        if (t < abertura - 60000 || t > fechamento + 60000) return;
+        const mb = motoboys.find((m: any) => m.id === o.motoboyId);
+        const mbName = mb?.name || '';
+        const isSemTaxa = mbName.toLowerCase().includes('sem cobrar taxa') || mbName.toLowerCase().includes('sem taxa');
+        if (!sessao[o.motoboyId]) {
+          sessao[o.motoboyId] = { name: mbName, taxa: isSemTaxa ? 0 : Number(mb?.fee || 0), somaFretes: 0 };
+        }
+        if (!isSemTaxa && o.payDeliveryToMotoboy !== true) {
+          sessao[o.motoboyId].somaFretes += Number(o.deliveryFee || 0);
+        }
+      });
+
+      Object.entries(sessao).forEach(([id, s]) => {
+        ensure(id, s.name).totalDevido += s.taxa + s.somaFretes;
+      });
+    });
+
+    // Pago: todas as sangrias destinadas a motoboy, em qualquer caixa.
+    (todasTransacoes || []).forEach((l: any) => {
+      if (l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId) {
+        const mb = motoboys.find((m: any) => m.id === l.destinatarioId);
+        ensure(l.destinatarioId, mb?.name || '').totalPago += Math.abs(Number(l.valor) || 0);
+      }
+    });
+
+    return Object.values(acc)
+      .map(m => ({ ...m, saldo: m.totalDevido - m.totalPago }))
+      .filter(m => m.saldo > 0.001)
+      .sort((a, b) => b.saldo - a.saldo);
+  }, [storeProfile, allOrders, caixasOrdenados, todasTransacoes]);
 
   const addFreelancer = () => {
     setFreelancers(prev => [...prev, { name: '', tipo: 'diaria', diaria: 0, comissao: 0, entregas: 0 }]);
@@ -1286,17 +1346,17 @@ export function CaixaTab({
                     <Label>Selecione o Motoboy</Label>
                     <Select value={destinatarioIdInput} onValueChange={(val) => {
                       setDestinatarioIdInput(val);
-                      const m = motoboysSessao.find(mb => mb.id === val);
+                      const m = motoboysComSaldoPendente.find(mb => mb.id === val);
                       if (m) setValorInput(m.saldo);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione o motoboy" /></SelectTrigger>
                       <SelectContent>
-                        {motoboysSessao.map(m => (
+                        {motoboysComSaldoPendente.map(m => (
                           <SelectItem key={m.id} value={m.id}>
-                            {m.name} (Saldo: R$ {m.saldo.toFixed(2)})
+                            {m.name} (Devido: R$ {m.saldo.toFixed(2)})
                           </SelectItem>
                         ))}
-                        {motoboysSessao.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy registrado hoje</SelectItem>}
+                        {motoboysComSaldoPendente.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy com valor pendente</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>

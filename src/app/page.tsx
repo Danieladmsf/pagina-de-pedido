@@ -1331,9 +1331,10 @@ export default function AdminPage() {
 
         {activeTab === 'caixa' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <CaixaTab 
-              storeProfile={storeProfile} 
-              orders={orders || []} 
+            <CaixaTab
+              storeProfile={storeProfile}
+              orders={orders || []}
+              allOrders={ordersRawSorted || []}
               autoOpenAbrirCaixa={autoOpenAbrirCaixa}
               onModalOpened={() => setAutoOpenAbrirCaixa(false)}
               selectedCaixaId={caixaSelecionadoId}
