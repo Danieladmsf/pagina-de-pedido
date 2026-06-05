@@ -653,93 +653,141 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   return (
     <div className="flex gap-4 flex-1 overflow-hidden">
       
-      {/* Grade de Mesas */}
+      {/* Visão de gestão: mapa de mesas (esquerda) + fila de pedidos online (direita) */}
       {!selectedTable && (
-        <div className="flex-1 bg-white rounded-xl shadow-sm border p-4 flex flex-col h-full">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Gerenciar Mesas</h2>
-            <div className="flex gap-2">
-              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">Abertas: {activeTableNumbers.length}</Badge>
-              <Badge variant="outline" className="bg-slate-50 text-slate-500">Livres: {tables.length - activeTableNumbers.length}</Badge>
-            </div>
-          </div>
+        <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden w-full">
 
-          {ordersSemMesa.length > 0 && (
-            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 shrink-0">
-              <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
-                <Globe className="h-3.5 w-3.5" /> Novos pedidos online ({ordersSemMesa.length})
-              </p>
-              <div className="space-y-1.5">
-                {ordersSemMesa.map(o => {
-                  const needsAttention = o.status === 'pending' && !o.accepted;
+          {/* ── Mapa de Mesas ── */}
+          <div className="flex-1 bg-white rounded-xl shadow-sm border p-4 flex flex-col h-full overflow-hidden min-w-0">
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <h2 className="text-xl font-bold text-slate-800">Mapa de Mesas</h2>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">Abertas: {activeTableNumbers.length}</Badge>
+                <Badge variant="outline" className="bg-slate-50 text-slate-500">Livres: {tables.length - activeTableNumbers.length}</Badge>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                {tables.map(num => {
+                  const activeOrder = activeOrders.find(o => o.tableNumber === num);
+                  const isOpen = !!activeOrder;
+                  const isAwaitingPayment = activeOrder?.status === 'awaiting_payment';
+                  const isOnline = activeOrder?.source === 'cardapio';
+
                   return (
-                    <div
-                      key={o.id}
-                      className={`flex items-center justify-between bg-white border rounded p-2 text-sm gap-2 ${needsAttention ? 'border-red-400 ring-2 ring-red-300 animate-pulse' : 'border-slate-200'}`}
+                    <button
+                      key={num}
+                      onClick={() => setSelectedTable(num)}
+                      className={`
+                        relative h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
+                        ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105 hover:shadow-md'}
+                        ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
+                      `}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-700 truncate">{o.customerName || 'Cliente'}</span>
-                          {!needsAttention && <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">ACEITO</span>}
-                        </div>
-                        <span className="text-xs text-slate-500">R$ {(o.totalAmount || 0).toFixed(2)} · {(o.items || []).length} item(ns)</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {needsAttention && (
-                          <Button
-                            size="sm"
-                            className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                            onClick={() => handleAcceptOnlineOrder(o)}
-                          >
-                            {isManualPrint ? <><Printer className="h-3.5 w-3.5 mr-1" /> Aceitar e imprimir</> : 'Aceitar'}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100"
-                          onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
-                        >
-                          Pôr na mesa
-                        </Button>
-                      </div>
-                    </div>
+                      {isOnline && (
+                        <span className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-white/25 rounded px-1 py-0.5" title="Pedido feito pelo cardápio (online)">
+                          <Globe className="h-3 w-3" />
+                          <span className="text-[8px] font-bold uppercase">Online</span>
+                        </span>
+                      )}
+                      <span className="text-2xl font-black leading-none">{num}</span>
+                      {isOpen && <span className="text-[9px] uppercase font-bold bg-black/20 px-1.5 py-0.5 rounded mt-1 truncate max-w-[95%]">{isAwaitingPayment ? 'Aguardando Pagamento' : 'Ocupada'}</span>}
+                    </button>
                   );
                 })}
               </div>
             </div>
-          )}
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
-            {tables.map(num => {
-              const activeOrder = activeOrders.find(o => o.tableNumber === num);
-              const isOpen = !!activeOrder;
-              const isAwaitingPayment = activeOrder?.status === 'awaiting_payment';
-              const isOnline = activeOrder?.source === 'cardapio';
-
-              return (
-                <button
-                  key={num}
-                  onClick={() => setSelectedTable(num)}
-                  className={`
-                    relative h-14 md:h-16 rounded-lg flex flex-col items-center justify-center transition-all border-2
-                    ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105'}
-                    ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
-                  `}
-                >
-                  {isOnline && (
-                    <span className="absolute top-1 left-1 flex items-center bg-white/25 rounded px-0.5" title="Pedido feito pelo cardápio (online)">
-                      <Globe className="h-2.5 w-2.5" />
-                    </span>
-                  )}
-                  <span className="text-lg font-black leading-none">{num}</span>
-                  {isOpen && <span className="text-[8px] uppercase font-bold bg-black/20 px-1 py-0.5 rounded mt-0.5 truncate max-w-[95%]">{isAwaitingPayment ? 'Pagar' : 'Ocupada'}</span>}
-                </button>
-              );
-            })}
-            </div>
           </div>
+
+          {/* ── Fila de Pedidos Online (purgatório) ── */}
+          <aside className="w-full lg:w-[340px] shrink-0 bg-white rounded-xl shadow-sm border flex flex-col h-full overflow-hidden">
+            <div className="px-4 py-3 border-b shrink-0 bg-gradient-to-r from-amber-50 to-white">
+              <h3 className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                <Globe className="h-4 w-4" /> Pedidos online
+                {ordersSemMesa.length > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold px-1.5">{ordersSemMesa.length}</span>
+                )}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Comer no local pelo app · aceite e leve a uma mesa</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+              {ordersSemMesa.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-2 py-10 text-slate-300">
+                  <Globe className="h-10 w-10" />
+                  <p className="text-xs text-slate-400">Nenhum pedido online no momento</p>
+                </div>
+              ) : (
+                ordersSemMesa.map(o => {
+                  const needsAttention = o.status === 'pending' && !o.accepted;
+                  const itemCount = (o.items || []).reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0);
+                  const time = o.orderDateTime ? new Date(o.orderDateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+                  return (
+                    <div
+                      key={o.id}
+                      className={`rounded-xl border bg-white overflow-hidden shadow-sm ${needsAttention ? 'border-red-300 ring-2 ring-red-200 animate-pulse' : 'border-slate-200'}`}
+                    >
+                      {/* Cabeçalho do pedido */}
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b">
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-slate-800 truncate">{o.customerName || 'Cliente'}</p>
+                          <p className="text-[10px] text-slate-400">{time && `${time} · `}#{o.id?.substring(0, 5)}</p>
+                        </div>
+                        {needsAttention
+                          ? <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded shrink-0">NOVO</span>
+                          : <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">ACEITO</span>}
+                      </div>
+
+                      {/* Produtos */}
+                      <div className="px-3 py-2 space-y-1 max-h-44 overflow-y-auto custom-scrollbar">
+                        {(o.items || []).map((it: any, idx: number) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-slate-700 shrink-0">{it.quantity}x</span>
+                            <div className="min-w-0">
+                              <span className="text-slate-700">{it.name}</span>
+                              {(it.addons || []).length > 0 && (
+                                <span className="block text-[10px] text-slate-400 leading-tight">{(it.addons || []).map((a: any) => a.name).join(', ')}</span>
+                              )}
+                              {it.notes && <span className="block text-[10px] text-orange-500 italic leading-tight">Obs: {it.notes}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Total + ações */}
+                      <div className="px-3 py-2 border-t">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[11px] text-slate-400">{itemCount} {itemCount === 1 ? 'item' : 'itens'}</span>
+                          <span className="font-black text-green-600">R$ {(o.totalAmount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          {needsAttention && (
+                            <Button
+                              size="sm"
+                              className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                              onClick={() => handleAcceptOnlineOrder(o)}
+                              title={isManualPrint ? 'Aceitar e imprimir o ticket' : 'Aceitar o pedido'}
+                            >
+                              {isManualPrint ? <><Printer className="h-3.5 w-3.5 mr-1" /> Aceitar</> : 'Aceitar'}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100"
+                            onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
+                          >
+                            Pôr na mesa
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </aside>
         </div>
       )}
 
