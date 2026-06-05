@@ -2,8 +2,21 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore'
+
+// Fixa a persistência da sessão em armazenamento LOCAL (IndexedDB, com fallback
+// para localStorage). Sem isto, o padrão pode cair para sessão/memória em alguns
+// contextos (PWA/service worker), fazendo o usuário deslogar a cada reload/deploy.
+function getAuthWithLocalPersistence(app: FirebaseApp): Auth {
+  try {
+    return initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+  } catch {
+    // initializeAuth só pode ser chamado uma vez por app; se já inicializado,
+    // retorna a instância existente (que já está com a persistência definida).
+    return getAuth(app);
+  }
+}
 
 // Em redes com antivírus/firewall/proxy que bloqueiam o transporte de streaming
 // (WebChannel) do Firestore, o onSnapshot pode parar de receber updates. O
@@ -49,7 +62,7 @@ export function initializeFirebase() {
 export function getSdks(firebaseApp: FirebaseApp) {
   return {
     firebaseApp,
-    auth: getAuth(firebaseApp),
+    auth: getAuthWithLocalPersistence(firebaseApp),
     firestore: getFirestoreWithLongPolling(firebaseApp)
   };
 }
