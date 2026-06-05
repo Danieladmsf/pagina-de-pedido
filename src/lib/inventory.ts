@@ -1,7 +1,10 @@
 import {
   Firestore,
+  DocumentReference,
   doc,
   runTransaction,
+  setDoc,
+  updateDoc,
 } from 'firebase/firestore';
 
 /**
@@ -85,13 +88,28 @@ export class InsufficientStockError extends Error {
   }
 }
 
+/**
+ * Como gravar o documento do pedido NA MESMA transação do estoque (atômico).
+ * Os campos `stockDeducted`/`stockDeductedItems` são adicionados automaticamente.
+ */
+export interface OrderWriteSpec {
+  ref: DocumentReference;
+  mode: 'set' | 'update';
+  /** Campos do pedido além dos de estoque (itens, totais, status, etc.). */
+  data?: Record<string, any>;
+  /** Para mode 'set': mesclar com o doc existente. */
+  merge?: boolean;
+}
+
 export interface ReconcileParams {
-  /** Se false, não mexe em estoque e retorna o mapa atual inalterado. */
+  /** Se false, não mexe em estoque (mas ainda grava o pedido, se `order` for dado). */
   enableInventory: boolean;
   /** Itens que o pedido deve ter reservados AGORA (vazio = liberar tudo, ex.: cancelar). */
   targetItems: OrderLikeItem[];
   /** O que este pedido já reservou (order.stockDeductedItems). Default: {}. */
   alreadyDeducted?: StockMap;
+  /** Opcional: grava o pedido na MESMA transação do estoque (atomicidade total). */
+  order?: OrderWriteSpec;
 }
 
 export interface ReconcileResult {
@@ -110,25 +128,33 @@ export interface ReconcileResult {
  * - Valida estoque dentro da transação e lança {@link InsufficientStockError}
  *   se faltar (nada é gravado nesse caso).
  * - Produtos não gerenciados (estoque ilimitado) são ignorados.
- * - NÃO grava o documento do pedido: retorna o novo `stockDeductedItems` para o
- *   chamador persistir junto com o pedido (`stockDeducted` + `stockDeductedItems`).
+ * - Se `order` for informado, grava o documento do pedido (com `stockDeducted` +
+ *   `stockDeductedItems`) na MESMA transação do estoque — atomicidade total.
+ * - Retorna o novo `stockDeductedItems` (útil mesmo quando o pedido é gravado).
  *
  * Rodar duas vezes com o mesmo alvo é seguro (delta = 0 na segunda).
  */
 export async function reconcileOrderStock(
   db: Firestore,
-  { enableInventory, targetItems, alreadyDeducted = {} }: ReconcileParams,
+  { enableInventory, targetItems, alreadyDeducted = {}, order }: ReconcileParams,
 ): Promise<ReconcileResult> {
+  // Estoque desligado: ainda persiste o pedido (sem campos de estoque), se pedido.
   if (!enableInventory) {
-    return { stockDeductedItems: alreadyDeducted, stockDeducted: Object.keys(alreadyDeducted).length > 0, changed: false };
+    if (order) await writeOrder(order, order.data || {});
+    const stockDeductedItems = pruneZeros(alreadyDeducted);
+    return { stockDeductedItems, stockDeducted: Object.keys(stockDeductedItems).length > 0, changed: false };
   }
 
   const desired = getStockDemand(targetItems);
   const delta = computeStockDelta(alreadyDeducted, desired);
-
   const affectedIds = Object.keys(delta);
+
+  // Sem mudança de estoque: grava só o pedido (atomicidade com estoque é irrelevante aqui).
   if (affectedIds.length === 0) {
     const stockDeductedItems = pruneZeros(alreadyDeducted);
+    if (order) {
+      await writeOrder(order, { ...(order.data || {}), stockDeducted: Object.keys(stockDeductedItems).length > 0, stockDeductedItems });
+    }
     return { stockDeductedItems, stockDeducted: Object.keys(stockDeductedItems).length > 0, changed: false };
   }
 
@@ -143,7 +169,7 @@ export async function reconcileOrderStock(
     );
 
     const next: StockMap = { ...alreadyDeducted };
-    const writes: Array<{ ref: any; nextStock: number }> = [];
+    const writes: Array<{ ref: DocumentReference; nextStock: number }> = [];
 
     for (const { itemId, ref, snap } of reads) {
       const d = delta[itemId];
@@ -166,28 +192,47 @@ export async function reconcileOrderStock(
       else delete next[itemId];
     }
 
-    // 2) Escritas.
+    const stockDeductedItems = pruneZeros(next);
+
+    // 2) Escritas (pedido + estoque na mesma transação).
+    if (order) {
+      const payload = { ...(order.data || {}), stockDeducted: Object.keys(stockDeductedItems).length > 0, stockDeductedItems };
+      if (order.mode === 'set') tx.set(order.ref, payload, { merge: !!order.merge });
+      else tx.update(order.ref, payload);
+    }
     for (const w of writes) tx.update(w.ref, { stockQuantity: w.nextStock });
 
-    return next;
+    return stockDeductedItems;
   });
 
-  const stockDeductedItems = pruneZeros(nextStockDeductedItems);
   return {
-    stockDeductedItems,
-    stockDeducted: Object.keys(stockDeductedItems).length > 0,
+    stockDeductedItems: nextStockDeductedItems,
+    stockDeducted: Object.keys(nextStockDeductedItems).length > 0,
     changed: true,
   };
 }
 
+/** Grava o pedido fora de transação (casos sem mudança de estoque). */
+async function writeOrder(order: OrderWriteSpec, payload: Record<string, any>): Promise<void> {
+  if (order.mode === 'set') await setDoc(order.ref, payload, { merge: !!order.merge });
+  else await updateDoc(order.ref, payload);
+}
+
 /** Conveniência: reserva o estoque dos itens de um pedido novo/editado. */
-export function deductOrderStock(db: Firestore, items: OrderLikeItem[], opts: { enableInventory: boolean; alreadyDeducted?: StockMap }) {
-  return reconcileOrderStock(db, { enableInventory: opts.enableInventory, targetItems: items, alreadyDeducted: opts.alreadyDeducted });
+export function deductOrderStock(
+  db: Firestore,
+  items: OrderLikeItem[],
+  opts: { enableInventory: boolean; alreadyDeducted?: StockMap; order?: OrderWriteSpec },
+) {
+  return reconcileOrderStock(db, { enableInventory: opts.enableInventory, targetItems: items, alreadyDeducted: opts.alreadyDeducted, order: opts.order });
 }
 
 /** Conveniência: devolve ao estoque tudo que um pedido reservou (cancelamento). */
-export function releaseOrderStock(db: Firestore, opts: { enableInventory: boolean; alreadyDeducted?: StockMap }) {
-  return reconcileOrderStock(db, { enableInventory: opts.enableInventory, targetItems: [], alreadyDeducted: opts.alreadyDeducted });
+export function releaseOrderStock(
+  db: Firestore,
+  opts: { enableInventory: boolean; alreadyDeducted?: StockMap; order?: OrderWriteSpec },
+) {
+  return reconcileOrderStock(db, { enableInventory: opts.enableInventory, targetItems: [], alreadyDeducted: opts.alreadyDeducted, order: opts.order });
 }
 
 function pruneZeros(map: StockMap): StockMap {
