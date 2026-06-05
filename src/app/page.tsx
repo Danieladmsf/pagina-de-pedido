@@ -814,17 +814,29 @@ export default function AdminPage() {
     if (isUserLoading) return; // Ainda carregando, não faz nada
     if (user && !user.isAnonymous) return; // Logado normalmente, tudo certo
 
-    // Se ele JÁ ESTEVE logado (inclusive antes de um reload), damos uma janela de
-    // 2.5s e re-checamos auth.currentUser antes de redirecionar — evita o
-    // "carrega e desloga" causado pela restauração tardia/transitória da sessão.
-    const delay = wasEverLoggedIn.current ? 2500 : 0;
-    const timer = setTimeout(() => {
-      // Re-checa o auth atual antes de redirecionar
-      if (!auth?.currentUser || auth.currentUser.isAnonymous) {
+    // Quem JÁ ESTEVE logado (ex.: após um deploy, quando o service worker novo
+    // assume e o IndexedDB está "frio") pode levar alguns segundos para a sessão
+    // do Firebase ser restaurada. Em vez de redirecionar cedo (o que mostrava a
+    // tela de login piscando e voltava), fazemos POLLING da sessão por até 8s e
+    // cancelamos o redirect assim que ela voltar. Quem nunca logou vai direto.
+    const hadSession = wasEverLoggedIn.current;
+    const windowMs = hadSession ? 8000 : 0;
+    const step = 500;
+    let elapsed = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const check = () => {
+      if (auth?.currentUser && !auth.currentUser.isAnonymous) return; // sessão voltou
+      elapsed += step;
+      if (elapsed >= windowMs) {
         try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
         router.push('/login');
+        return;
       }
-    }, delay);
+      timer = setTimeout(check, step);
+    };
+
+    timer = setTimeout(check, hadSession ? step : 0);
     return () => clearTimeout(timer);
   }, [user, isUserLoading, router, auth]);
 
