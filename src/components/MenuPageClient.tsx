@@ -643,6 +643,12 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       return { isOpen: false, reason: 'caixa_closed' };
     }
 
+    // Delivery desligado fecha a loja por completo (igual loja fechada),
+    // nao apenas bloqueia o delivery deixando as outras modalidades ativas.
+    if (storeProfile.general?.disableDelivery === true) {
+      return { isOpen: false, reason: 'delivery_disabled' };
+    }
+
     // Check planned closures (feriados/folgas agendadas)
     if (storeProfile.plannedClosures && storeProfile.plannedClosures.length > 0) {
       const todayStr = new Date().toISOString().split('T')[0];
@@ -896,8 +902,10 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
       {!showStoreInfo && (<div className="w-full max-w-full">
       {!isStoreOpenRightNow.isOpen && (
         <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
-          {isStoreOpenRightNow.reason === 'hours_closed' 
+          {isStoreOpenRightNow.reason === 'hours_closed'
             ? '⚠️ Fechado no momento devido ao horário de funcionamento.'
+            : isStoreOpenRightNow.reason === 'delivery_disabled'
+            ? '⚠️ Fechado no momento. Voltaremos em breve!'
             : '⚠️ Abriremos em breve! O sistema está sendo preparado.'}
         </div>
       )}
