@@ -15,6 +15,7 @@ import { PrintReceipt } from './PrintReceipt';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { validateCustomerCredit } from '@/lib/customer-credit';
 import { normalizeSearch } from '@/lib/utils';
+import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
 interface DeliveryTabProps {
@@ -237,19 +238,25 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       const deliveryFee = Number(selectedOrder.deliveryFee) || 0;
       const totalAmount = subtotal + deliveryFee;
 
-      const success = await updateOrderStatus(selectedOrder.id, {
-        items: sanitizedItems,
-        subtotal,
-        totalAmount
+      // Grava os itens e ajusta o estoque pelo DELTA (devolve o que foi removido,
+      // abate o que foi adicionado), de forma atômica.
+      await reconcileOrderStock(db, {
+        enableInventory: !!storeProfile?.general?.enableInventory,
+        targetItems: sanitizedItems,
+        alreadyDeducted: selectedOrder.stockDeductedItems,
+        order: {
+          ref: doc(db, 'orders', selectedOrder.id),
+          mode: 'update',
+          data: { items: sanitizedItems, subtotal, totalAmount },
+        },
       });
 
-      if (success !== false) {
-        toast({ title: 'Sucesso', description: 'Itens do pedido atualizados!' });
-        setIsEditItemsOpen(false);
-      }
+      toast({ title: 'Sucesso', description: 'Itens do pedido atualizados!' });
+      setIsEditItemsOpen(false);
     } catch (err: any) {
       console.error('Erro ao salvar edição de itens:', err);
-      toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao atualizar itens.' });
+      const isStock = err instanceof InsufficientStockError;
+      toast({ variant: 'destructive', title: isStock ? 'Estoque insuficiente' : 'Erro', description: err.message || 'Falha ao atualizar itens.' });
     } finally {
       setIsSavingItems(false);
     }
