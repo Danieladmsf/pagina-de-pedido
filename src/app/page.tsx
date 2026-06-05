@@ -42,7 +42,6 @@ import { Switch } from '@/components/ui/switch';
 import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
-import { traceReload } from '@/lib/reload-trace';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
@@ -863,7 +862,6 @@ export default function AdminPage() {
       // Re-checa o auth atual antes de redirecionar
       if (!auth?.currentUser || auth.currentUser.isAnonymous) {
         try { localStorage.removeItem(WAS_LOGGED_KEY); } catch { /* ignore */ }
-        traceReload('page: redirect para /login', { wasEverLoggedIn: wasEverLoggedIn.current, delay });
         router.push('/login');
       }
     }, delay);

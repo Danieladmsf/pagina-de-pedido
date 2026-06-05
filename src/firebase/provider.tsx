@@ -61,18 +61,9 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   useEffect(() => {
     if (!auth) return;
 
-    let prevUid: string | null | undefined = undefined;
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
-        // DIAGNÓSTICO de logout/auth
-        const desc = firebaseUser ? `${firebaseUser.uid}${firebaseUser.isAnonymous ? ' (anônimo)' : ''}` : 'null';
-        // eslint-disable-next-line no-console
-        console.warn('🔐 [AUTH] onAuthStateChanged ->', desc);
-        if (prevUid && (!firebaseUser || firebaseUser.isAnonymous)) {
-          import('@/lib/reload-trace').then(m => m.traceReload('auth: sessão perdida (user virou null/anônimo)', { antes: prevUid, agora: desc })).catch(() => {});
-        }
-        prevUid = firebaseUser && !firebaseUser.isAnonymous ? firebaseUser.uid : null;
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => {
