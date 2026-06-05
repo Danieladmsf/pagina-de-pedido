@@ -1359,6 +1359,25 @@ export function CaixaTab({
                         {motoboysComSaldoPendente.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy com valor pendente</SelectItem>}
                       </SelectContent>
                     </Select>
+                    {(() => {
+                      const m = motoboysComSaldoPendente.find(mb => mb.id === destinatarioIdInput);
+                      if (!m) return null;
+                      const restante = m.saldo - (valorInput || 0);
+                      return (
+                        <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-sm space-y-1">
+                          <div className="flex justify-between text-blue-700">
+                            <span>Dívida atual</span>
+                            <strong>R$ {m.saldo.toFixed(2)}</strong>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Restante após este pagamento</span>
+                            <strong className={restante > 0.001 ? 'text-rose-600' : 'text-emerald-600'}>
+                              R$ {(restante > 0 ? restante : 0).toFixed(2)}
+                            </strong>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
