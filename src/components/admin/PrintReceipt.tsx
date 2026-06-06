@@ -26,7 +26,7 @@ export const PrintReceipt = React.forwardRef<HTMLDivElement, PrintReceiptProps>(
           }
         }
       `}</style>
-      <div ref={ref} className="hidden print:block bg-white text-black p-4 text-[12px] font-mono leading-tight max-w-[300px] mx-auto" style={{ width: maxWidth, maxWidth: maxWidth, fontSize: fontSize }}>
+      <div ref={ref} id="qz-receipt-area" className="hidden print:block bg-white text-black p-4 text-[12px] font-mono leading-tight max-w-[300px] mx-auto" style={{ width: maxWidth, maxWidth: maxWidth, fontSize: fontSize }}>
       {/* Cabeçalho */}
       <div className="text-center mb-4 border-b border-black border-dashed pb-4">
         <h1 className="font-bold text-lg uppercase">

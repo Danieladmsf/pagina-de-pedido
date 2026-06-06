@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
+import { printHtmlOrFallback, type PrinterSize } from '@/lib/qz-print';
 import { Plus, Minus, Loader2, Calculator, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -244,14 +245,7 @@ export function CaixaTab({
   `;
 
   const openPrintWindow = (title: string, bodyHTML: string) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) return;
-
-    doc.write(`
+    const fullHtml = `
       <html>
         <head>
           <title>${title}</title>
@@ -259,18 +253,37 @@ export function CaixaTab({
         </head>
         <body>${bodyHTML}</body>
       </html>
-    `);
-    doc.close();
+    `;
 
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
+    // Fallback: o caminho atual (iframe + window.print do navegador).
+    const fallbackIframe = () => {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) return;
+
+      doc.write(fullHtml);
+      doc.close();
+
       setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      }, 2000);
-    }, 500);
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 2000);
+      }, 500);
+    };
+
+    // QZ Tray (silencioso) com fallback total para o iframe acima.
+    void printHtmlOrFallback({
+      html: fullHtml,
+      printerSize: (maxWidth === '58mm' ? '58mm' : '80mm') as PrinterSize,
+      fallback: fallbackIframe,
+    });
   };
 
   // ── Comprovante de Abertura ──

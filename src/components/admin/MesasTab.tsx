@@ -16,6 +16,7 @@ import { getPhoneVariants } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -86,6 +87,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const ordersSemMesa = activeOrders.filter(o => !o.tableNumber);
   // Modo manual = sem impressão automática (o operador imprime ao aceitar).
   const isManualPrint = !!(storeInfo?.general?.manualPrint || storeInfo?.manualPrint);
+
+  // Impressão silenciosa via QZ Tray, com fallback total para window.print().
+  // (o cupom já está renderizado em #qz-receipt-area pelo PrintReceipt)
+  const printReceiptNow = () => {
+    const printerSize = ((storeInfo?.general?.printerSize || storeInfo?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
+    void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
+  };
 
   const lastSelectedTableRef = React.useRef<number | null>(null);
   const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart);
@@ -285,7 +293,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           orderDateTime: order.orderDateTime || new Date().toISOString(),
           tableNumber: order.tableNumber || null,
         });
-        setTimeout(() => window.print(), 500);
+        setTimeout(() => printReceiptNow(), 500);
       }
       await updateDoc(doc(db, 'orders', order.id), { accepted: true });
       toast({ title: 'Pedido aceito', description: isManualPrint ? 'Ticket enviado para produção.' : 'Pedido confirmado.' });
@@ -430,7 +438,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           items: newItemsToPrint,
           orderDateTime: new Date().toISOString(),
         });
-        setTimeout(() => window.print(), 500);
+        setTimeout(() => printReceiptNow(), 500);
         toast({ title: 'Sucesso', description: 'Pedido salvo e enviado para produção!' });
       } else {
         toast({ title: 'Sucesso', description: 'Mesa atualizada (sem novos itens).' });
@@ -459,7 +467,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       setIsKitchenPrint(false);
       setOrderToPrint(activeOrder);
       setReceiptPrinted(true);
-      setTimeout(() => window.print(), 500);
+      setTimeout(() => printReceiptNow(), 500);
     } catch (e) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao atualizar mesa.' });
     } finally {
@@ -923,7 +931,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           if (activeOrder) {
                             setIsKitchenPrint(false);
                             setOrderToPrint(activeOrder);
-                            setTimeout(() => window.print(), 500);
+                            setTimeout(() => printReceiptNow(), 500);
                           }
                         }}
                         title="Imprimir Parcial"

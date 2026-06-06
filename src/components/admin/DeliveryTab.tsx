@@ -17,6 +17,7 @@ import { validateCustomerCredit } from '@/lib/customer-credit';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -518,8 +519,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   const triggerPrint = (order: any) => {
     setOrderToPrint(order);
+    const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
     setTimeout(() => {
-      window.print();
+      // QZ Tray (silencioso) com fallback total para window.print().
+      void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
     }, 500);
   };
 

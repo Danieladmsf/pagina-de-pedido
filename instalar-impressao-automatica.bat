@@ -69,6 +69,68 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$cmd = Get-Content -LiteralPath '%~f0'; $start = 0; for($i=0; $i -lt $cmd.Length; $i++){ if($cmd[$i] -eq ':::POWERSHELL_START:::'){ $start = $i + 1; break } }; $powershellCode = $cmd[$start..($cmd.Length-1)] -join [char]10; Invoke-Expression $powershellCode"
 
 echo.
+
+:: 4. Configurar QZ Tray (Impressão Silenciosa de verdade)
+echo --- 4. CONFIGURAR QZ TRAY (IMPRESSAO SILENCIOSA) ---
+set "QZ_DIR=%ProgramFiles%\QZ Tray"
+if not exist "%QZ_DIR%\qz-tray.exe" set "QZ_DIR=%ProgramFiles(x86)%\QZ Tray"
+
+if not exist "%QZ_DIR%\qz-tray.exe" goto :qz_missing
+
+echo QZ Tray encontrado em: %QZ_DIR%
+echo Instalando certificado confiavel (override.crt)...
+
+set "CERT_TMP=%TEMP%\polaris-override.crt"
+> "%CERT_TMP%" echo -----BEGIN CERTIFICATE-----
+>> "%CERT_TMP%" echo MIIDNTCCAh2gAwIBAgIUWT0eyyJy5HFea2HOOvvC46oba0QwDQYJKoZIhvcNAQEL
+>> "%CERT_TMP%" echo BQAwKjETMBEGA1UEAwwKUG9sYXJpc1BEVjETMBEGA1UECgwKUG9sYXJpc1BEVjAe
+>> "%CERT_TMP%" echo Fw0yNjA2MDYxMzA4NTRaFw00NjA2MDExMzA4NTRaMCoxEzARBgNVBAMMClBvbGFy
+>> "%CERT_TMP%" echo aXNQRFYxEzARBgNVBAoMClBvbGFyaXNQRFYwggEiMA0GCSqGSIb3DQEBAQUAA4IB
+>> "%CERT_TMP%" echo DwAwggEKAoIBAQDUEnkYIrFkd3jhZG/28W6CrhHv+8jYeKZUbZN1Ev/E1KdIGQ1F
+>> "%CERT_TMP%" echo c4xUJ0NAVq5uWJJP6K5R9vAGUsmWmwU5/COs6YrHS153n15NdBWm70ZrjvyL41BL
+>> "%CERT_TMP%" echo Fi2DAfZGck1yvuNZL90A0Fo0pdJLEWpSR0NBPrKHoe9+5ZvzORC9QyVI0DKcC/eE
+>> "%CERT_TMP%" echo sJC8JlmJsmumHBrguE+7ujblBzHb4P7h5sRKV2ZScG7+oyfyuDBaW1qUL+9Ya2le
+>> "%CERT_TMP%" echo iw9yM94MohqZkIE+CnZ/yxUzpkiV6i7L0hSQsavKvQrKR/xEdkLGSchTod8JpPEu
+>> "%CERT_TMP%" echo YiwpJJOToJEsBkfGQ3bcMLpPx2KxLhSkj8pFAgMBAAGjUzBRMB0GA1UdDgQWBBQs
+>> "%CERT_TMP%" echo b/A6T/Z7pADetxD0PE6T4r7w5jAfBgNVHSMEGDAWgBQsb/A6T/Z7pADetxD0PE6T
+>> "%CERT_TMP%" echo 4r7w5jAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQALiVrcpwCj
+>> "%CERT_TMP%" echo r6pMQYApY5q/b/uhKlRYb+HIHTRctsZSTWmMAxyPLL+TPNX/+B9BSrYTfVqpoyHj
+>> "%CERT_TMP%" echo 7XT8HG2L0JcgBpUcRxp4kHxDxLqpDsZ+OnCDWt50aqLzs4DUsFFwBy8DjSw5bPkk
+>> "%CERT_TMP%" echo l39apnepQ9ehQuq82RGlZRaQdkm4R4hQ7kN9EDiiH5YpPnRXyrDZOOaB3qdPMHy8
+>> "%CERT_TMP%" echo 3lN5foZBed4JqmYXeW+HBG159tU4R4vz1FqdQ61aIIQxhgKIK89xy9EbE6m9ZTEe
+>> "%CERT_TMP%" echo nKBJzuPznY18sCEoQ3uWG5TVZyvjzVNkdpI5KOeZOgqWOylwQPhWgisdf6GtvVA6
+>> "%CERT_TMP%" echo KKupa8nH/svd
+>> "%CERT_TMP%" echo -----END CERTIFICATE-----
+
+echo (Sera solicitada permissao de Administrador para copiar o certificado.)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command','Copy-Item -LiteralPath ''%CERT_TMP%'' -Destination ''%QZ_DIR%\override.crt'' -Force'"
+
+if exist "%QZ_DIR%\override.crt" (
+  echo Certificado instalado com sucesso.
+  echo Reiniciando o QZ Tray...
+  taskkill /IM qz-tray.exe /F >nul 2>&1
+  start "" "%QZ_DIR%\qz-tray.exe"
+  echo QZ Tray pronto para impressao silenciosa.
+) else (
+  echo ATENCAO: nao foi possivel copiar o certificado para a pasta do QZ Tray.
+  echo Copie manualmente este arquivo:
+  echo   "%CERT_TMP%"
+  echo para:
+  echo   "%QZ_DIR%\override.crt"
+  echo e reinicie o QZ Tray.
+)
+goto :qz_done
+
+:qz_missing
+echo QZ Tray NAO encontrado neste computador.
+echo Para a impressao 100%% silenciosa (sem nenhum modal), instale o QZ Tray:
+echo   https://qz.io/download/
+echo Depois rode este instalador novamente.
+echo (Sem o QZ Tray, o sistema continua imprimindo pelo atalho Chrome acima.)
+
+:qz_done
+echo.
+
 echo ========================================================
 echo   CONFIGURAÇÃO CONCLUÍDA COM SUCESSO!
 echo ========================================================

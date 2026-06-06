@@ -19,6 +19,7 @@ import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } fro
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -644,8 +645,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       toast({ title: '✅ Pedido finalizado!', description: `Venda R$ ${finalTotal.toFixed(2)} registrada em ${splitsToProcess.length} parte(s).` });
       
       setOrderToPrint(orderData);
+      const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
       setTimeout(() => {
-        window.print();
+        // QZ Tray (silencioso) com fallback total para window.print().
+        void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
         setCart([]);
         setCustomerName('');
         setCustomerPhone('');

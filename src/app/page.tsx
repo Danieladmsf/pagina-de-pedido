@@ -45,6 +45,7 @@ import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -54,6 +55,12 @@ export default function AdminPage() {
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState<string>('delivery');
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
+
+  // Esquenta a conexão com o QZ Tray (impressão silenciosa) uma vez por sessão.
+  // Se o QZ não estiver no PC, isto não faz nada — a impressão segue por window.print().
+  useEffect(() => {
+    warmupQz();
+  }, []);
 
   // Synchronize history state with activeTab
   useEffect(() => {
@@ -363,13 +370,15 @@ export default function AdminPage() {
 
       // ── Impressão Automática de Pedidos ──
       if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
+        const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
         pendingNewOnes.forEach((ord: any, index: number) => {
           setTimeout(() => {
             setAutoOrderToPrint(ord);
             setTimeout(() => {
-              window.print();
+              // QZ Tray (silencioso) com fallback total para window.print().
+              void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
               if (index === pendingNewOnes.length - 1) {
-                setTimeout(() => setAutoOrderToPrint(null), 1000);
+                setTimeout(() => setAutoOrderToPrint(null), 3000);
               }
             }, 500);
           }, index * 2000);
