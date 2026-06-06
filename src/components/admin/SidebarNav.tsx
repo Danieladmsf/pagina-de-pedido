@@ -17,7 +17,8 @@ import {
   Menu,
   MessageCircle,
   Flame,
-  Printer
+  Printer,
+  Megaphone
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -40,6 +41,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'promocoes', label: 'Ofertas', icon: Tag, highlight: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+    { id: 'campanhas', label: 'Campanhas', icon: Megaphone, highlight: true },
     { id: 'freelance', label: 'Freelance', icon: Bike },
   ];
 

@@ -31,6 +31,7 @@ import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
+import { CampanhasTab } from '@/components/campanhas/CampanhasTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
@@ -1465,6 +1466,12 @@ export default function AdminPage() {
         {activeTab === 'whatsapp' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <WhatsAppTab user={user} storeProfile={storeProfile} db={db} />
+          </div>
+        )}
+
+        {activeTab === 'campanhas' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <CampanhasTab storeProfile={storeProfile} />
           </div>
         )}
 
