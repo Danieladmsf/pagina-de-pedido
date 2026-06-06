@@ -46,6 +46,11 @@ import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { createConcurrencyQueue } from '@/lib/throttle-queue';
+
+// Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
+// estourar o limite de taxa da w-api numa rajada de pedidos.
+const whatsappQueue = createConcurrencyQueue(3);
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -61,6 +66,30 @@ export default function AdminPage() {
   useEffect(() => {
     warmupQz();
   }, []);
+
+  // ── Varredura de re-tentativa de WhatsApp ──
+  // A cada 30s, re-tenta o aviso de "pedido recebido" para pedidos recentes que
+  // ainda não foram notificados (falha transitória, limite de taxa, ou pedido que
+  // chegou enquanto este PC recarregava). A reserva atômica + a fila garantem que
+  // só sai 1 mensagem por pedido, sem estourar o limite da w-api. A janela de 30min
+  // evita re-tentar pedidos antigos para sempre.
+  useEffect(() => {
+    if (!db || !user) return;
+    const id = setInterval(() => {
+      const send = whatsappSendRef.current;
+      const list = ordersForSweepRef.current;
+      if (!send || !list) return;
+      const now = Date.now();
+      for (const o of list) {
+        if (!o || o.source === 'pdv' || !o.customerPhone) continue;
+        if (o.receivedMessageSent === true || o.status === 'canceled') continue;
+        if (!o.orderDateTime) continue;
+        if (now - new Date(o.orderDateTime).getTime() > 30 * 60 * 1000) continue;
+        void whatsappQueue(() => send(o, 'received'));
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, [db, user]);
 
   // Synchronize history state with activeTab
   useEffect(() => {
@@ -270,6 +299,10 @@ export default function AdminPage() {
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
   const whatsappWebhookSyncRef = useRef(false);
+  // Refs para a varredura de re-tentativa de WhatsApp (evita closure velha no setInterval).
+  const whatsappSendRef = useRef<((order: any, status: string) => Promise<any>) | null>(null);
+  const ordersForSweepRef = useRef<any[] | null>(null);
+  ordersForSweepRef.current = (ordersRaw as any[]) || null;
 
   useEffect(() => {
     if (!user || !isRealUser || whatsappWebhookSyncRef.current) return;
@@ -392,9 +425,9 @@ export default function AdminPage() {
         });
       }
 
-      // ── Envio Automático de Notificação WhatsApp ──
+      // ── Envio Automático de Notificação WhatsApp (com fila/limite) ──
       pendingNewOnes.forEach((ord: any) => {
-        void sendOrderWhatsAppNotification(ord, 'received');
+        void whatsappQueue(() => sendOrderWhatsAppNotification(ord, 'received'));
       });
     }
 
@@ -1092,8 +1125,11 @@ export default function AdminPage() {
       if (!response.ok || data?.error) {
         const reason = data?.error || 'API recusou notificacao do pedido.';
         console.warn('[WhatsApp] API recusou notificacao do pedido:', reason, data);
-        // Envio falhou: desfaz a reserva para permitir nova tentativa depois.
-        if (flagField && db && order.id) {
+        // Só libera para re-tentativa (sweep) em falha TRANSITÓRIA: limite de
+        // taxa (429) ou erro de servidor (5xx). Em rejeição definitiva (ex.:
+        // número inválido) mantém reivindicado para não re-enviar em loop.
+        const transient = response.status === 429 || response.status >= 500;
+        if (transient && flagField && db && order.id) {
           await updateDoc(doc(db, 'orders', order.id), { [flagField]: false }).catch(() => {});
         }
         return { sent: false, skipped: false, reason };
@@ -1111,6 +1147,8 @@ export default function AdminPage() {
       return { sent: false, skipped: false, reason };
     }
   };
+  // Mantém o ref da função de envio sempre atualizado (usado pela varredura).
+  whatsappSendRef.current = sendOrderWhatsAppNotification;
 
   const updateOrderStatus = async (orderId: string, statusOrUpdates: string | any) => {
     if (!db || !user) return;
