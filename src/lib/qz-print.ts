@@ -18,8 +18,10 @@ import { QZ_CERTIFICATE } from './qz-cert';
 
 export type PrinterSize = '58mm' | '80mm';
 
-let qzPromise: Promise<any> | null = null;
-let qzUnavailable = false;
+let qzLib: any = null;
+let qzConfigured = false;
+let qzLoadFailed = false;
+let qzConnecting: Promise<any> | null = null;
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -36,46 +38,58 @@ async function loadQz(): Promise<any> {
   return mod?.default ?? mod;
 }
 
+/** Carrega a lib do qz e configura a segurança (certificado + assinatura) uma vez. */
+async function loadAndConfigure(): Promise<any> {
+  if (!qzLib) qzLib = await loadQz();
+  const qz = qzLib;
+  if (!qzConfigured) {
+    qz.security.setCertificatePromise((resolve: (v: string) => void) => resolve(QZ_CERTIFICATE));
+    try { qz.security.setSignatureAlgorithm('SHA512'); } catch { /* versões antigas */ }
+    qz.security.setSignaturePromise((toSign: string) => {
+      return (resolve: (v: string) => void, reject: (e: any) => void) => {
+        fetch('/api/qz-sign', {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain' },
+          body: toSign,
+        })
+          .then((r) => (r.ok ? r.text() : Promise.reject(new Error('sign-failed:' + r.status))))
+          .then(resolve)
+          .catch(reject);
+      };
+    });
+    qzConfigured = true;
+  }
+  return qz;
+}
+
 /**
- * Devolve uma instância do QZ já conectada e configurada, ou null se o QZ Tray
- * não estiver disponível neste PC. O resultado é memorizado para a sessão.
+ * Devolve uma instância do QZ CONECTADA, ou null se o QZ Tray não estiver
+ * disponível. Diferente da versão anterior: verifica a conexão a CADA chamada e
+ * RECONECTA se ela tiver caído (o QZ fecha conexões ociosas). Não memoriza
+ * "indisponível" para sempre — só desiste quando nem a lib do qz carrega.
  */
 async function getConnectedQz(): Promise<any | null> {
   if (typeof window === 'undefined') return null;
-  if (qzUnavailable) return null;
-
-  if (!qzPromise) {
-    qzPromise = (async () => {
-      const qz = await loadQz();
-
-      // Configura segurança apenas uma vez (promises são globais no qz).
-      qz.security.setCertificatePromise((resolve: (v: string) => void) => resolve(QZ_CERTIFICATE));
-      try { qz.security.setSignatureAlgorithm('SHA512'); } catch { /* versões antigas */ }
-      qz.security.setSignaturePromise((toSign: string) => {
-        return (resolve: (v: string) => void, reject: (e: any) => void) => {
-          fetch('/api/qz-sign', {
-            method: 'POST',
-            headers: { 'content-type': 'text/plain' },
-            body: toSign,
-          })
-            .then((r) => (r.ok ? r.text() : Promise.reject(new Error('sign-failed'))))
-            .then(resolve)
-            .catch(reject);
-        };
-      });
-
-      if (!qz.websocket.isActive()) {
-        await withTimeout(qz.websocket.connect({ retries: 0, delay: 0 }), 2000);
-      }
-      return qz;
-    })();
-  }
+  if (qzLoadFailed) return null;
 
   try {
-    return await qzPromise;
-  } catch {
-    qzUnavailable = true;
-    qzPromise = null;
+    const qz = await loadAndConfigure();
+
+    if (qz.websocket.isActive()) return qz;
+
+    // Evita corridas: uma única tentativa de conexão por vez.
+    if (!qzConnecting) {
+      qzConnecting = withTimeout(qz.websocket.connect({ retries: 0, delay: 0 }), 3000)
+        .finally(() => { qzConnecting = null; });
+    }
+    await qzConnecting;
+    return qz;
+  } catch (e) {
+    if (!qzLib) {
+      // Nem a lib carregou (caso raro): não adianta tentar de novo nesta sessão.
+      qzLoadFailed = true;
+    }
+    console.warn('[QZ] não foi possível conectar ao QZ Tray:', e);
     return null;
   }
 }
@@ -86,12 +100,14 @@ async function getConnectedQz(): Promise<any | null> {
  */
 export function warmupQz(): void {
   if (typeof window === 'undefined') return;
-  void getConnectedQz().catch(() => {});
+  void getConnectedQz()
+    .then((qz) => { if (qz) console.info('[QZ] conexão pronta (warmup)'); })
+    .catch(() => {});
 }
 
-/** true se já sabemos (nesta sessão) que o QZ não está disponível. */
+/** true se nem a lib do qz carregou (QZ realmente fora). */
 export function isQzKnownUnavailable(): boolean {
-  return qzUnavailable;
+  return qzLoadFailed;
 }
 
 function widthMm(printerSize: PrinterSize): number {
@@ -169,12 +185,14 @@ export async function printReceiptElementOrFallback(opts: {
 }): Promise<void> {
   const { fallback, printerSize = '80mm', elementId = 'qz-receipt-area' } = opts;
   try {
-    if (qzUnavailable) { fallback(); return; }
+    if (isQzKnownUnavailable()) { console.warn('[QZ] indisponível → window.print()'); fallback(); return; }
     const el = document.getElementById(elementId) as HTMLElement | null;
-    if (!el) { fallback(); return; }
+    if (!el) { console.warn('[QZ] elemento do cupom não encontrado (#' + elementId + ') → window.print()'); fallback(); return; }
     const ok = await printElementViaQz(el, printerSize);
-    if (!ok) fallback();
-  } catch {
+    if (!ok) { console.warn('[QZ] não conectado no momento da impressão → window.print()'); fallback(); }
+    else { console.info('[QZ] cupom enviado (imagem) ao QZ Tray com sucesso'); }
+  } catch (e) {
+    console.error('[QZ] FALHA ao imprimir via QZ → window.print(). Motivo:', e);
     fallback();
   }
 }
@@ -189,10 +207,12 @@ export async function printHtmlOrFallback(opts: {
 }): Promise<void> {
   const { html, fallback, printerSize = '80mm' } = opts;
   try {
-    if (qzUnavailable) { fallback(); return; }
+    if (isQzKnownUnavailable()) { console.warn('[QZ] indisponível → impressão pelo navegador'); fallback(); return; }
     const ok = await printHtmlViaQz(html, printerSize);
-    if (!ok) fallback();
-  } catch {
+    if (!ok) { console.warn('[QZ] não conectado no momento da impressão → impressão pelo navegador'); fallback(); }
+    else { console.info('[QZ] HTML enviado ao QZ Tray com sucesso'); }
+  } catch (e) {
+    console.error('[QZ] FALHA ao imprimir via QZ → impressão pelo navegador. Motivo:', e);
     fallback();
   }
 }
