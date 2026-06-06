@@ -46,7 +46,6 @@ import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
-import { isDeviceAutoPrintEnabled } from '@/lib/device-print';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -369,18 +368,22 @@ export default function AdminPage() {
         }
       } catch {}
 
-      // ── Impressão Automática de Pedidos ──
-      // Gate por MÁQUINA: além da config da conta (manualPrint), respeita a
-      // preferência local deste PC. Um PC de monitoramento pode desligar isso
-      // para não abrir o modal do navegador a cada pedido.
-      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint) && isDeviceAutoPrintEnabled()) {
+      // ── Impressão Automática de Pedidos (INTELIGENTE) ──
+      // Só imprime automaticamente onde há impressão silenciosa de verdade (QZ
+      // Tray instalado nesta máquina). Sem QZ, NÃO cai no window.print() — assim
+      // um PC de monitoramento, sem impressora, não abre o modal do navegador a
+      // cada pedido. (Os botões manuais seguem imprimindo normalmente.)
+      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
         const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
         pendingNewOnes.forEach((ord: any, index: number) => {
           setTimeout(() => {
             setAutoOrderToPrint(ord);
             setTimeout(() => {
-              // QZ Tray (silencioso) com fallback total para window.print().
-              void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
+              // Fallback no-op: sem QZ nesta máquina = não imprime automático (sem modal).
+              void printReceiptElementOrFallback({
+                printerSize,
+                fallback: () => console.info('[QZ] sem impressão silenciosa nesta máquina → pedido NÃO impresso automaticamente (sem modal). Use os botões manuais se precisar.'),
+              });
               if (index === pendingNewOnes.length - 1) {
                 setTimeout(() => setAutoOrderToPrint(null), 3000);
               }
