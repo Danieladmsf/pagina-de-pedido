@@ -17,6 +17,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadImage } from '@/lib/upload';
 import { normalizeSearch } from '@/lib/utils';
+import { isDeviceAutoPrintEnabled, setDeviceAutoPrintEnabled } from '@/lib/device-print';
 
 interface StoreProfileTabProps {
   db: any;
@@ -31,6 +32,10 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const activeTab = activeSection || 'geral';
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Preferência de impressão automática DESTE computador (localStorage, por máquina).
+  const [deviceAutoPrint, setDeviceAutoPrint] = useState(true);
+  useEffect(() => { setDeviceAutoPrint(isDeviceAutoPrintEnabled()); }, []);
 
   // Estados dos formulários
   const [formData, setFormData] = useState({
@@ -795,6 +800,25 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   )}
                   {formData.manualPrint && (
                     <p className="text-[11px] text-amber-600 font-medium">⚠️ Impressão Manual ativada: Clique no botão "Recebido" para iniciar a impressão.</p>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <Label className="text-sm font-bold text-slate-800">Imprimir automaticamente NESTE computador</Label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Configuração só desta máquina (não afeta os outros computadores logados na mesma conta). Desligue em PCs que só monitoram pedidos e não têm impressora, para não abrir o modal de impressão.</p>
+                    </div>
+                    <Switch
+                      checked={deviceAutoPrint}
+                      onCheckedChange={(c) => { setDeviceAutoPrint(c); setDeviceAutoPrintEnabled(c); }}
+                      className="data-[state=checked]:bg-emerald-500"
+                    />
+                  </div>
+                  {deviceAutoPrint ? (
+                    <p className="text-[11px] text-emerald-600 font-medium">✅ Este computador imprime os pedidos que chegam.</p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 font-medium">🚫 Este computador NÃO imprime automaticamente (sem modal). Os outros PCs seguem normalmente.</p>
                   )}
                 </div>
 

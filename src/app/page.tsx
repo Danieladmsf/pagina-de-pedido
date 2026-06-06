@@ -46,6 +46,7 @@ import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { isDeviceAutoPrintEnabled } from '@/lib/device-print';
 
 export default function AdminPage() {
   const db = useFirestore();
@@ -369,7 +370,10 @@ export default function AdminPage() {
       } catch {}
 
       // ── Impressão Automática de Pedidos ──
-      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
+      // Gate por MÁQUINA: além da config da conta (manualPrint), respeita a
+      // preferência local deste PC. Um PC de monitoramento pode desligar isso
+      // para não abrir o modal do navegador a cada pedido.
+      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint) && isDeviceAutoPrintEnabled()) {
         const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
         pendingNewOnes.forEach((ord: any, index: number) => {
           setTimeout(() => {
