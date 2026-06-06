@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ArrowUpDown } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { normalizeSearch } from '@/lib/utils';
@@ -49,6 +49,18 @@ interface Cliente {
 
 const ITEMS_PER_PAGE = 20;
 
+type SortKey = 'nome' | 'celular' | 'bairro' | 'cidade' | 'pedidos' | 'ticket' | 'ultimo';
+
+/** Converte "DD/MM/AAAA"(+hora) ou ISO em timestamp; vazio/inválido = 0 (vai pro fim). */
+function parseDateBR(value?: string): number {
+  if (!value) return 0;
+  const t = value.trim();
+  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime();
+  const parsed = Date.parse(t);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
@@ -75,7 +87,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBairro, setFilterBairro] = useState('');
   const [filterCidade, setFilterCidade] = useState('');
-  const [sortBy, setSortBy] = useState<'nome' | 'pedidos' | 'ticket'>('nome');
+  const [sortBy, setSortBy] = useState<SortKey>('nome');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [isImporting, setIsImporting] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
@@ -171,9 +184,21 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     [clientes],
   );
 
-  const hasActiveFilters = !!(searchTerm.trim() || filterBairro || filterCidade || sortBy !== 'nome');
+  const hasActiveFilters = !!(searchTerm.trim() || filterBairro || filterCidade);
   const clearFilters = () => {
-    setSearchTerm(''); setFilterBairro(''); setFilterCidade(''); setSortBy('nome'); setCurrentPage(1);
+    setSearchTerm(''); setFilterBairro(''); setFilterCidade(''); setCurrentPage(1);
+  };
+
+  // Clique no título da coluna: ordena por ela; clicar de novo inverte a direção.
+  const toggleSort = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      // Números/data começam em "maior primeiro"; texto em A-Z.
+      setSortDir(['pedidos', 'ticket', 'ultimo'].includes(key) ? 'desc' : 'asc');
+    }
+    setCurrentPage(1);
   };
 
   // Filter + Sort
@@ -191,13 +216,20 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     if (filterBairro) result = result.filter(c => (c.bairro || '').trim() === filterBairro);
     if (filterCidade) result = result.filter(c => (c.cidade || '').trim() === filterCidade);
 
+    const dir = sortDir === 'asc' ? 1 : -1;
     result.sort((a, b) => {
-      if (sortBy === 'pedidos') return (b.totalPedidos || 0) - (a.totalPedidos || 0);
-      if (sortBy === 'ticket') return (b.ticketMedio || 0) - (a.ticketMedio || 0);
-      return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+      switch (sortBy) {
+        case 'pedidos': return ((a.totalPedidos || 0) - (b.totalPedidos || 0)) * dir;
+        case 'ticket': return ((a.ticketMedio || 0) - (b.ticketMedio || 0)) * dir;
+        case 'ultimo': return (parseDateBR(a.ultimoPedido) - parseDateBR(b.ultimoPedido)) * dir;
+        case 'celular': return (a.celular || '').localeCompare(b.celular || '', 'pt-BR') * dir;
+        case 'bairro': return (a.bairro || '').localeCompare(b.bairro || '', 'pt-BR') * dir;
+        case 'cidade': return (a.cidade || '').localeCompare(b.cidade || '', 'pt-BR') * dir;
+        default: return (a.nome || '').localeCompare(b.nome || '', 'pt-BR') * dir;
+      }
     });
     return result;
-  }, [clientes, searchTerm, filterBairro, filterCidade, sortBy]);
+  }, [clientes, searchTerm, filterBairro, filterCidade, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -463,6 +495,26 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     return { total, comTelefone, aniversariantes };
   }, [clientes]);
 
+  // Cabeçalho de coluna clicável (ordena ao clicar; inverte ao clicar de novo).
+  const SortableHead = ({ k, label, className, justify = 'start' }: { k: SortKey; label: string; className?: string; justify?: 'start' | 'center' | 'end' }) => {
+    const active = sortBy === k;
+    const justifyCls = justify === 'center' ? 'justify-center' : justify === 'end' ? 'justify-end' : 'justify-start';
+    return (
+      <TableHead className={className}>
+        <button
+          type="button"
+          onClick={() => toggleSort(k)}
+          className={`flex w-full items-center gap-1 select-none transition-colors hover:text-emerald-600 ${justifyCls} ${active ? 'text-emerald-600 font-bold' : ''}`}
+        >
+          {label}
+          {active
+            ? (sortDir === 'asc' ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />)
+            : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+        </button>
+      </TableHead>
+    );
+  };
+
   if (isLoading) {
     return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -575,20 +627,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
             </select>
           </div>
 
-          {/* Ordenar */}
-          <div className="relative">
-            <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <select
-              value={sortBy}
-              onChange={(e) => { setSortBy(e.target.value as any); setCurrentPage(1); }}
-              className="h-9 rounded-md border border-input bg-white pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="nome">Nome (A-Z)</option>
-              <option value="pedidos">Mais pedidos</option>
-              <option value="ticket">Maior ticket</option>
-            </select>
-          </div>
-
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs text-slate-500 hover:text-slate-700 gap-1">
               <X className="h-3.5 w-3.5" /> Limpar
@@ -604,13 +642,13 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           <Table>
             <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
               <TableRow>
-                <TableHead className="pl-4">Nome</TableHead>
-                <TableHead>Celular</TableHead>
-                <TableHead>Bairro</TableHead>
-                <TableHead>Cidade</TableHead>
-                <TableHead className="text-center">Pedidos</TableHead>
-                <TableHead className="text-center">Ticket Médio</TableHead>
-                <TableHead>Último Pedido</TableHead>
+                <SortableHead k="nome" label="Nome" className="pl-4" />
+                <SortableHead k="celular" label="Celular" />
+                <SortableHead k="bairro" label="Bairro" />
+                <SortableHead k="cidade" label="Cidade" />
+                <SortableHead k="pedidos" label="Pedidos" className="text-center" justify="center" />
+                <SortableHead k="ticket" label="Ticket Médio" className="text-center" justify="center" />
+                <SortableHead k="ultimo" label="Último Pedido" />
                 <TableHead className="text-right pr-4">Ações</TableHead>
               </TableRow>
             </TableHeader>
