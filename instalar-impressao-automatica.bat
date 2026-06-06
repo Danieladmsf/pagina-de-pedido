@@ -2,6 +2,15 @@
 chcp 65001 >nul
 title Cardapio Digital - Instalador Master de Impressao Automatica
 
+:: ── Auto-elevação: precisa de Administrador para instalar o QZ Tray e gravar o certificado ──
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+  echo Solicitando permissao de Administrador...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+cd /d "%~dp0"
+
 set "APP_URL=https://polarispdv.vercel.app/"
 set "APP_NAME=Cardapio - App Impressao Automatica"
 set "PROFILE_DIR=%LOCALAPPDATA%\CardapioDigitalPrintChrome"
@@ -15,6 +24,7 @@ echo Este instalador configurará o computador do cliente:
 echo 1. Definirá a impressora padrão do Windows.
 echo 2. Criará um atalho dedicado (Modo Aplicativo Silencioso).
 echo 3. Configurará qualquer aplicativo PWA instalado do Chrome.
+echo 4. Baixará e instalará o QZ Tray (impressão 100%% silenciosa).
 echo.
 
 :: 1. Configurar Impressora Padrão
@@ -70,14 +80,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$cmd = Get-Content -Lite
 
 echo.
 
-:: 4. Configurar QZ Tray (Impressão Silenciosa de verdade)
-echo --- 4. CONFIGURAR QZ TRAY (IMPRESSAO SILENCIOSA) ---
+:: 4. Instalar/Configurar QZ Tray (Impressão Silenciosa de verdade)
+echo --- 4. QZ TRAY (IMPRESSAO SILENCIOSA) ---
 set "QZ_DIR=%ProgramFiles%\QZ Tray"
 if not exist "%QZ_DIR%\qz-tray.exe" set "QZ_DIR=%ProgramFiles(x86)%\QZ Tray"
 
-if not exist "%QZ_DIR%\qz-tray.exe" goto :qz_missing
+if exist "%QZ_DIR%\qz-tray.exe" goto :qz_have
 
-echo QZ Tray encontrado em: %QZ_DIR%
+echo QZ Tray nao encontrado. Baixando e instalando automaticamente (versao mais recente)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {'arm64'} else {'x86_64'}; try { $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/qzind/tray/releases/latest' -Headers @{ 'User-Agent'='polaris-pdv' }; $asset = $rel.assets | Where-Object { $_.name -like ('*' + $arch + '.exe') } | Select-Object -First 1; if (-not $asset) { Write-Host 'Instalador nao encontrado para a arquitetura' $arch; exit 1 }; $out = Join-Path $env:TEMP $asset.name; Write-Host ('Baixando ' + $asset.name + ' ...'); Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $out; Write-Host 'Instalando QZ Tray em modo silencioso...'; $p = Start-Process -FilePath $out -ArgumentList '/S' -Wait -PassThru; exit $p.ExitCode } catch { Write-Host ('Falha: ' + $_.Exception.Message); exit 1 }"
+
+:: re-detecta apos a instalacao
+set "QZ_DIR=%ProgramFiles%\QZ Tray"
+if not exist "%QZ_DIR%\qz-tray.exe" set "QZ_DIR=%ProgramFiles(x86)%\QZ Tray"
+if not exist "%QZ_DIR%\qz-tray.exe" goto :qz_failed
+echo QZ Tray instalado com sucesso.
+
+:qz_have
+echo QZ Tray em: %QZ_DIR%
 echo Instalando certificado confiavel (override.crt)...
 
 set "CERT_TMP=%TEMP%\polaris-override.crt"
@@ -102,8 +122,7 @@ set "CERT_TMP=%TEMP%\polaris-override.crt"
 >> "%CERT_TMP%" echo KKupa8nH/svd
 >> "%CERT_TMP%" echo -----END CERTIFICATE-----
 
-echo (Sera solicitada permissao de Administrador para copiar o certificado.)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command','Copy-Item -LiteralPath ''%CERT_TMP%'' -Destination ''%QZ_DIR%\override.crt'' -Force'"
+copy /Y "%CERT_TMP%" "%QZ_DIR%\override.crt" >nul
 
 if exist "%QZ_DIR%\override.crt" (
   echo Certificado instalado com sucesso.
@@ -112,20 +131,13 @@ if exist "%QZ_DIR%\override.crt" (
   start "" "%QZ_DIR%\qz-tray.exe"
   echo QZ Tray pronto para impressao silenciosa.
 ) else (
-  echo ATENCAO: nao foi possivel copiar o certificado para a pasta do QZ Tray.
-  echo Copie manualmente este arquivo:
-  echo   "%CERT_TMP%"
-  echo para:
-  echo   "%QZ_DIR%\override.crt"
-  echo e reinicie o QZ Tray.
+  echo ATENCAO: nao foi possivel copiar o certificado para "%QZ_DIR%\override.crt".
 )
 goto :qz_done
 
-:qz_missing
-echo QZ Tray NAO encontrado neste computador.
-echo Para a impressao 100%% silenciosa (sem nenhum modal), instale o QZ Tray:
-echo   https://qz.io/download/
-echo Depois rode este instalador novamente.
+:qz_failed
+echo ATENCAO: falha ao instalar o QZ Tray automaticamente.
+echo Instale manualmente em https://qz.io/download/ e rode este instalador de novo.
 echo (Sem o QZ Tray, o sistema continua imprimindo pelo atalho Chrome acima.)
 
 :qz_done
