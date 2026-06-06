@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, runTransaction } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -1041,6 +1041,37 @@ export default function AdminPage() {
 
     if (!message) return { sent: false, skipped: true, reason: 'Mensagem vazia.' };
 
+    // ── Reserva ATÔMICA do envio (anti-duplicação multi-PC) ──
+    // Em vez de marcar a flag só DEPOIS de enviar, reivindicamos o envio numa
+    // transação ANTES. Com 2 PCs logados, só um consegue passar de false→true;
+    // o outro vê a flag já marcada e desiste — eliminando a mensagem duplicada.
+    const flagField =
+      status === 'received' ? 'receivedMessageSent'
+      : status === 'out_for_delivery' ? 'outForDeliveryMessageSent'
+      : null;
+
+    if (flagField && db && order.id) {
+      let claimed = false;
+      try {
+        const ref = doc(db, 'orders', order.id);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists()) return;
+          if (snap.data()[flagField]) return; // outro PC já reivindicou/enviou
+          tx.update(ref, { [flagField]: true });
+          claimed = true;
+        });
+      } catch (err) {
+        // Falha de transação (rede): segue para não PERDER a mensagem (prefere
+        // arriscar um raro duplicado a deixar o cliente sem aviso).
+        console.warn('[WhatsApp] Falha ao reivindicar envio (transação):', err);
+        claimed = true;
+      }
+      if (!claimed) {
+        return { sent: false, skipped: true, reason: 'Envio já reivindicado por outro dispositivo.' };
+      }
+    }
+
     try {
       const token = await user.getIdToken();
       const response = await fetch('/wapi/send-message', {
@@ -1061,24 +1092,21 @@ export default function AdminPage() {
       if (!response.ok || data?.error) {
         const reason = data?.error || 'API recusou notificacao do pedido.';
         console.warn('[WhatsApp] API recusou notificacao do pedido:', reason, data);
+        // Envio falhou: desfaz a reserva para permitir nova tentativa depois.
+        if (flagField && db && order.id) {
+          await updateDoc(doc(db, 'orders', order.id), { [flagField]: false }).catch(() => {});
+        }
         return { sent: false, skipped: false, reason };
       }
-
-      if (db && order.id) {
-        try {
-          if (status === 'received') {
-            await updateDoc(doc(db, 'orders', order.id), { receivedMessageSent: true });
-          } else if (status === 'out_for_delivery') {
-            await updateDoc(doc(db, 'orders', order.id), { outForDeliveryMessageSent: true });
-          }
-        } catch (err) {
-          console.error('[WhatsApp] Falha ao marcar notificacao enviada no Firestore:', err);
-        }
-      }
+      // Sucesso: a flag já foi marcada na reserva atômica acima.
 
       return { sent: true, skipped: false };
     } catch (error) {
       console.warn('[WhatsApp] Falha ao enviar notificacao do pedido:', error);
+      // Erro de rede: desfaz a reserva para permitir nova tentativa depois.
+      if (flagField && db && order.id) {
+        await updateDoc(doc(db, 'orders', order.id), { [flagField]: false }).catch(() => {});
+      }
       const reason = error instanceof Error ? error.message : 'Falha ao enviar notificacao do pedido.';
       return { sent: false, skipped: false, reason };
     }
