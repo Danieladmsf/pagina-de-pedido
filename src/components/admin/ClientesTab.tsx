@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ArrowUpDown } from 'lucide-react';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { normalizeSearch } from '@/lib/utils';
@@ -73,6 +73,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterBairro, setFilterBairro] = useState('');
+  const [filterCidade, setFilterCidade] = useState('');
+  const [sortBy, setSortBy] = useState<'nome' | 'pedidos' | 'ticket'>('nome');
   const [currentPage, setCurrentPage] = useState(1);
   const [isImporting, setIsImporting] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
@@ -158,6 +161,21 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const { data: clientesRaw, isLoading } = useCollection(clientesQuery);
   const clientes = (clientesRaw || []) as Cliente[];
 
+  // Opções de filtro derivadas da própria base
+  const bairroOptions = useMemo(
+    () => Array.from(new Set(clientes.map(c => (c.bairro || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [clientes],
+  );
+  const cidadeOptions = useMemo(
+    () => Array.from(new Set(clientes.map(c => (c.cidade || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [clientes],
+  );
+
+  const hasActiveFilters = !!(searchTerm.trim() || filterBairro || filterCidade || sortBy !== 'nome');
+  const clearFilters = () => {
+    setSearchTerm(''); setFilterBairro(''); setFilterCidade(''); setSortBy('nome'); setCurrentPage(1);
+  };
+
   // Filter + Sort
   const filtered = useMemo(() => {
     let result = [...clientes];
@@ -170,9 +188,16 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         normalizeSearch(c.cidade).includes(term)
       );
     }
-    result.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    if (filterBairro) result = result.filter(c => (c.bairro || '').trim() === filterBairro);
+    if (filterCidade) result = result.filter(c => (c.cidade || '').trim() === filterCidade);
+
+    result.sort((a, b) => {
+      if (sortBy === 'pedidos') return (b.totalPedidos || 0) - (a.totalPedidos || 0);
+      if (sortBy === 'ticket') return (b.ticketMedio || 0) - (a.ticketMedio || 0);
+      return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+    });
     return result;
-  }, [clientes, searchTerm]);
+  }, [clientes, searchTerm, filterBairro, filterCidade, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -512,9 +537,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           </div>
         </header>
 
-        {/* Search */}
-        <div className="p-3 border-b bg-muted/20">
-          <div className="relative max-w-md">
+        {/* Filtros */}
+        <div className="p-3 border-b bg-muted/20 flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Buscar por nome, telefone, bairro..."
@@ -523,6 +548,56 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               className="pl-9 h-9"
             />
           </div>
+
+          {/* Bairro */}
+          <div className="relative">
+            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <select
+              value={filterBairro}
+              onChange={(e) => { setFilterBairro(e.target.value); setCurrentPage(1); }}
+              className="h-9 rounded-md border border-input bg-white pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-w-[160px]"
+            >
+              <option value="">Todos os bairros</option>
+              {bairroOptions.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+
+          {/* Cidade */}
+          <div className="relative">
+            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <select
+              value={filterCidade}
+              onChange={(e) => { setFilterCidade(e.target.value); setCurrentPage(1); }}
+              className="h-9 rounded-md border border-input bg-white pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-w-[160px]"
+            >
+              <option value="">Todas as cidades</option>
+              {cidadeOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          {/* Ordenar */}
+          <div className="relative">
+            <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value as any); setCurrentPage(1); }}
+              className="h-9 rounded-md border border-input bg-white pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="nome">Nome (A-Z)</option>
+              <option value="pedidos">Mais pedidos</option>
+              <option value="ticket">Maior ticket</option>
+            </select>
+          </div>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-xs text-slate-500 hover:text-slate-700 gap-1">
+              <X className="h-3.5 w-3.5" /> Limpar
+            </Button>
+          )}
+
+          <Badge variant="outline" className="ml-auto h-9 flex items-center gap-1.5 text-[11px] text-slate-500">
+            <Filter className="h-3 w-3" /> {filtered.length} de {clientes.length}
+          </Badge>
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
