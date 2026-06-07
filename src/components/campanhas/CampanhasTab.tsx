@@ -14,11 +14,11 @@ import { uploadImage } from '@/lib/upload';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
-  Megaphone, Send, ImagePlus, Users, Clock, Info, X, Search,
-  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
+  Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
+  Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
 } from 'lucide-react';
 import {
-  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp,
+  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR,
   type ClientLike,
 } from '@/lib/campanhas/audience';
 import type { AudienceId, CampaignDraft } from '@/lib/campanhas/types';
@@ -34,6 +34,18 @@ interface CampanhasTabProps {
 
 const DELAY_PRESETS = [5, 8, 12, 20];
 
+// Ordenações analíticas da lista de contatos: o lojista usa para "ler" a base
+// (quem compra mais, quem gasta mais, quem some) e montar a seleção do disparo.
+type SortKey = 'nome' | 'pedidos' | 'valor' | 'ticket' | 'recencia';
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'nome', label: 'Nome' },
+  { key: 'pedidos', label: 'Nº de compras' },
+  { key: 'valor', label: 'Valor gasto' },
+  { key: 'ticket', label: 'Ticket médio' },
+  { key: 'recencia', label: 'Compra recente' },
+];
+const spentOf = (c: ClientLike) => (c.totalPedidos || 0) * (c.ticketMedio || 0);
+
 export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { toast } = useToast();
   const [draft, setDraft] = useState<CampaignDraft>(EMPTY_DRAFT);
@@ -43,6 +55,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchContacts, setSearchContacts] = useState('');
   const [activePreset, setActivePreset] = useState<AudienceId | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('nome');
 
   const [aiLoading, setAiLoading] = useState(false);
   // Variáveis que a IA pode usar (toggles). Default: primeiro nome + nome da loja.
@@ -78,15 +91,19 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   // Foto de perfil sob demanda (loader compartilhado, cache de módulo).
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
 
-  const sortedClients = useMemo(
-    () => [...clients].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
-    [clients],
-  );
-  // Lista base: filtrada pelo preset ativo (se houver), senão todos.
+  // Lista base: filtrada pelo preset ativo (se houver), senão todos — e ordenada
+  // pelo critério analítico escolhido (nome, nº de compras, valor, ticket, recência).
   const baseList = useMemo(() => {
-    const arr = activePreset ? resolveAudience(clients, activePreset) : sortedClients;
-    return [...arr].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
-  }, [clients, activePreset, sortedClients]);
+    const arr = activePreset ? resolveAudience(clients, activePreset) : [...clients];
+    switch (sortKey) {
+      case 'pedidos': arr.sort((a, b) => (b.totalPedidos || 0) - (a.totalPedidos || 0)); break;
+      case 'valor': arr.sort((a, b) => spentOf(b) - spentOf(a)); break;
+      case 'ticket': arr.sort((a, b) => (b.ticketMedio || 0) - (a.ticketMedio || 0)); break;
+      case 'recencia': arr.sort((a, b) => parseDateBR(b.ultimoPedido) - parseDateBR(a.ultimoPedido)); break;
+      default: arr.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    }
+    return arr;
+  }, [clients, activePreset, sortKey]);
 
   const visibleClients = useMemo(() => {
     const term = normalizeSearch(searchContacts);
@@ -274,6 +291,28 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               })}
             </div>
 
+            {/* Ordenar a lista para analisar a base e montar o disparo */}
+            <div className="mb-2">
+              <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <ArrowDownWideNarrow className="h-3 w-3" /> Ordenar por
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {SORT_OPTIONS.map((o) => {
+                  const active = sortKey === o.key;
+                  return (
+                    <button key={o.key} type="button" onClick={() => setSortKey(o.key)}
+                      className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
+                        active
+                          ? 'border-slate-700 bg-slate-700 text-white'
+                          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'
+                      }`}>
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input value={searchContacts} onChange={(e) => setSearchContacts(e.target.value)}
@@ -302,7 +341,15 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 const valid = hasValidWhatsapp(c);
                 const checked = selectedIds.has(c.id);
                 const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-                const totalGasto = (c.totalPedidos || 0) * (c.ticketMedio || 0);
+                const totalGasto = spentOf(c);
+                const pedidos = c.totalPedidos || 0;
+                const ultimo = c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos';
+                // O número em destaque acompanha a ordenação ativa (análise).
+                const metric =
+                  sortKey === 'pedidos' ? { primary: `${pedidos} compra(s)`, secondary: `R$ ${totalGasto.toFixed(2)}` }
+                  : sortKey === 'ticket' ? { primary: `R$ ${(c.ticketMedio || 0).toFixed(2)}`, secondary: `${pedidos} compra(s)` }
+                  : sortKey === 'recencia' ? { primary: c.ultimoPedido || '—', secondary: `R$ ${totalGasto.toFixed(2)}` }
+                  : { primary: `R$ ${totalGasto.toFixed(2)}`, secondary: ultimo };
                 return (
                   <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
                     className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
@@ -318,8 +365,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                     </div>
                     {valid ? (
                       <div className="shrink-0 text-right">
-                        <p className="text-[12px] font-bold text-emerald-600">R$ {totalGasto.toFixed(2)}</p>
-                        <p className="text-[10px] text-slate-400">{c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos'}</p>
+                        <p className="text-[12px] font-bold text-emerald-600">{metric.primary}</p>
+                        <p className="text-[10px] text-slate-400">{metric.secondary}</p>
                       </div>
                     ) : (
                       <span className="shrink-0 text-[10px] font-medium text-amber-500">sem WhatsApp</span>
@@ -334,13 +381,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         {/* ── Composição (rola independente) ── */}
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
           <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
-
-            {/* Stats */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <StatCard icon={Users} tint="emerald" label="Selecionados" value={`${audienceCount} contatos`} hint="Com WhatsApp válido" />
-              <StatCard icon={Timer} tint="sky" label="Intervalo" value={`${draft.delaySeconds}s`} hint="Anti-bloqueio" />
-              <StatCard icon={Clock} tint="violet" label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} hint="Público × intervalo" />
-            </div>
 
             <Section title="Nome da campanha" subtitle="Só para identificar no histórico">
               <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
@@ -536,21 +576,6 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
         {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
       </div>
       {children}
-    </div>
-  );
-}
-function StatCard({ icon: Icon, label, value, hint, tint }: {
-  icon: React.ComponentType<{ className?: string }>; label: string; value: string; hint: string; tint: 'emerald' | 'sky' | 'violet';
-}) {
-  const tints: Record<string, string> = { emerald: 'bg-emerald-100 text-emerald-600', sky: 'bg-sky-100 text-sky-600', violet: 'bg-violet-100 text-violet-600' };
-  return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tints[tint]}`}><Icon className="h-5 w-5" /></div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-        <p className="truncate text-base font-bold text-slate-800">{value}</p>
-        <p className="truncate text-[11px] text-slate-400">{hint}</p>
-      </div>
     </div>
   );
 }
