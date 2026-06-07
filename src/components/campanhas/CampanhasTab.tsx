@@ -409,13 +409,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               </div>
             </Section>
 
-            <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <Info className="h-5 w-5 shrink-0 text-amber-500" />
-              <p className="text-[12px] leading-relaxed text-amber-800">
-                <strong>Envie só para quem é seu cliente.</strong> Disparos em massa não solicitados podem fazer o WhatsApp bloquear o número.
-              </p>
-            </div>
-
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               {!canSend && (
                 <p className="flex-1 text-[12px] text-slate-400">
