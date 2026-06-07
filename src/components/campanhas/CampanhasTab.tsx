@@ -262,6 +262,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   const valid = hasValidWhatsapp(c);
                   const checked = selectedIds.has(c.id);
                   const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+                  const totalGasto = (c.totalPedidos || 0) * (c.ticketMedio || 0);
                   return (
                     <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
                       className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
@@ -277,7 +278,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                           <Phone className="h-3 w-3" /> {c.celular || 'sem WhatsApp'}
                         </p>
                       </div>
-                      {!valid && <span className="shrink-0 text-[10px] font-medium text-amber-500">sem WhatsApp</span>}
+                      {valid ? (
+                        <div className="shrink-0 text-right">
+                          <p className="text-[12px] font-bold text-emerald-600">R$ {totalGasto.toFixed(2)}</p>
+                          <p className="text-[10px] text-slate-400">{c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos'}</p>
+                        </div>
+                      ) : (
+                        <span className="shrink-0 text-[10px] font-medium text-amber-500">sem WhatsApp</span>
+                      )}
                     </button>
                   );
                 })
