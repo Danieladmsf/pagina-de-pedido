@@ -15,9 +15,8 @@ import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Clock, Info, X, Search,
-  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus, LayoutTemplate,
+  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
 } from 'lucide-react';
-import { CampaignCard } from './CampaignCard';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp,
   type ClientLike,
@@ -55,13 +54,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const cancelRef = useRef(false);
 
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha Loja';
-  const storeLogo = storeProfile?.general?.logoUrl || storeProfile?.logoUrl;
   const link = buildStoreLink(storeProfile, user?.uid, typeof window !== 'undefined' ? window.location.origin : undefined);
-
-  // Geração de card (imagem) a partir do texto + logo — sem custo de API.
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [generatingCard, setGeneratingCard] = useState(false);
-  const [cardLogoEnabled, setCardLogoEnabled] = useState(true);
 
   const clientesQuery = useMemoFirebase(
     () => (db && user ? query(collection(db, 'clientes'), where('ownerId', '==', user.uid)) : null),
@@ -169,44 +162,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     e.target.value = '';
   };
   const removeImage = () => { setImageFile(null); set({ imageUrl: null }); };
-
-  // Texto do card: troca {loja} pelo nome real e remove tokens que não fazem
-  // sentido numa imagem única (a mesma para todos): {primeiro_nome}/{nome}/{link}.
-  const buildCardText = () => draft.message
-    .split('{loja}').join(storeName)
-    .replace(/\{primeiro_nome\}|\{nome\}|\{link\}/g, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  const generateCard = async () => {
-    if (!draft.message.trim()) {
-      toast({ variant: 'destructive', title: 'Escreva a mensagem primeiro' });
-      return;
-    }
-    setGeneratingCard(true);
-    try {
-      const { toPng } = await import('html-to-image');
-      let dataUrl: string;
-      try {
-        dataUrl = await toPng(cardRef.current!, { pixelRatio: 1, cacheBust: true });
-      } catch {
-        // Provável bloqueio do logo (CORS): tenta de novo sem o logo.
-        setCardLogoEnabled(false);
-        await new Promise((r) => setTimeout(r, 80));
-        dataUrl = await toPng(cardRef.current!, { pixelRatio: 1, cacheBust: true });
-      }
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], 'campanha.png', { type: 'image/png' });
-      setImageFile(file);
-      set({ imageUrl: dataUrl });
-      toast({ title: 'Card gerado! 🎨', description: 'Imagem anexada à campanha.' });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Não foi possível gerar o card', description: e?.message || 'Tente novamente.' });
-    } finally {
-      setGeneratingCard(false);
-    }
-  };
 
   const startDispatch = async () => {
     if (!db || !user) return;
@@ -421,15 +376,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   })}
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={generateCard} disabled={generatingCard}
-                  className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-                  {generatingCard ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LayoutTemplate className="h-3.5 w-3.5" />}
-                  {generatingCard ? 'Gerando…' : 'Gerar card da campanha'}
-                </Button>
-                <span className="text-[11px] text-slate-400">cria uma imagem com seu logo, cores e o texto (sem custo)</span>
-              </div>
-
               <div className="mt-4">
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
                 {draft.imageUrl ? (
@@ -511,16 +457,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Card oculto (renderizado fora da tela só para virar PNG) */}
-      <div style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none' }} aria-hidden>
-        <CampaignCard
-          ref={cardRef}
-          storeName={storeName}
-          logo={cardLogoEnabled ? storeLogo : undefined}
-          text={buildCardText() || 'Sua mensagem aparece aqui'}
-        />
       </div>
 
       {/* Dialog confirmar / progresso / resultado */}
