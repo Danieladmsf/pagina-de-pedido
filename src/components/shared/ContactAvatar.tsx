@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { peekProfilePhoto } from '@/lib/wapi/profile-photo';
 
 interface ContactAvatarProps {
   phone: string;
@@ -11,28 +12,33 @@ interface ContactAvatarProps {
 }
 
 /**
- * Avatar do contato com a foto do WhatsApp carregada SOB DEMANDA (só quando
- * entra na tela, via IntersectionObserver). Fallback para as iniciais quando não
- * há foto, o link expirou ou deu erro. Compartilhado entre Campanhas e Clientes.
+ * Avatar do contato com a foto do WhatsApp.
+ *
+ * - Se a foto já está em cache (localStorage/módulo), renderiza INSTANTÂNEA na 1ª
+ *   pintura (sem rede, sem esperar) — como o WhatsApp.
+ * - Caso contrário, busca quando o item se aproxima da tela (pré-carrega antes de
+ *   ficar visível) e cai nas iniciais se não houver foto/erro.
  */
 export function ContactAvatar({ phone, initials, loadPhoto, className }: ContactAvatarProps) {
-  const [url, setUrl] = useState<string | null>(null);
+  const peeked = peekProfilePhoto(phone); // string | null | undefined
+  const [url, setUrl] = useState<string | null>(typeof peeked === 'string' ? peeked : null);
+  const [resolved, setResolved] = useState(peeked !== undefined);
   const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!phone || url) return;
+    if (!phone || resolved) return;
     const el = ref.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
     const io = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) {
         io.disconnect();
-        loadPhoto(phone).then((u) => { if (u) setUrl(u); });
+        loadPhoto(phone).then((u) => { setUrl(u); setResolved(true); });
       }
-    }, { rootMargin: '120px' });
+    }, { rootMargin: '400px' }); // pré-carrega bem antes de aparecer
     io.observe(el);
     return () => io.disconnect();
-  }, [phone, url, loadPhoto]);
+  }, [phone, resolved, loadPhoto]);
 
   return (
     <div
@@ -41,7 +47,7 @@ export function ContactAvatar({ phone, initials, loadPhoto, className }: Contact
     >
       {url && !failed ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} />
+        <img src={url} alt="" className="h-full w-full object-cover" loading="eager" onError={() => setFailed(true)} />
       ) : (
         initials
       )}
