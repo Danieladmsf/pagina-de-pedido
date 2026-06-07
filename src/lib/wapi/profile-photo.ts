@@ -11,9 +11,14 @@
  *
  * O link real expira em ~48h; guardamos por 24h e, depois, buscamos de novo.
  */
+import { createConcurrencyQueue } from '@/lib/throttle-queue';
+
 const cache = new Map<string, string | null>();
 const inflight = new Map<string, Promise<string | null>>();
 const TTL = 24 * 60 * 60 * 1000; // 24h
+// Limita as buscas simultâneas à w-api: a lista toda pode pedir foto de uma vez,
+// mas só algumas vão à rede por vez (gentil com a API, sem travar a tela).
+const fetchQueue = createConcurrencyQueue(6);
 
 const digits = (phone: string) => (phone || '').replace(/\D/g, '');
 const lsKey = (key: string) => `pdvpic:${key}`;
@@ -53,7 +58,10 @@ export function makeProfilePhotoLoader(user: any) {
     if (cache.has(key)) return cache.get(key)!;
     if (inflight.has(key)) return inflight.get(key)!;
 
-    const p = (async () => {
+    // Vai à rede através da fila (no máx. N em paralelo).
+    const p = fetchQueue(async () => {
+      // Pode ter sido resolvido por outra chamada enquanto esperava na fila.
+      if (cache.has(key)) return cache.get(key)!;
       try {
         const token = await user.getIdToken();
         const res = await fetch('/wapi/profile-pic', {
@@ -70,12 +78,11 @@ export function makeProfilePhotoLoader(user: any) {
         cache.set(key, null);
         persist(key, null);
         return null;
-      } finally {
-        inflight.delete(key);
       }
-    })();
+    });
 
     inflight.set(key, p);
+    p.finally(() => inflight.delete(key));
     return p;
   };
 }
