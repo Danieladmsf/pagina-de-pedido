@@ -46,6 +46,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'recencia', label: 'Compra recente' },
 ];
 const spentOf = (c: ClientLike) => (c.totalPedidos || 0) * (c.ticketMedio || 0);
+const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { toast } = useToast();
@@ -304,14 +305,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
                 const totalGasto = spentOf(c);
                 const pedidos = c.totalPedidos || 0;
-                const ultimo = c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos';
-                // O número em destaque acompanha a ordenação ativa (análise).
+                // O número em destaque acompanha a ordenação ativa — sempre com um
+                // rótulo dizendo o que é (evita confundir total gasto com valor de uma compra).
                 const metric =
-                  sortKey === 'pedidos' ? { primary: `${pedidos} compra(s)`, secondary: `R$ ${totalGasto.toFixed(2)}` }
-                  : sortKey === 'ticket' ? { primary: `R$ ${(c.ticketMedio || 0).toFixed(2)}`, secondary: `${pedidos} compra(s)` }
-                  : sortKey === 'frequencia' ? { primary: `${ordersPerMonth(c).toFixed(1)}/mês`, secondary: c.clienteDesde ? `cliente desde ${c.clienteDesde}` : `${pedidos} compra(s)` }
-                  : sortKey === 'recencia' ? { primary: c.ultimoPedido || '—', secondary: `R$ ${totalGasto.toFixed(2)}` }
-                  : { primary: `R$ ${totalGasto.toFixed(2)}`, secondary: ultimo };
+                  sortKey === 'pedidos' ? { label: 'compras', primary: `${pedidos}`, secondary: `${brl(totalGasto)} no total` }
+                  : sortKey === 'ticket' ? { label: 'ticket médio', primary: brl(c.ticketMedio || 0), secondary: `${pedidos} compra(s)` }
+                  : sortKey === 'frequencia' ? { label: 'frequência', primary: `${ordersPerMonth(c).toFixed(1)}/mês`, secondary: c.clienteDesde ? `cliente desde ${c.clienteDesde}` : `${pedidos} compra(s)` }
+                  : sortKey === 'recencia' ? { label: 'último pedido', primary: c.ultimoPedido || '—', secondary: `${pedidos} compra(s)` }
+                  : { label: 'total gasto', primary: brl(totalGasto), secondary: `${pedidos} compra(s)` };
                 return (
                   <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
                     className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
@@ -327,6 +328,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                     </div>
                     {valid ? (
                       <div className="shrink-0 text-right">
+                        <p className="text-[9px] font-medium uppercase tracking-wide text-slate-400">{metric.label}</p>
                         <p className="text-[12px] font-bold text-emerald-600">{metric.primary}</p>
                         <p className="text-[10px] text-slate-400">{metric.secondary}</p>
                       </div>
