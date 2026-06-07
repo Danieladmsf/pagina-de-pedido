@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { uploadImage } from '@/lib/upload';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
@@ -25,7 +24,10 @@ import {
   type ClientLike,
 } from '@/lib/campanhas/audience';
 import type { AudienceId, CampaignDraft } from '@/lib/campanhas/types';
-import { sendCampaign, type SendProgress, type SendCampaignResult } from '@/lib/campanhas/campaign-service';
+import {
+  startDispatch as runDispatch, cancelDispatch, dismiss as dismissRunner,
+  subscribe as subscribeRunner, getState as getRunnerState,
+} from '@/lib/campanhas/campaign-runner';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -70,10 +72,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [savingList, setSavingList] = useState(false);
   // Lista marcada para exclusão (confirmação) — a lixeira fica perto do clique de carregar.
   const [listToDelete, setListToDelete] = useState<any | null>(null);
-  const [sending, setSending] = useState(false);
-  const [progress, setProgress] = useState<SendProgress | null>(null);
-  const [result, setResult] = useState<SendCampaignResult | null>(null);
-  const cancelRef = useRef(false);
+
+  // Estado do disparo vive no runner (singleton) — sobrevive à troca de aba.
+  const runner = useSyncExternalStore(subscribeRunner, getRunnerState, getRunnerState);
+  // Rola a lista até o contato que está sendo enviado agora.
+  const currentRowRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [runner.currentId]);
 
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha Loja';
   const link = buildStoreLink(storeProfile, user?.uid, typeof window !== 'undefined' ? window.location.origin : undefined);
@@ -273,70 +279,48 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   };
   const removeImage = () => { setImageFile(null); set({ imageUrl: null }); };
 
-  const startDispatch = async () => {
-    if (!db || !user) return;
-    setSending(true);
-    setResult(null);
-    setProgress({ total: audienceCount, sent: 0, failed: 0, done: false });
-    cancelRef.current = false;
-    try {
-      let uploadedUrl: string | null = null;
-      if (imageFile) uploadedUrl = await uploadImage(imageFile);
-      // Repetindo uma campanha: a imagem já está hospedada (URL remota) — reusa.
-      else if (draft.imageUrl && /^https?:/i.test(draft.imageUrl)) uploadedUrl = draft.imageUrl;
-
-      const res = await sendCampaign({
-        empresaId: user.uid,
-        getToken: () => user.getIdToken(),
-        targets,
-        message: draft.message,
-        imageUrl: uploadedUrl,
-        loja: storeName,
-        link,
-        onProgress: setProgress,
-        shouldCancel: () => cancelRef.current,
-      });
-      setResult(res);
-
-      // Histórico é secundário: se falhar (ex.: regras do Firestore), NÃO derruba
-      // o sucesso do envio — só registra um aviso no console.
-      try {
+  // Inicia o disparo em segundo plano (runner). Fecha o dialog na hora — o
+  // progresso aparece no painel do topo e a tela fica livre para navegar.
+  const startDispatch = () => {
+    if (!db || !user || runner.active) return;
+    const jobTargets = targets;
+    const jobName = draft.name?.trim() || 'Campanha';
+    const jobMessage = draft.message;
+    setConfirmOpen(false);
+    runDispatch({
+      empresaId: user.uid,
+      getToken: () => user.getIdToken(),
+      targets: jobTargets,
+      message: jobMessage,
+      imageFile,
+      imageUrlRemote: draft.imageUrl,
+      loja: storeName,
+      link,
+      name: jobName,
+      // Salva no histórico (secundário — não derruba o disparo se falhar).
+      persist: async ({ result, imageUrl }) => {
         const id = doc(collection(db, 'campaigns')).id;
         await setDoc(doc(db, 'campaigns', id), {
           id, ownerId: user.uid,
-          name: draft.name?.trim() || 'Campanha',
+          name: jobName,
           audienceId: 'manual', audienceLabel: 'Seleção manual',
-          message: draft.message, hasImage: !!uploadedUrl, imageUrl: uploadedUrl,
-          total: res.total, sent: res.sent, failed: res.failed, canceled: res.canceled,
+          message: jobMessage, hasImage: !!imageUrl, imageUrl,
+          total: result.total, sent: result.sent, failed: result.failed, canceled: result.canceled,
           createdAt: new Date().toISOString(),
         });
-      } catch (histErr) {
-        console.warn('[Campanhas] Campanha enviada, mas o histórico não foi salvo (verifique as regras do Firestore):', histErr);
-      }
-
-      toast({ title: 'Campanha finalizada', description: `${res.sent} enviada(s), ${res.failed} falha(s).` });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Erro na campanha', description: e?.message || 'Falha ao disparar.' });
-    } finally {
-      setSending(false);
-    }
+      },
+    });
   };
 
-  const closeDialog = () => {
-    if (sending) return;
-    setConfirmOpen(false);
-    if (result) {
-      setDraft(EMPTY_DRAFT);
-      setImageFile(null);
-      setSelectedIds(new Set());
-      setResult(null);
-      setProgress(null);
-    }
+  // Encerra o resumo do disparo e limpa o rascunho/seleção.
+  const finishDispatch = () => {
+    dismissRunner();
+    setDraft(EMPTY_DRAFT);
+    setImageFile(null);
+    setSelectedIds(new Set());
   };
 
-  const progressPct = progress && progress.total > 0
-    ? Math.round(((progress.sent + progress.failed) / progress.total) * 100)
-    : 0;
+  const dispatchPct = runner.total > 0 ? Math.round(((runner.sent + runner.failed) / runner.total) * 100) : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
@@ -360,6 +344,54 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
         {/* ── Lista de contatos (full height, estilo WhatsApp Web) ── */}
         <div className="flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
+
+          {/* Painel de disparo em andamento / resultado — fica no topo, sem bloquear a tela */}
+          {(runner.active || runner.result || runner.error) && (
+            <div className="shrink-0 border-b border-slate-100 bg-slate-50 p-3">
+              {runner.error ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-[12px] font-medium text-rose-600">
+                    <AlertTriangle className="h-4 w-4" /> {runner.error}
+                  </p>
+                  <button type="button" onClick={dismissRunner} className="text-[11px] text-slate-400 hover:text-slate-600">Fechar</button>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-700">
+                      {runner.active
+                        ? <><Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-500" /> <span className="truncate">Enviando “{runner.name}”…</span></>
+                        : runner.result?.canceled
+                          ? <><Ban className="h-4 w-4 shrink-0 text-amber-500" /> <span className="truncate">Disparo interrompido</span></>
+                          : <><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> <span className="truncate">Campanha concluída</span></>}
+                    </p>
+                    <span className="shrink-0 text-[11px] font-semibold text-slate-500">{dispatchPct}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${dispatchPct}%` }} />
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">
+                      <strong className="text-emerald-600">{runner.sent}</strong> enviadas
+                      {runner.failed > 0 && <> · <strong className="text-rose-500">{runner.failed}</strong> falhas</>}
+                      {' '}de {runner.total}
+                    </span>
+                    {runner.active ? (
+                      <button type="button" onClick={cancelDispatch} className="flex items-center gap-1 font-medium text-rose-500 hover:text-rose-600">
+                        <Ban className="h-3 w-3" /> Interromper
+                      </button>
+                    ) : (
+                      <button type="button" onClick={finishDispatch} className="font-medium text-emerald-600 hover:text-emerald-700">Concluir</button>
+                    )}
+                  </div>
+                  {runner.active && (
+                    <p className="mt-1 text-[10px] text-slate-400">Roda em segundo plano — pode navegar por outras abas.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-800">Contatos</h3>
@@ -404,10 +436,16 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   : sortKey === 'frequencia' ? { label: 'frequência', primary: `${ordersPerMonth(c).toFixed(1)}/mês`, secondary: c.clienteDesde ? `cliente desde ${c.clienteDesde}` : `${pedidos} compra(s)` }
                   : sortKey === 'recencia' ? { label: 'último pedido', primary: c.ultimoPedido || '—', secondary: `${pedidos} compra(s)` }
                   : { label: 'total gasto', primary: brl(totalGasto), secondary: `${pedidos} compra(s)` };
+                // Status do disparo neste contato (anima a linha durante o envio).
+                const dStatus = runner.currentId === c.id ? 'sending' : runner.doneIds[c.id];
                 return (
                   <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
+                    ref={dStatus === 'sending' ? currentRowRef : undefined}
                     className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
-                      !valid ? 'cursor-not-allowed opacity-50' : checked ? 'bg-emerald-50' : 'hover:bg-slate-50'
+                      dStatus === 'sending' ? 'animate-pulse bg-emerald-100 ring-1 ring-inset ring-emerald-300'
+                      : dStatus === 'failed' ? 'bg-rose-50'
+                      : dStatus === 'sent' ? 'bg-emerald-50/60'
+                      : !valid ? 'cursor-not-allowed opacity-50' : checked ? 'bg-emerald-50' : 'hover:bg-slate-50'
                     }`}>
                     <Checkbox checked={checked} disabled={!valid} className="pointer-events-none shrink-0" />
                     <ContactAvatar phone={valid ? (c.celular || '') : ''} initials={initials} loadPhoto={loadPhoto} />
@@ -417,7 +455,13 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                         <Phone className="h-3 w-3" /> {c.celular || 'sem WhatsApp'}
                       </p>
                     </div>
-                    {valid ? (
+                    {dStatus ? (
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold">
+                        {dStatus === 'sending' && <><Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" /> <span className="text-emerald-600">enviando…</span></>}
+                        {dStatus === 'sent' && <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> <span className="text-emerald-600">enviado</span></>}
+                        {dStatus === 'failed' && <><Ban className="h-3.5 w-3.5 text-rose-500" /> <span className="text-rose-500">falhou</span></>}
+                      </span>
+                    ) : valid ? (
                       <div className="shrink-0 text-right">
                         <p className="text-[9px] font-medium uppercase tracking-wide text-slate-400">{metric.label}</p>
                         <p className="text-[12px] font-bold text-emerald-600">{metric.primary}</p>
@@ -588,9 +632,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 </p>
               )}
               <Button className="gap-2 bg-emerald-600 px-6 hover:bg-emerald-700 disabled:opacity-60"
-                disabled={!canSend} onClick={() => setConfirmOpen(true)}>
-                <Rocket className="h-4 w-4" /> Disparar para {audienceCount}
-                <ChevronRight className="h-4 w-4" />
+                disabled={!canSend || runner.active} onClick={() => setConfirmOpen(true)}>
+                {runner.active ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Rocket className="h-4 w-4" /> Disparar para {audienceCount}<ChevronRight className="h-4 w-4" /></>}
               </Button>
             </div>
 
@@ -645,75 +688,25 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         </div>
       </div>
 
-      {/* Dialog confirmar / progresso / resultado */}
-      <Dialog open={confirmOpen} onOpenChange={(o) => { if (!o) closeDialog(); }}>
+      {/* Dialog: confirmar disparo (depois roda em segundo plano) */}
+      <Dialog open={confirmOpen} onOpenChange={(o) => { if (!o) setConfirmOpen(false); }}>
         <DialogContent className="sm:max-w-[440px]">
-          {result ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  {result.canceled ? <Ban className="h-5 w-5 text-amber-500" /> : <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
-                  {result.canceled ? 'Campanha interrompida' : 'Campanha concluída'}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="grid grid-cols-3 gap-3 py-2">
-                <ResultStat label="Enviadas" value={result.sent} tint="emerald" />
-                <ResultStat label="Falhas" value={result.failed} tint="rose" />
-                <ResultStat label="Total" value={result.total} tint="slate" />
-              </div>
-              {result.failed > 0 && (
-                <p className="flex items-start gap-2 rounded-lg bg-rose-50 p-2.5 text-[11px] text-rose-700">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Algumas falharam (número sem WhatsApp, limite de taxa ou conexão). Tente reenviar depois.
-                </p>
-              )}
-              <DialogFooter><Button onClick={closeDialog} className="bg-emerald-600 hover:bg-emerald-700">Concluir</Button></DialogFooter>
-            </>
-          ) : sending ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin text-emerald-500" /> Enviando campanha…</DialogTitle>
-              </DialogHeader>
-              <div className="py-2">
-                <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-                  <span>{(progress?.sent || 0) + (progress?.failed || 0)} de {progress?.total || audienceCount}</span>
-                  <span>{progressPct}%</span>
-                </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progressPct}%` }} />
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-emerald-600">{progress?.sent || 0} enviadas</span>
-                  {(progress?.failed || 0) > 0 && <span className="font-semibold text-rose-500">{progress?.failed} falhas</span>}
-                  {progress?.current && <span className="truncate text-slate-400">→ {progress.current}</span>}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { cancelRef.current = true; }} className="gap-1.5 border-rose-200 text-rose-600 hover:bg-rose-50">
-                  <Ban className="h-4 w-4" /> Interromper
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><Rocket className="h-5 w-5 text-emerald-500" /> Confirmar disparo</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-2 py-2 text-sm">
-                <Row label="Contatos" value={`${audienceCount}`} />
-                <Row label="Imagem" value={imageFile ? 'Sim' : 'Não'} />
-                <Row label="Intervalo" value={`aleatório (${DELAY_MIN_SECONDS}–${DELAY_MAX_SECONDS}s)`} />
-                <Row label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} />
-              </div>
-              <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800">
-                <Info className="h-4 w-4 shrink-0" /> Serão enviadas <strong>{audienceCount}</strong> mensagens reais pelo WhatsApp.
-              </p>
-              <DialogFooter className="gap-2">
-                <Button variant="ghost" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
-                <Button onClick={startDispatch} className="gap-2 bg-emerald-600 hover:bg-emerald-700"><Send className="h-4 w-4" /> Enviar agora</Button>
-              </DialogFooter>
-            </>
-          )}
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Rocket className="h-5 w-5 text-emerald-500" /> Confirmar disparo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2 text-sm">
+            <Row label="Contatos" value={`${audienceCount}`} />
+            <Row label="Imagem" value={(imageFile || draft.imageUrl) ? 'Sim' : 'Não'} />
+            <Row label="Intervalo" value={`aleatório (${DELAY_MIN_SECONDS}–${DELAY_MAX_SECONDS}s)`} />
+            <Row label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} />
+          </div>
+          <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800">
+            <Info className="h-4 w-4 shrink-0" /> Serão enviadas <strong>{audienceCount}</strong> mensagens reais. O envio roda em segundo plano — você pode navegar por outras abas.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+            <Button onClick={startDispatch} className="gap-2 bg-emerald-600 hover:bg-emerald-700"><Send className="h-4 w-4" /> Enviar agora</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -777,15 +770,6 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
       <span className="text-slate-500">{label}</span>
       <span className="font-semibold text-slate-800">{value}</span>
-    </div>
-  );
-}
-function ResultStat({ label, value, tint }: { label: string; value: number; tint: 'emerald' | 'rose' | 'slate' }) {
-  const tints: Record<string, string> = { emerald: 'text-emerald-600 bg-emerald-50', rose: 'text-rose-600 bg-rose-50', slate: 'text-slate-700 bg-slate-100' };
-  return (
-    <div className={`rounded-xl p-3 text-center ${tints[tint]}`}>
-      <p className="text-2xl font-black">{value}</p>
-      <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">{label}</p>
     </div>
   );
 }

@@ -28,6 +28,8 @@ export interface SendCampaignParams {
   loja: string;
   link: string;
   onProgress?: (p: SendProgress) => void;
+  /** Evento por contato — para a UI animar a lista (enviando / enviado / falhou). */
+  onItem?: (id: string, status: 'sending' | 'sent' | 'failed') => void;
   shouldCancel?: () => boolean;
 }
 
@@ -46,7 +48,7 @@ function firstName(nome?: string) {
 }
 
 export async function sendCampaign(params: SendCampaignParams): Promise<SendCampaignResult> {
-  const { empresaId, getToken, targets, message, imageUrl, loja, link, onProgress, shouldCancel } = params;
+  const { empresaId, getToken, targets, message, imageUrl, loja, link, onProgress, onItem, shouldCancel } = params;
   const total = targets.length;
   let sent = 0;
   let failed = 0;
@@ -60,6 +62,7 @@ export async function sendCampaign(params: SendCampaignParams): Promise<SendCamp
 
     const t = targets[i];
     onProgress?.({ total, sent, failed, current: t.nome, done: false });
+    onItem?.(t.id, 'sending');
 
     const rendered = renderMessage(message, {
       primeiro_nome: firstName(t.nome),
@@ -90,12 +93,15 @@ export async function sendCampaign(params: SendCampaignParams): Promise<SendCamp
       if (!res.ok || data?.error) {
         failed++;
         errors.push({ id: t.id, nome: t.nome, reason: data?.error || `HTTP ${res.status}` });
+        onItem?.(t.id, 'failed');
       } else {
         sent++;
+        onItem?.(t.id, 'sent');
       }
     } catch (err) {
       failed++;
       errors.push({ id: t.id, nome: t.nome, reason: err instanceof Error ? err.message : 'Falha de rede' });
+      onItem?.(t.id, 'failed');
     }
 
     onProgress?.({ total, sent, failed, current: t.nome, done: false });
