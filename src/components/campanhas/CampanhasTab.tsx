@@ -40,6 +40,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchContacts, setSearchContacts] = useState('');
+  const [activePreset, setActivePreset] = useState<AudienceId | null>(null);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -73,13 +74,19 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     () => [...clients].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
     [clients],
   );
+  // Lista base: filtrada pelo preset ativo (se houver), senão todos.
+  const baseList = useMemo(() => {
+    const arr = activePreset ? resolveAudience(clients, activePreset) : sortedClients;
+    return [...arr].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+  }, [clients, activePreset, sortedClients]);
+
   const visibleClients = useMemo(() => {
     const term = normalizeSearch(searchContacts);
-    if (!term) return sortedClients;
-    return sortedClients.filter(c =>
+    if (!term) return baseList;
+    return baseList.filter(c =>
       normalizeSearch(c.nome || '').includes(term) || (c.celular || '').replace(/\D/g, '').includes(term.replace(/\D/g, '')),
     );
-  }, [sortedClients, searchContacts]);
+  }, [baseList, searchContacts]);
 
   const selectableVisible = useMemo(() => visibleClients.filter(hasValidWhatsapp), [visibleClients]);
   const allVisibleSelected = selectableVisible.length > 0 && selectableVisible.every(c => selectedIds.has(c.id));
@@ -95,7 +102,13 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     else selectableVisible.forEach(c => n.add(c.id));
     return n;
   });
-  const applyPreset = (id: AudienceId) => setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+  // Chip de preset: FILTRA a lista para o grupo (e já seleciona). Clicar de novo
+  // no mesmo chip volta a mostrar todos (mantendo a seleção).
+  const applyPreset = (id: AudienceId) => {
+    const turningOff = activePreset === id;
+    setActivePreset(turningOff ? null : id);
+    if (!turningOff) setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+  };
   const clearSelection = () => setSelectedIds(new Set());
 
   const targets = useMemo(() => clients.filter(c => selectedIds.has(c.id) && hasValidWhatsapp(c)), [clients, selectedIds]);
@@ -204,19 +217,26 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 placeholder="Pesquisar pelo nome ou telefone..." className="h-10 pl-9" />
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {AUDIENCE_PRESETS.map((a) => (
-                <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                  title={a.description}>
-                  {a.label} ({resolveAudience(clients, a.id as AudienceId).length})
-                </button>
-              ))}
+              {AUDIENCE_PRESETS.map((a) => {
+                const active = activePreset === a.id;
+                return (
+                  <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      active
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
+                    }`}
+                    title={a.description}>
+                    {a.label} ({resolveAudience(clients, a.id as AudienceId).length})
+                  </button>
+                );
+              })}
             </div>
             <div className="mt-2 flex items-center justify-between">
               <button type="button" onClick={toggleAllVisible} disabled={selectableVisible.length === 0}
                 className="flex items-center gap-2 text-[12px] font-medium text-slate-600 hover:text-emerald-600 disabled:opacity-40">
                 <Checkbox checked={allVisibleSelected} className="pointer-events-none" />
-                Selecionar todos {searchContacts ? '(filtrados)' : ''} ({selectableVisible.length})
+                Selecionar todos {(searchContacts || activePreset) ? '(filtrados)' : ''} ({selectableVisible.length})
               </button>
               {selectedIds.size > 0 && (
                 <button type="button" onClick={clearSelection} className="text-[11px] text-slate-400 hover:text-rose-500">Limpar</button>
