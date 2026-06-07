@@ -15,7 +15,7 @@ import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Clock, Info, X, Search,
-  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone,
+  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2,
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp,
@@ -44,6 +44,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [searchContacts, setSearchContacts] = useState('');
   const [activePreset, setActivePreset] = useState<AudienceId | null>(null);
 
+  const [aiLoading, setAiLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<SendProgress | null>(null);
@@ -123,6 +124,31 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const canSend = (draft.message.trim().length > 0 || !!imageFile) && audienceCount > 0;
 
   const insertToken = (token: string) => set({ message: (draft.message ? draft.message + ' ' : '') + token });
+
+  // Gera/ajusta o texto da mensagem com IA (Claude) a partir do rascunho do lojista.
+  const improveWithAI = async () => {
+    if (!user) return;
+    setAiLoading(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/ai/campaign-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt: draft.message, loja: storeName }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.message) {
+        toast({ variant: 'destructive', title: 'IA indisponível', description: data?.error || 'Não foi possível gerar o texto.' });
+        return;
+      }
+      set({ message: data.message });
+      toast({ title: 'Texto gerado pela IA ✨' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e?.message || 'Falha ao gerar texto.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -315,7 +341,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 placeholder="Ex.: Promoção de Sexta — Pizza em dobro" className="h-11" />
             </Section>
 
-            <Section title="Mensagem" subtitle="Personalize com as variáveis abaixo">
+            <Section title="Mensagem" subtitle="Escreva um rascunho e deixe a IA ajustar, ou personalize com as variáveis">
+              <div className="mb-2 flex justify-end">
+                <Button type="button" variant="outline" size="sm" onClick={improveWithAI} disabled={aiLoading}
+                  className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50">
+                  {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                  {aiLoading ? 'Gerando…' : 'Melhorar com IA'}
+                </Button>
+              </div>
               <Textarea value={draft.message} onChange={(e) => set({ message: e.target.value })}
                 placeholder={'Olá {primeiro_nome}! 🍕 Hoje na {loja} tem oferta especial...'}
                 className="min-h-[150px] resize-none text-sm leading-relaxed" />
