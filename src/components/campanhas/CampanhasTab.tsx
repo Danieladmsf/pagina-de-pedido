@@ -274,47 +274,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               <span className="text-[11px] font-semibold text-emerald-600">{selectedIds.size} selecionado(s)</span>
             </div>
 
-            {/* Filtros de público (grade 2x2) */}
-            <div className="mb-2 grid grid-cols-2 gap-1.5">
-              {AUDIENCE_PRESETS.map((a) => {
-                const active = activePreset === a.id;
-                const count = resolveAudience(clients, a.id as AudienceId).length;
-                return (
-                  <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)} title={a.description}
-                    className={`flex flex-col items-start rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-                      active
-                        ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
-                    }`}>
-                    <span className="text-[11px] font-semibold leading-tight">{a.label}</span>
-                    <span className={`text-[10px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>{count} contatos</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Ordenar a lista para analisar a base e montar o disparo */}
-            <div className="mb-2">
-              <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                <ArrowDownWideNarrow className="h-3 w-3" /> Ordenar por
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {SORT_OPTIONS.map((o) => {
-                  const active = sortKey === o.key;
-                  return (
-                    <button key={o.key} type="button" onClick={() => setSortKey(o.key)}
-                      className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
-                        active
-                          ? 'border-slate-700 bg-slate-700 text-white'
-                          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'
-                      }`}>
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input value={searchContacts} onChange={(e) => setSearchContacts(e.target.value)}
@@ -384,6 +343,49 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         {/* ── Composição (rola independente) ── */}
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
           <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
+
+            <Section title="Público e análise" subtitle="Filtre por grupo e ordene a base para montar o disparo">
+              {/* Filtros de público — aqui há espaço para uma linha só */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {AUDIENCE_PRESETS.map((a) => {
+                  const active = activePreset === a.id;
+                  const count = resolveAudience(clients, a.id as AudienceId).length;
+                  return (
+                    <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)} title={a.description}
+                      className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left transition-colors ${
+                        active
+                          ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                      }`}>
+                      <span className="text-[12px] font-semibold leading-tight">{a.label}</span>
+                      <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>{count} contatos</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Ordenar a lista para analisar a base e montar o disparo */}
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar por
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SORT_OPTIONS.map((o) => {
+                    const active = sortKey === o.key;
+                    return (
+                      <button key={o.key} type="button" onClick={() => setSortKey(o.key)}
+                        className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
+                          active
+                            ? 'border-slate-700 bg-slate-700 text-white'
+                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'
+                        }`}>
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </Section>
 
             <Section title="Nome da campanha" subtitle="Só para identificar no histórico">
               <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
