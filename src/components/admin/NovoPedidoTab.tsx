@@ -684,7 +684,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   if (!caixaAberto) {
     return (
-      <div className="flex justify-center">
+      <div className="flex-1 flex items-center justify-center min-h-0">
         <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
           <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
           <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
