@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
+  DELAY_MIN_SECONDS, DELAY_MAX_SECONDS, DELAY_AVG_SECONDS,
   type ClientLike,
 } from '@/lib/campanhas/audience';
 import type { AudienceId, CampaignDraft } from '@/lib/campanhas/types';
@@ -31,8 +32,6 @@ interface CampanhasTabProps {
   user?: any;
   storeProfile?: any;
 }
-
-const DELAY_PRESETS = [5, 8, 12, 20];
 
 // Ordenações analíticas da lista de contatos: o lojista usa para "ler" a base
 // (quem compra mais, quem gasta mais, quem some) e montar a seleção do disparo.
@@ -141,7 +140,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   const targets = useMemo(() => clients.filter(c => selectedIds.has(c.id) && hasValidWhatsapp(c)), [clients, selectedIds]);
   const audienceCount = targets.length;
-  const minutes = estimateMinutes(audienceCount, draft.delaySeconds);
+  const minutes = estimateMinutes(audienceCount, DELAY_AVG_SECONDS);
 
   const canSend = (draft.message.trim().length > 0 || !!imageFile) && audienceCount > 0;
 
@@ -201,7 +200,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         imageUrl: uploadedUrl,
         loja: storeName,
         link,
-        delaySeconds: draft.delaySeconds,
         onProgress: setProgress,
         shouldCancel: () => cancelRef.current,
       });
@@ -443,19 +441,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               </div>
             </Section>
 
-            <Section title="Velocidade do disparo" subtitle="Intervalos maiores reduzem o risco de bloqueio">
-              <div className="flex flex-wrap gap-2">
-                {DELAY_PRESETS.map((d) => (
-                  <button key={d} type="button" onClick={() => set({ delaySeconds: d })}
-                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-all ${
-                      draft.delaySeconds === d ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'
-                    }`}>
-                    {d}s
-                  </button>
-                ))}
-              </div>
-            </Section>
-
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               {!canSend && (
                 <p className="flex-1 text-[12px] text-slate-400">
@@ -556,7 +541,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               <div className="space-y-2 py-2 text-sm">
                 <Row label="Contatos" value={`${audienceCount}`} />
                 <Row label="Imagem" value={imageFile ? 'Sim' : 'Não'} />
-                <Row label="Intervalo" value={`${draft.delaySeconds}s entre envios`} />
+                <Row label="Intervalo" value={`aleatório (${DELAY_MIN_SECONDS}–${DELAY_MAX_SECONDS}s)`} />
                 <Row label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} />
               </div>
               <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800">

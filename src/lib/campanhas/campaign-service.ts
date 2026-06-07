@@ -4,11 +4,11 @@
  * Disparo de campanha de WhatsApp.
  *
  * Lógica isolada (sem React) para a UI só orquestrar. Envia SEQUENCIALMENTE,
- * respeitando um intervalo entre mensagens (anti-bloqueio), com callback de
- * progresso e suporte a cancelamento. Cada destinatário recebe a mensagem com
- * os tokens já personalizados ({primeiro_nome}, etc.).
+ * respeitando um intervalo ALEATÓRIO entre mensagens (anti-bloqueio), com
+ * callback de progresso e suporte a cancelamento. Cada destinatário recebe a
+ * mensagem com os tokens já personalizados ({primeiro_nome}, etc.).
  */
-import { renderMessage } from './audience';
+import { renderMessage, randomDelayMs } from './audience';
 import type { ClientLike } from './audience';
 
 export interface SendProgress {
@@ -27,7 +27,6 @@ export interface SendCampaignParams {
   imageUrl?: string | null;
   loja: string;
   link: string;
-  delaySeconds: number;
   onProgress?: (p: SendProgress) => void;
   shouldCancel?: () => boolean;
 }
@@ -47,7 +46,7 @@ function firstName(nome?: string) {
 }
 
 export async function sendCampaign(params: SendCampaignParams): Promise<SendCampaignResult> {
-  const { empresaId, getToken, targets, message, imageUrl, loja, link, delaySeconds, onProgress, shouldCancel } = params;
+  const { empresaId, getToken, targets, message, imageUrl, loja, link, onProgress, shouldCancel } = params;
   const total = targets.length;
   let sent = 0;
   let failed = 0;
@@ -101,9 +100,9 @@ export async function sendCampaign(params: SendCampaignParams): Promise<SendCamp
 
     onProgress?.({ total, sent, failed, current: t.nome, done: false });
 
-    // Intervalo anti-bloqueio (não espera após o último).
+    // Intervalo anti-bloqueio ALEATÓRIO (não espera após o último).
     if (i < targets.length - 1 && !shouldCancel?.()) {
-      await sleep(Math.max(0, delaySeconds * 1000));
+      await sleep(randomDelayMs());
     }
   }
 

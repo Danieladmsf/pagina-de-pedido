@@ -58,6 +58,19 @@ export function ordersPerMonth(c: ClientLike): number {
   return pedidos / months;
 }
 
+/**
+ * Intervalo ALEATÓRIO entre envios (anti-bloqueio): cada mensagem espera um
+ * tempo sorteado nesta faixa, para o ritmo não ficar robótico/previsível.
+ */
+export const DELAY_MIN_SECONDS = 6;
+export const DELAY_MAX_SECONDS = 18;
+/** Média da faixa — usada só para estimar o tempo total. */
+export const DELAY_AVG_SECONDS = (DELAY_MIN_SECONDS + DELAY_MAX_SECONDS) / 2;
+/** Sorteia um intervalo (em ms) dentro da faixa anti-bloqueio. */
+export function randomDelayMs(min = DELAY_MIN_SECONDS, max = DELAY_MAX_SECONDS): number {
+  return Math.round((min + Math.random() * (max - min)) * 1000);
+}
+
 /** Estimativa de tempo total do disparo, dado o tamanho do público e o delay. */
 export function estimateMinutes(audienceCount: number, delaySeconds: number): number {
   if (audienceCount <= 0) return 0;
