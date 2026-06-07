@@ -36,3 +36,62 @@ export interface CampaignStatsView {
   audienceCount: number;
   estimatedMinutes: number;
 }
+
+/* ── Disparo agendado / em segundo plano (server-side, coleção scheduled_campaigns) ── */
+
+export type ScheduledCampaignStatus = 'scheduled' | 'running' | 'done' | 'canceled' | 'error';
+
+/** Snapshot do destinatário no momento do agendamento (não depende de `clientes` mudar). */
+export interface CampaignRecipient {
+  id: string;
+  nome: string;
+  celular: string;
+}
+
+export interface CampaignSendResult {
+  id: string;
+  status: 'sent' | 'failed';
+  reason?: string;
+}
+
+/**
+ * Documento da coleção `scheduled_campaigns`. Criado pela UI; processado pelo
+ * `/api/cron/dispatch` (gatilhado pelo QStash). A UI lê em realtime para mostrar
+ * o progresso. Campos de envio (`cursor/sent/failed/currentId/...`) são escritos
+ * SOMENTE pelo servidor (Admin SDK).
+ */
+export interface ScheduledCampaign {
+  id: string;
+  /** Tenant dono (= empresaId / uid). */
+  ownerId: string;
+  name: string;
+  message: string;
+  /** Imagem JÁ hospedada (URL pública) — a UI faz o upload antes de agendar. */
+  imageUrl: string | null;
+  /** Congelados no agendamento para o `renderMessage` no servidor. */
+  loja: string;
+  link: string;
+  recipients: CampaignRecipient[];
+  /** Faixa do intervalo aleatório anti-bloqueio (segundos). */
+  delayMin: number;
+  delayMax: number;
+
+  status: ScheduledCampaignStatus;
+  /** Quando começar (ISO). Imediato = agora. */
+  scheduleAt: string;
+  /** Índice do próximo destinatário a enviar (idempotência/resume). */
+  cursor: number;
+  sent: number;
+  failed: number;
+  /** Contato sendo enviado agora — anima a lista na UI. */
+  currentId: string | null;
+  results?: CampaignSendResult[];
+
+  /** Lock cooperativo anti-overlap (ISO) — escrito pelo servidor. */
+  lockedAt: string | null;
+  /** Id da última mensagem QStash enfileirada (p/ cancelar a entrega pendente). */
+  lastQstashMessageId?: string;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

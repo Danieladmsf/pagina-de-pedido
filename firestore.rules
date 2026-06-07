@@ -129,6 +129,15 @@ service cloud.firestore {
       allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
     }
 
+    // Disparo agendado/segundo plano. O dono cria e lê (progresso em realtime) e
+    // pode cancelar (update/delete). Os writes de envio (cursor/sent/failed/...)
+    // são feitos pelo servidor via Admin SDK, que ignora estas regras.
+    match /scheduled_campaigns/{campaignId} {
+      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+    }
+
     match /whatsapp_messages/{messageId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin()
