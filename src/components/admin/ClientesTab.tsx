@@ -17,6 +17,8 @@ import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDay
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { normalizeSearch } from '@/lib/utils';
+import { ContactAvatar } from '@/components/shared/ContactAvatar';
+import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
 interface ClientesTabProps {
   db: any;
@@ -173,6 +175,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
   const { data: clientesRaw, isLoading } = useCollection(clientesQuery);
   const clientes = (clientesRaw || []) as Cliente[];
+
+  // Foto de perfil do WhatsApp sob demanda (loader compartilhado, cache de módulo).
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
 
   // Opções de filtro derivadas da própria base
   const bairroOptions = useMemo(
@@ -663,8 +668,17 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 paginated.map(c => (
                   <TableRow key={c.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setViewingCliente(c)}>
                     <TableCell className="pl-4 font-semibold text-slate-700">
-                      {c.nome}
-                      {c.creditEnabled && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">Conta da Casa</Badge>}
+                      <div className="flex items-center gap-2.5">
+                        <ContactAvatar
+                          phone={c.celular || ''}
+                          initials={(c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                          loadPhoto={loadPhoto}
+                        />
+                        <span>
+                          {c.nome}
+                          {c.creditEnabled && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">Conta da Casa</Badge>}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.celular || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.bairro || '-'}</TableCell>
