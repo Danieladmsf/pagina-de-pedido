@@ -268,7 +268,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
         {/* ── Composição (rola independente) ── */}
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
-          <div className="mx-auto w-full max-w-[760px] space-y-5 p-4 sm:p-6">
+          <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
 
             {/* Stats */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
