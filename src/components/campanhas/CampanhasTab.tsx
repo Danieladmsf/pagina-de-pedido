@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +16,7 @@ import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
   Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
+  ListPlus, Trash2, Repeat, Bookmark,
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
@@ -62,6 +63,10 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   // Variáveis que a IA pode usar (toggles). Default: primeiro nome + nome da loja.
   const [enabledTokens, setEnabledTokens] = useState<Set<string>>(new Set(['{primeiro_nome}', '{loja}']));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Dialog para salvar a seleção atual como uma lista de transmissão reutilizável.
+  const [listDialogOpen, setListDialogOpen] = useState(false);
+  const [listName, setListName] = useState('');
+  const [savingList, setSavingList] = useState(false);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<SendProgress | null>(null);
   const [result, setResult] = useState<SendCampaignResult | null>(null);
@@ -85,6 +90,17 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const history = useMemo(
     () => [...((campaignsRaw || []) as any[])].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
     [campaignsRaw],
+  );
+
+  // Listas de transmissão salvas (seleções de contatos reutilizáveis).
+  const listsQuery = useMemoFirebase(
+    () => (db && user ? query(collection(db, 'broadcast_lists'), where('ownerId', '==', user.uid)) : null),
+    [db, user],
+  );
+  const { data: listsRaw } = useCollection(listsQuery);
+  const broadcastLists = useMemo(
+    () => [...((listsRaw || []) as any[])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')),
+    [listsRaw],
   );
 
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -137,6 +153,55 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     if (!turningOff) setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
   };
   const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Listas de transmissão ──────────────────────────────────────────────
+  // Salva os contatos selecionados como uma lista nomeada para reusar depois.
+  const saveCurrentAsList = async () => {
+    if (!db || !user) return;
+    const name = listName.trim();
+    if (!name || selectedIds.size === 0) return;
+    setSavingList(true);
+    try {
+      const id = doc(collection(db, 'broadcast_lists')).id;
+      await setDoc(doc(db, 'broadcast_lists', id), {
+        id, ownerId: user.uid, name,
+        contactIds: Array.from(selectedIds),
+        createdAt: new Date().toISOString(),
+      });
+      toast({ title: 'Lista salva', description: `"${name}" com ${selectedIds.size} contato(s).` });
+      setListDialogOpen(false);
+      setListName('');
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível salvar', description: e?.message || 'Verifique as regras do Firestore.' });
+    } finally {
+      setSavingList(false);
+    }
+  };
+  // Carrega uma lista salva: aplica a seleção (só contatos que ainda existem).
+  const loadList = (list: any) => {
+    const valid = new Set((clients || []).map(c => c.id));
+    const ids = ((list.contactIds || []) as string[]).filter(id => valid.has(id));
+    setActivePreset(null);
+    setSearchContacts('');
+    setSelectedIds(new Set(ids));
+    toast({ title: `Lista "${list.name}" carregada`, description: `${ids.length} contato(s) selecionado(s).` });
+  };
+  const deleteList = async (list: any) => {
+    if (!db || !user) return;
+    try {
+      await deleteDoc(doc(db, 'broadcast_lists', list.id));
+      toast({ title: 'Lista removida' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível remover', description: e?.message });
+    }
+  };
+
+  // Reabre uma campanha do histórico: recarrega nome, texto e imagem para repetir.
+  const repeatCampaign = (c: any) => {
+    setDraft({ ...EMPTY_DRAFT, name: c.name || '', message: c.message || '', imageUrl: c.imageUrl || null });
+    setImageFile(null);
+    toast({ title: 'Campanha carregada', description: 'Texto e imagem prontos. Escolha os contatos e dispare.' });
+  };
 
   const targets = useMemo(() => clients.filter(c => selectedIds.has(c.id) && hasValidWhatsapp(c)), [clients, selectedIds]);
   const audienceCount = targets.length;
@@ -191,6 +256,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     try {
       let uploadedUrl: string | null = null;
       if (imageFile) uploadedUrl = await uploadImage(imageFile);
+      // Repetindo uma campanha: a imagem já está hospedada (URL remota) — reusa.
+      else if (draft.imageUrl && /^https?:/i.test(draft.imageUrl)) uploadedUrl = draft.imageUrl;
 
       const res = await sendCampaign({
         empresaId: user.uid,
@@ -213,7 +280,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
           id, ownerId: user.uid,
           name: draft.name?.trim() || 'Campanha',
           audienceId: 'manual', audienceLabel: 'Seleção manual',
-          message: draft.message, hasImage: !!uploadedUrl,
+          message: draft.message, hasImage: !!uploadedUrl, imageUrl: uploadedUrl,
           total: res.total, sent: res.sent, failed: res.failed, canceled: res.canceled,
           createdAt: new Date().toISOString(),
         });
@@ -344,6 +411,43 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
           <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
 
+            {/* Listas de transmissão salvas — seleções de contatos reutilizáveis */}
+            <Section title="Listas de transmissão" subtitle="Salve uma seleção de contatos para reusar em campanhas futuras">
+              <div className="flex flex-wrap items-center gap-2">
+                {broadcastLists.length === 0 ? (
+                  <p className="text-[12px] text-slate-400">
+                    Nenhuma lista salva. Selecione contatos na lista ao lado e clique em “Salvar seleção”.
+                  </p>
+                ) : (
+                  broadcastLists.map((l) => {
+                    const count = (l.contactIds || []).length;
+                    return (
+                      <div key={l.id}
+                        className="group flex items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-3 pr-1.5 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                        <button type="button" onClick={() => loadList(l)} title="Carregar esta lista"
+                          className="flex items-center gap-1.5 text-[12px] font-medium text-slate-700">
+                          <Bookmark className="h-3.5 w-3.5 text-emerald-500" />
+                          {l.name}
+                          <span className="text-[11px] text-slate-400">({count})</span>
+                        </button>
+                        <button type="button" onClick={() => deleteList(l)} title="Remover lista"
+                          className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-rose-100 hover:text-rose-500">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="mt-3">
+                <Button type="button" variant="outline" size="sm" disabled={selectedIds.size === 0}
+                  onClick={() => { setListName(''); setListDialogOpen(true); }}
+                  className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                  <ListPlus className="h-4 w-4" /> Salvar seleção ({selectedIds.size})
+                </Button>
+              </div>
+            </Section>
+
             <Section title="Público e análise" subtitle="Filtre por grupo e ordene a base para montar o disparo">
               {/* Filtros de público — aqui há espaço para uma linha só */}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -465,17 +569,24 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               ) : (
                 <div className="space-y-2">
                   {history.map((c) => (
-                    <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
+                    <button key={c.id} type="button" onClick={() => repeatCampaign(c)} title="Clique para repetir esta campanha (texto e imagem)"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+                      {c.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-800">{c.name}</p>
-                        <p className="text-[11px] text-slate-400">{c.audienceLabel} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
+                        <p className="truncate text-[11px] text-slate-400">{c.message || c.audienceLabel} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2 text-[11px]">
                         <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
                         {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
+                        <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-500"><Repeat className="h-3 w-3" /> Repetir</span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -553,6 +664,28 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: salvar seleção atual como lista de transmissão */}
+      <Dialog open={listDialogOpen} onOpenChange={(o) => { if (!o) setListDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ListPlus className="h-5 w-5 text-emerald-500" /> Salvar lista de transmissão</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <p className="text-[12px] text-slate-500">Guardando <strong>{selectedIds.size}</strong> contato(s) selecionado(s).</p>
+            <Input value={listName} onChange={(e) => setListName(e.target.value)} autoFocus
+              placeholder="Ex.: Clientes VIP, Bairro Centro..." className="h-11"
+              onKeyDown={(e) => { if (e.key === 'Enter' && listName.trim() && !savingList) saveCurrentAsList(); }} />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setListDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveCurrentAsList} disabled={!listName.trim() || savingList}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60">
+              {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Salvar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

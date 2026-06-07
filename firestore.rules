@@ -123,6 +123,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
     }
 
+    match /broadcast_lists/{listId} {
+      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+    }
+
     match /whatsapp_messages/{messageId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin()
