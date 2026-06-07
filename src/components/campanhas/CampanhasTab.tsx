@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImage } from '@/lib/upload';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
@@ -16,7 +17,7 @@ import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
   Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
-  ListPlus, Trash2, Repeat, Bookmark,
+  ListPlus, Trash2, Bookmark, MoreVertical, Pencil,
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
@@ -196,11 +197,20 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     }
   };
 
-  // Reabre uma campanha do histórico: recarrega nome, texto e imagem para repetir.
-  const repeatCampaign = (c: any) => {
+  // Editar uma campanha do histórico: recarrega nome, texto e imagem no compositor.
+  const editCampaign = (c: any) => {
     setDraft({ ...EMPTY_DRAFT, name: c.name || '', message: c.message || '', imageUrl: c.imageUrl || null });
     setImageFile(null);
-    toast({ title: 'Campanha carregada', description: 'Texto e imagem prontos. Escolha os contatos e dispare.' });
+    toast({ title: 'Campanha carregada', description: 'Edite o texto/imagem, escolha os contatos e dispare.' });
+  };
+  const deleteCampaign = async (c: any) => {
+    if (!db || !user) return;
+    try {
+      await deleteDoc(doc(db, 'campaigns', c.id));
+      toast({ title: 'Campanha excluída' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível excluir', description: e?.message });
+    }
   };
 
   const targets = useMemo(() => clients.filter(c => selectedIds.has(c.id) && hasValidWhatsapp(c)), [clients, selectedIds]);
@@ -569,8 +579,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               ) : (
                 <div className="space-y-2">
                   {history.map((c) => (
-                    <button key={c.id} type="button" onClick={() => repeatCampaign(c)} title="Clique para repetir esta campanha (texto e imagem)"
-                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+                    <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
                       {c.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={c.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
@@ -584,9 +593,24 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                       <div className="flex shrink-0 items-center gap-2 text-[11px]">
                         <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
                         {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
-                        <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-500"><Repeat className="h-3 w-3" /> Repetir</span>
                       </div>
-                    </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" title="Opções"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => editCampaign(c)} className="gap-2">
+                            <Pencil className="h-4 w-4" /> Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => deleteCampaign(c)} className="gap-2 text-rose-600 focus:text-rose-600">
+                            <Trash2 className="h-4 w-4" /> Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   ))}
                 </div>
               )}
