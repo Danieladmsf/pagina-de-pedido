@@ -155,15 +155,21 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       });
       setResult(res);
 
-      const id = doc(collection(db, 'campaigns')).id;
-      await setDoc(doc(db, 'campaigns', id), {
-        id, ownerId: user.uid,
-        name: draft.name?.trim() || 'Campanha',
-        audienceId: 'manual', audienceLabel: 'Seleção manual',
-        message: draft.message, hasImage: !!uploadedUrl,
-        total: res.total, sent: res.sent, failed: res.failed, canceled: res.canceled,
-        createdAt: new Date().toISOString(),
-      });
+      // Histórico é secundário: se falhar (ex.: regras do Firestore), NÃO derruba
+      // o sucesso do envio — só registra um aviso no console.
+      try {
+        const id = doc(collection(db, 'campaigns')).id;
+        await setDoc(doc(db, 'campaigns', id), {
+          id, ownerId: user.uid,
+          name: draft.name?.trim() || 'Campanha',
+          audienceId: 'manual', audienceLabel: 'Seleção manual',
+          message: draft.message, hasImage: !!uploadedUrl,
+          total: res.total, sent: res.sent, failed: res.failed, canceled: res.canceled,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (histErr) {
+        console.warn('[Campanhas] Campanha enviada, mas o histórico não foi salvo (verifique as regras do Firestore):', histErr);
+      }
 
       toast({ title: 'Campanha finalizada', description: `${res.sent} enviada(s), ${res.failed} falha(s).` });
     } catch (e: any) {
