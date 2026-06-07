@@ -18,7 +18,7 @@ import {
   Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
 } from 'lucide-react';
 import {
-  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR,
+  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
   type ClientLike,
 } from '@/lib/campanhas/audience';
 import type { AudienceId, CampaignDraft } from '@/lib/campanhas/types';
@@ -36,12 +36,13 @@ const DELAY_PRESETS = [5, 8, 12, 20];
 
 // Ordenações analíticas da lista de contatos: o lojista usa para "ler" a base
 // (quem compra mais, quem gasta mais, quem some) e montar a seleção do disparo.
-type SortKey = 'nome' | 'pedidos' | 'valor' | 'ticket' | 'recencia';
+type SortKey = 'nome' | 'pedidos' | 'valor' | 'ticket' | 'recencia' | 'frequencia';
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'nome', label: 'Nome' },
   { key: 'pedidos', label: 'Nº de compras' },
   { key: 'valor', label: 'Valor gasto' },
   { key: 'ticket', label: 'Ticket médio' },
+  { key: 'frequencia', label: 'Frequência' },
   { key: 'recencia', label: 'Compra recente' },
 ];
 const spentOf = (c: ClientLike) => (c.totalPedidos || 0) * (c.ticketMedio || 0);
@@ -99,6 +100,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       case 'pedidos': arr.sort((a, b) => (b.totalPedidos || 0) - (a.totalPedidos || 0)); break;
       case 'valor': arr.sort((a, b) => spentOf(b) - spentOf(a)); break;
       case 'ticket': arr.sort((a, b) => (b.ticketMedio || 0) - (a.ticketMedio || 0)); break;
+      case 'frequencia': arr.sort((a, b) => ordersPerMonth(b) - ordersPerMonth(a)); break;
       case 'recencia': arr.sort((a, b) => parseDateBR(b.ultimoPedido) - parseDateBR(a.ultimoPedido)); break;
       default: arr.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
     }
@@ -348,6 +350,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 const metric =
                   sortKey === 'pedidos' ? { primary: `${pedidos} compra(s)`, secondary: `R$ ${totalGasto.toFixed(2)}` }
                   : sortKey === 'ticket' ? { primary: `R$ ${(c.ticketMedio || 0).toFixed(2)}`, secondary: `${pedidos} compra(s)` }
+                  : sortKey === 'frequencia' ? { primary: `${ordersPerMonth(c).toFixed(1)}/mês`, secondary: c.clienteDesde ? `cliente desde ${c.clienteDesde}` : `${pedidos} compra(s)` }
                   : sortKey === 'recencia' ? { primary: c.ultimoPedido || '—', secondary: `R$ ${totalGasto.toFixed(2)}` }
                   : { primary: `R$ ${totalGasto.toFixed(2)}`, secondary: ultimo };
                 return (

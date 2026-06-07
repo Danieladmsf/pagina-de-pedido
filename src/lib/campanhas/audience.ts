@@ -13,6 +13,7 @@ export interface ClientLike {
   totalPedidos?: number;
   ticketMedio?: number;
   ultimoPedido?: string;
+  clienteDesde?: string;
 }
 
 export const AUDIENCE_PRESETS: AudiencePreset[] = [
@@ -39,6 +40,22 @@ export function renderMessage(
     .split('{nome}').join(vars.nome)
     .split('{loja}').join(vars.loja)
     .split('{link}').join(vars.link);
+}
+
+/**
+ * Frequência real de compra: pedidos por mês desde que virou cliente
+ * (`clienteDesde`). Retorna 0 quando não dá para calcular (sem pedidos ou sem
+ * data de cadastro). A janela tem piso de 1 mês para não inflar clientes muito
+ * recentes (ex.: 3 pedidos em 5 dias não viram "18/mês").
+ */
+export function ordersPerMonth(c: ClientLike): number {
+  const pedidos = c.totalPedidos || 0;
+  if (pedidos <= 0) return 0;
+  const since = parseDateBR(c.clienteDesde);
+  if (!since) return 0;
+  const days = (Date.now() - since) / 86400000;
+  const months = Math.max(days / 30, 1);
+  return pedidos / months;
 }
 
 /** Estimativa de tempo total do disparo, dado o tamanho do público e o delay. */
