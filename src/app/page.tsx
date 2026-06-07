@@ -48,6 +48,7 @@ import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggle
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
+import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
 // estourar o limite de taxa da w-api numa rajada de pedidos.
@@ -451,64 +452,24 @@ export default function AdminPage() {
           }
         }
 
-        // --- 2. CADASTRO DE CLIENTE ---
-        const rawTelefone = (order.customerPhone || '').trim();
-        const telefone = normalizeCreditPhone(rawTelefone);
-        const nome = (order.customerName || '').trim();
-        
-        if (telefone || nome) {
-          const clientesRef = collection(db, 'clientes');
-          let q;
-          if (telefone) {
-            q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', 'in', getPhoneVariants(rawTelefone)));
-          } else {
-            q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
+        // --- 2. SINCRONIA DE CLIENTE (identidade/endereço) — fonte única ---
+        // Não conta o pedido aqui (status ainda não é 'delivered'); só registra
+        // quem é o cliente e o endereço, sem nunca sobrescrever com vazio.
+        try {
+          const res = await syncCustomerFromOrder(db, order, { ownerId: user.uid, countOrder: false });
+          if (res.created && order.orderType === 'delivery') {
+            // Comemorar cliente novo no delivery!
+            setIsCelebrating(true);
+            const { id } = toast({
+              title: "🎉 CLIENTE NOVO!",
+              description: `${(order.customerName || 'Cliente').trim()} acabou de fazer o primeiro pedido!`,
+              className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
+              duration: 999999
+            });
+            newClientToastIdRef.current = id;
           }
-          
-          try {
-            const snap = await getDocs(q);
-            let docId = telefone ? `${user.uid}_${telefone}` : doc(clientesRef).id;
-            if (!snap.empty) {
-              docId = snap.docs[0].id;
-            }
-
-            if (snap.empty) {
-              // É um CLIENTE NOVO!
-              const hoje = new Date().toLocaleDateString('pt-BR');
-              const newRef = doc(db, 'clientes', docId);
-              await setDoc(newRef, {
-                id: docId,
-                ownerId: user.uid,
-                nome: nome,
-                celular: telefone,
-                logradouro: order.address?.street || '',
-                logradouroNumero: order.address?.number || '',
-                complemento: order.address?.complement || '',
-                bairro: order.address?.neighborhood || '',
-                cidade: order.address?.city || '',
-                dataNascimento: order.customerBirthDate || '',
-                clienteDesde: hoje,
-                ultimoPedido: hoje,
-                totalPedidos: 0, // Será incrementado quando o pedido for entregue
-                totalPontos: 0,
-                ticketMedio: 0
-              }, { merge: true });
-              
-              // Comemorar cliente novo no delivery!
-              if (order.orderType === 'delivery') {
-                setIsCelebrating(true);
-                const { id } = toast({ 
-                  title: "🎉 CLIENTE NOVO!", 
-                  description: `${nome} acabou de fazer o primeiro pedido!`,
-                  className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
-                  duration: 999999
-                });
-                newClientToastIdRef.current = id;
-              }
-            }
-          } catch (err) {
-            console.error("Erro ao verificar/cadastrar cliente automático:", err);
-          }
+        } catch (err) {
+          console.error("Erro ao sincronizar cliente automático:", err);
         }
       }
     };
@@ -1159,81 +1120,13 @@ export default function AdminPage() {
       const finalizingSale = updates.status === 'delivered' && currentOrder && currentOrder.status !== 'delivered';
       const shouldDeductStock = !!(finalizingSale && storeProfile?.general?.enableInventory && currentOrder.stockDeducted !== true);
       
-      // Sincronização de Cliente se o pedido for movido para 'delivered'
-      if (updates.status === 'delivered') {
-        const order = currentOrder;
-        // Só sincroniza se o pedido existe e não estava como entregue antes
-        if (order && order.status !== 'delivered') {
-          const rawTelefone = (order.customerPhone || '').trim();
-          const telefone = normalizeCreditPhone(rawTelefone);
-          const nome = (order.customerName || '').trim();
-          const hoje = new Date().toLocaleDateString('pt-BR');
-          const valor = order.totalAmount || 0;
-
-          if (telefone || nome) {
-            const clientesRef = collection(db, 'clientes');
-            let q;
-            if (telefone) {
-              q = query(clientesRef, where('ownerId', '==', user.uid), where('celular', 'in', getPhoneVariants(rawTelefone)));
-            } else {
-              q = query(clientesRef, where('ownerId', '==', user.uid), where('nome', '==', nome));
-            }
-            
-            const snap = await getDocs(q);
-            let docId = telefone ? `${user.uid}_${telefone}` : doc(clientesRef).id;
-            if (!snap.empty) {
-              docId = snap.docs[0].id;
-            }
-
-            if (!snap.empty) {
-              const docRef = doc(db, 'clientes', docId);
-              const data = snap.docs[0].data();
-              const oldPedidos = data.totalPedidos || 0;
-              const oldTicket = data.ticketMedio || 0;
-              const oldBirth = data.dataNascimento || '';
-              
-              const totalGastoAnterior = oldPedidos * oldTicket;
-              const novoTotalPedidos = oldPedidos + 1;
-              const novoTicket = (totalGastoAnterior + valor) / novoTotalPedidos;
-              
-              const updateData: any = {
-                totalPedidos: novoTotalPedidos,
-                ticketMedio: novoTicket,
-                ultimoPedido: hoje
-              };
-
-              // Atualiza celular para o padrão normalizado caso esteja no formato antigo
-              if (data.celular !== telefone) {
-                updateData.celular = telefone;
-              }
-
-              // Atualiza data de nascimento se o cliente informou agora e antes não tinha
-              if (order.customerBirthDate && !oldBirth) {
-                updateData.dataNascimento = order.customerBirthDate;
-              }
-
-              await updateDoc(docRef, updateData);
-            } else {
-              const newRef = doc(db, 'clientes', docId);
-              await setDoc(newRef, {
-                id: docId,
-                ownerId: user.uid,
-                nome: nome,
-                celular: telefone,
-                logradouro: order.address?.street || '',
-                logradouroNumero: order.address?.number || '',
-                complemento: order.address?.complement || '',
-                bairro: order.address?.neighborhood || '',
-                cidade: order.address?.city || '',
-                dataNascimento: order.customerBirthDate || '',
-                clienteDesde: hoje,
-                ultimoPedido: hoje,
-                totalPedidos: 1,
-                totalPontos: 0,
-                ticketMedio: valor
-              }, { merge: true });
-            }
-          }
+      // Sincronização de Cliente quando o pedido é finalizado (entregue).
+      // Conta o pedido de forma IDEMPOTENTE (não duplica entre PCs/re-disparos).
+      if (finalizingSale && currentOrder) {
+        try {
+          await syncCustomerFromOrder(db, currentOrder, { ownerId: user.uid, countOrder: true });
+        } catch (err) {
+          console.error('Erro ao sincronizar cliente (entrega):', err);
         }
       }
 

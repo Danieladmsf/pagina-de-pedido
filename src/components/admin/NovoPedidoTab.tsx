@@ -20,6 +20,7 @@ import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -614,6 +615,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         targetItems: cart,
         order: { ref: newOrderRef, mode: 'set', data: orderData },
       });
+
+      // Sincroniza/contabiliza o cliente (balcão com cliente identificado).
+      // Vendas anônimas ("Cliente Balcão" sem telefone) são ignoradas pela função.
+      try {
+        await syncCustomerFromOrder(db, { ...orderData }, { ownerId: user?.uid || 'default', countOrder: true });
+      } catch (err) {
+        console.error('Erro ao sincronizar cliente (balcão):', err);
+      }
 
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
       for (const split of splitsToProcess) {

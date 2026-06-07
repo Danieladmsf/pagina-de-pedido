@@ -21,6 +21,7 @@ import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
 import { Textarea } from '@/components/ui/textarea';
 import { validateCustomerCredit, normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
+import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { getSalesChannelLabel, isItemVisibleInChannel, SalesChannel } from '@/lib/menu-visibility';
 
 interface PaymentMethodConfig {
@@ -638,42 +639,17 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
-      // Sincroniza também com a coleção de clientes (Painel Admin)
+      // Sincroniza o cliente no painel admin via função CENTRAL (identidade +
+      // endereço; nunca sobrescreve com vazio). Não conta o pedido aqui — a
+      // contagem acontece na entrega ('delivered'), de forma idempotente.
       try {
-        const normalizedPhone = normalizeCreditPhone(customerPhone);
-        const variants = getPhoneVariants(customerPhone);
-        const qClientes = query(collection(db, 'clientes'), where('ownerId', '==', effectiveStoreOwnerId), where('celular', 'in', variants));
-        const snapClientes = await getDocs(qClientes);
-        
-        let docId = normalizedPhone ? `${effectiveStoreOwnerId}_${normalizedPhone}` : doc(collection(db, 'clientes')).id;
-        if (!snapClientes.empty) {
-          docId = snapClientes.docs[0].id;
-        }
-
-        const clienteRef = doc(db, 'clientes', docId);
-        const clienteData: any = {
-          id: docId,
-          ownerId: effectiveStoreOwnerId,
-          nome: customerName,
-          celular: normalizedPhone,
-          dataNascimento: customerBirthDate,
-          logradouro: street,
-          logradouroNumero: number,
-          complemento: complement,
-          bairro: neighborhood,
-          cidade: city,
-          updatedAt: new Date().toISOString(),
-        };
-        
-        if (snapClientes.empty) {
-          clienteData.createdAt = new Date().toISOString();
-          clienteData.totalPedidos = 0;
-          clienteData.totalPontos = 0;
-          clienteData.ticketMedio = 0;
-          clienteData.creditBalance = 0;
-          clienteData.clienteDesde = new Date().toLocaleDateString('pt-BR');
-        }
-        await setDoc(clienteRef, clienteData, { merge: true });
+        await syncCustomerFromOrder(db, {
+          customerName,
+          customerPhone,
+          customerBirthDate,
+          street, number, complement, neighborhood, city,
+          deliveryAddress: fullDeliveryAddress,
+        } as any, { ownerId: effectiveStoreOwnerId, countOrder: false });
       } catch (err) {
         console.warn('Erro ao sincronizar cliente para painel admin:', err);
       }
@@ -788,6 +764,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         customerBirthDate,
         customerEmail: authUser.email || '',
         deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
+        // Endereço estruturado: deixa o pedido autossuficiente para sincronizar
+        // o cliente e imprimir sem depender de "parsear" a string acima.
+        ...(orderType === 'delivery' ? { street, number, complement, neighborhood, city, cep } : {}),
         orderDateTime: new Date().toISOString(),
         createdAt: serverTimestamp(),
         status: 'pending',
