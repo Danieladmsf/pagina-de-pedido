@@ -216,26 +216,30 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               <h3 className="text-sm font-bold text-slate-800">Contatos</h3>
               <span className="text-[11px] font-semibold text-emerald-600">{selectedIds.size} selecionado(s)</span>
             </div>
+
+            {/* Filtros de público (grade 2x2) */}
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
+              {AUDIENCE_PRESETS.map((a) => {
+                const active = activePreset === a.id;
+                const count = resolveAudience(clients, a.id as AudienceId).length;
+                return (
+                  <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)} title={a.description}
+                    className={`flex flex-col items-start rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
+                      active
+                        ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
+                    }`}>
+                    <span className="text-[11px] font-semibold leading-tight">{a.label}</span>
+                    <span className={`text-[10px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>{count} contatos</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input value={searchContacts} onChange={(e) => setSearchContacts(e.target.value)}
                 placeholder="Pesquisar pelo nome ou telefone..." className="h-10 pl-9" />
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {AUDIENCE_PRESETS.map((a) => {
-                const active = activePreset === a.id;
-                return (
-                  <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      active
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
-                    }`}
-                    title={a.description}>
-                    {a.label} ({resolveAudience(clients, a.id as AudienceId).length})
-                  </button>
-                );
-              })}
             </div>
             <div className="mt-2 flex items-center justify-between">
               <button type="button" onClick={toggleAllVisible} disabled={selectableVisible.length === 0}
