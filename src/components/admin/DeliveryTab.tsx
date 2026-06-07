@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { ContactAvatar } from '@/components/shared/ContactAvatar';
+import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -55,6 +57,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     o.orderType === 'delivery' || (o.orderType === 'pickup' && o.source === 'cardapio')
   ) || [];
 
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
@@ -582,21 +585,31 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 onClick={() => setSelectedOrderId(order.id)}
                 className={`px-2 py-1.5 bg-white border-l-3 rounded-r cursor-pointer hover:bg-slate-50 transition-colors ${selectedOrderId === order.id ? 'ring-1 ring-primary/50 bg-blue-50' : ''} ${order.status === 'pending' ? 'border-l-yellow-500' : order.status === 'canceled' ? 'border-l-red-500' : 'border-l-teal-500'}`}
               >
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">#{order.id.substring(0, 5)}</span>
-                    <span className="text-xs font-semibold text-slate-800 truncate">{order.customerName}</span>
+                <div className="flex items-center gap-2">
+                  <ContactAvatar
+                    phone={order.customerPhone || ''}
+                    initials={(order.customerName || '?').split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                    loadPhoto={loadPhoto}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 text-[10px] font-bold text-white"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">#{order.id.substring(0, 5)}</span>
+                        <span className="text-xs font-semibold text-slate-800 truncate">{order.customerName}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs font-black text-green-600">R$ {order.totalAmount?.toFixed(2)}</span>
+                        <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getStatusColor(order.status)}`}>
+                          {getStatusLabel(order.status, order.orderType)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground">{order.customerPhone}</span>
+                      <span className="text-[10px] text-slate-400">· {new Date(order.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs font-black text-green-600">R$ {order.totalAmount?.toFixed(2)}</span>
-                    <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getStatusColor(order.status)}`}>
-                      {getStatusLabel(order.status, order.orderType)}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] text-muted-foreground">{order.customerPhone}</span>
-                  <span className="text-[10px] text-slate-400">· {new Date(order.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
               </div>
             ))

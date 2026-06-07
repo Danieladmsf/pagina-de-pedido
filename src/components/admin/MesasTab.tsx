@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,8 @@ import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { ContactAvatar } from '@/components/shared/ContactAvatar';
+import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -87,6 +89,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const ordersSemMesa = activeOrders.filter(o => !o.tableNumber);
   // Modo manual = sem impressão automática (o operador imprime ao aceitar).
   const isManualPrint = !!(storeInfo?.general?.manualPrint || storeInfo?.manualPrint);
+
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
 
   // Impressão silenciosa via QZ Tray, com fallback total para window.print().
   // (o cupom já está renderizado em #qz-receipt-area pelo PrintReceipt)
@@ -761,9 +765,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     >
                       {/* Cabeçalho do pedido */}
                       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b">
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm text-slate-800 truncate">{o.customerName || 'Cliente'}</p>
-                          <p className="text-[10px] text-slate-400">{time && `${time} · `}#{o.id?.substring(0, 5)}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ContactAvatar
+                            phone={o.customerPhone || ''}
+                            initials={(o.customerName || '?').split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+                            loadPhoto={loadPhoto}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 text-[10px] font-bold text-white"
+                          />
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm text-slate-800 truncate">{o.customerName || 'Cliente'}</p>
+                            <p className="text-[10px] text-slate-400">{time && `${time} · `}#{o.id?.substring(0, 5)}</p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {needsAttention
