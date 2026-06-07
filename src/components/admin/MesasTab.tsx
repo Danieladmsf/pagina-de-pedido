@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Calculator, Globe, ArrowLeftRight } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc, query, where, getDocs, increment } from 'firebase/firestore';
@@ -663,25 +664,22 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   if (!caixaAberto) {
     return (
-      <div className="flex-1 flex items-center justify-center min-h-0">
-        <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
-          <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
-          <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
-          <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+      <CaixaFechadoCard
+        description={
+          <>
             <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
             <p>O caixa precisa estar aberto para poder abrir e gerenciar mesas.</p>
             <p className="font-semibold text-slate-600">Acesse a aba <span className="text-slate-800">Caixa / Admin</span> no topo da tela para abrir o caixa.</p>
-          </div>
-          <div className="flex gap-3 justify-center">
-            <Button 
-              onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })} 
-              size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-            >
-              Abrir Caixa
-            </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <Button
+          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })}
+          size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+        >
+          Abrir Caixa
+        </Button>
+      </CaixaFechadoCard>
     );
   }
 

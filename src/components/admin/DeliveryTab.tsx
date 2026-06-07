@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Calculator, Plus, X, Minus, ShoppingCart, Tag } from 'lucide-react';
+import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Plus, X, Minus, ShoppingCart, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -293,26 +294,23 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   if (!caixaAberto && !isCaixaHistorico) {
     return (
-      <div className="flex-1 flex items-center justify-center min-h-0">
-        <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
-          <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
-          <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
-          <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+      <CaixaFechadoCard
+        description={
+          <>
             <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
             <p>O caixa precisa estar aberto para registrar vendas de delivery.</p>
             <p className="font-semibold text-slate-600">Abra o caixa antes de finalizar pedidos.</p>
-          </div>
-          <div className="flex gap-3 justify-center">
-            <Button
-              onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-            >
-              Abrir Caixa
-            </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <Button
+          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
+          size="sm"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+        >
+          Abrir Caixa
+        </Button>
+      </CaixaFechadoCard>
     );
   }
 

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useCaixa, type LancamentoCaixa } from '@/hooks/useCaixa';
 import { Button } from '@/components/ui/button';
+import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
 import { printHtmlOrFallback, type PrinterSize } from '@/lib/qz-print';
-import { Plus, Minus, Loader2, Calculator, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
+import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -1214,21 +1215,18 @@ export function CaixaTab({
 
       {/* Tela: Caixa Fechado */}
       {!caixaAberto && view === 'caixa' && !caixaSelecionadoId && (
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div className="bg-white border rounded-2xl py-6 px-6 text-center space-y-3 max-w-sm w-full shadow-sm">
-            <Calculator className="h-12 w-12 text-muted-foreground/30 mx-auto" />
-            <h2 className="text-lg font-bold text-slate-700 uppercase tracking-wider">Caixa Fechado</h2>
-            <div className="bg-slate-50 border rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+        <CaixaFechadoCard
+          description={
+            <>
               <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado (Marcado com entregue).</p>
               <p>O caixa será automaticamente aberto após o lançamento do pedido.</p>
               <p className="font-semibold">Não esquecer de fechar o caixa no final do expediente.</p>
-            </div>
-            <div className="flex gap-3 justify-center">
-              <Button onClick={() => setView('anteriores')} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
-              <Button onClick={openAbrirCaixaModal} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <Button onClick={() => setView('anteriores')} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
+          <Button onClick={openAbrirCaixaModal} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
+        </CaixaFechadoCard>
       )}
 
       {/* Tela: Caixas Anteriores */}
