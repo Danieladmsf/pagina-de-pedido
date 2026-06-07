@@ -1364,7 +1364,7 @@ export default function AdminPage() {
 
         {activeTab === 'campanhas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <CampanhasTab storeProfile={storeProfile} />
+            <CampanhasTab db={db} user={user} storeProfile={storeProfile} />
           </div>
         )}
 
