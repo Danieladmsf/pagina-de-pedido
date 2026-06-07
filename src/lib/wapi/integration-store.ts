@@ -1,4 +1,5 @@
 import { createFirestoreDocument, getFirestoreDocument, patchFirestoreDocumentFields } from '@/lib/firestore-rest';
+import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret, encryptSecret } from '@/lib/wapi/crypto';
 import { SanitizedWhatsAppIntegration, WhatsAppIntegration, WapiConnectionStatus } from '@/lib/wapi/types';
 
@@ -55,6 +56,21 @@ export function sanitizeIntegration(integration: WhatsAppIntegration): Sanitized
 export async function getWhatsAppIntegration(empresaId: string, idToken: string) {
   const adminDoc = await getFirestoreDocument<Record<string, any>>(`${ADMIN_COLLECTION}/${empresaId}`, idToken);
   return (adminDoc?.[INTEGRATION_FIELD] || null) as WhatsAppIntegration | null;
+}
+
+/**
+ * Lê a integração via Firebase Admin (privilégio de servidor) — SEM token de
+ * usuário. Para fluxos sem sessão, como o disparo agendado de campanhas (cron),
+ * onde não há `idToken` e ele expiraria de qualquer forma.
+ */
+export async function getWhatsAppIntegrationAdmin(empresaId: string) {
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb) {
+    throw new Error('Firebase Admin indisponivel (configure FIREBASE_SERVICE_ACCOUNT_KEY).');
+  }
+  const snap = await adminDb.collection(ADMIN_COLLECTION).doc(empresaId).get();
+  if (!snap.exists) return null;
+  return (snap.data()?.[INTEGRATION_FIELD] || null) as WhatsAppIntegration | null;
 }
 
 export async function saveWhatsAppIntegration(empresaId: string, data: WhatsAppIntegration, idToken: string) {

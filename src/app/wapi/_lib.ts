@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ApiError, AuthenticatedFirebaseUser, jsonError, requireFirebaseUser } from '@/lib/firebase-auth-rest';
-import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
+import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, getWhatsAppIntegrationAdmin, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
 import { encryptSecret } from '@/lib/wapi/crypto';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
 
@@ -24,8 +24,7 @@ export function requireEmpresa(user: AuthenticatedFirebaseUser, empresaId?: stri
   }
 }
 
-export async function requireIntegration(empresaId: string, idToken: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
-  const integration = await getWhatsAppIntegration(empresaId, idToken);
+function resolveIntegration(integration: WhatsAppIntegration | null): { integration: WhatsAppIntegration; token: string } {
   if (!integration?.wapiInstanceId || !integration?.wapiTokenEncrypted) {
     throw new ApiError(404, 'WhatsApp ainda nao configurado para esta empresa.');
   }
@@ -42,6 +41,19 @@ export async function requireIntegration(empresaId: string, idToken: string): Pr
   }
 
   return { integration, token };
+}
+
+/** Resolve a instância w-api da empresa a partir do token do usuário (REST). */
+export async function requireIntegration(empresaId: string, idToken: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
+  return resolveIntegration(await getWhatsAppIntegration(empresaId, idToken));
+}
+
+/**
+ * Mesma resolução, porém via Firebase Admin (sem token de usuário) — para o
+ * disparo agendado de campanhas (cron/QStash), que roda sem sessão.
+ */
+export async function requireIntegrationService(empresaId: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
+  return resolveIntegration(await getWhatsAppIntegrationAdmin(empresaId));
 }
 
 function getExistingWebhookToken(webhookUrl?: string) {
