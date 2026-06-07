@@ -17,7 +17,6 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const draft = String(body?.prompt || '').trim();
-    const loja = String(body?.loja || 'a loja').trim();
     const tokens: string[] = Array.isArray(body?.tokens) ? body.tokens.map((t: any) => String(t)) : [];
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -31,7 +30,7 @@ export async function POST(request: Request) {
     const client = new Anthropic({ apiKey });
 
     const varsLine = tokens.length
-      ? `Você PODE usar APENAS estas variáveis no texto (serão substituídas automaticamente no envio): ${tokens.join(', ')}. NÃO use NENHUMA outra variável além dessas.`
+      ? `Você PODE usar APENAS estas variáveis: ${tokens.join(', ')}. NÃO use nenhuma outra variável além dessas.`
       : `NÃO use nenhuma variável de personalização (não escreva {primeiro_nome}, {nome}, {loja} nem {link}); escreva um texto genérico.`;
 
     const system =
@@ -41,9 +40,9 @@ export async function POST(request: Request) {
       `- Tom caloroso, próximo e persuasivo, em português do Brasil.\n` +
       `- Curta: 2 a 5 linhas. No máximo 1 ou 2 emojis.\n` +
       `- ${varsLine}\n` +
+      `- IMPORTANTE: escreva cada variável EXATAMENTE como o token entre chaves (ex.: {loja}, {primeiro_nome}, {link}). NUNCA substitua pelo valor real: não escreva o nome da loja, o nome do cliente nem uma URL — use sempre a variável. O sistema troca pelos valores reais no envio.\n` +
       `- Não use markdown, títulos, aspas ou listas. Apenas o texto da mensagem.\n` +
-      `- Responda SOMENTE com a mensagem final, sem explicações nem comentários.\n` +
-      `Nome da loja: "${loja}".`;
+      `- Responda SOMENTE com a mensagem final, sem explicações nem comentários.`;
 
     const userContent = draft
       ? `Rascunho/ideia do lojista:\n${draft}`
