@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const draft = String(body?.prompt || '').trim();
     const loja = String(body?.loja || 'a loja').trim();
+    const tokens: string[] = Array.isArray(body?.tokens) ? body.tokens.map((t: any) => String(t)) : [];
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -29,13 +30,17 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey });
 
+    const varsLine = tokens.length
+      ? `Você PODE usar APENAS estas variáveis no texto (serão substituídas automaticamente no envio): ${tokens.join(', ')}. NÃO use NENHUMA outra variável além dessas.`
+      : `NÃO use nenhuma variável de personalização (não escreva {primeiro_nome}, {nome}, {loja} nem {link}); escreva um texto genérico.`;
+
     const system =
       `Você é um redator de marketing para restaurantes e delivery no Brasil. ` +
       `Receberá um rascunho ou ideia do dono da loja e deve transformá-lo em UMA mensagem de WhatsApp pronta para enviar aos clientes.\n` +
       `Regras:\n` +
       `- Tom caloroso, próximo e persuasivo, em português do Brasil.\n` +
       `- Curta: 2 a 5 linhas. No máximo 1 ou 2 emojis.\n` +
-      `- Pode usar as variáveis {primeiro_nome} e {loja} quando fizer sentido (serão substituídas automaticamente no envio).\n` +
+      `- ${varsLine}\n` +
       `- Não use markdown, títulos, aspas ou listas. Apenas o texto da mensagem.\n` +
       `- Responda SOMENTE com a mensagem final, sem explicações nem comentários.\n` +
       `Nome da loja: "${loja}".`;

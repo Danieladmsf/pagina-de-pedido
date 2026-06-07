@@ -15,7 +15,7 @@ import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Clock, Info, X, Search,
-  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2,
+  Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp,
@@ -45,6 +45,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [activePreset, setActivePreset] = useState<AudienceId | null>(null);
 
   const [aiLoading, setAiLoading] = useState(false);
+  // Variáveis que a IA pode usar (toggles). Default: primeiro nome + nome da loja.
+  const [enabledTokens, setEnabledTokens] = useState<Set<string>>(new Set(['{primeiro_nome}', '{loja}']));
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<SendProgress | null>(null);
@@ -123,7 +125,11 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   const canSend = (draft.message.trim().length > 0 || !!imageFile) && audienceCount > 0;
 
-  const insertToken = (token: string) => set({ message: (draft.message ? draft.message + ' ' : '') + token });
+  const toggleToken = (token: string) => setEnabledTokens(prev => {
+    const n = new Set(prev);
+    n.has(token) ? n.delete(token) : n.add(token);
+    return n;
+  });
 
   // Gera/ajusta o texto da mensagem com IA (Claude) a partir do rascunho do lojista.
   const improveWithAI = async () => {
@@ -134,7 +140,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       const res = await fetch('/api/ai/campaign-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ prompt: draft.message, loja: storeName }),
+        body: JSON.stringify({ prompt: draft.message, loja: storeName, tokens: Array.from(enabledTokens) }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.message) {
@@ -352,14 +358,23 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               <Textarea value={draft.message} onChange={(e) => set({ message: e.target.value })}
                 placeholder={'Olá {primeiro_nome}! 🍕 Hoje na {loja} tem oferta especial...'}
                 className="min-h-[150px] resize-none text-sm leading-relaxed" />
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {MESSAGE_TOKENS.map((t) => (
-                  <button key={t.token} type="button" onClick={() => insertToken(t.token)}
-                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                    title={`Inserir ${t.label}`}>
-                    + {t.label}
-                  </button>
-                ))}
+              <div className="mt-2.5">
+                <p className="mb-1.5 text-[11px] text-slate-400">Variáveis que a IA pode usar (clique para ligar/desligar):</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {MESSAGE_TOKENS.map((t) => {
+                    const on = enabledTokens.has(t.token);
+                    return (
+                      <button key={t.token} type="button" onClick={() => toggleToken(t.token)}
+                        className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          on ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-300'
+                        }`}
+                        title={on ? `A IA pode usar ${t.label}` : `${t.label} desligado — a IA não vai usar`}>
+                        {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div className="mt-4">
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
