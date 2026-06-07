@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, doc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -69,6 +69,37 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   );
 
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
+
+  // Foto de perfil sob demanda (só dos contatos visíveis), com cache e dedupe.
+  const photoCache = useRef<Map<string, string | null>>(new Map());
+  const photoInflight = useRef<Map<string, Promise<string | null>>>(new Map());
+  const loadPhoto = useCallback(async (phone: string): Promise<string | null> => {
+    const key = (phone || '').replace(/\D/g, '');
+    if (!key || !user) return null;
+    if (photoCache.current.has(key)) return photoCache.current.get(key)!;
+    if (photoInflight.current.has(key)) return photoInflight.current.get(key)!;
+    const p = (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch('/wapi/profile-pic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ empresaId: user.uid, phone: key }),
+        });
+        const data = await res.json().catch(() => null);
+        const link = res.ok && data?.link ? (data.link as string) : null;
+        photoCache.current.set(key, link);
+        return link;
+      } catch {
+        photoCache.current.set(key, null);
+        return null;
+      } finally {
+        photoInflight.current.delete(key);
+      }
+    })();
+    photoInflight.current.set(key, p);
+    return p;
+  }, [user]);
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
@@ -262,9 +293,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                       !valid ? 'cursor-not-allowed opacity-50' : checked ? 'bg-emerald-50' : 'hover:bg-slate-50'
                     }`}>
                     <Checkbox checked={checked} disabled={!valid} className="pointer-events-none shrink-0" />
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-[11px] font-bold text-white">
-                      {initials}
-                    </div>
+                    <ContactAvatar phone={valid ? (c.celular || '') : ''} initials={initials} loadPhoto={loadPhoto} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-slate-800">{c.nome || 'Sem nome'}</p>
                       <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">
@@ -469,6 +498,40 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* Avatar com foto do WhatsApp carregada sob demanda (só quando entra na tela). */
+function ContactAvatar({ phone, initials, loadPhoto }: {
+  phone: string; initials: string; loadPhoto: (phone: string) => Promise<string | null>;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!phone || url) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        io.disconnect();
+        loadPhoto(phone).then((u) => { if (u) setUrl(u); });
+      }
+    }, { rootMargin: '120px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [phone, url, loadPhoto]);
+
+  return (
+    <div ref={ref} className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-[11px] font-bold text-white">
+      {url && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} />
+      ) : (
+        initials
+      )}
     </div>
   );
 }

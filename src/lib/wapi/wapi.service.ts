@@ -436,6 +436,36 @@ export function sendWapiTextMessage(
   });
 }
 
+/**
+ * Foto de perfil de um contato (URL com validade de ~48h).
+ * Tenta os caminhos conhecidos (a doc usa /contacts/profile-picture; a coleção
+ * Postman traz /contacts/contacts/profile-picture). Nunca lança: se nada vier,
+ * retorna { link: null } para a UI cair no avatar de iniciais.
+ */
+export async function getWapiProfilePicture(
+  instanceId: string,
+  token: string,
+  phoneNumber: string,
+): Promise<{ link: string | null }> {
+  const paths = process.env.WAPI_PROFILE_PIC_PATH
+    ? [process.env.WAPI_PROFILE_PIC_PATH]
+    : ['/contacts/profile-picture', '/contacts/contacts/profile-picture'];
+
+  for (const path of paths) {
+    try {
+      const data = await requestWapi<{ link?: string }>(path, {
+        token,
+        query: { instanceId, phoneNumber },
+        context: 'message',
+      });
+      if (data?.link) return { link: data.link };
+    } catch {
+      /* tenta o próximo caminho */
+    }
+  }
+  return { link: null };
+}
+
 export function sendWapiImageMessage(
   instanceId: string,
   token: string,
