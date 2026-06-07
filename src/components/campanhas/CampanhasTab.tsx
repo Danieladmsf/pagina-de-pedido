@@ -14,7 +14,7 @@ import { uploadImage } from '@/lib/upload';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
-  Megaphone, Send, ImagePlus, Users, Clock, Sparkles, Info, X, Search,
+  Megaphone, Send, ImagePlus, Users, Clock, Info, X, Search,
   Rocket, ChevronRight, Timer, Loader2, CheckCircle2, AlertTriangle, Ban, Phone,
 } from 'lucide-react';
 import {
@@ -38,7 +38,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Seleção manual de contatos
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchContacts, setSearchContacts] = useState('');
 
@@ -51,7 +50,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha Loja';
   const link = buildStoreLink(storeProfile, user?.uid, typeof window !== 'undefined' ? window.location.origin : undefined);
 
-  // Base de clientes
   const clientesQuery = useMemoFirebase(
     () => (db && user ? query(collection(db, 'clientes'), where('ownerId', '==', user.uid)) : null),
     [db, user],
@@ -59,7 +57,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { data: clientesRaw } = useCollection(clientesQuery);
   const clients = (clientesRaw || []) as ClientLike[];
 
-  // Histórico
   const campaignsQuery = useMemoFirebase(
     () => (db && user ? query(collection(db, 'campaigns'), where('ownerId', '==', user.uid)) : null),
     [db, user],
@@ -72,7 +69,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  // Lista ordenada + filtrada pela busca
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
     [clients],
@@ -102,7 +98,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const applyPreset = (id: AudienceId) => setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
   const clearSelection = () => setSelectedIds(new Set());
 
-  // Alvos finais = selecionados com WhatsApp válido
   const targets = useMemo(() => clients.filter(c => selectedIds.has(c.id) && hasValidWhatsapp(c)), [clients, selectedIds]);
   const audienceCount = targets.length;
   const minutes = estimateMinutes(audienceCount, draft.delaySeconds);
@@ -144,17 +139,11 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
       const id = doc(collection(db, 'campaigns')).id;
       await setDoc(doc(db, 'campaigns', id), {
-        id,
-        ownerId: user.uid,
+        id, ownerId: user.uid,
         name: draft.name?.trim() || 'Campanha',
-        audienceId: 'manual',
-        audienceLabel: 'Seleção manual',
-        message: draft.message,
-        hasImage: !!uploadedUrl,
-        total: res.total,
-        sent: res.sent,
-        failed: res.failed,
-        canceled: res.canceled,
+        audienceId: 'manual', audienceLabel: 'Seleção manual',
+        message: draft.message, hasImage: !!uploadedUrl,
+        total: res.total, sent: res.sent, failed: res.failed, canceled: res.canceled,
         createdAt: new Date().toISOString(),
       });
 
@@ -183,118 +172,111 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     : 0;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-50">
-      <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50">
 
-        {/* Hero */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700 p-6 text-white shadow-lg sm:p-7">
-          <div className="absolute -right-8 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25"><Megaphone className="h-6 w-6" /></div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Campanhas</h1>
-                <p className="mt-0.5 text-sm text-emerald-50/90">Escolha os contatos, escreva a mensagem e dispare pelo WhatsApp.</p>
-              </div>
-            </div>
-            <Badge className="w-fit gap-1.5 border-white/30 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15">
-              <Sparkles className="h-3.5 w-3.5" /> {clients.length} clientes na base
-            </Badge>
+      {/* Cabeçalho fino */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
+          <div>
+            <h1 className="text-lg font-bold leading-tight text-slate-800">Campanhas</h1>
+            <p className="text-[11px] text-slate-400">Escolha os contatos e dispare pelo WhatsApp</p>
           </div>
         </div>
+        <Badge variant="outline" className="gap-1.5 text-[11px] text-slate-500">
+          <Users className="h-3 w-3" /> {clients.length} clientes
+        </Badge>
+      </div>
 
-        {/* Stats */}
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatCard icon={Users} tint="emerald" label="Selecionados" value={`${audienceCount} contatos`} hint="Com WhatsApp válido" />
-          <StatCard icon={Timer} tint="sky" label="Intervalo entre envios" value={`${draft.delaySeconds}s`} hint="Espaçamento anti-bloqueio" />
-          <StatCard icon={Clock} tint="violet" label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} hint="Público × intervalo" />
-        </div>
+      {/* Corpo: ESQUERDA contatos (altura total) | DIREITA composição (rola) */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[420px_1fr]">
 
-        {/* Conteúdo: ESQUERDA lista de contatos | DIREITA composição */}
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[440px_1fr]">
-
-          {/* ── Lista de contatos (estilo WhatsApp Web) ── */}
-          <div className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-800">Contatos</h3>
-                <span className="text-[11px] font-semibold text-emerald-600">{selectedIds.size} selecionado(s)</span>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input value={searchContacts} onChange={(e) => setSearchContacts(e.target.value)}
-                  placeholder="Pesquisar contato pelo nome ou telefone..." className="h-10 pl-9" />
-              </div>
-
-              {/* Atalhos de seleção */}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {AUDIENCE_PRESETS.map((a) => (
-                  <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
-                    title={a.description}>
-                    {a.label} ({resolveAudience(clients, a.id as AudienceId).length})
-                  </button>
-                ))}
-              </div>
-
-              {/* Selecionar todos / limpar */}
-              <div className="mt-2 flex items-center justify-between">
-                <button type="button" onClick={toggleAllVisible} disabled={selectableVisible.length === 0}
-                  className="flex items-center gap-2 text-[12px] font-medium text-slate-600 hover:text-emerald-600 disabled:opacity-40">
-                  <Checkbox checked={allVisibleSelected} className="pointer-events-none" />
-                  Selecionar todos {searchContacts ? '(filtrados)' : ''} ({selectableVisible.length})
-                </button>
-                {selectedIds.size > 0 && (
-                  <button type="button" onClick={clearSelection} className="text-[11px] text-slate-400 hover:text-rose-500">Limpar</button>
-                )}
-              </div>
+        {/* ── Lista de contatos (full height, estilo WhatsApp Web) ── */}
+        <div className="flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
+          <div className="shrink-0 border-b border-slate-100 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">Contatos</h3>
+              <span className="text-[11px] font-semibold text-emerald-600">{selectedIds.size} selecionado(s)</span>
             </div>
-
-            {/* Lista rolável */}
-            <div className="max-h-[58vh] min-h-[260px] overflow-y-auto custom-scrollbar">
-              {visibleClients.length === 0 ? (
-                <div className="flex h-40 flex-col items-center justify-center text-center text-slate-400">
-                  <Users className="mb-2 h-6 w-6" />
-                  <p className="text-sm">{clients.length === 0 ? 'Nenhum cliente na base.' : 'Nenhum contato encontrado.'}</p>
-                </div>
-              ) : (
-                visibleClients.map((c) => {
-                  const valid = hasValidWhatsapp(c);
-                  const checked = selectedIds.has(c.id);
-                  const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-                  const totalGasto = (c.totalPedidos || 0) * (c.ticketMedio || 0);
-                  return (
-                    <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
-                      className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
-                        !valid ? 'cursor-not-allowed opacity-50' : checked ? 'bg-emerald-50' : 'hover:bg-slate-50'
-                      }`}>
-                      <Checkbox checked={checked} disabled={!valid} className="pointer-events-none shrink-0" />
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-[11px] font-bold text-white">
-                        {initials}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-800">{c.nome || 'Sem nome'}</p>
-                        <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">
-                          <Phone className="h-3 w-3" /> {c.celular || 'sem WhatsApp'}
-                        </p>
-                      </div>
-                      {valid ? (
-                        <div className="shrink-0 text-right">
-                          <p className="text-[12px] font-bold text-emerald-600">R$ {totalGasto.toFixed(2)}</p>
-                          <p className="text-[10px] text-slate-400">{c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos'}</p>
-                        </div>
-                      ) : (
-                        <span className="shrink-0 text-[10px] font-medium text-amber-500">sem WhatsApp</span>
-                      )}
-                    </button>
-                  );
-                })
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input value={searchContacts} onChange={(e) => setSearchContacts(e.target.value)}
+                placeholder="Pesquisar pelo nome ou telefone..." className="h-10 pl-9" />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {AUDIENCE_PRESETS.map((a) => (
+                <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
+                  title={a.description}>
+                  {a.label} ({resolveAudience(clients, a.id as AudienceId).length})
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <button type="button" onClick={toggleAllVisible} disabled={selectableVisible.length === 0}
+                className="flex items-center gap-2 text-[12px] font-medium text-slate-600 hover:text-emerald-600 disabled:opacity-40">
+                <Checkbox checked={allVisibleSelected} className="pointer-events-none" />
+                Selecionar todos {searchContacts ? '(filtrados)' : ''} ({selectableVisible.length})
+              </button>
+              {selectedIds.size > 0 && (
+                <button type="button" onClick={clearSelection} className="text-[11px] text-slate-400 hover:text-rose-500">Limpar</button>
               )}
             </div>
           </div>
 
-          {/* ── Composição ── */}
-          <div className="space-y-5">
+          <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+            {visibleClients.length === 0 ? (
+              <div className="flex h-40 flex-col items-center justify-center text-center text-slate-400">
+                <Users className="mb-2 h-6 w-6" />
+                <p className="text-sm">{clients.length === 0 ? 'Nenhum cliente na base.' : 'Nenhum contato encontrado.'}</p>
+              </div>
+            ) : (
+              visibleClients.map((c) => {
+                const valid = hasValidWhatsapp(c);
+                const checked = selectedIds.has(c.id);
+                const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+                const totalGasto = (c.totalPedidos || 0) * (c.ticketMedio || 0);
+                return (
+                  <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
+                    className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-2.5 text-left transition-colors ${
+                      !valid ? 'cursor-not-allowed opacity-50' : checked ? 'bg-emerald-50' : 'hover:bg-slate-50'
+                    }`}>
+                    <Checkbox checked={checked} disabled={!valid} className="pointer-events-none shrink-0" />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-[11px] font-bold text-white">
+                      {initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">{c.nome || 'Sem nome'}</p>
+                      <p className="flex items-center gap-1 truncate text-[11px] text-slate-400">
+                        <Phone className="h-3 w-3" /> {c.celular || 'sem WhatsApp'}
+                      </p>
+                    </div>
+                    {valid ? (
+                      <div className="shrink-0 text-right">
+                        <p className="text-[12px] font-bold text-emerald-600">R$ {totalGasto.toFixed(2)}</p>
+                        <p className="text-[10px] text-slate-400">{c.ultimoPedido ? `últ.: ${c.ultimoPedido}` : 'sem pedidos'}</p>
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-[10px] font-medium text-amber-500">sem WhatsApp</span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── Composição (rola independente) ── */}
+        <div className="min-h-0 overflow-y-auto custom-scrollbar">
+          <div className="mx-auto w-full max-w-[760px] space-y-5 p-4 sm:p-6">
+
+            {/* Stats */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <StatCard icon={Users} tint="emerald" label="Selecionados" value={`${audienceCount} contatos`} hint="Com WhatsApp válido" />
+              <StatCard icon={Timer} tint="sky" label="Intervalo" value={`${draft.delaySeconds}s`} hint="Anti-bloqueio" />
+              <StatCard icon={Clock} tint="violet" label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} hint="Público × intervalo" />
+            </div>
+
             <Section title="Nome da campanha" subtitle="Só para identificar no histórico">
               <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
                 placeholder="Ex.: Promoção de Sexta — Pizza em dobro" className="h-11" />
@@ -365,34 +347,34 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-          </div>
-        </div>
 
-        {/* Histórico */}
-        <div className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Histórico de campanhas</h2>
-          {history.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Send className="h-5 w-5" /></div>
-              <p className="mt-3 text-sm font-medium text-slate-600">Nenhuma campanha enviada ainda</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {history.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">{c.name}</p>
-                    <p className="text-[11px] text-slate-400">{c.audienceLabel} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 text-[11px]">
-                    <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
-                    {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
-                  </div>
+            {/* Histórico */}
+            <div className="pt-2">
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Histórico de campanhas</h2>
+              {history.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Send className="h-5 w-5" /></div>
+                  <p className="mt-3 text-sm font-medium text-slate-600">Nenhuma campanha enviada ainda</p>
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-2">
+                  {history.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{c.name}</p>
+                        <p className="text-[11px] text-slate-400">{c.audienceLabel} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 text-[11px]">
+                        <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
+                        {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
