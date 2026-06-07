@@ -135,6 +135,18 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const selectableVisible = useMemo(() => visibleClients.filter(hasValidWhatsapp), [visibleClients]);
   const allVisibleSelected = selectableVisible.length > 0 && selectableVisible.every(c => selectedIds.has(c.id));
 
+  // Selecionados primeiro, depois os não selecionados — preservando a ordenação
+  // ativa dentro de cada grupo (alfabética por padrão).
+  const orderedVisible = useMemo(() => {
+    const sel: ClientLike[] = [];
+    const rest: ClientLike[] = [];
+    for (const c of visibleClients) (selectedIds.has(c.id) ? sel : rest).push(c);
+    return [...sel, ...rest];
+  }, [visibleClients, selectedIds]);
+
+  // Conjunto de ids existentes — para saber qual lista salva bate com a seleção atual.
+  const clientIdSet = useMemo(() => new Set(clients.map(c => c.id)), [clients]);
+
   const toggle = (id: string) => setSelectedIds(prev => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
@@ -374,7 +386,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 <p className="text-sm">{clients.length === 0 ? 'Nenhum cliente na base.' : 'Nenhum contato encontrado.'}</p>
               </div>
             ) : (
-              visibleClients.map((c) => {
+              orderedVisible.map((c) => {
                 const valid = hasValidWhatsapp(c);
                 const checked = selectedIds.has(c.id);
                 const initials = (c.nome || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
@@ -431,17 +443,26 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 ) : (
                   broadcastLists.map((l) => {
                     const count = (l.contactIds || []).length;
+                    // Lista "ativa" = a seleção atual bate exatamente com os contatos dela.
+                    const validIds = ((l.contactIds || []) as string[]).filter(id => clientIdSet.has(id));
+                    const active = selectedIds.size > 0 && validIds.length === selectedIds.size && validIds.every(id => selectedIds.has(id));
                     return (
                       <div key={l.id}
-                        className="group flex items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-3 pr-1.5 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                        className={`group flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 transition-colors ${
+                          active
+                            ? 'border-emerald-500 bg-emerald-500 shadow-sm'
+                            : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
+                        }`}>
                         <button type="button" onClick={() => loadList(l)} title="Carregar esta lista"
-                          className="flex items-center gap-1.5 text-[12px] font-medium text-slate-700">
-                          <Bookmark className="h-3.5 w-3.5 text-emerald-500" />
+                          className={`flex items-center gap-1.5 text-[12px] font-medium ${active ? 'text-white' : 'text-slate-700'}`}>
+                          {active ? <Check className="h-3.5 w-3.5 text-white" /> : <Bookmark className="h-3.5 w-3.5 text-emerald-500" />}
                           {l.name}
-                          <span className="text-[11px] text-slate-400">({count})</span>
+                          <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>({count})</span>
                         </button>
                         <button type="button" onClick={() => deleteList(l)} title="Remover lista"
-                          className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-rose-100 hover:text-rose-500">
+                          className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                            active ? 'text-emerald-100 hover:bg-emerald-600 hover:text-white' : 'text-slate-300 hover:bg-rose-100 hover:text-rose-500'
+                          }`}>
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
