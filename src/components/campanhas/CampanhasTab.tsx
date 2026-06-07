@@ -68,6 +68,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [listDialogOpen, setListDialogOpen] = useState(false);
   const [listName, setListName] = useState('');
   const [savingList, setSavingList] = useState(false);
+  // Lista marcada para exclusão (confirmação) — a lixeira fica perto do clique de carregar.
+  const [listToDelete, setListToDelete] = useState<any | null>(null);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<SendProgress | null>(null);
   const [result, setResult] = useState<SendCampaignResult | null>(null);
@@ -206,6 +208,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       toast({ title: 'Lista removida' });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Não foi possível remover', description: e?.message });
+    } finally {
+      setListToDelete(null);
     }
   };
 
@@ -453,13 +457,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                             ? 'border-emerald-500 bg-emerald-500 shadow-sm'
                             : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
                         }`}>
-                        <button type="button" onClick={() => loadList(l)} title="Carregar esta lista"
+                        <button type="button" onClick={() => active ? clearSelection() : loadList(l)}
+                          title={active ? 'Clique para desmarcar' : 'Carregar esta lista'}
                           className={`flex items-center gap-1.5 text-[12px] font-medium ${active ? 'text-white' : 'text-slate-700'}`}>
                           {active ? <Check className="h-3.5 w-3.5 text-white" /> : <Bookmark className="h-3.5 w-3.5 text-emerald-500" />}
                           {l.name}
                           <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>({count})</span>
                         </button>
-                        <button type="button" onClick={() => deleteList(l)} title="Remover lista"
+                        <button type="button" onClick={() => setListToDelete(l)} title="Remover lista"
                           className={`flex h-5 w-5 items-center justify-center rounded-full ${
                             active ? 'text-emerald-100 hover:bg-emerald-600 hover:text-white' : 'text-slate-300 hover:bg-rose-100 hover:text-rose-500'
                           }`}>
@@ -729,6 +734,24 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
             <Button onClick={saveCurrentAsList} disabled={!listName.trim() || savingList}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60">
               {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: confirmar exclusão de lista de transmissão */}
+      <Dialog open={!!listToDelete} onOpenChange={(o) => { if (!o) setListToDelete(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5 text-rose-500" /> Excluir lista</DialogTitle>
+          </DialogHeader>
+          <p className="py-1 text-sm text-slate-600">
+            Excluir a lista <strong>{listToDelete?.name}</strong>? Isso remove só a lista salva — os contatos continuam na sua base.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setListToDelete(null)}>Cancelar</Button>
+            <Button onClick={() => deleteList(listToDelete)} className="gap-2 bg-rose-600 hover:bg-rose-700">
+              <Trash2 className="h-4 w-4" /> Excluir
             </Button>
           </DialogFooter>
         </DialogContent>
