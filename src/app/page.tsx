@@ -548,13 +548,17 @@ export default function AdminPage() {
 
   // Som constante enquanto houver pedidos pendentes
   useEffect(() => {
-    if (!ordersRaw) return;
     const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
     if (!isManualPrint) return;
 
-    // Só toca a campainha para pedidos ONLINE ainda não aceitos pelo operador.
+    // Só toca a campainha para pedidos que ESTÃO VISÍVEIS e acionáveis na tela de
+    // Delivery (deliveryOrders), garantindo que sempre haja um botão "Recebido"
+    // para silenciar. Varrer ordersRaw (toda a história, sem recorte de caixa nem
+    // de tipo) fazia o alarme tocar por pedidos pendentes órfãos — ex.: pedido
+    // "comer no local" preso no purgatório do MesasTab, ou pendente de caixa
+    // fechado — que nem aparecem aqui: o apito tocava "sem pedido" na tela.
     // Pedidos do PDV (source 'pdv') ou já aceitos (accepted) não disparam o alarme.
-    const hasPending = (ordersRaw as any[]).some(o => o.status === 'pending' && o.source !== 'pdv' && !o.accepted);
+    const hasPending = deliveryOrders.some(o => o.status === 'pending' && o.source !== 'pdv' && !o.accepted);
     if (!hasPending) return;
 
     let isPlaying = true;
@@ -572,7 +576,7 @@ export default function AdminPage() {
       isPlaying = false;
       clearTimeout(timeoutId);
     };
-  }, [ordersRaw, playLoudAudio, storeProfile]);
+  }, [deliveryOrders, playLoudAudio, storeProfile]);
   const { data: addons } = useCollection(addonsQuery);
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
