@@ -8,14 +8,23 @@
  */
 import { Client, Receiver } from '@upstash/qstash';
 
-/** URL pública do endpoint que o QStash vai chamar. Reusa o `NEXT_PUBLIC_APP_URL`. */
-export function getDispatchUrl(): string {
-  const base = (
-    process.env.APP_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.WAPI_PUBLIC_BASE_URL ||
-    ''
-  ).replace(/\/+$/, '');
+/**
+ * URL pública do endpoint que o QStash vai chamar. Deriva do PRÓPRIO request
+ * (o domínio onde o app está sendo servido) — assim não depende de env var
+ * possivelmente errada. Cai para env só fora do contexto de request/local.
+ */
+export function getDispatchUrl(request?: Request): string {
+  let base = '';
+  if (request) {
+    try {
+      const origin = new URL(request.url).origin;
+      if (origin && !origin.includes('localhost')) base = origin;
+    } catch { /* ignore */ }
+  }
+  if (!base) {
+    base = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.WAPI_PUBLIC_BASE_URL || '');
+  }
+  base = base.replace(/\/+$/, '');
   if (!base) throw new Error('URL pública ausente (defina NEXT_PUBLIC_APP_URL/APP_URL).');
   return `${base}/api/cron/dispatch`;
 }
@@ -37,9 +46,9 @@ export function getReceiver(): Receiver {
  * Enfileira (ou agenda, via `delaySeconds`) uma execução do dispatcher para a
  * campanha. Retorna o messageId (guardado no doc p/ cancelamento opcional).
  */
-export async function enqueueDispatch(campaignId: string, delaySeconds = 0): Promise<string> {
+export async function enqueueDispatch(campaignId: string, delaySeconds = 0, request?: Request): Promise<string> {
   const res = await getClient().publishJSON({
-    url: getDispatchUrl(),
+    url: getDispatchUrl(request),
     body: { campaignId },
     delay: Math.max(0, Math.floor(delaySeconds)),
   });

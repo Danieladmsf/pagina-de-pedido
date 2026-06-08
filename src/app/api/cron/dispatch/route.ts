@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
-import { getReceiver, getDispatchUrl, enqueueDispatch } from '@/lib/campanhas/qstash';
+import { getReceiver, enqueueDispatch } from '@/lib/campanhas/qstash';
 import { requireIntegrationService } from '@/app/wapi/_lib';
 import { sendWapiImageMessage, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
 import { renderMessage, randomDelayMs } from '@/lib/campanhas/audience';
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get('upstash-signature') || '';
   try {
-    const valid = await getReceiver().verify({ signature, body, url: getDispatchUrl() });
+    // NÃO amarramos à URL (env pode divergir do domínio real) — a assinatura já autentica.
+    const valid = await getReceiver().verify({ signature, body });
     if (!valid) return NextResponse.json({ error: 'Assinatura invalida.' }, { status: 401 });
   } catch (err) {
     return NextResponse.json({ error: 'Falha ao verificar assinatura.' }, { status: 401 });
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
 
   await ref.update({ currentId: null, lockedAt: null, updatedAt: new Date().toISOString() });
   try {
-    const messageId = await enqueueDispatch(campaignId, 0);
+    const messageId = await enqueueDispatch(campaignId, 0, request);
     await ref.update({ lastQstashMessageId: messageId });
   } catch (enqErr) {
     // Se o re-enqueue falhar, devolve 500 → o QStash reentrega esta mesma mensagem.

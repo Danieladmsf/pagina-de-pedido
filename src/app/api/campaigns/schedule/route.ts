@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
     const delaySeconds = Math.max(0, Math.floor((Date.parse(scheduleAt) - Date.now()) / 1000));
     try {
-      const messageId = await enqueueDispatch(ref.id, delaySeconds);
+      const messageId = await enqueueDispatch(ref.id, delaySeconds, request);
       await ref.update({ lastQstashMessageId: messageId });
     } catch (e: any) {
       await ref.update({ status: 'error', error: `Falha ao enfileirar (QStash): ${e?.message || ''}` });
