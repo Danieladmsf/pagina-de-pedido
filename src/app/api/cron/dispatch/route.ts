@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   // 4) Envia um chunk com espaçamento real; persiste o cursor A CADA envio.
   const recipients = campaign.recipients || [];
   let { cursor, sent, failed } = campaign;
+  const results = Array.isArray(campaign.results) ? [...campaign.results] : [];
   const startedAt = Date.now();
   let n = 0;
   try {
@@ -99,13 +100,13 @@ export async function POST(request: Request) {
         } else {
           await sendWapiTextMessage(integration.wapiInstanceId, token, { phone, message: rendered, delayMessage: 1 });
         }
-        sent++;
+        sent++; results.push({ id: r.id, status: 'sent' });
       } catch (sendErr: any) {
-        failed++;
+        failed++; results.push({ id: r.id, status: 'failed', reason: sendErr?.message || 'falha' });
       }
 
       cursor++; n++;
-      await ref.update({ cursor, sent, failed, updatedAt: new Date().toISOString() }); // idempotência: antes do sleep
+      await ref.update({ cursor, sent, failed, results, updatedAt: new Date().toISOString() }); // idempotência: antes do sleep
       if (cursor < recipients.length && n < MAX_PER_CHUNK) await sleep(randomDelayMs(campaign.delayMin, campaign.delayMax));
     }
   } catch (loopErr) {

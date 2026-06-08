@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { uploadImage } from '@/lib/upload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,11 +24,7 @@ import {
   DELAY_MIN_SECONDS, DELAY_MAX_SECONDS, DELAY_AVG_SECONDS,
   type ClientLike,
 } from '@/lib/campanhas/audience';
-import type { AudienceId, CampaignDraft } from '@/lib/campanhas/types';
-import {
-  startDispatch as runDispatch, cancelDispatch, dismiss as dismissRunner,
-  subscribe as subscribeRunner, getState as getRunnerState,
-} from '@/lib/campanhas/campaign-runner';
+import type { AudienceId, CampaignDraft, ScheduledCampaign } from '@/lib/campanhas/types';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -73,13 +70,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   // Lista marcada para exclusão (confirmação) — a lixeira fica perto do clique de carregar.
   const [listToDelete, setListToDelete] = useState<any | null>(null);
 
-  // Estado do disparo vive no runner (singleton) — sobrevive à troca de aba.
-  const runner = useSyncExternalStore(subscribeRunner, getRunnerState, getRunnerState);
-  // Rola a lista até o contato que está sendo enviado agora.
-  const currentRowRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    currentRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [runner.currentId]);
+  const [submitting, setSubmitting] = useState(false);   // criando/enfileirando a campanha
+  const [dismissedId, setDismissedId] = useState<string | null>(null); // resumo já dispensado
 
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha Loja';
   const link = buildStoreLink(storeProfile, user?.uid, typeof window !== 'undefined' ? window.location.origin : undefined);
@@ -111,6 +103,39 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     () => [...((listsRaw || []) as any[])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')),
     [listsRaw],
   );
+
+  // Disparos agendados/em andamento (server-side). A UI lê em realtime — o
+  // progresso aparece mesmo com a aba fechada e para qualquer admin.
+  const scheduledQuery = useMemoFirebase(
+    () => (db && user ? query(collection(db, 'scheduled_campaigns'), where('ownerId', '==', user.uid)) : null),
+    [db, user],
+  );
+  const { data: scheduledRaw } = useCollection(scheduledQuery);
+  // Campanha "ao vivo": a ativa (running/scheduled) ou, na falta, a mais recente.
+  const live = useMemo(() => {
+    const arr = (scheduledRaw || []) as ScheduledCampaign[];
+    if (arr.length === 0) return null;
+    const active = arr.find((c) => c.status === 'running' || c.status === 'scheduled');
+    if (active) return active;
+    return [...arr].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+  }, [scheduledRaw]);
+  const liveActive = live?.status === 'running' || live?.status === 'scheduled';
+  // Painel some quando dispensado (Concluir) ou quando não há campanha relevante.
+  const showLivePanel = !!live && live.id !== dismissedId;
+  // Mapa id→status p/ animar cada linha da lista.
+  const liveDone = useMemo(() => {
+    const m: Record<string, 'sent' | 'failed'> = {};
+    (live?.results || []).forEach((r) => { m[r.id] = r.status; });
+    return m;
+  }, [live]);
+  const liveTotal = live?.recipients?.length || 0;
+  const livePct = liveTotal > 0 ? Math.round((((live?.sent || 0) + (live?.failed || 0)) / liveTotal) * 100) : 0;
+
+  // Rola a lista até o contato que está sendo enviado agora.
+  const currentRowRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [live?.currentId]);
 
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -279,48 +304,64 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   };
   const removeImage = () => { setImageFile(null); set({ imageUrl: null }); };
 
-  // Inicia o disparo em segundo plano (runner). Fecha o dialog na hora — o
-  // progresso aparece no painel do topo e a tela fica livre para navegar.
-  const startDispatch = () => {
-    if (!db || !user || runner.active) return;
-    const jobTargets = targets;
-    const jobName = draft.name?.trim() || 'Campanha';
-    const jobMessage = draft.message;
-    setConfirmOpen(false);
-    runDispatch({
-      empresaId: user.uid,
-      getToken: () => user.getIdToken(),
-      targets: jobTargets,
-      message: jobMessage,
-      imageFile,
-      imageUrlRemote: draft.imageUrl,
-      loja: storeName,
-      link,
-      name: jobName,
-      // Salva no histórico (secundário — não derruba o disparo se falhar).
-      persist: async ({ result, imageUrl }) => {
-        const id = doc(collection(db, 'campaigns')).id;
-        await setDoc(doc(db, 'campaigns', id), {
-          id, ownerId: user.uid,
-          name: jobName,
-          audienceId: 'manual', audienceLabel: 'Seleção manual',
-          message: jobMessage, hasImage: !!imageUrl, imageUrl,
-          total: result.total, sent: result.sent, failed: result.failed, canceled: result.canceled,
-          createdAt: new Date().toISOString(),
-        });
-      },
-    });
+  // Cria a campanha no servidor (Firestore + QStash). O envio roda no servidor —
+  // a tela fica livre e o progresso vem do doc em realtime.
+  const startDispatch = async () => {
+    if (!db || !user || submitting || liveActive) return;
+    setSubmitting(true);
+    try {
+      // Imagem: sobe o arquivo novo, ou reusa a URL já hospedada (repetição).
+      let imageUrl: string | null = null;
+      if (imageFile) imageUrl = await uploadImage(imageFile);
+      else if (draft.imageUrl && /^https?:/i.test(draft.imageUrl)) imageUrl = draft.imageUrl;
+
+      const recipients = targets.map((t) => ({ id: t.id, nome: t.nome || '', celular: t.celular || '' }));
+      const token = await user.getIdToken();
+      const res = await fetch('/api/campaigns/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: draft.name?.trim() || 'Campanha',
+          message: draft.message,
+          imageUrl,
+          loja: storeName,
+          link,
+          recipients,
+          scheduleAt: new Date().toISOString(),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.id) {
+        toast({ variant: 'destructive', title: 'Não foi possível disparar', description: data?.error || 'Tente novamente.' });
+        return;
+      }
+      setDismissedId(null);
+      setConfirmOpen(false);
+      toast({ title: 'Disparo iniciado', description: 'Roda no servidor — pode fechar a aba.' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro ao disparar', description: e?.message || 'Falha ao iniciar.' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Encerra o resumo do disparo e limpa o rascunho/seleção.
+  // Interromper: marca a campanha como cancelada — o servidor para no próximo chunk.
+  const stopDispatch = async () => {
+    if (!db || !live) return;
+    try {
+      await updateDoc(doc(db, 'scheduled_campaigns', live.id), { status: 'canceled' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível interromper', description: e?.message });
+    }
+  };
+
+  // Dispensa o resumo do disparo e limpa o rascunho/seleção.
   const finishDispatch = () => {
-    dismissRunner();
+    if (live) setDismissedId(live.id);
     setDraft(EMPTY_DRAFT);
     setImageFile(null);
     setSelectedIds(new Set());
   };
-
-  const dispatchPct = runner.total > 0 ? Math.round(((runner.sent + runner.failed) / runner.total) * 100) : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
@@ -345,47 +386,47 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         {/* ── Lista de contatos (full height, estilo WhatsApp Web) ── */}
         <div className="flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
 
-          {/* Painel de disparo em andamento / resultado — fica no topo, sem bloquear a tela */}
-          {(runner.active || runner.result || runner.error) && (
+          {/* Painel de disparo em andamento / resultado — lido do doc em realtime */}
+          {showLivePanel && live && (
             <div className="shrink-0 border-b border-slate-100 bg-slate-50 p-3">
-              {runner.error ? (
+              {live.status === 'error' ? (
                 <div className="flex items-center justify-between gap-2">
                   <p className="flex items-center gap-2 text-[12px] font-medium text-rose-600">
-                    <AlertTriangle className="h-4 w-4" /> {runner.error}
+                    <AlertTriangle className="h-4 w-4" /> {live.error || 'Falha no disparo.'}
                   </p>
-                  <button type="button" onClick={dismissRunner} className="text-[11px] text-slate-400 hover:text-slate-600">Fechar</button>
+                  <button type="button" onClick={finishDispatch} className="text-[11px] text-slate-400 hover:text-slate-600">Fechar</button>
                 </div>
               ) : (
                 <>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <p className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-700">
-                      {runner.active
-                        ? <><Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-500" /> <span className="truncate">Enviando “{runner.name}”…</span></>
-                        : runner.result?.canceled
+                      {liveActive
+                        ? <><Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-500" /> <span className="truncate">Enviando “{live.name}”…</span></>
+                        : live.status === 'canceled'
                           ? <><Ban className="h-4 w-4 shrink-0 text-amber-500" /> <span className="truncate">Disparo interrompido</span></>
                           : <><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> <span className="truncate">Campanha concluída</span></>}
                     </p>
-                    <span className="shrink-0 text-[11px] font-semibold text-slate-500">{dispatchPct}%</span>
+                    <span className="shrink-0 text-[11px] font-semibold text-slate-500">{livePct}%</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${dispatchPct}%` }} />
+                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${livePct}%` }} />
                   </div>
                   <div className="mt-1.5 flex items-center justify-between text-[11px]">
                     <span className="text-slate-500">
-                      <strong className="text-emerald-600">{runner.sent}</strong> enviadas
-                      {runner.failed > 0 && <> · <strong className="text-rose-500">{runner.failed}</strong> falhas</>}
-                      {' '}de {runner.total}
+                      <strong className="text-emerald-600">{live.sent}</strong> enviadas
+                      {live.failed > 0 && <> · <strong className="text-rose-500">{live.failed}</strong> falhas</>}
+                      {' '}de {liveTotal}
                     </span>
-                    {runner.active ? (
-                      <button type="button" onClick={cancelDispatch} className="flex items-center gap-1 font-medium text-rose-500 hover:text-rose-600">
+                    {liveActive ? (
+                      <button type="button" onClick={stopDispatch} className="flex items-center gap-1 font-medium text-rose-500 hover:text-rose-600">
                         <Ban className="h-3 w-3" /> Interromper
                       </button>
                     ) : (
                       <button type="button" onClick={finishDispatch} className="font-medium text-emerald-600 hover:text-emerald-700">Concluir</button>
                     )}
                   </div>
-                  {runner.active && (
-                    <p className="mt-1 text-[10px] text-slate-400">Roda em segundo plano — pode navegar por outras abas.</p>
+                  {liveActive && (
+                    <p className="mt-1 text-[10px] text-slate-400">Roda no servidor — pode fechar a aba que continua enviando.</p>
                   )}
                 </>
               )}
@@ -437,7 +478,9 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   : sortKey === 'recencia' ? { label: 'último pedido', primary: c.ultimoPedido || '—', secondary: `${pedidos} compra(s)` }
                   : { label: 'total gasto', primary: brl(totalGasto), secondary: `${pedidos} compra(s)` };
                 // Status do disparo neste contato (anima a linha durante o envio).
-                const dStatus = runner.currentId === c.id ? 'sending' : runner.doneIds[c.id];
+                const dStatus = showLivePanel
+                  ? (live?.currentId === c.id ? 'sending' : liveDone[c.id])
+                  : undefined;
                 return (
                   <button key={c.id} type="button" disabled={!valid} onClick={() => valid && toggle(c.id)}
                     ref={dStatus === 'sending' ? currentRowRef : undefined}
@@ -632,8 +675,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 </p>
               )}
               <Button className="gap-2 bg-emerald-600 px-6 hover:bg-emerald-700 disabled:opacity-60"
-                disabled={!canSend || runner.active} onClick={() => setConfirmOpen(true)}>
-                {runner.active ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Rocket className="h-4 w-4" /> Disparar para {audienceCount}<ChevronRight className="h-4 w-4" /></>}
+                disabled={!canSend || liveActive} onClick={() => setConfirmOpen(true)}>
+                {liveActive ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Rocket className="h-4 w-4" /> Disparar para {audienceCount}<ChevronRight className="h-4 w-4" /></>}
               </Button>
             </div>
 
@@ -701,11 +744,13 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
             <Row label="Tempo estimado" value={minutes > 0 ? `~${minutes} min` : '—'} />
           </div>
           <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800">
-            <Info className="h-4 w-4 shrink-0" /> Serão enviadas <strong>{audienceCount}</strong> mensagens reais. O envio roda em segundo plano — você pode navegar por outras abas.
+            <Info className="h-4 w-4 shrink-0" /> Serão enviadas <strong>{audienceCount}</strong> mensagens reais. O envio roda no servidor — você pode fechar a aba que continua.
           </p>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>Cancelar</Button>
-            <Button onClick={startDispatch} className="gap-2 bg-emerald-600 hover:bg-emerald-700"><Send className="h-4 w-4" /> Enviar agora</Button>
+            <Button variant="ghost" disabled={submitting} onClick={() => setConfirmOpen(false)}>Cancelar</Button>
+            <Button onClick={startDispatch} disabled={submitting} className="gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60">
+              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Iniciando…</> : <><Send className="h-4 w-4" /> Enviar agora</>}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
