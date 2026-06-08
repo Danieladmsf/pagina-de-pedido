@@ -45,7 +45,12 @@
       "WebFetch(domain:w-api.app)",
       "WebFetch(domain:docs.w-api.app)",
       "Bash(firebase deploy *)",
-      "Skill(claude-api)"
+      "Skill(claude-api)",
+      "Bash(grep -iE \"APP_URL|PUBLIC_BASE|limalimao|polarispdv|vercel.app\" .env.vercel)",
+      "Bash(grep -iE \"APP_URL|PUBLIC_BASE|limalimao|polarispdv|vercel.app\" .env.local)",
+      "Bash(grep -rin \"limalimao\" . --exclude-dir=node_modules --exclude-dir=.git)",
+      "Bash(grep -iE \"APP_URL|PUBLIC_BASE|VERCEL_URL\" .env.vercel)",
+      "Bash(grep -iE \"APP_URL|PUBLIC_BASE\" .env.local)"
     ]
   }
 }

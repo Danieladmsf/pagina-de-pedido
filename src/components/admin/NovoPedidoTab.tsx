@@ -11,7 +11,7 @@ import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc, increment, getDocs, query, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { PrintReceipt } from './PrintReceipt';
+import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
@@ -20,7 +20,6 @@ import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } fro
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
-import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 interface NovoPedidoTabProps {
@@ -165,7 +164,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [valorRecebido, setValorRecebido] = useState<string>('');
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderToPrint, setOrderToPrint] = useState<any>(null);
 
   // Estados para entrega
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
@@ -654,11 +652,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       toast({ title: '✅ Pedido finalizado!', description: `Venda R$ ${finalTotal.toFixed(2)} registrada em ${splitsToProcess.length} parte(s).` });
       
-      setOrderToPrint(orderData);
-      const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
+      // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
+      // para impressão pelo navegador (iframe) quando o QZ não estiver presente.
+      printOrderReceipt({ order: orderData, storeInfo: storeProfile });
       setTimeout(() => {
-        // QZ Tray (silencioso) com fallback total para window.print().
-        void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
         setCart([]);
         setCustomerName('');
         setCustomerPhone('');
@@ -1251,9 +1248,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       </DialogContent>
     </Dialog>
 
-      {orderToPrint && (
-        <PrintReceipt order={orderToPrint} storeInfo={storeProfile} />
-      )}
       <MenuItemDialog
         item={selectedItemForDialog}
         isOpen={!!selectedItemForDialog}

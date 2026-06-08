@@ -11,13 +11,12 @@ import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc, query, where, getDocs, increment } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { PrintReceipt } from './PrintReceipt';
+import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
-import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -61,9 +60,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   
   // Impressão e Pagamento
-  const [orderToPrint, setOrderToPrint] = useState<any>(null);
-  const [isKitchenPrint, setIsKitchenPrint] = useState(false);
-  
+
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   const [pendingItemToAdd, setPendingItemToAdd] = useState<any>(null);
   const [receiptPrinted, setReceiptPrinted] = useState(false);
@@ -93,11 +90,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
 
-  // Impressão silenciosa via QZ Tray, com fallback total para window.print().
-  // (o cupom já está renderizado em #qz-receipt-area pelo PrintReceipt)
-  const printReceiptNow = () => {
-    const printerSize = ((storeInfo?.general?.printerSize || storeInfo?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
-    void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
+  // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
+  // para impressão pelo navegador (iframe) quando o QZ não estiver presente.
+  const printReceiptNow = (order: any, isKitchen: boolean) => {
+    printOrderReceipt({ order, storeInfo, isKitchen });
   };
 
   const lastSelectedTableRef = React.useRef<number | null>(null);
@@ -288,17 +284,15 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       // No modo automático o ticket já foi impresso na chegada — não reimprime.
       // No modo manual, imprime agora.
       if (isManualPrint) {
-        setIsKitchenPrint(true);
         setReceiptPrinted(false);
-        setOrderToPrint({
+        printReceiptNow({
           id: order.id,
           customerName: order.customerName || 'Cliente',
           orderType: 'dine_in',
           items: order.items || [],
           orderDateTime: order.orderDateTime || new Date().toISOString(),
           tableNumber: order.tableNumber || null,
-        });
-        setTimeout(() => printReceiptNow(), 500);
+        }, true);
       }
       await updateDoc(doc(db, 'orders', order.id), { accepted: true });
       toast({ title: 'Pedido aceito', description: isManualPrint ? 'Ticket enviado para produção.' : 'Pedido confirmado.' });
@@ -433,17 +427,15 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       setOriginalCart(cart);
 
       if (newItemsToPrint.length > 0) {
-        setIsKitchenPrint(true);
         setReceiptPrinted(false); // Reseta o botão de "Receber" para "Imprimir Conta" pois a conta mudou
-        setOrderToPrint({
+        printReceiptNow({
           id: finalOrderId,
           customerName: `Mesa ${selectedTable}`,
           orderType: 'dine_in',
           tableNumber: selectedTable,
           items: newItemsToPrint,
           orderDateTime: new Date().toISOString(),
-        });
-        setTimeout(() => printReceiptNow(), 500);
+        }, true);
         toast({ title: 'Sucesso', description: 'Pedido salvo e enviado para produção!' });
       } else {
         toast({ title: 'Sucesso', description: 'Mesa atualizada (sem novos itens).' });
@@ -469,10 +461,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         });
       }
       
-      setIsKitchenPrint(false);
-      setOrderToPrint(activeOrder);
       setReceiptPrinted(true);
-      setTimeout(() => printReceiptNow(), 500);
+      printReceiptNow(activeOrder, false);
     } catch (e) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao atualizar mesa.' });
     } finally {
@@ -939,9 +929,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                         onClick={() => {
                           const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
                           if (activeOrder) {
-                            setIsKitchenPrint(false);
-                            setOrderToPrint(activeOrder);
-                            setTimeout(() => printReceiptNow(), 500);
+                            printReceiptNow(activeOrder, false);
                           }
                         }}
                         title="Imprimir Parcial"
@@ -1284,10 +1272,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         </DialogContent>
       </Dialog>
 
-      {/* Impressão Oculta */}
-      {orderToPrint && (
-        <PrintReceipt order={orderToPrint} storeInfo={storeInfo} isKitchen={isKitchenPrint} />
-      )}
       <MenuItemDialog
         item={selectedItemForDialog}
         isOpen={!!selectedItemForDialog}

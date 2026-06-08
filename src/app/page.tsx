@@ -36,7 +36,7 @@ import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { ComboModal } from '@/components/admin/ComboModal';
-import { PrintReceipt } from '@/components/admin/PrintReceipt';
+import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
@@ -46,7 +46,7 @@ import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
-import { warmupQz, printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { warmupQz, type PrinterSize } from '@/lib/qz-print';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
@@ -125,7 +125,6 @@ export default function AdminPage() {
       window.history.pushState({ type: 'admin-tab', tab: newTab }, '');
     }
   };
-  const [autoOrderToPrint, setAutoOrderToPrint] = useState<any>(null);
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -429,17 +428,13 @@ export default function AdminPage() {
         const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
         pendingNewOnes.forEach((ord: any, index: number) => {
           setTimeout(() => {
-            setAutoOrderToPrint(ord);
-            setTimeout(() => {
-              // Fallback no-op: sem QZ nesta máquina = não imprime automático (sem modal).
-              void printReceiptElementOrFallback({
-                printerSize,
-                fallback: () => console.info('[QZ] sem impressão silenciosa nesta máquina → pedido NÃO impresso automaticamente (sem modal). Use os botões manuais se precisar.'),
-              });
-              if (index === pendingNewOnes.length - 1) {
-                setTimeout(() => setAutoOrderToPrint(null), 3000);
-              }
-            }, 500);
+            // Fallback no-op: sem QZ nesta máquina = não imprime automático (sem modal).
+            printOrderReceipt({
+              order: ord,
+              storeInfo: storeProfile,
+              printerSize,
+              fallback: () => console.info('[QZ] sem impressão silenciosa nesta máquina → pedido NÃO impresso automaticamente (sem modal). Use os botões manuais se precisar.'),
+            });
           }, index * 2000);
         });
       }
@@ -3174,9 +3169,6 @@ export default function AdminPage() {
         storeName={storeProfile?.general?.name}
         onComplete={() => setWizardDismissed(true)}
       />
-    )}
-    {autoOrderToPrint && (
-      <PrintReceipt order={autoOrderToPrint} storeInfo={storeProfile} />
     )}
     </>
   );

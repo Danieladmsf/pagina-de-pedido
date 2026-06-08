@@ -12,13 +12,12 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { PrintReceipt } from './PrintReceipt';
+import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { validateCustomerCredit } from '@/lib/customer-credit';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
-import { printReceiptElementOrFallback, type PrinterSize } from '@/lib/qz-print';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -66,7 +65,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [paymentSplits, setPaymentSplits] = useState<{methodId: string, label: string, amount: number, received?: number}[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [orderToPrint, setOrderToPrint] = useState<any>(null);
   const [showMotoboyModal, setShowMotoboyModal] = useState<any>(null);
   const [selectedMotoboyId, setSelectedMotoboyId] = useState<string>('');
   const [valorRecebido, setValorRecebido] = useState<string>('');
@@ -519,12 +517,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
 
   const triggerPrint = (order: any) => {
-    setOrderToPrint(order);
-    const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
-    setTimeout(() => {
-      // QZ Tray (silencioso) com fallback total para window.print().
-      void printReceiptElementOrFallback({ printerSize, fallback: () => window.print() });
-    }, 500);
+    // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
+    // para impressão pelo navegador (iframe) quando o QZ não estiver presente.
+    printOrderReceipt({ order, storeInfo: storeProfile });
   };
 
   const assignMotoboy = () => {
@@ -988,10 +983,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         </DialogContent>
       </Dialog>
 
-      {/* Componente Invisível de Impressão */}
-      {orderToPrint && (
-        <PrintReceipt order={orderToPrint} storeInfo={storeProfile} />
-      )}
       {quickRegisterModal && (
         <QuickRegisterClientModal
           isOpen={quickRegisterModal.isOpen}
