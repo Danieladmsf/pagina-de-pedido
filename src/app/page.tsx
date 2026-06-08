@@ -333,7 +333,7 @@ export default function AdminPage() {
     return () => window.clearTimeout(timer);
   }, [user, isRealUser]);
 
-  const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0) => {
+  const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0, stopAfterMs?: number) => {
     try {
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
@@ -362,7 +362,13 @@ export default function AdminPage() {
       gainNode.gain.value = volumeMultiplier; // Amplifica o volume
       source.connect(gainNode);
       gainNode.connect(ctx.destination);
+      // Modo "automático com som": toca em loop e corta exatamente em stopAfterMs
+      // (ex.: 6s), independente da duração do MP3.
+      if (stopAfterMs && stopAfterMs > 0) source.loop = true;
       source.start(0);
+      if (stopAfterMs && stopAfterMs > 0) {
+        setTimeout(() => { try { source.stop(); } catch {} }, stopAfterMs);
+      }
     } catch (e) {
       console.error('Erro ao tocar audio:', e);
     }
@@ -370,6 +376,11 @@ export default function AdminPage() {
 
   const playNewOrderBeep = React.useCallback(() => {
     playLoudAudio(4.0);
+  }, [playLoudAudio]);
+
+  // Modo "automático com som": toca o alerta por ~6 segundos e para sozinho.
+  const playOrderSound6s = React.useCallback(() => {
+    playLoudAudio(4.0, 6000);
   }, [playLoudAudio]);
 
   // Pedidos "comer no local" do app NÃO recebem mesa automaticamente: ficam na
@@ -393,8 +404,14 @@ export default function AdminPage() {
     
     if (pendingNewOnes.length > 0) {
       const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
-      if (isManualPrint) {
+      // printMode: 'auto_silent' | 'auto_sound' | 'manual'. Deriva do legado
+      // manualPrint quando o perfil ainda não tem o campo novo.
+      const printMode = storeProfile?.general?.printMode || (storeProfile as any)?.printMode
+        || (isManualPrint ? 'manual' : 'auto_silent');
+      if (printMode === 'manual') {
         playNewOrderBeep();
+      } else if (printMode === 'auto_sound') {
+        playOrderSound6s();
       }
       toast({ title: `Novo pedido recebido!`, description: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
       try {
@@ -476,7 +493,7 @@ export default function AdminPage() {
     void processIncomingOrders();
 
     seenOrderIdsRef.current = currentIds;
-  }, [ordersRaw, playNewOrderBeep, toast, db, user, storeProfile]);
+  }, [ordersRaw, playNewOrderBeep, playOrderSound6s, toast, db, user, storeProfile]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {

@@ -58,6 +58,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     printerSize: '80mm' as '80mm' | '58mm',
     autoPrint: false,
     manualPrint: false,
+    printMode: 'auto_silent' as 'auto_silent' | 'auto_sound' | 'manual',
     disableDelivery: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -105,11 +106,13 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         const snap = await getDoc(doc(db as any, 'store_profiles', user.uid));
         if (snap.exists()) {
           const data = snap.data();
-          setFormData(prev => ({ 
-            ...prev, 
-            ...data.general, 
+          setFormData(prev => ({
+            ...prev,
+            ...data.general,
             ...data.fees,
-            tableServiceFeeType: data.fees?.tableServiceFeeType || 'percentage'
+            tableServiceFeeType: data.fees?.tableServiceFeeType || 'percentage',
+            // Migra perfis antigos (só tinham manualPrint) para o novo printMode.
+            printMode: data.general?.printMode || (data.general?.manualPrint ? 'manual' : 'auto_silent'),
           }));
           if (data.workingHours) setWorkingHours(data.workingHours);
           if (data.motoboys) {
@@ -166,7 +169,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           enableInventory: formData.enableInventory,
           printerSize: formData.printerSize,
           autoPrint: formData.autoPrint,
-          manualPrint: formData.manualPrint,
+          printMode: formData.printMode,
+          // Mantém o legado em sincronia: outros módulos (Delivery/Mesas) ainda leem manualPrint.
+          manualPrint: formData.printMode === 'manual',
           disableDelivery: formData.disableDelivery || false,
         },
         fees: {
@@ -779,23 +784,33 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                 </div>
 
                 <div className="pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <Label className="text-sm font-bold text-slate-800">Impressão Manual (Aceitar Pedido)</Label>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Se ligado, você precisará clicar em "Recebido" no Delivery para imprimir o pedido e parar o apito.</p>
-                    </div>
-                    <Switch 
-                      checked={formData.manualPrint} 
-                      onCheckedChange={(c) => setFormData({ ...formData, manualPrint: c })}
-                      className="data-[state=checked]:bg-amber-500"
-                    />
+                  <Label className="text-sm font-bold text-slate-800">Impressão de pedidos (Delivery)</Label>
+                  <p className="text-[11px] text-slate-500 mt-0.5 mb-3">Escolha como os pedidos que chegam no Delivery são impressos e se tocam alarme.</p>
+                  <div className="space-y-2">
+                    {([
+                      { value: 'auto_silent', title: 'Imprimir automático sem som', desc: 'O pedido é impresso assim que chega, sem tocar nada.' },
+                      { value: 'auto_sound', title: 'Imprimir automático com som (6 segundos)', desc: 'O pedido é impresso assim que chega e toca um alerta de 6 segundos.' },
+                      { value: 'manual', title: 'Clicar em "Recebido" para imprimir', desc: 'Toca em loop até você clicar em "Recebido" no Delivery — aí imprime e para o apito.' },
+                    ] as const).map((opt) => {
+                      const selected = formData.printMode === opt.value;
+                      return (
+                        <button
+                          type="button"
+                          key={opt.value}
+                          onClick={() => setFormData({ ...formData, printMode: opt.value })}
+                          className={`w-full flex items-start gap-3 text-left rounded-xl border p-3 transition ${selected ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                        >
+                          <span className={`mt-0.5 h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? 'border-emerald-500' : 'border-slate-300'}`}>
+                            {selected && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
+                          </span>
+                          <span>
+                            <span className={`block text-sm font-semibold ${selected ? 'text-emerald-800' : 'text-slate-800'}`}>{opt.title}</span>
+                            <span className="block text-[11px] text-slate-500 mt-0.5">{opt.desc}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {!formData.manualPrint && (
-                    <p className="text-[11px] text-emerald-600 font-medium">✅ Impressão Automática ativada: O pedido será impresso assim que chegar na tela do Delivery.</p>
-                  )}
-                  {formData.manualPrint && (
-                    <p className="text-[11px] text-amber-600 font-medium">⚠️ Impressão Manual ativada: Clique no botão "Recebido" para iniciar a impressão.</p>
-                  )}
                 </div>
 
                 <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
