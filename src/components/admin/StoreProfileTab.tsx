@@ -789,7 +789,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                   <div className="space-y-2">
                     {([
                       { value: 'auto_silent', title: 'Imprimir automático sem som', desc: 'O pedido é impresso assim que chega, sem tocar nada.' },
-                      { value: 'auto_sound', title: 'Imprimir automático com som (6 segundos)', desc: 'O pedido é impresso assim que chega e toca um alerta de 6 segundos.' },
+                      { value: 'auto_sound', title: 'Imprimir automático com som (12 segundos)', desc: 'O pedido é impresso assim que chega e toca um alerta de 12 segundos.' },
                       { value: 'manual', title: 'Clicar em "Recebido" para imprimir', desc: 'Toca em loop até você clicar em "Recebido" no Delivery — aí imprime e para o apito.' },
                     ] as const).map((opt) => {
                       const selected = formData.printMode === opt.value;

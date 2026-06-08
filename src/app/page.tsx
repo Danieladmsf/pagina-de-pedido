@@ -378,9 +378,9 @@ export default function AdminPage() {
     playLoudAudio(4.0);
   }, [playLoudAudio]);
 
-  // Modo "automático com som": toca o alerta por ~6 segundos e para sozinho.
+  // Modo "automático com som": toca o alerta por ~12 segundos e para sozinho.
   const playOrderSound6s = React.useCallback(() => {
-    playLoudAudio(4.0, 6000);
+    playLoudAudio(4.0, 12000);
   }, [playLoudAudio]);
 
   // Pedidos "comer no local" do app NÃO recebem mesa automaticamente: ficam na
