@@ -150,18 +150,47 @@ async function printElementViaQz(el: HTMLElement, printerSize: PrinterSize): Pro
 
   const { toPng } = await import('html-to-image');
 
+  // Largura em PIXELS (não em mm): o html-to-image dimensiona o canvas em px, e
+  // largura em '80mm' deixava a captura ambígua. 96dpi → px = mm * 96 / 25.4.
+  const widthPx = Math.round((widthMm(printerSize) * 96) / 25.4);
+
   const clone = el.cloneNode(true) as HTMLElement;
   clone.classList.remove('hidden');
-  clone.style.display = 'block';
-  clone.style.position = 'fixed';
-  clone.style.left = '-10000px';
-  clone.style.top = '0';
-  clone.style.background = '#ffffff';
+  clone.removeAttribute('id'); // evita id duplicado no DOM durante a captura
+  Object.assign(clone.style, {
+    display: 'block',
+    position: 'fixed',
+    left: '-10000px',
+    top: '0',
+    width: `${widthPx}px`,
+    maxWidth: `${widthPx}px`,
+    background: '#ffffff',
+    visibility: 'visible',
+    opacity: '1',
+  });
   document.body.appendChild(clone);
 
   let dataUrl: string;
   try {
-    dataUrl = await toPng(clone, { pixelRatio: 2, backgroundColor: '#ffffff' });
+    // O elemento de origem fica display:none. Sem esperar layout + fontes, o
+    // toPng capturava uma imagem curta (saía só um pedacinho do cupom e cortava).
+    try { await (document as any).fonts?.ready; } catch { /* navegador antigo */ }
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+    const height = Math.ceil(
+      Math.max(clone.scrollHeight, clone.offsetHeight, clone.getBoundingClientRect().height),
+    );
+
+    // Passa width/height EXPLÍCITOS: garante que o PNG tenha a altura real do
+    // cupom inteiro, em vez de colapsar para uma tira.
+    dataUrl = await toPng(clone, {
+      pixelRatio: 2,
+      backgroundColor: '#ffffff',
+      width: widthPx,
+      height,
+      canvasWidth: widthPx * 2,
+      canvasHeight: height * 2,
+    });
   } finally {
     if (document.body.contains(clone)) document.body.removeChild(clone);
   }
