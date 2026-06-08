@@ -40,3 +40,6 @@ next-env.d.ts
 # arquivos locais de trabalho/diagnostico e prints
 /scratch/
 /image*.png
+
+# Debug logs
+pglite-debug.log
