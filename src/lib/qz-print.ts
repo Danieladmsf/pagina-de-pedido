@@ -138,67 +138,85 @@ async function printHtmlViaQz(html: string, printerSize: PrinterSize): Promise<b
 }
 
 /**
- * Rasteriza um elemento já renderizado (ex.: o cupom em Tailwind do PrintReceipt)
- * para PNG e imprime via QZ. Retorna true se imprimiu pelo QZ.
+ * Copia TODOS os estilos computados de cada nó para o atributo `style` inline,
+ * e remove as classes. Assim o HTML fica autossuficiente (não depende do CSS
+ * do app) e o QZ consegue renderizá-lo como HTML nativo — igual ao cupom da
+ * sangria, que imprime inteiro. Lê os computados de um snapshot ANTES de
+ * escrever (escrever inline muda a cascata/herança dos filhos).
+ */
+function inlineComputedStyles(root: HTMLElement): void {
+  const nodes = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
+  const snapshots = nodes.map((n) => {
+    const cs = window.getComputedStyle(n);
+    let css = '';
+    for (let i = 0; i < cs.length; i++) {
+      const prop = cs[i];
+      css += `${prop}:${cs.getPropertyValue(prop)};`;
+    }
+    return css;
+  });
+  nodes.forEach((n, i) => {
+    n.style.cssText = snapshots[i];
+    n.removeAttribute('class');
+  });
+}
+
+/**
+ * Imprime um elemento já renderizado (ex.: o cupom do PrintReceipt) via QZ
+ * como HTML NATIVO (não como imagem). Retorna true se imprimiu pelo QZ.
+ *
+ * Por que HTML e não imagem (PNG): o cupom rasterizado saía "picado" — a
+ * impressora térmica fatiava a imagem comprida. O caminho HTML é o mesmo da
+ * sangria (que imprime inteiro): o QZ pagina pelo conteúdo, sem cortar.
  *
  * O elemento de cupom fica `display:none` (classe `hidden`); por isso clonamos,
- * tornamos visível fora da tela só para capturar, e removemos em seguida.
+ * tornamos visível fora da tela para obter o layout real, congelamos os estilos
+ * inline e removemos o clone em seguida.
  */
 async function printElementViaQz(el: HTMLElement, printerSize: PrinterSize): Promise<boolean> {
   const qz = await getConnectedQz();
   if (!qz) return false;
 
-  const { toPng } = await import('html-to-image');
-
-  // Largura em PIXELS (não em mm): o html-to-image dimensiona o canvas em px, e
-  // largura em '80mm' deixava a captura ambígua. 96dpi → px = mm * 96 / 25.4.
-  const widthPx = Math.round((widthMm(printerSize) * 96) / 25.4);
-
   const clone = el.cloneNode(true) as HTMLElement;
   clone.classList.remove('hidden');
-  clone.removeAttribute('id'); // evita id duplicado no DOM durante a captura
+  clone.removeAttribute('id'); // evita id duplicado no DOM
   Object.assign(clone.style, {
     display: 'block',
     position: 'fixed',
     left: '-10000px',
     top: '0',
-    width: `${widthPx}px`,
-    maxWidth: `${widthPx}px`,
-    background: '#ffffff',
     visibility: 'visible',
     opacity: '1',
+    background: '#ffffff',
   });
   document.body.appendChild(clone);
 
-  let dataUrl: string;
+  let html: string;
   try {
-    // O elemento de origem fica display:none. Sem esperar layout + fontes, o
-    // toPng capturava uma imagem curta (saía só um pedacinho do cupom e cortava).
+    // Sem esperar layout + fontes, os estilos computados saem incompletos.
     try { await (document as any).fonts?.ready; } catch { /* navegador antigo */ }
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-    const height = Math.ceil(
-      Math.max(clone.scrollHeight, clone.offsetHeight, clone.getBoundingClientRect().height),
-    );
-
-    // Passa width/height EXPLÍCITOS: garante que o PNG tenha a altura real do
-    // cupom inteiro, em vez de colapsar para uma tira.
-    dataUrl = await toPng(clone, {
-      pixelRatio: 2,
-      backgroundColor: '#ffffff',
-      width: widthPx,
-      height,
-      canvasWidth: widthPx * 2,
-      canvasHeight: height * 2,
+    inlineComputedStyles(clone);
+    // O root não pode herdar o posicionamento offscreen no HTML final.
+    Object.assign(clone.style, {
+      position: 'static',
+      left: 'auto',
+      top: 'auto',
+      transform: 'none',
+      margin: '0 auto',
     });
+
+    const w = `${widthMm(printerSize)}mm`;
+    html =
+      `<!doctype html><html><head><meta charset="utf-8">` +
+      `<style>*{box-sizing:border-box}@page{size:${w} auto;margin:0}html,body{margin:0;padding:0;background:#fff;width:${w}}</style>` +
+      `</head><body>${clone.outerHTML}</body></html>`;
   } finally {
     if (document.body.contains(clone)) document.body.removeChild(clone);
   }
 
-  const base64 = dataUrl.split(',')[1];
-  const cfg = await createConfig(qz, printerSize);
-  await qz.print(cfg, [{ type: 'pixel', format: 'image', flavor: 'base64', data: base64 }]);
-  return true;
+  return printHtmlViaQz(html, printerSize);
 }
 
 /**
