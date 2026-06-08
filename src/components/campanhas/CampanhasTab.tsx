@@ -17,7 +17,7 @@ import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
   Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
-  ListPlus, Trash2, Bookmark, MoreVertical, Pencil,
+  ListPlus, Trash2, Bookmark, MoreVertical, Repeat,
 } from 'lucide-react';
 import {
   AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
@@ -83,15 +83,6 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { data: clientesRaw } = useCollection(clientesQuery);
   const clients = (clientesRaw || []) as ClientLike[];
 
-  const campaignsQuery = useMemoFirebase(
-    () => (db && user ? query(collection(db, 'campaigns'), where('ownerId', '==', user.uid)) : null),
-    [db, user],
-  );
-  const { data: campaignsRaw } = useCollection(campaignsQuery);
-  const history = useMemo(
-    () => [...((campaignsRaw || []) as any[])].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-    [campaignsRaw],
-  );
 
   // Listas de transmissão salvas (seleções de contatos reutilizáveis).
   const listsQuery = useMemoFirebase(
@@ -130,6 +121,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   }, [live]);
   const liveTotal = live?.recipients?.length || 0;
   const livePct = liveTotal > 0 ? Math.round((((live?.sent || 0) + (live?.failed || 0)) / liveTotal) * 100) : 0;
+
+  // Histórico = campanhas já finalizadas (a ativa fica no painel do topo).
+  const history = useMemo(
+    () => ((scheduledRaw || []) as ScheduledCampaign[])
+      .filter((c) => c.status === 'done' || c.status === 'canceled' || c.status === 'error')
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+    [scheduledRaw],
+  );
 
   // Rola a lista até o contato que está sendo enviado agora.
   const currentRowRef = useRef<HTMLButtonElement | null>(null);
@@ -244,16 +243,16 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     }
   };
 
-  // Editar uma campanha do histórico: recarrega nome, texto e imagem no compositor.
-  const editCampaign = (c: any) => {
+  // Reusar uma campanha do histórico: recarrega nome, texto e imagem no compositor.
+  const reuseCampaign = (c: any) => {
     setDraft({ ...EMPTY_DRAFT, name: c.name || '', message: c.message || '', imageUrl: c.imageUrl || null });
     setImageFile(null);
-    toast({ title: 'Campanha carregada', description: 'Edite o texto/imagem, escolha os contatos e dispare.' });
+    toast({ title: 'Campanha carregada', description: 'Ajuste se quiser, escolha os contatos e dispare.' });
   };
   const deleteCampaign = async (c: any) => {
     if (!db || !user) return;
     try {
-      await deleteDoc(doc(db, 'campaigns', c.id));
+      await deleteDoc(doc(db, 'scheduled_campaigns', c.id));
       toast({ title: 'Campanha excluída' });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Não foi possível excluir', description: e?.message });
@@ -690,40 +689,48 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {history.map((c) => (
-                    <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
-                      {c.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
-                      ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-800">{c.name}</p>
-                        <p className="truncate text-[11px] text-slate-400">{c.message || c.audienceLabel} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
+                  {history.map((c) => {
+                    const total = (c.recipients || []).length;
+                    return (
+                      <div key={c.id} role="button" tabIndex={0} onClick={() => reuseCampaign(c)}
+                        title="Clique para usar esta campanha de novo"
+                        className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 transition-colors hover:border-emerald-300 hover:bg-emerald-50/40">
+                        {c.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-xl object-cover ring-1 ring-slate-200" />
+                        ) : (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><Megaphone className="h-5 w-5" /></div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-800">{c.name}</p>
+                          <p className="truncate text-[11px] text-slate-400">{c.message || `${total} contatos`} · {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2 text-[11px]">
+                          {c.status === 'canceled' && <span className="rounded-full bg-amber-50 px-2 py-1 font-bold text-amber-700">interrompida</span>}
+                          {c.status === 'error' && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">erro</span>}
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
+                          {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
+                          <span className="hidden items-center gap-1 text-slate-400 sm:flex"><Repeat className="h-3 w-3" /> usar de novo</span>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button type="button" title="Opções" onClick={(e) => e.stopPropagation()}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => reuseCampaign(c)} className="gap-2">
+                              <Repeat className="h-4 w-4" /> Usar de novo
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => deleteCampaign(c)} className="gap-2 text-rose-600 focus:text-rose-600">
+                              <Trash2 className="h-4 w-4" /> Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 text-[11px]">
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 font-bold text-emerald-700">{c.sent} enviadas</span>
-                        {c.failed > 0 && <span className="rounded-full bg-rose-50 px-2 py-1 font-bold text-rose-600">{c.failed} falhas</span>}
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button type="button" title="Opções"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => editCampaign(c)} className="gap-2">
-                            <Pencil className="h-4 w-4" /> Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => deleteCampaign(c)} className="gap-2 text-rose-600 focus:text-rose-600">
-                            <Trash2 className="h-4 w-4" /> Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
