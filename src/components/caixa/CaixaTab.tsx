@@ -708,9 +708,14 @@ export function CaixaTab({
 
   const handleFecharCaixa = () => {
     // ─── Segurança: bloquear se houver pedidos abertos ───
-    const pedidosAbertos = (orders || []).filter((o: any) =>
-      !['delivered', 'canceled'].includes(o.status)
-    );
+    const pedidosAbertos = (orders || []).filter((o: any) => {
+      if (['delivered', 'canceled'].includes(o.status)) return false;
+      // Balcão/Retirada e Mesa em "Retirada/Disponível" (out_for_delivery) já
+      // estão prontos e entregues ao cliente — não devem travar o fechamento.
+      // Só Delivery em out_for_delivery (a caminho com motoboy) ainda conta como aberto.
+      if (o.orderType !== 'delivery' && o.status === 'out_for_delivery') return false;
+      return true;
+    });
 
     if (pedidosAbertos.length > 0) {
       const tipoMap: Record<string, string> = {
