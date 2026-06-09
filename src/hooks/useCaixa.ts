@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFirestore, useCollection, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer, writeBatch } from 'firebase/firestore';
 
 export interface Caixa {
   id: string;
@@ -258,9 +258,14 @@ export function useCaixa(options?: UseCaixaOptions) {
       if (l.tipo === 'suprimento') totalSuprimentos += l.valor;
     });
 
+    // Todas as gravações do fechamento vão num único batch atômico:
+    // ou grava tudo (sangrias + fechamento), ou nada — falha no meio não
+    // deixa sangria órfã com caixa aberto, e refazer não duplica.
+    const batch = writeBatch(db);
+
     // Registrar sangria da Taxa do Garçom
     if (params?.taxaGarcom && params.taxaGarcom > 0) {
-      await addDoc(collection(db, 'cash_transactions'), {
+      batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
         ownerId: user!.uid,
         tipo: 'sangria',
@@ -277,7 +282,7 @@ export function useCaixa(options?: UseCaixaOptions) {
       for (const m of params.detalhesMotoboys) {
         const valorPago = m.valorPago ?? m.total;
         if (valorPago > 0) {
-          await addDoc(collection(db, 'cash_transactions'), {
+          batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
             ownerId: user!.uid,
             tipo: 'sangria',
@@ -298,7 +303,7 @@ export function useCaixa(options?: UseCaixaOptions) {
       for (const f of params.detalhesFreelancers) {
         const valorPago = f.valorPago ?? f.total;
         if (valorPago > 0) {
-          await addDoc(collection(db, 'cash_transactions'), {
+          batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
             ownerId: user!.uid,
             tipo: 'sangria',
@@ -326,7 +331,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     // Lançamentos de Apuração de Caixa (Falta/Sobra)
     if (params?.diferencaCaixa !== undefined && params.diferencaCaixa !== 0) {
       const isFalta = params.diferencaCaixa < 0;
-      await addDoc(collection(db, 'cash_transactions'), {
+      batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
         ownerId: user!.uid,
         tipo: isFalta ? 'sangria' : 'suprimento',
@@ -345,7 +350,7 @@ export function useCaixa(options?: UseCaixaOptions) {
 
     // Registrar lançamento de Retirada no Fechamento
     if (valorParaRetirada > 0) {
-      await addDoc(collection(db, 'cash_transactions'), {
+      batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
         ownerId: user!.uid,
         tipo: 'retirada_fechamento',
@@ -359,7 +364,7 @@ export function useCaixa(options?: UseCaixaOptions) {
 
 
 
-    await updateDoc(doc(db, 'cash_registers', caixaAberto.id), {
+    batch.update(doc(db, 'cash_registers', caixaAberto.id), {
       status: 'fechado',
       dataFechamento: serverTimestamp(),
       totalFechamento: totalVendas + totalSuprimentos,
@@ -376,7 +381,9 @@ export function useCaixa(options?: UseCaixaOptions) {
     });
 
     // Atualiza o perfil da loja para o cardápio de clientes
-    await setDoc(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: false }, { merge: true });
+    batch.set(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: false }, { merge: true });
+
+    await batch.commit();
   }, [db, isRealUser, user, caixaAberto, lancamentos]);
 
   const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo }: {
