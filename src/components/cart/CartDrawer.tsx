@@ -667,7 +667,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         console.warn('Erro ao salvar local profile fallback', e);
       }
 
-      const orderId = Math.random().toString(36).substring(2, 10).toUpperCase();
+      // ID curto exibido ao cliente; crypto garante 8 caracteres e entropia real
+      const ORDER_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const orderId = Array.from(
+        crypto.getRandomValues(new Uint8Array(8)),
+        (byte) => ORDER_ID_ALPHABET[byte % ORDER_ID_ALPHABET.length]
+      ).join('');
       const orderRef = doc(collection(db, 'orders'), orderId);
 
       const channelCheck = checkCartChannelVisibility(cart, menuItems, orderType);
@@ -798,7 +803,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
             if (currentStock === null) continue;
 
             if (reqQty > currentStock) {
-              const error = new Error(`"${itemData.name || productId}" tem apenas ${currentStock} unidade(s) disponÃ­vel(is).`);
+              const error = new Error(`"${itemData.name || productId}" tem apenas ${currentStock} unidade(s) disponível(is).`);
               (error as any).code = 'insufficient-stock';
               throw error;
             }
