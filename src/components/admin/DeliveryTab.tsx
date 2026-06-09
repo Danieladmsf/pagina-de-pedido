@@ -52,9 +52,14 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
   // - qualquer pedido de entrega (delivery), de qualquer origem;
   // - pickup do app do cliente (source 'cardapio'), que ainda precisa ser preparado.
-  // NÃO inclui pickup do PDV (Balcão/Retirada), que já é finalizado no caixa.
+  // - pickup que ainda NAO foi finalizado (ex.: um delivery que o cliente avisou
+  //   que vem buscar e o atendente clicou "Retirada no Local"). Esse pedido nasceu
+  //   no Delivery e DEVE terminar aqui mesmo, sem mudar de aba. O balcao normal do
+  //   PDV nasce 'delivered', entao continua de fora (ja finalizado no caixa).
   const onlyDeliveryAppOrders = orders?.filter(o =>
-    o.orderType === 'delivery' || (o.orderType === 'pickup' && o.source === 'cardapio')
+    o.orderType === 'delivery'
+    || (o.orderType === 'pickup' && o.source === 'cardapio')
+    || (o.orderType === 'pickup' && !['delivered', 'canceled'].includes(o.status))
   ) || [];
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
