@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardPublicApi } from '@/lib/api-guard';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
 
@@ -13,8 +14,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest) {
   try {
+    const blocked = guardPublicApi(req);
+    if (blocked) return blocked;
+
     const placeId = req.nextUrl.searchParams.get('placeId')?.trim();
-    if (!placeId) {
+    if (!placeId || placeId.length > 200) {
       return NextResponse.json({ error: 'placeId é obrigatório' }, { status: 400 });
     }
 
@@ -34,7 +38,6 @@ export async function GET(req: NextRequest) {
     });
     
     const data = await response.json();
-    console.log('[API place-details] Retorno bruto do Google Places:', JSON.stringify(data, null, 2));
 
     if (!response.ok) {
       return NextResponse.json({
@@ -61,13 +64,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    console.log('[API place-details] Etapa 1 (Places API):', { street, neighborhood, city });
-
     // ── ETAPA 2: Se bairro veio vazio, tentar REVERSE GEOCODE ──
     if (!neighborhood && data.location) {
       const lat = data.location.latitude;
       const lng = data.location.longitude;
-      console.log('[API place-details] Bairro vazio! Tentando reverse geocode com:', { lat, lng });
 
       try {
         const geoUrl = new URL('https://maps.googleapis.com/maps/api/geocode/json');
@@ -78,7 +78,6 @@ export async function GET(req: NextRequest) {
 
         const geoRes = await fetch(geoUrl.toString(), { cache: 'no-store' });
         const geoData = await geoRes.json();
-        console.log('[API place-details] Reverse geocode retornou:', JSON.stringify(geoData?.results?.[0]?.address_components || [], null, 2));
 
         if (geoData.status === 'OK' && geoData.results?.length > 0) {
           // Percorre todos os resultados procurando sublocality
@@ -91,7 +90,6 @@ export async function GET(req: NextRequest) {
                 comp.long_name
               ) {
                 neighborhood = comp.long_name;
-                console.log('[API place-details] ✅ Bairro encontrado via reverse geocode:', neighborhood);
                 break;
               }
             }
@@ -119,7 +117,6 @@ export async function GET(req: NextRequest) {
                   comp.long_name
                 ) {
                   neighborhood = comp.long_name;
-                  console.log('[API place-details] ✅ Bairro encontrado via reverse geocode (sem filtro):', neighborhood);
                   break;
                 }
               }
@@ -128,17 +125,12 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        if (!neighborhood) {
-          console.log('[API place-details] ⚠️ Reverse geocode também não retornou bairro');
-        }
       } catch (geoErr: any) {
         console.warn('[API place-details] Erro no reverse geocode (não fatal):', geoErr.message);
       }
     }
 
-    console.log('[API place-details] Resultado final:', { street, neighborhood, city });
-
-    return NextResponse.json({ 
+    return NextResponse.json({
       street,
       neighborhood,
       city,

@@ -1,26 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardPublicApi } from '@/lib/api-guard';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
-
-// Proteções contra abuso da cota paga do Google:
-// limite por IP em memória (vale por instância do servidor — freia rajadas
-// e scripts, não substitui um rate-limit distribuído).
-const RATE_LIMIT_MAX = 30;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const rateLimitHits = new Map<string, { count: number; resetAt: number }>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitHits.get(ip);
-  if (!entry || now > entry.resetAt) {
-    // Limpeza oportunista para o Map não crescer sem limite
-    if (rateLimitHits.size > 5000) rateLimitHits.clear();
-    rateLimitHits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT_MAX;
-}
 
 /**
  * Calcula a taxa de entrega com base na distância real (ruas) entre o restaurante e o cliente.
@@ -35,18 +16,8 @@ function isRateLimited(ip: string): boolean {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Só o próprio cardápio (mesma origem) pode usar este proxy; bloqueia
-    // outros sites de consumirem a cota do Google via navegador dos visitantes.
-    const origin = req.headers.get('origin');
-    const host = req.headers.get('host');
-    if (origin && host && new URL(origin).host !== host) {
-      return NextResponse.json({ error: 'Origem não autorizada.' }, { status: 403 });
-    }
-
-    const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
-    if (isRateLimited(ip)) {
-      return NextResponse.json({ error: 'Muitas requisições. Tente novamente em instantes.' }, { status: 429 });
-    }
+    const blocked = guardPublicApi(req);
+    if (blocked) return blocked;
 
     const body = await req.json();
     const { storeAddress, customerAddress, feeRules, customAddressRules, neighborhoodHint } = body;

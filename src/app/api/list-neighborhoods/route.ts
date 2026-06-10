@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardPublicApi } from '@/lib/api-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,8 +32,12 @@ const SEARCH_TERMS = [
 
 export async function GET(req: NextRequest) {
   try {
+    // Limite apertado: cada chamada dispara ~40 buscas no ViaCEP
+    const blocked = guardPublicApi(req, { maxPerMinute: 5 });
+    if (blocked) return blocked;
+
     const city = req.nextUrl.searchParams.get('city')?.trim();
-    if (!city || city.length < 3) {
+    if (!city || city.length < 3 || city.length > 100) {
       return NextResponse.json({ neighborhoods: [] });
     }
 

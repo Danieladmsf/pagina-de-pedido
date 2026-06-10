@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardPublicApi } from '@/lib/api-guard';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
 const MIN_SEARCH_LENGTH = 2;
@@ -11,6 +12,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(req: NextRequest) {
   try {
+    // Limite mais folgado: dispara a cada tecla digitada (com debounce)
+    const blocked = guardPublicApi(req, { maxPerMinute: 60 });
+    if (blocked) return blocked;
+
     const input = req.nextUrl.searchParams.get('input')?.trim();
     if (!input || input.length < MIN_SEARCH_LENGTH) {
       return NextResponse.json({ predictions: [] });
