@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react';
 import { MenuPageClient } from '@/components/MenuPageClient';
-import { Loader2 } from 'lucide-react';
+import { StoreSplash } from '@/components/StoreSplash';
 import { Metadata, Viewport } from 'next';
 import { getTheme } from '@/lib/themes';
 import { fetchStoreProfile, fetchStoreName, resolveStoreIdFromSlugParam } from '@/lib/store-profile-server';
@@ -82,13 +82,23 @@ export async function generateViewport({ params }: { params: Promise<{ storeSlug
 
 export default async function StorePage({ params }: { params: Promise<{ storeSlug: string }> }) {
   const { storeSlug } = await params;
+
+  // Mesmos fetches do generateMetadata (cacheados 5min), então sem custo extra:
+  // o logo/nome/tema alimentam a splash de abertura com a marca da loja.
+  const storeId = await resolveStoreIdFromSlugParam(storeSlug);
+  const profile = storeId ? await fetchStoreProfile(storeId) : null;
+  const splashLogoUrl = profile?.general?.logoUrl || '';
+  const splashStoreName = profile?.general?.name || '';
+  const splashBg = getTheme(profile?.general?.theme || 'light').colors.bg || '#FAFAF7';
+
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    }>
-      <MenuPageClient storeSlug={storeSlug} />
+    <Suspense fallback={<StoreSplash logoUrl={splashLogoUrl} storeName={splashStoreName} bgColor={splashBg} />}>
+      <MenuPageClient
+        storeSlug={storeSlug}
+        splashLogoUrl={splashLogoUrl}
+        splashStoreName={splashStoreName}
+        splashBg={splashBg}
+      />
     </Suspense>
   );
 }

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
+import { StoreSplash } from '@/components/StoreSplash';
 import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
@@ -85,7 +86,17 @@ function PromoCountdown({ endDate, noEndDate }: { endDate?: Date; noEndDate?: bo
   );
 }
 
-export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
+export function MenuPageClient({
+  storeSlug,
+  splashLogoUrl,
+  splashStoreName,
+  splashBg,
+}: {
+  storeSlug?: string;
+  splashLogoUrl?: string;
+  splashStoreName?: string;
+  splashBg?: string;
+}) {
   const db = useFirestore();
   const { toast } = useToast();
   const { cart, addToCart, updateQuantity, totalItems, totalPrice } = useCart();
@@ -686,14 +697,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }, [storeId, loadingStoreProfile, hasOpenCashRegister, storeProfile]);
 
   if (!db || !slugResolved || loadingCats || loadingItems) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF7]">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground font-medium">Buscando sabores...</p>
-        </div>
-      </div>
-    );
+    return <StoreSplash logoUrl={splashLogoUrl} storeName={splashStoreName} bgColor={splashBg} />;
   }
 
   return (
