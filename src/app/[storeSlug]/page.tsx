@@ -33,7 +33,8 @@ export async function generateMetadata({ params }: { params: Promise<{ storeSlug
     description,
     // Manifest por loja: splash do PWA com o logo e nome da loja
     manifest: `/api/manifest/${storeSlug}`,
-    ...(logoUrl ? { icons: { apple: logoUrl } } : {}),
+    // Logo da loja como favicon da aba e icone apple (iOS)
+    ...(logoUrl ? { icons: { icon: logoUrl, shortcut: logoUrl, apple: logoUrl } } : {}),
     appleWebApp: {
       capable: true,
       statusBarStyle: 'default' as const,
