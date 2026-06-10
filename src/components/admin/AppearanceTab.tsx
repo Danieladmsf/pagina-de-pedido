@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { Loader2, Check, ExternalLink, Upload, Download, Trash2, ImageIcon, Copy } from 'lucide-react';
+import { Loader2, ExternalLink, Upload, Download, Trash2, ImageIcon, Copy, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { THEME_LIST, themeToCssVars, getTheme, ensureBrandFontsLoaded } from '@/lib/themes';
+import { getTheme, ensureBrandFontsLoaded } from '@/lib/themes';
 import { uploadImage } from '@/lib/upload';
 
 interface AppearanceTabProps {
@@ -54,8 +54,6 @@ function generateShortCode(length = 6): string {
 export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
   const { toast } = useToast();
   const currentThemeId = storeProfile?.theme || 'padrao';
-  const [selectedId, setSelectedId] = useState<string>(currentThemeId);
-  const [isSaving, setIsSaving] = useState(false);
   const [shortSlug, setShortSlug] = useState<string>('');
 
   // Generate or load short slug
@@ -75,14 +73,11 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     })();
   }, [db, user?.uid, storeProfile?.shortSlug]);
 
-  useEffect(() => {
-    setSelectedId(currentThemeId);
-  }, [currentThemeId]);
-
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
 
-  const selected = getTheme(selectedId);
-  const dirty = selectedId !== currentThemeId;
+  // O estilo visual é definido uma única vez, na abertura da conta
+  // (WelcomeWizard) — aqui só é exibido, como configuração da loja.
+  const currentTheme = getTheme(currentThemeId);
 
   const bannerUrl = storeProfile?.general?.bannerUrl as string | undefined;
   const bannerMobileUrl = storeProfile?.general?.bannerMobileUrl as string | undefined;
@@ -147,23 +142,6 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const handleSave = async () => {
-    if (!db || !user?.uid || !dirty) return;
-    setIsSaving(true);
-    try {
-      await setDoc(
-        doc(db, 'store_profiles', user.uid),
-        { theme: selectedId, onboardingCompleted: true },
-        { merge: true }
-      );
-      toast({ title: 'Aparência atualizada!', description: 'Seu cardápio público já mostra o novo estilo.' });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Não foi possível salvar.' });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const storeNameSlug = (storeProfile?.general?.name || storeProfile?.storeName || 'loja')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
     .replace(/[^a-zA-Z0-9\s-]/g, '')
@@ -178,7 +156,7 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
         <div>
           <h2 className="text-2xl font-black text-slate-800">Aparência do cardápio</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Escolha um estilo visual para o cardápio que seus clientes veem.
+            Banner e imagens do cardápio que seus clientes veem.
           </p>
         </div>
         {storeLink && (
@@ -194,52 +172,22 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {THEME_LIST.map((preset) => {
-          const isSelected = selectedId === preset.id;
-          const isCurrent = currentThemeId === preset.id;
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => setSelectedId(preset.id)}
-              className={`relative text-left rounded-xl border-2 transition-all overflow-hidden ${
-                isSelected ? 'border-primary ring-2 ring-primary/30 shadow-lg' : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <div className="p-5 h-36 flex flex-col justify-end relative" style={themeToCssVars(preset)}>
-                {isCurrent && (
-                  <span className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow">
-                    Em uso
-                  </span>
-                )}
-                {isSelected && !isCurrent && (
-                  <div className="absolute top-2 right-2 bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center shadow">
-                    <Check className="w-4 h-4" />
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <span className="text-4xl">{preset.icon}</span>
-                  <div>
-                    <h3
-                      className="font-black text-xl leading-tight"
-                      style={{ fontFamily: preset.fonts.heading, color: preset.colors.text }}
-                    >
-                      {preset.label}
-                    </h3>
-                    <div className="flex gap-1 mt-1.5">
-                      <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: preset.colors.primary }} />
-                      <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: preset.colors.accent }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 bg-white">
-                <p className="text-xs text-slate-600 leading-snug">{preset.description}</p>
-              </div>
-            </button>
-          );
-        })}
+      {/* O estilo visual é escolhido uma única vez, na abertura da conta
+          (WelcomeWizard) — aqui só informa qual está em uso. */}
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center gap-4">
+        <span className="text-3xl">{currentTheme.icon}</span>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-slate-800">
+            Estilo visual: {currentTheme.label}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+            <Lock className="w-3 h-3" /> Definido na abertura da conta — faz parte da configuração da loja.
+          </p>
+        </div>
+        <div className="flex gap-1">
+          <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: currentTheme.colors.primary }} />
+          <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: currentTheme.colors.accent }} />
+        </div>
       </div>
 
       <div className="space-y-4 pt-4 border-t">
@@ -452,23 +400,6 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
         </div>
       </div>
 
-      <div className="sticky bottom-0 bg-white border-t border-slate-200 -mx-6 px-6 py-3 flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">
-          {dirty ? (
-            <>Estilo selecionado: <span className="font-bold text-slate-700">{selected.icon} {selected.label}</span></>
-          ) : (
-            <>Estilo atual: <span className="font-bold text-slate-700">{selected.icon} {selected.label}</span></>
-          )}
-        </p>
-        <Button
-          size="sm"
-          className="bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50"
-          disabled={!dirty || isSaving}
-          onClick={handleSave}
-        >
-          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aplicar mudanças'}
-        </Button>
-      </div>
     </div>
   );
 }

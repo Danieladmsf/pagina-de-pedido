@@ -55,7 +55,7 @@ export function WelcomeWizard({ db, userId, storeName, onComplete }: WelcomeWiza
             Bem-vindo{storeName ? `, ${storeName}` : ''}!
           </h2>
           <p className="text-white/90 text-sm">
-            Escolha o estilo do seu cardápio digital. Você pode trocar depois.
+            Escolha o estilo do seu cardápio digital. Essa escolha faz parte da configuração da loja.
           </p>
         </div>
 
