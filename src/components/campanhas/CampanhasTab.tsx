@@ -67,6 +67,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [listDialogOpen, setListDialogOpen] = useState(false);
   const [listName, setListName] = useState('');
   const [savingList, setSavingList] = useState(false);
+  // Lista carregada por último: habilita "Atualizar lista" depois de mexer na seleção
+  const [activeListId, setActiveListId] = useState<string | null>(null);
   // Lista marcada para exclusão (confirmação) — a lixeira fica perto do clique de carregar.
   const [listToDelete, setListToDelete] = useState<any | null>(null);
 
@@ -195,9 +197,12 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const applyPreset = (id: AudienceId) => {
     const turningOff = activePreset === id;
     setActivePreset(turningOff ? null : id);
-    if (!turningOff) setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+    if (!turningOff) {
+      setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+      setActiveListId(null);
+    }
   };
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = () => { setSelectedIds(new Set()); setActiveListId(null); };
 
   // ── Listas de transmissão ──────────────────────────────────────────────
   // Salva os contatos selecionados como uma lista nomeada para reusar depois.
@@ -216,6 +221,8 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       toast({ title: 'Lista salva', description: `"${name}" com ${selectedIds.size} contato(s).` });
       setListDialogOpen(false);
       setListName('');
+      // A lista recém-criada vira a ativa: dá para seguir marcando contatos e "Atualizar lista"
+      setActiveListId(id);
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Não foi possível salvar', description: e?.message || 'Verifique as regras do Firestore.' });
     } finally {
@@ -229,12 +236,31 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     setActivePreset(null);
     setSearchContacts('');
     setSelectedIds(new Set(ids));
-    toast({ title: `Lista "${list.name}" carregada`, description: `${ids.length} contato(s) selecionado(s).` });
+    setActiveListId(list.id);
+    toast({ title: `Lista "${list.name}" carregada`, description: `${ids.length} contato(s) selecionado(s). Marque/desmarque contatos e use "Atualizar lista" para salvar.` });
+  };
+  // Regrava a lista carregada com a seleção atual (adicionar/remover contatos).
+  const updateActiveList = async () => {
+    if (!db || !user || !activeListId || selectedIds.size === 0) return;
+    const list = broadcastLists.find((l: any) => l.id === activeListId);
+    setSavingList(true);
+    try {
+      await setDoc(doc(db, 'broadcast_lists', activeListId), {
+        contactIds: Array.from(selectedIds),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast({ title: 'Lista atualizada', description: `"${list?.name || 'Lista'}" agora tem ${selectedIds.size} contato(s).` });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível atualizar', description: e?.message || 'Verifique as regras do Firestore.' });
+    } finally {
+      setSavingList(false);
+    }
   };
   const deleteList = async (list: any) => {
     if (!db || !user) return;
     try {
       await deleteDoc(doc(db, 'broadcast_lists', list.id));
+      if (activeListId === list.id) setActiveListId(null);
       toast({ title: 'Lista removida' });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Não foi possível remover', description: e?.message });
@@ -561,12 +587,24 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   })
                 )}
               </div>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={selectedIds.size === 0}
                   onClick={() => { setListName(''); setListDialogOpen(true); }}
                   className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
-                  <ListPlus className="h-4 w-4" /> Salvar seleção ({selectedIds.size})
+                  <ListPlus className="h-4 w-4" /> Salvar como nova lista ({selectedIds.size})
                 </Button>
+                {activeListId && (() => {
+                  const activeList = broadcastLists.find((l: any) => l.id === activeListId);
+                  if (!activeList) return null;
+                  return (
+                    <Button type="button" size="sm" disabled={selectedIds.size === 0 || savingList}
+                      onClick={updateActiveList}
+                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+                      {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      Atualizar “{activeList.name}” ({selectedIds.size})
+                    </Button>
+                  );
+                })()}
               </div>
             </Section>
 
