@@ -591,6 +591,35 @@ export default function AdminPage() {
   }, [deliveryOrders, playLoudAudio, storeProfile]);
   const { data: addons } = useCollection(addonsQuery);
 
+  // Higiene: containers podem acumular IDs de adicionais que foram excluídos
+  // da Lista Matriz (vínculo fica órfão no addonIds). Limpa uma vez por
+  // sessão, só nos containers do próprio dono, quando os dois datasets
+  // chegaram completos.
+  const danglingCleanupDoneRef = React.useRef(false);
+  useEffect(() => {
+    if (danglingCleanupDoneRef.current) return;
+    if (!db || !isRealUser || !addons || !addonCategories) return;
+    danglingCleanupDoneRef.current = true;
+    const validIds = new Set((addons as any[]).map((a: any) => a.id));
+    const dirty = (addonCategories as any[]).filter((c: any) =>
+      c.ownerId === user!.uid &&
+      Array.isArray(c.addonIds) &&
+      c.addonIds.some((id: string) => !validIds.has(id))
+    );
+    if (dirty.length === 0) return;
+    (async () => {
+      try {
+        for (const c of dirty) {
+          const cleaned = c.addonIds.filter((id: string) => validIds.has(id));
+          await updateDoc(doc(db, 'addonCategories', c.id), { addonIds: cleaned });
+        }
+        console.log(`[higiene] ${dirty.length} container(s) limpos de adicionais excluídos.`);
+      } catch (e) {
+        console.warn('[higiene] falha ao limpar containers:', e);
+      }
+    })();
+  }, [db, isRealUser, user, addons, addonCategories]);
+
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
   const [editingAddon, setEditingAddon] = useState<any>(null);

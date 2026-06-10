@@ -365,6 +365,20 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                   placeholder="Nome da etapa..."
                                 />
                                 <div className="flex items-center gap-1.5">
+                                   <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                                     <span className="text-[10px] text-sky-700 font-semibold" title="0 = opcional">Mínimo:</span>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        value={group.min ?? 0}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          handleUpdateGroup(index, 'min', val === '' ? 0 : parseInt(val) || 0);
+                                        }}
+                                        className="w-8 h-6 px-0 text-center border-0 bg-transparent text-sky-700 font-bold text-xs shadow-none focus-visible:ring-0"
+                                        title="Quantidade mínima obrigatória para o cliente fechar o pedido (0 = opcional)"
+                                      />
+                                   </div>
                                    <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
                                      <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
                                       <Input

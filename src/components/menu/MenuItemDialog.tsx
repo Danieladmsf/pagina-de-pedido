@@ -355,8 +355,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
+                      {minChoices > 0 && currentSelected.length < minChoices && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Obrigatório</span>
+                      )}
                       <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                        {maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : 'Sem limite'}
+                        {minChoices > 0
+                          ? (maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : `Escolha ao menos ${minChoices}`)
+                          : (maxChoices > 0 ? `Escolha até ${maxChoices}` : 'Sem limite')}
                       </span>
                     </div>
                   </div>
