@@ -1407,18 +1407,18 @@ export default function AdminPage() {
         }>
           <div className={
             activeTab === 'produtos'
-              ? 'max-w-[1600px] w-full mx-auto px-2 mt-4 flex-1 min-h-0 flex flex-col'
+              ? 'max-w-[1600px] w-full mx-auto px-2 mt-2 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
 
           {activeTab === 'produtos' && (
-            <div className={`mt-6 flex-1 min-h-0 flex flex-col ${(editingProduct !== null || editingCombo !== null) ? 'overflow-y-auto custom-scrollbar' : ''}`}>
+            <div className={`mt-2 flex-1 min-h-0 flex flex-col ${(editingProduct !== null || editingCombo !== null) ? 'overflow-y-auto custom-scrollbar' : ''}`}>
               {editingCombo === null && (
-                <div className="mb-6 px-2 shrink-0">
-                  <h1 className="text-3xl font-black tracking-tight text-slate-800">
+                <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
+                  <h1 className="text-2xl font-black tracking-tight text-slate-800">
                     {editingProduct !== null ? (editingProduct.isMarmita ? 'Editar Marmita' : 'Editar Produto') : 'Produtos e Marmitas'}
                   </h1>
-                  <p className="text-muted-foreground mt-1 font-medium">
+                  <p className="text-sm text-muted-foreground font-medium">
                     {editingProduct !== null ? 'Gerencie as configurações deste item.' : 'Gerencie seu cardápio e monte produtos personalizados (Marmitas).'}
                   </p>
                 </div>
@@ -1442,9 +1442,15 @@ export default function AdminPage() {
               </div>
             ) : (
             <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4 shrink-0">
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white">
+              <CardHeader className="flex flex-col gap-2 border-b bg-white p-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Procurar produto ou marmita..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button onClick={() => setEditingProduct({})} className="bg-primary text-white shrink-0">
                     <Plus className="mr-2 h-4 w-4" /> Novo Produto
                   </Button>
                 </div>
@@ -1477,14 +1483,6 @@ export default function AdminPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
-                <div className="p-4 border-b bg-slate-50 flex items-center shrink-0">
-                  <Input
-                    placeholder="Procurar produto ou marmita..."
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    className="w-full"
-                  />
-                </div>
                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader className="bg-muted/30">
