@@ -83,6 +83,17 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [isSavingItems, setIsSavingItems] = useState(false);
   const [feePaidDirectly, setFeePaidDirectly] = useState(false);
+
+  // Modal "taxa já paga ao motoboy?" — substitui o confirm() nativo do
+  // navegador, que tinha botões OK/Cancelar ambíguos para uma pergunta de
+  // Sim/Não (e alguns navegadores suprimem diálogos nativos).
+  const [feeConfirm, setFeeConfirm] = useState<{ fee: number; newTotal: number | null; resolve: (paid: boolean) => void } | null>(null);
+  const askFeePaidDirectly = (fee: number, newTotal: number | null) =>
+    new Promise<boolean>((resolve) => setFeeConfirm({ fee, newTotal, resolve }));
+  const answerFeeConfirm = (paid: boolean) => {
+    feeConfirm?.resolve(paid);
+    setFeeConfirm(null);
+  };
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
   
@@ -329,7 +340,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
       // Se pgto simples for Prazo e houver taxa de entrega
       if (!isSplitMode && selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0) {
-        if (confirm(`O cliente já pagou a taxa de entrega de R$ ${Number(paymentModalOrder.deliveryFee).toFixed(2)} diretamente ao motoboy?\n\n(Se "Sim", a taxa será descontada e a dívida a Prazo será apenas de R$ ${Number(paymentModalOrder.totalAmount - paymentModalOrder.deliveryFee).toFixed(2)})`)) {
+        const paid = await askFeePaidDirectly(
+          Number(paymentModalOrder.deliveryFee),
+          Number(paymentModalOrder.totalAmount) - Number(paymentModalOrder.deliveryFee)
+        );
+        if (paid) {
           isFeePaidDirectlyLocal = true;
           setFeePaidDirectly(true);
         }
@@ -479,12 +494,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
   };
 
-  const handleAddSplit = () => {
+  const handleAddSplit = async () => {
     if (!selectedPayment || !paymentModalOrder) return;
-    
+
     let isFeePaidDirectlyLocal = feePaidDirectly;
     if (selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0 && !feePaidDirectly) {
-      if (confirm(`O cliente já pagou a taxa de entrega de R$ ${Number(paymentModalOrder.deliveryFee).toFixed(2)} diretamente ao motoboy?\n\n(Se "Sim", a taxa será descontada e o valor cobrado a Prazo não incluirá a taxa)`)) {
+      const paid = await askFeePaidDirectly(Number(paymentModalOrder.deliveryFee), null);
+      if (paid) {
         isFeePaidDirectlyLocal = true;
         setFeePaidDirectly(true);
       }
@@ -1152,6 +1168,24 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             >
               {isSavingItems ? 'Salvando...' : '💾 Salvar Alterações'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={feeConfirm !== null} onOpenChange={(open) => { if (!open) answerFeeConfirm(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Bike className="h-5 w-5" /> Taxa de entrega</DialogTitle>
+            <DialogDescription>
+              O cliente já pagou a taxa de entrega de <strong>R$ {(feeConfirm?.fee || 0).toFixed(2)}</strong> diretamente ao motoboy?
+              {feeConfirm?.newTotal != null && (
+                <> Se sim, a dívida a Prazo será de <strong>R$ {feeConfirm.newTotal.toFixed(2)}</strong>.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => answerFeeConfirm(false)}>Não, cobrar no Prazo</Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={() => answerFeeConfirm(true)}>Sim, já pagou</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
