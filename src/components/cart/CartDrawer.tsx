@@ -688,35 +688,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         return;
       }
 
-      // Validação de estoque antes de enviar
-      if (enableInventory) {
-        const demand = getStockDemand(cart);
-
-        // Fetch latest stock quantities from Firestore
-        const latestStocks: Record<string, { stock: number | null; name: string }> = {};
-        for (const pId of Object.keys(demand)) {
-          const itemDoc = await getDoc(doc(db, 'menuItems', pId));
-          if (itemDoc.exists()) {
-            const data = itemDoc.data();
-            const stock = getManagedStock(data.stockQuantity);
-            latestStocks[pId] = { stock, name: data.name || pId };
-          }
-        }
-
-        // Validate
-        for (const [pId, reqQty] of Object.entries(demand)) {
-          const info = latestStocks[pId];
-          if (info && info.stock !== null && reqQty > info.stock) {
-            toast({
-              variant: "destructive",
-              title: "Estoque insuficiente",
-              description: `"${info.name}" tem apenas ${info.stock} unidade(s) disponível(is).`
-            });
-            setIsSubmitting(false);
-            return;
-          }
-        }
-      }
+      // Estoque é validado dentro da transação de criação do pedido (que lê o
+      // valor mais atual e lança 'insufficient-stock' tratado no catch) — sem
+      // pré-checagem duplicada com getDoc por item.
 
       // Validação de Preço Segura (Cruza com menuItems oficial se disponível)
       let safeSubtotal = 0;

@@ -151,7 +151,12 @@ export default function MyOrdersPage() {
     return doc(db, 'customers', user.uid);
   }, [db, user]);
 
-  const menuItemsQuery = useMemoFirebase(() => (db ? collection(db, 'menuItems') : null), [db]);
+  // Só o catálogo da loja deste histórico: sem o filtro, baixava os itens de
+  // todas as lojas e o "Pedir novamente" podia casar item homônimo de outra loja.
+  const menuItemsQuery = useMemoFirebase(() => {
+    if (!db || !storeId) return null;
+    return query(collection(db, 'menuItems'), where('ownerId', '==', storeId));
+  }, [db, storeId]);
 
   const { data: ordersRaw, isLoading: loadingOrders } = useCollection(ordersQuery);
   const { data: profile } = useDoc(profileRef);
