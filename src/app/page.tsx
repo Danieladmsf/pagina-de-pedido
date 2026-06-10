@@ -1406,7 +1406,7 @@ export default function AdminPage() {
               : 'hidden'
         }>
           <div className={
-            (activeTab === 'produtos' || activeTab === 'adicionais')
+            (activeTab === 'produtos' || activeTab === 'adicionais' || activeTab === 'categorias')
               ? 'max-w-[1600px] w-full mx-auto px-2 mt-2 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
@@ -1730,13 +1730,13 @@ export default function AdminPage() {
           </Dialog>
 
           {activeTab === 'categorias' && (
-            <div className="mt-6">
-              <div className="mb-6 px-2">
-                <h1 className="text-3xl font-black tracking-tight text-slate-800">Categorias do Cardápio</h1>
-                <p className="text-muted-foreground mt-1 font-medium">Organize os seus produtos, defina a ordem de exibição e limite horários de disponibilidade.</p>
+            <div className="mt-2 flex-1 min-h-0 flex flex-col">
+              <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-2xl font-black tracking-tight text-slate-800">Categorias do Cardápio</h1>
+                <p className="text-sm text-muted-foreground font-medium">Organize os seus produtos, defina a ordem de exibição e limite horários de disponibilidade.</p>
               </div>
-              <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-4">
+              <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+              <CardHeader className="flex flex-row items-center justify-end border-b bg-white p-3 shrink-0">
                 <Dialog open={isCategoryModalOpen} onOpenChange={(open) => {
                   setIsCategoryModalOpen(open);
                   if (!open) setNewCategoryName('');
@@ -1906,8 +1906,8 @@ export default function AdminPage() {
                   </DialogContent>
                 </Dialog>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="max-h-[65vh] overflow-y-auto">
+              <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                   <Table>
                     <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
                       <TableRow>
@@ -2407,22 +2407,24 @@ export default function AdminPage() {
                 </div>
                 </div>
 
-                {addonCategoryFilter !== 'all' && (() => {
-                  const category = addonCategoryByName.get(addonCategoryFilter) as any;
-                  const usePrice = category?.usePrice !== false;
-                  return (
-                    <div className="flex w-full flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-bold text-slate-700">Configuração do container: {addonCategoryFilter}</p>
-                        <p className="text-slate-500">Define o limite máximo e se os itens deste container somam preço no pedido.</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 whitespace-nowrap">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative w-full sm:max-w-sm">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Controles do container selecionado, na linha dos botões */}
+                  {addonCategoryFilter !== 'all' && (() => {
+                    const category = addonCategoryByName.get(addonCategoryFilter) as any;
+                    const usePrice = category?.usePrice !== false;
+                    return (
+                      <>
+                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-nowrap">
                           <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            value={category?.max || 0} 
+                          <Input
+                            type="number"
+                            min="0"
+                            value={category?.max || 0}
                             onChange={async (e) => {
                               if (!db || !user) return;
                               const val = parseInt(e.target.value) || 0;
@@ -2433,9 +2435,9 @@ export default function AdminPage() {
                               } catch (err: any) {
                                 toast({ variant: 'destructive', title: 'Erro', description: err.message });
                               }
-                            }} 
-                            className="w-10 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0" 
-                            title="Limite máximo de escolhas (0 = Ilimitado)" 
+                            }}
+                            className="w-10 h-6 px-0 text-center border-0 bg-transparent text-amber-700 font-bold text-xs shadow-none focus-visible:ring-0"
+                            title="Limite máximo de escolhas (0 = Ilimitado)"
                           />
                         </div>
                         <button
@@ -2451,7 +2453,7 @@ export default function AdminPage() {
                               toast({ variant: 'destructive', title: 'Erro', description: err.message });
                             }
                           }}
-                          className={`h-8 rounded-full px-3 text-xs font-bold transition-colors ${
+                          className={`h-9 rounded-full px-3 text-xs font-bold transition-colors ${
                             usePrice
                               ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                               : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
@@ -2459,17 +2461,9 @@ export default function AdminPage() {
                         >
                           {usePrice ? 'Usa preço' : 'Sem preço'}
                         </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-                
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="relative w-full sm:max-w-sm">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
-                  </div>
-                  <div className="flex gap-2 shrink-0">
+                      </>
+                    );
+                  })()}
                   <Dialog open={isAddonCategoryModalOpen} onOpenChange={(open) => {
                     setIsAddonCategoryModalOpen(open);
                     if (!open) setNewAddonCategoryName('');
