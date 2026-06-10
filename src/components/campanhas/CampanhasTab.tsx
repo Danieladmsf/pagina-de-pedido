@@ -549,67 +549,12 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
           <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
 
-            {/* Listas de transmissão salvas — seleções de contatos reutilizáveis */}
-            <Section title="Listas de transmissão" subtitle="Salve uma seleção de contatos para reusar em campanhas futuras">
-              <div className="flex flex-wrap items-center gap-2">
-                {broadcastLists.length === 0 ? (
-                  <p className="text-[12px] text-slate-400">
-                    Nenhuma lista salva. Selecione contatos na lista ao lado e clique em “Salvar seleção”.
-                  </p>
-                ) : (
-                  broadcastLists.map((l) => {
-                    const count = (l.contactIds || []).length;
-                    // Lista "ativa" = a seleção atual bate exatamente com os contatos dela.
-                    const validIds = ((l.contactIds || []) as string[]).filter(id => clientIdSet.has(id));
-                    const active = selectedIds.size > 0 && validIds.length === selectedIds.size && validIds.every(id => selectedIds.has(id));
-                    return (
-                      <div key={l.id}
-                        className={`group flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 transition-colors ${
-                          active
-                            ? 'border-emerald-500 bg-emerald-500 shadow-sm'
-                            : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
-                        }`}>
-                        <button type="button" onClick={() => active ? clearSelection() : loadList(l)}
-                          title={active ? 'Clique para desmarcar' : 'Carregar esta lista'}
-                          className={`flex items-center gap-1.5 text-[12px] font-medium ${active ? 'text-white' : 'text-slate-700'}`}>
-                          {active ? <Check className="h-3.5 w-3.5 text-white" /> : <Bookmark className="h-3.5 w-3.5 text-emerald-500" />}
-                          {l.name}
-                          <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>({count})</span>
-                        </button>
-                        <button type="button" onClick={() => setListToDelete(l)} title="Remover lista"
-                          className={`flex h-5 w-5 items-center justify-center rounded-full ${
-                            active ? 'text-emerald-100 hover:bg-emerald-600 hover:text-white' : 'text-slate-300 hover:bg-rose-100 hover:text-rose-500'
-                          }`}>
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={selectedIds.size === 0}
-                  onClick={() => { setListName(''); setListDialogOpen(true); }}
-                  className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
-                  <ListPlus className="h-4 w-4" /> Salvar como nova lista ({selectedIds.size})
-                </Button>
-                {activeListId && (() => {
-                  const activeList = broadcastLists.find((l: any) => l.id === activeListId);
-                  if (!activeList) return null;
-                  return (
-                    <Button type="button" size="sm" disabled={selectedIds.size === 0 || savingList}
-                      onClick={updateActiveList}
-                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
-                      {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      Atualizar “{activeList.name}” ({selectedIds.size})
-                    </Button>
-                  );
-                })()}
-              </div>
-            </Section>
+            {/* ── Passo 1: público — grupos prontos, listas salvas e ordenação ── */}
+            <StepSection step={1} title="Escolha quem vai receber"
+              subtitle="Marque contatos na lista ao lado, use um grupo pronto ou carregue uma lista salva"
+              badge={audienceCount > 0 ? `${audienceCount} contato(s) selecionado(s)` : undefined}>
 
-            <Section title="Público e análise" subtitle="Filtre por grupo e ordene a base para montar o disparo">
-              {/* Filtros de público — aqui há espaço para uma linha só */}
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Grupos prontos</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {AUDIENCE_PRESETS.map((a) => {
                   const active = activePreset === a.id;
@@ -628,11 +573,71 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 })}
               </div>
 
-              {/* Ordenar a lista para analisar a base e montar o disparo */}
               <div className="mt-4">
-                <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar por
+                <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <Bookmark className="h-3.5 w-3.5" /> Listas salvas
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {broadcastLists.length === 0 ? (
+                    <p className="text-[12px] text-slate-400">
+                      Nenhuma lista salva ainda — selecione contatos e clique em “Salvar como nova lista”.
+                    </p>
+                  ) : (
+                    broadcastLists.map((l) => {
+                      const count = (l.contactIds || []).length;
+                      // Lista "ativa" = a seleção atual bate exatamente com os contatos dela.
+                      const validIds = ((l.contactIds || []) as string[]).filter(id => clientIdSet.has(id));
+                      const active = selectedIds.size > 0 && validIds.length === selectedIds.size && validIds.every(id => selectedIds.has(id));
+                      return (
+                        <div key={l.id}
+                          className={`group flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 transition-colors ${
+                            active
+                              ? 'border-emerald-500 bg-emerald-500 shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
+                          }`}>
+                          <button type="button" onClick={() => active ? clearSelection() : loadList(l)}
+                            title={active ? 'Clique para desmarcar' : 'Carregar esta lista'}
+                            className={`flex items-center gap-1.5 text-[12px] font-medium ${active ? 'text-white' : 'text-slate-700'}`}>
+                            {active ? <Check className="h-3.5 w-3.5 text-white" /> : <Bookmark className="h-3.5 w-3.5 text-emerald-500" />}
+                            {l.name}
+                            <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>({count})</span>
+                          </button>
+                          <button type="button" onClick={() => setListToDelete(l)} title="Remover lista"
+                            className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                              active ? 'text-emerald-100 hover:bg-emerald-600 hover:text-white' : 'text-slate-300 hover:bg-rose-100 hover:text-rose-500'
+                            }`}>
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={selectedIds.size === 0}
+                    onClick={() => { setListName(''); setListDialogOpen(true); }}
+                    className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                    <ListPlus className="h-4 w-4" /> Salvar como nova lista ({selectedIds.size})
+                  </Button>
+                  {activeListId && (() => {
+                    const activeList = broadcastLists.find((l: any) => l.id === activeListId);
+                    if (!activeList) return null;
+                    return (
+                      <Button type="button" size="sm" disabled={selectedIds.size === 0 || savingList}
+                        onClick={updateActiveList}
+                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+                        {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        Atualizar “{activeList.name}” ({selectedIds.size})
+                      </Button>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar contatos por
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {SORT_OPTIONS.map((o) => {
                     const active = sortKey === o.key;
@@ -649,15 +654,20 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   })}
                 </div>
               </div>
-            </Section>
+            </StepSection>
 
-            <Section title="Nome da campanha" subtitle="Só para identificar no histórico">
-              <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
-                placeholder="Ex.: Promoção de Sexta — Pizza em dobro" className="h-11" />
-            </Section>
+            {/* ── Passo 2: mensagem — nome, texto, IA, variáveis e imagem ── */}
+            <StepSection step={2} title="Monte a mensagem"
+              subtitle="Escreva um rascunho e deixe a IA ajustar, ou personalize com as variáveis">
 
-            <Section title="Mensagem" subtitle="Escreva um rascunho e deixe a IA ajustar, ou personalize com as variáveis">
-              <div className="mb-2 flex justify-end">
+              <div className="mb-4">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nome da campanha <span className="font-normal normal-case">(só para identificar no histórico)</span></p>
+                <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
+                  placeholder="Ex.: Promoção de Sexta — Pizza em dobro" className="h-11" />
+              </div>
+
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Mensagem</p>
                 <Button type="button" variant="outline" size="sm" onClick={improveWithAI} disabled={aiLoading}
                   className="gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-50">
                   {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
@@ -703,19 +713,34 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   </button>
                 )}
               </div>
-            </Section>
+            </StepSection>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            {/* ── Passo 3: revisão e disparo ── */}
+            <StepSection step={3} title="Revise e dispare"
+              subtitle="Confira o resumo — o envio roda no servidor e você acompanha em tempo real">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                  <span className={`rounded-full px-2.5 py-1 font-semibold ${audienceCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                    <Users className="mr-1 inline h-3 w-3" /> {audienceCount} contato(s)
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 font-semibold ${(draft.message || '').trim() ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                    {(draft.message || '').trim() ? 'Mensagem pronta' : 'Sem mensagem'}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-500">
+                    Imagem: {(imageFile || draft.imageUrl) ? 'sim' : 'não'}
+                  </span>
+                </div>
+                <Button className="gap-2 bg-emerald-600 px-6 hover:bg-emerald-700 disabled:opacity-60"
+                  disabled={!canSend || liveActive} onClick={() => setConfirmOpen(true)}>
+                  {liveActive ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Rocket className="h-4 w-4" /> Disparar para {audienceCount}<ChevronRight className="h-4 w-4" /></>}
+                </Button>
+              </div>
               {!canSend && (
-                <p className="flex-1 text-[12px] text-slate-400">
-                  {audienceCount === 0 ? 'Selecione ao menos um contato na lista.' : 'Escreva uma mensagem ou anexe uma imagem.'}
+                <p className="mt-2 text-[12px] text-slate-400">
+                  {audienceCount === 0 ? 'Falta o passo 1: selecione ao menos um contato.' : 'Falta o passo 2: escreva uma mensagem ou anexe uma imagem.'}
                 </p>
               )}
-              <Button className="gap-2 bg-emerald-600 px-6 hover:bg-emerald-700 disabled:opacity-60"
-                disabled={!canSend || liveActive} onClick={() => setConfirmOpen(true)}>
-                {liveActive ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</> : <><Rocket className="h-4 w-4" /> Disparar para {audienceCount}<ChevronRight className="h-4 w-4" /></>}
-              </Button>
-            </div>
+            </StepSection>
 
             {/* Histórico */}
             <div className="pt-2">
@@ -844,17 +869,26 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 }
 
 /* Subcomponentes locais */
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function StepSection({ step, title, subtitle, badge, children }: {
+  step: number; title: string; subtitle?: string; badge?: string; children: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="mb-3">
-        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[13px] font-black text-white">{step}</div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+          {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
+        </div>
+        {badge && (
+          <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{badge}</span>
+        )}
       </div>
       {children}
     </div>
   );
 }
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
