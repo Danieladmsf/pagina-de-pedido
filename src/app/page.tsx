@@ -1406,7 +1406,7 @@ export default function AdminPage() {
               : 'hidden'
         }>
           <div className={
-            activeTab === 'produtos'
+            (activeTab === 'produtos' || activeTab === 'adicionais')
               ? 'max-w-[1600px] w-full mx-auto px-2 mt-2 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
@@ -2239,13 +2239,13 @@ export default function AdminPage() {
             }
 
             return (
-            <div className="mt-6">
-              <div className="mb-6 px-2">
-                <h1 className="text-3xl font-black tracking-tight text-slate-800">Grupos de Adicionais</h1>
-                <p className="text-muted-foreground mt-1 font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
+            <div className="mt-2 flex-1 min-h-0 flex flex-col">
+              <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-2xl font-black tracking-tight text-slate-800">Grupos de Adicionais</h1>
+                <p className="text-sm text-muted-foreground font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
               </div>
-              <Card className="border shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="flex flex-col gap-3 border-b bg-white p-4">
+              <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+              <CardHeader className="flex flex-col gap-2 border-b bg-white p-3 shrink-0">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
                   <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 w-full md:w-auto">
                     <Button
@@ -2705,7 +2705,7 @@ export default function AdminPage() {
                 </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                 <div className={isContainerView ? 'flex flex-col lg:flex-row' : ''}>
                 <div className={isContainerView ? 'flex-1 min-w-0' : ''}>
                 {!isContainerView && (
