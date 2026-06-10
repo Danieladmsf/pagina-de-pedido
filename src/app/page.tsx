@@ -1406,7 +1406,7 @@ export default function AdminPage() {
               : 'hidden'
         }>
           <div className={
-            (activeTab === 'produtos' || activeTab === 'adicionais' || activeTab === 'categorias')
+            (activeTab === 'produtos' || activeTab === 'addons' || activeTab === 'categorias')
               ? 'max-w-[1600px] w-full mx-auto px-2 mt-2 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
@@ -1990,7 +1990,9 @@ export default function AdminPage() {
             const getAddonLegacyGroup = (addon: any) => (addon.group || '').trim();
             const explicitGroups = (addonCategories || []).map((c: any) => c.name);
             const implicitGroups = (addons || []).map(getAddonLegacyGroup).filter(Boolean);
-            const allGroups = Array.from(new Set([...explicitGroups, ...implicitGroups])).sort() as string[];
+            // Ordem alfabética pt-BR (ignora acentos e maiúsculas/minúsculas)
+            const allGroups = (Array.from(new Set([...explicitGroups, ...implicitGroups])) as string[])
+              .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
             const addonCategoryByName = new Map((addonCategories || []).map((c: any) => [c.name, c]));
             const getLegacyAddonIdsForGroup = (name: string) => (addons || [])
               .filter((addon: any) => getAddonLegacyGroup(addon) === name)
