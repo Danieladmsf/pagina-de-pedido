@@ -2245,14 +2245,18 @@ export default function AdminPage() {
                 <p className="text-sm text-muted-foreground font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
               </div>
               <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-              <CardHeader className="flex flex-col gap-2 border-b bg-white p-3 shrink-0">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 w-full md:w-auto">
+              <CardContent className="p-0 flex-1 min-h-0 flex flex-col lg:flex-row">
+                {/* ── Coluna 1: containers (lista vertical) ── */}
+                <div className="flex shrink-0 flex-col border-b bg-white lg:w-[230px] lg:border-b-0 lg:border-r min-h-0 max-h-44 lg:max-h-none">
+                  <div className="shrink-0 border-b px-3 py-2">
+                    <p className="text-xs font-bold text-slate-700">Containers</p>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-1 overflow-y-auto custom-scrollbar p-2">
                     <Button
                       variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
                       onClick={() => { setAddonCategoryFilter('all'); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                       size="sm"
-                      className="whitespace-nowrap rounded-full"
+                      className="w-full justify-start rounded-lg"
                     >
                       Lista Matriz
                     </Button>
@@ -2262,35 +2266,35 @@ export default function AdminPage() {
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
                         onClick={() => { setAddonCategoryFilter(g); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                         size="sm"
-                        className={`whitespace-nowrap rounded-full flex items-center group ${
+                        className={`w-full justify-between gap-2 rounded-lg flex items-center group ${
                           highlightedContainers.has(g) && addonCategoryFilter !== g
                             ? 'border-orange-400 bg-orange-100 text-orange-700 hover:bg-orange-200'
                             : ''
                         }`}
                       >
-                        {g}
-                        <span className="ml-2 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
-                          {getContainerAddonIds(g).length}
+                        <span className="truncate">{g}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className="rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
+                            {getContainerAddonIds(g).length}
+                          </span>
+                          {addonCategoryFilter === g && (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditCategoryName(g);
+                                setEditCategoryNewName(g);
+                                setIsEditCategoryModalOpen(true);
+                              }}
+                              className="bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
+                              title="Editar Container"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </span>
+                          )}
                         </span>
-                        {addonCategoryFilter === g && (
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditCategoryName(g);
-                              setEditCategoryNewName(g);
-                              setIsEditCategoryModalOpen(true);
-                            }}
-                            className="ml-1 bg-primary-foreground/20 hover:bg-primary-foreground/40 text-primary-foreground p-1 rounded-full transition-colors cursor-pointer"
-                            title="Editar Container"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </div>
-                        )}
                       </Button>
                     ))}
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
                     <Dialog open={isEditCategoryModalOpen} onOpenChange={(open) => {
                       setIsEditCategoryModalOpen(open);
                       if (!open) {
@@ -2407,8 +2411,10 @@ export default function AdminPage() {
                 </div>
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="relative w-full sm:max-w-sm">
+                {/* ── Coluna 2: adicionais do container / lista matriz ── */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="shrink-0 flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2">
+                  <div className="relative min-w-[180px] flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
                   </div>
@@ -2698,15 +2704,12 @@ export default function AdminPage() {
                   </Dialog>
                 </div>
                 </div>
-              </CardHeader>
-              <CardContent className="p-0 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                <div className={isContainerView ? 'flex flex-col lg:flex-row' : ''}>
-                <div className={isContainerView ? 'flex-1 min-w-0' : ''}>
                 {!isContainerView && (
-                  <div className="border-b px-4 py-2 text-xs font-semibold bg-slate-50 text-slate-600">
+                  <div className="shrink-0 border-b px-4 py-2 text-xs font-semibold bg-slate-50 text-slate-600">
                     Lista Matriz: editar, pausar ou excluir aqui altera o adicional globalmente.
                   </div>
                 )}
+                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
@@ -2844,8 +2847,11 @@ export default function AdminPage() {
                   </TableBody>
                 </Table>
                 </div>
+                </div>
+
+                {/* ── Coluna 3: produtos que usam o container ── */}
                 {isContainerView && (
-                  <div className="flex flex-col border-t bg-slate-50/40 lg:w-2/5 lg:min-w-[320px] lg:border-l lg:border-t-0 max-h-[55vh] lg:max-h-none">
+                  <div className="flex shrink-0 flex-col border-t bg-slate-50/40 lg:w-[320px] lg:border-l lg:border-t-0 min-h-0 max-h-[55vh] lg:max-h-none">
                     <div className="border-b bg-white px-3 py-2">
                       <p className="text-xs font-bold text-slate-700">Produtos que usam &quot;{addonCategoryFilter}&quot;</p>
                       <p className="text-[10px] text-slate-500">Marque para vincular este container ao produto; desmarque para remover.</p>
@@ -2877,7 +2883,6 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
-                </div>
               </CardContent>
             </Card>
             </div>
