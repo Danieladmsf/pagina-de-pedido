@@ -130,11 +130,13 @@ export function useCaixa(options?: UseCaixaOptions) {
   // Busca os lançamentos do caixa selecionado
   const lancamentosQuery = useMemoFirebase(() => {
     if (!db || !isRealUser || !caixaAtual?.id) return null;
+    // O filtro de ownerId é exigido pelas regras (leitura restrita ao dono)
     return query(
       collection(db, 'cash_transactions'),
+      where('ownerId', '==', user!.uid),
       where('caixaId', '==', caixaAtual.id)
     );
-  }, [db, isRealUser, caixaAtual?.id]);
+  }, [db, isRealUser, user?.uid, caixaAtual?.id]);
 
   const { data: lancamentosData, isLoading: loadingLancamentos, error: lancError } = useCollection(lancamentosQuery);
 

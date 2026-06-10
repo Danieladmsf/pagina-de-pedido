@@ -344,21 +344,17 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     return doc(db, 'store_profiles', storeId);
   }, [db, storeId]);
 
-  const cashRegistersQuery = useMemoFirebase(() => {
-    if (!db || !storeId) return null;
-    return query(collection(db, 'cash_registers'), where('ownerId', '==', storeId));
-  }, [db, storeId]);
-
-  const { data: storeProfile } = useDoc(storeProfileRef);
-  const { data: cashRegisters, isLoading: loadingCashRegisters } = useCollection(cashRegistersQuery);
+  const { data: storeProfile, isLoading: loadingStoreProfile } = useDoc(storeProfileRef);
   const isVisibleForCustomerMenu = useCallback((item: any) => {
     return isItemVisibleInChannel(item, 'delivery');
   }, []);
 
+  // store_profiles.isCaixaAberto é mantido pelo useCaixa (abrir/fechar) e é
+  // público por design — dispensa ler cash_registers, que agora é restrito ao dono.
   const hasOpenCashRegister = useMemo(() => {
-    if (!storeId || loadingCashRegisters) return null;
-    return (cashRegisters || []).some((cashRegister: any) => cashRegister.status === 'aberto');
-  }, [storeId, loadingCashRegisters, cashRegisters]);
+    if (!storeId || loadingStoreProfile) return null;
+    return Boolean((storeProfile as any)?.isCaixaAberto);
+  }, [storeId, loadingStoreProfile, storeProfile]);
 
   const themeId = (storeProfile as any)?.theme || 'padrao';
   const theme = getTheme(themeId);
@@ -632,7 +628,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
   }, []);
 
   const isStoreOpenRightNow = useMemo(() => {
-    if (storeId && (loadingCashRegisters || hasOpenCashRegister !== true)) {
+    if (storeId && (loadingStoreProfile || hasOpenCashRegister !== true)) {
       return { isOpen: false, reason: 'caixa_closed' };
     }
 
@@ -687,7 +683,7 @@ export function MenuPageClient({ storeSlug }: { storeSlug?: string }) {
     }
 
     return { isOpen: true, reason: '' };
-  }, [storeId, loadingCashRegisters, hasOpenCashRegister, storeProfile]);
+  }, [storeId, loadingStoreProfile, hasOpenCashRegister, storeProfile]);
 
   if (!db || !slugResolved || loadingCats || loadingItems) {
     return (

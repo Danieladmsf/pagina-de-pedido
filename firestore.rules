@@ -13,8 +13,10 @@ service cloud.firestore {
 
     // Regras para a coleção roles_admin
     match /roles_admin/{userId} {
-      // Qualquer um pode criar seu próprio registro de admin ao se cadastrar
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Cadastro de loja cria o próprio registro de admin. Login anônimo
+      // (clientes do cardápio) não pode se autopromover a admin.
+      allow create: if isSignedIn() && request.auth.uid == userId
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow get, list, update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if false; // Por segurança, não permite deletar admin via app
     }
@@ -35,8 +37,15 @@ service cloud.firestore {
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
       );
+      // Cliente (anônimo) só pode BAIXAR o estoque ao fazer pedido — nunca
+      // aumentar nem deixar negativo. Reposição/estorno é só do dono (admin).
       allow update: if (isAdmin() && resource.data.ownerId == request.auth.uid) ||
-        (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity']));
+        (isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])
+          && request.resource.data.stockQuantity is number
+          && request.resource.data.stockQuantity >= 0
+          && resource.data.stockQuantity is number
+          && request.resource.data.stockQuantity < resource.data.stockQuantity);
     }
 
     match /addons/{addonId} {
@@ -61,18 +70,25 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow get: if isSignedIn() && (
-        resource.data.customerIdentifier == request.auth.uid ||
+      // Cliente lê os próprios pedidos via customerUid (uid anônimo gravado
+      // na criação); dono lê os pedidos da loja. A query do cliente PRECISA
+      // filtrar por customerUid == uid (my-orders/banner já fazem isso).
+      allow get, list: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid ||
         (isAdmin() && resource.data.ownerId == request.auth.uid)
       );
-      allow list: if isSignedIn();
       allow update: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.customerUid == request.auth.uid ||
+        (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+      );
       allow delete: if false;
     }
 
     match /cash_registers/{registerId} {
-      allow get, list: if true;
+      // Movimento financeiro é só do dono. O cardápio do cliente usa
+      // store_profiles.isCaixaAberto para saber se o caixa está aberto.
+      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create, update, delete: if isAdmin() && (
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
@@ -80,7 +96,7 @@ service cloud.firestore {
     }
 
     match /cash_transactions/{transactionId} {
-      allow get, list: if true;
+      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create, update, delete: if isAdmin() && (
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
@@ -88,15 +104,21 @@ service cloud.firestore {
     }
 
     match /clientes/{clienteId} {
-      allow get, list: if true;
+      // Leitura exige login (o anônimo do cardápio serve): o my-orders busca
+      // o cliente por telefone para a Conta da Casa. Fechar mais que isso
+      // exige mover essas consultas para API routes com Admin SDK.
+      allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin() && (
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
       );
-      
+
       match /credit_transactions/{transactionId} {
-        allow get, list: if true;
-        allow create, update, delete: if true;
+        // Extrato visível para usuário logado (cliente vê o próprio fiado no
+        // my-orders); lançamentos só pelo dono da loja do cliente.
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if isAdmin()
+          && get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId == request.auth.uid;
       }
     }
 
@@ -106,7 +128,11 @@ service cloud.firestore {
     }
 
     match /active_sessions/{sessionId} {
-      allow read, write: if true;
+      // Ping de presença do cardápio: o cliente pode ainda não estar logado,
+      // então a escrita é aberta mas restrita ao formato do ping.
+      allow create, update: if request.resource.data.keys().hasOnly(['storeId', 'lastActive']);
+      allow delete: if true;
+      allow get, list: if isAdmin();
     }
 
     match /promotions/{promoId} {

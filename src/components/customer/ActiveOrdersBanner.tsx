@@ -45,12 +45,11 @@ export function ActiveOrdersBanner({ storeId, storeSlug }: { storeId?: string | 
     void ensureAuthenticated(auth);
   }, [auth, isUserLoading, user, customerPhone]);
 
-  // Busca pedidos pelo telefone
+  // Busca os próprios pedidos pelo uid anônimo (customerUid) — as regras
+  // só liberam a listagem dos pedidos do próprio usuário.
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !user || !customerPhone || !storeId) return null;
-    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
-    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
-    return query(collection(db, 'orders'), where('customerIdentifier', 'in', possiblePhones));
+    return query(collection(db, 'orders'), where('customerUid', '==', user.uid));
   }, [db, user, customerPhone, storeId]);
   const { data: ordersRaw } = useCollection(ordersQuery);
 

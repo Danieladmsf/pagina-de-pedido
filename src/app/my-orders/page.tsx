@@ -136,14 +136,13 @@ export default function MyOrdersPage() {
     void ensureAuthenticated(auth);
   }, [auth, isUserLoading, user, customerPhone]);
 
-  // Buscar pedidos pelo telefone e ownerId (storeId)
+  // Buscar pedidos pelo uid anônimo do cliente (gravado em customerUid na
+  // criação do pedido) — as regras só liberam a listagem dos próprios pedidos.
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !user || !customerPhone || !storeId) return null;
-    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
-    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
     return query(
-      collection(db, 'orders'), 
-      where('customerIdentifier', 'in', possiblePhones)
+      collection(db, 'orders'),
+      where('customerUid', '==', user.uid)
     );
   }, [db, user, customerPhone, storeId]);
 
@@ -180,7 +179,9 @@ export default function MyOrdersPage() {
   const [activeTab, setActiveTab] = useState<'pedidos' | 'prazo'>('pedidos');
 
   useEffect(() => {
-    if (!storeId || !db || !customerPhone) return;
+    // Aguarda o login (anônimo) — as regras de clientes/credit_transactions
+    // exigem usuário autenticado para leitura.
+    if (!storeId || !db || !customerPhone || !user) return;
 
     // Buscar loja
     getDoc(doc(db, 'store_profiles', storeId)).then(snap => {
@@ -212,7 +213,7 @@ export default function MyOrdersPage() {
     });
 
     return () => unsubClient();
-  }, [storeId, db, customerPhone]);
+  }, [storeId, db, customerPhone, user]);
 
 
 

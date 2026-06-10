@@ -617,11 +617,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
     setIsSubmitting(true);
     try {
-      const cashRegisterSnap = await getDocs(query(
-        collection(db, 'cash_registers'),
-        where('ownerId', '==', effectiveStoreOwnerId)
-      ));
-      const hasOpenCashRegister = cashRegisterSnap.docs.some((cashRegister) => cashRegister.data().status === 'aberto');
+      // store_profiles.isCaixaAberto é mantido pelo useCaixa (abrir/fechar) e é
+      // público por design — dispensa ler cash_registers, que agora é restrito ao dono.
+      const storeProfileSnap = await getDoc(doc(db, 'store_profiles', effectiveStoreOwnerId));
+      const hasOpenCashRegister = Boolean(storeProfileSnap.data()?.isCaixaAberto);
       if (!hasOpenCashRegister) {
         toast({ variant: "destructive", title: "Caixa Fechado", description: "Abra o caixa antes de aceitar pedidos pelo cardapio." });
         return;
@@ -763,6 +762,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const orderData = {
         id: orderId,
         customerIdentifier: normalizedPhone,
+        // uid anônimo do cliente: é o que as regras usam para ele ler os próprios
+        // pedidos (my-orders/banner) sem expor a lista de pedidos por telefone.
+        customerUid: authUser.uid,
         ownerId: effectiveStoreOwnerId,
         customerName,
         customerPhone: normalizedPhone,
