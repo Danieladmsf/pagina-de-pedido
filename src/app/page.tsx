@@ -2104,6 +2104,12 @@ export default function AdminPage() {
               new Set(allGroups.filter(name => getContainerAddonIds(name).includes(addonId)));
             // Containers que usam o item destacado (clicado na Lista Matriz) -> pintados de laranja.
             const highlightedContainers = highlightedAddonId ? getAddonContainerSet(highlightedAddonId) : new Set<string>();
+            // Com um adicional destacado, os containers laranja sobem para o topo
+            // da lista (alfabéticos entre si); o restante segue alfabético abaixo.
+            // allGroups já vem ordenado, então o particionamento preserva a ordem.
+            const orderedGroups = highlightedContainers.size > 0
+              ? [...allGroups.filter(g => highlightedContainers.has(g)), ...allGroups.filter(g => !highlightedContainers.has(g))]
+              : allGroups;
             const syncAddonContainers = async (addonId: string, selected: Set<string>) => {
               if (!db || !user) return;
               const current = getAddonContainerSet(addonId);
@@ -2262,7 +2268,7 @@ export default function AdminPage() {
                     >
                       Lista Matriz
                     </Button>
-                    {allGroups.map(g => (
+                    {orderedGroups.map(g => (
                       <Button
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
