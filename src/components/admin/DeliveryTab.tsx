@@ -667,7 +667,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   updateOrderStatus(selectedOrder.id, 'received'); 
                   if (storeProfile?.general?.manualPrint || storeProfile?.manualPrint) triggerPrint(selectedOrder); 
                 } },
-                { key: 'ready', label: 'Preparo', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
+                { key: 'ready', label: 'Pronto', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
                 { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
                   if (selectedOrder.orderType === 'delivery' && !selectedOrder.motoboyId) {
                     setShowMotoboyModal({ order: selectedOrder, dispatch: true });
