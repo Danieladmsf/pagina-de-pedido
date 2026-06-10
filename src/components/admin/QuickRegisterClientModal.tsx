@@ -95,7 +95,6 @@ export function QuickRegisterClientModal({
         cidade: formCidade,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        contaCasa: { enabled: true },
         creditEnabled: true,
         creditLimit: 0,
         creditPayDay: 0,

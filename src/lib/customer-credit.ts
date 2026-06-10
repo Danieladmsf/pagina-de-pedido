@@ -17,6 +17,14 @@ export type CreditValidationResult = {
 
 const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`;
 
+// creditEnabled explícito (true/false, gravado pela aba Clientes) tem
+// precedência; o legado contaCasa.enabled só vale quando creditEnabled
+// nunca foi definido. Sem isso, desativar o prazo na aba Clientes não
+// surtia efeito para clientes do cadastro rápido (que gravava os dois).
+export const isCreditEnabled = (data: any) =>
+  data?.creditEnabled === true ||
+  (data?.creditEnabled === undefined && data?.contaCasa?.enabled === true);
+
 export const normalizeCreditPhone = (phone: string) => {
   const digits = (phone || '').replace(/\D/g, '');
   return digits.replace(/^55(?=\d{10,11}$)/, '');
@@ -75,9 +83,8 @@ export async function findCreditCustomers(db: any, ownerId: string, phone: strin
 
 function validateCreditData(customer: CreditCustomer, amount: number): CreditValidationResult {
   const data = customer.data || {};
-  const creditEnabled = data.creditEnabled === true || data.contaCasa?.enabled === true;
 
-  if (!creditEnabled) {
+  if (!isCreditEnabled(data)) {
     return {
       allowed: false,
       reason: 'disabled',
@@ -141,10 +148,7 @@ export async function validateCustomerCredit(
     };
   }
 
-  const enabledCustomers = customers.filter((customer) => {
-    const data = customer.data || {};
-    return data.creditEnabled === true || data.contaCasa?.enabled === true;
-  });
+  const enabledCustomers = customers.filter((customer) => isCreditEnabled(customer.data || {}));
 
   if (enabledCustomers.length === 0) {
     return {
