@@ -16,7 +16,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
-import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit } from '@/lib/customer-credit';
+import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
@@ -553,7 +553,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           return;
         }
 
-        const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount);
+        // Pedidos a prazo em andamento também consomem o limite
+        const pendingAmount = await sumPendingCreditOrdersForOwner(db, ownerId, phone);
+        const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount, { pendingAmount });
         if (!creditCheck.allowed) {
           if (creditCheck.reason === 'not_found') {
             setIsSubmitting(false);

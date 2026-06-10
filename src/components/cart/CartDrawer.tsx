@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
 import { Textarea } from '@/components/ui/textarea';
-import { validateCustomerCredit, normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
+import { validateCustomerCredit, normalizeCreditPhone, getPhoneVariants, sumPendingCreditOrdersForCustomer } from '@/lib/customer-credit';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { getSalesChannelLabel, isItemVisibleInChannel, SalesChannel } from '@/lib/menu-visibility';
 
@@ -309,7 +309,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
     const checkCredit = async () => {
       try {
-        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, customerPhone, 0);
+        // Pedidos a prazo em andamento também consomem o limite
+        const pendingAmount = user
+          ? await sumPendingCreditOrdersForCustomer(db, effectiveStoreOwnerId, user.uid)
+          : 0;
+        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, customerPhone, 0, { pendingAmount });
         setContaCasaEnabled(creditCheck.allowed);
       } catch (err) {
         console.warn('Erro ao verificar Conta da Casa:', err);
@@ -318,7 +322,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     };
     const timer = setTimeout(checkCredit, 500);
     return () => clearTimeout(timer);
-  }, [customerPhone, db, effectiveStoreOwnerId]);
+  }, [customerPhone, db, effectiveStoreOwnerId, user]);
 
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
   const calculateDeliveryFee = useCallback(async (customerAddress: string, neighborhoodHint?: string) => {
@@ -744,7 +748,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
 
       if (paymentMethod === 'conta_casa') {
-        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, normalizedPhone, safeGrandTotal);
+        const pendingAmount = await sumPendingCreditOrdersForCustomer(db, effectiveStoreOwnerId, authUser.uid);
+        const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, normalizedPhone, safeGrandTotal, { pendingAmount });
         if (!creditCheck.allowed) {
           if (creditCheck.reason !== 'over_limit') {
             setContaCasaEnabled(false);
