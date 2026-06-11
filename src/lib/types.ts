@@ -18,6 +18,8 @@ export interface AddonCategory {
   ownerId: string;
   addonIds?: string[];
   removedAddonIds?: string[];
+  /** Pausados SÓ neste container (o active do addon segue valendo global). */
+  pausedAddonIds?: string[];
   usePrice?: boolean;
   max?: number;
 }

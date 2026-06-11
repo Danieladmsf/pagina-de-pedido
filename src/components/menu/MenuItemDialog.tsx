@@ -97,11 +97,14 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
   const getCategoryAddonIds = (category: AddonCategory) => {
     const removedIds = new Set(category.removedAddonIds || []);
+    // Pausa local: o item continua membro do container, mas não aparece
+    // para o cliente neste container (o active global segue valendo à parte).
+    const pausedIds = new Set(category.pausedAddonIds || []);
     const legacyIds = allAddons
       .filter(addon => (addon.group || '').trim() === category.name)
       .map(addon => addon.id);
     return Array.from(new Set([...(category.addonIds || []), ...legacyIds]))
-      .filter(id => !removedIds.has(id));
+      .filter(id => !removedIds.has(id) && !pausedIds.has(id));
   };
 
   const getCategoryForGroup = (group: AddonGroup) => {

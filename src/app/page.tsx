@@ -2073,6 +2073,23 @@ export default function AdminPage() {
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
+            // Pausa LOCAL: vale só para o container aberto. Regra do interruptor:
+            // Lista Matriz liga/desliga global; dentro do container, só ali.
+            const pausedInCurrentContainer = new Set<string>(
+              ((addonCategoryByName.get(addonCategoryFilter) as any)?.pausedAddonIds || []) as string[]
+            );
+            const setAddonPausedInContainer = async (addon: any, paused: boolean) => {
+              if (!db || !user || !isContainerView) return;
+              const containerName = addonCategoryFilter;
+              const { ref, data } = await ensureAddonCategory(containerName, getContainerAddonIds(containerName));
+              const next = new Set<string>(((data as any)?.pausedAddonIds || []) as string[]);
+              if (paused) next.add(addon.id); else next.delete(addon.id);
+              await updateDoc(ref, { pausedAddonIds: Array.from(next) });
+              toast({
+                title: paused ? `Pausado só em "${containerName}"` : `Reativado em "${containerName}"`,
+                description: paused ? 'Nos outros containers o item continua ativo. Para pausar em todos, use a Lista Matriz.' : undefined,
+              });
+            };
 
             // Vínculo produto <-> container: o produto "usa" o container quando tem
             // um addonGroup apontando para ele (por id ou nome).
@@ -2832,15 +2849,17 @@ export default function AdminPage() {
                               <div className="flex items-center justify-end gap-2">
                                 <div
                                   className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1"
-                                  title="Ativo/Pausado global"
+                                  title={`Ativo/Pausado APENAS neste container (${addonCategoryFilter}). Para pausar em todos, use a Lista Matriz.`}
                                 >
                                   <Switch
-                                    checked={addon.active !== false}
-                                    onCheckedChange={(checked) => setAddonGlobalActive(addon, checked)}
-                                    aria-label="Ativo/Pausado global"
+                                    checked={!pausedInCurrentContainer.has(addon.id)}
+                                    onCheckedChange={(checked) => setAddonPausedInContainer(addon, !checked)}
+                                    aria-label="Ativo/Pausado neste container"
                                     className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
                                   />
-                                  <span className={`text-[10px] font-medium uppercase ${addon.active !== false ? 'text-green-600' : 'text-red-500'}`}>{addon.active !== false ? 'Ativo' : 'Pausado'}</span>
+                                  <span className={`text-[10px] font-medium uppercase ${!pausedInCurrentContainer.has(addon.id) ? 'text-green-600' : 'text-red-500'}`}>
+                                    {!pausedInCurrentContainer.has(addon.id) ? 'Ativo aqui' : 'Pausado aqui'}
+                                  </span>
                                 </div>
                                 <Button
                                   variant="ghost"
