@@ -152,7 +152,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
 
   const allAddons = [...(addons || [])].sort((a, b) => a.name.localeCompare(b.name));
   const addonContainers = (() => {
-    const byName = new Map<string, { id: string; name: string; addonIds: string[]; removedAddonIds: string[]; usePrice: boolean; max: number }>();
+    const byName = new Map<string, { id: string; name: string; addonIds: string[]; removedAddonIds: string[]; usePrice: boolean; min: number; max: number }>();
 
     for (const category of addonCategories || []) {
       const ids = Array.isArray(category.addonIds) ? category.addonIds : [];
@@ -163,6 +163,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         addonIds: ids.filter(id => !removedAddonIds.includes(id)),
         removedAddonIds,
         usePrice: category.usePrice !== false,
+        min: category.min || 0,
         max: category.max || 0,
       });
     }
@@ -179,6 +180,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
           addonIds: [addon.id],
           removedAddonIds: [],
           usePrice: true,
+          min: 0,
           max: 0,
         });
       }
@@ -211,7 +213,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       ...group, 
       addonCategoryId: container ? container.id : group.addonCategoryId,
       addonCategoryName: container ? container.name : group.addonCategoryName,
-      addonIds: getGroupAddonIds(group) 
+      addonIds: getGroupAddonIds(group),
+      min: container ? (container.min ?? group.min ?? 0) : group.min,
+      max: container ? (container.max ?? group.max) : group.max,
     } as Record<string, unknown>;
 
     // Prevent saving undefined fields to Firestore which would throw errors
@@ -240,6 +244,8 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       addonCategoryName: container.name,
       usePrice: container.usePrice,
       addonIds: container.addonIds,
+      min: container.min ?? current.min ?? 0,
+      max: container.max ?? current.max,
     };
     setGroups(newGroups);
   };
@@ -370,10 +376,39 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                       <Input
                                         type="number"
                                         min="0"
-                                        value={group.min ?? 0}
-                                        onChange={(e) => {
+                                        value={(() => {
+                                          const container = getContainerForGroup(group);
+                                          return container ? (container.min ?? 0) : (group.min ?? 0);
+                                        })()}
+                                        onChange={async (e) => {
                                           const val = e.target.value;
-                                          handleUpdateGroup(index, 'min', val === '' ? 0 : parseInt(val) || 0);
+                                          const numVal = val === '' ? 0 : parseInt(val) || 0;
+                                          handleUpdateGroup(index, 'min', numVal);
+
+                                          const container = getContainerForGroup(group);
+                                          if (container && db && user) {
+                                            try {
+                                              const existing = (addonCategories || []).find((c: any) => c.id === container.id || c.name === container.name);
+                                              if (existing) {
+                                                await updateDoc(doc(db, 'addonCategories', existing.id), { min: numVal });
+                                              } else if (!container.id.startsWith('legacy:')) {
+                                                await updateDoc(doc(db, 'addonCategories', container.id), { min: numVal });
+                                              } else {
+                                                const newDoc = doc(collection(db, 'addonCategories'));
+                                                await setDoc(newDoc, {
+                                                  id: newDoc.id,
+                                                  name: container.name,
+                                                  ownerId: user.uid,
+                                                  addonIds: container.addonIds,
+                                                  usePrice: container.usePrice !== false,
+                                                  min: numVal,
+                                                  max: container.max ?? 0
+                                                });
+                                              }
+                                            } catch (err) {
+                                              console.error('Erro ao sincronizar limite min com container:', err);
+                                            }
+                                          }
                                         }}
                                         className="w-8 h-6 px-0 text-center border-0 bg-transparent text-sky-700 font-bold text-xs shadow-none focus-visible:ring-0"
                                         title="Quantidade mínima obrigatória para o cliente fechar o pedido (0 = opcional)"
@@ -409,6 +444,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                                   ownerId: user.uid,
                                                   addonIds: container.addonIds,
                                                   usePrice: container.usePrice !== false,
+                                                  min: container.min ?? 0,
                                                   max: numVal
                                                 });
                                               }

@@ -215,7 +215,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
     for (let i = 0; i < item.addonGroups.length; i++) {
       const g = item.addonGroups[i];
       const selectedCount = (marmitaSelections[i] || []).length;
-      const minRequired = getNumericGroupValue(g.min);
+      const groupCategory = getCategoryForGroup(g);
+      const minRequired = getNumericGroupValue(groupCategory ? (groupCategory.min ?? g.min) : g.min);
       if (selectedCount < minRequired) {
         canAddToCart = false;
         validationMessage = `Selecione ao menos ${minRequired} em: ${g.name}`;
@@ -348,7 +349,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const usesPrice = groupUsesPrice(group);
             const category = getCategoryForGroup(group);
             const maxChoices = getNumericGroupValue(category ? category.max : group.max);
-            const minChoices = getNumericGroupValue(group.min);
+            const minChoices = getNumericGroupValue(category ? (category.min ?? group.min) : group.min);
             
             if (availableAddons.length === 0) return null;
 

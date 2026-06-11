@@ -21,6 +21,7 @@ export interface AddonCategory {
   /** Pausados SÓ neste container (o active do addon segue valendo global). */
   pausedAddonIds?: string[];
   usePrice?: boolean;
+  min?: number;
   max?: number;
 }
 

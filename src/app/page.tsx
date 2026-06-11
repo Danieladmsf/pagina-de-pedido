@@ -2048,6 +2048,7 @@ export default function AdminPage() {
                 ownerId: user!.uid,
                 addonIds: Array.from(new Set(seedIds)),
                 usePrice: true,
+                min: 0,
                 max: 0,
               };
               await setDoc(newDoc, data);
@@ -2453,7 +2454,7 @@ export default function AdminPage() {
                                 } else {
                                   // It was an implicit category, let's create it explicitly with the new name
                                   const newDoc = doc(collection(db, 'addonCategories'));
-                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true, max: 0 });
+                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true, min: 0, max: 0 });
                                 }
                                 (addons || [])
                                   .filter((addon: any) => getAddonLegacyGroup(addon) === oldName)
@@ -2494,6 +2495,27 @@ export default function AdminPage() {
                     const usePrice = category?.usePrice !== false;
                     return (
                       <>
+                        <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 rounded-lg px-2 py-1.5 whitespace-nowrap">
+                          <span className="text-[10px] text-sky-700 font-semibold" title="0 = opcional">Mínimo:</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={category?.min || 0}
+                            onChange={async (e) => {
+                              if (!db || !user) return;
+                              const val = parseInt(e.target.value) || 0;
+                              try {
+                                const currentIds = getContainerAddonIds(addonCategoryFilter);
+                                const { ref } = await ensureAddonCategory(addonCategoryFilter, currentIds);
+                                await updateDoc(ref, { min: val });
+                              } catch (err: any) {
+                                toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                              }
+                            }}
+                            className="w-10 h-6 px-0 text-center border-0 bg-transparent text-sky-700 font-bold text-xs shadow-none focus-visible:ring-0"
+                            title="Quantidade mínima obrigatória para o cliente fechar o pedido (0 = opcional)"
+                          />
+                        </div>
                         <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 whitespace-nowrap">
                           <span className="text-[10px] text-amber-700 font-semibold" title="0 = Sem Limite">Máximo:</span>
                           <Input
@@ -2567,7 +2589,7 @@ export default function AdminPage() {
                           if (!db || !user || !newAddonCategoryName.trim()) return;
                           try {
                             const newDoc = doc(collection(db, 'addonCategories'));
-                            await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, max: 0 });
+                            await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, min: 0, max: 0 });
                             toast({ title: 'Container criado com sucesso!' });
                             setIsAddonCategoryModalOpen(false);
                             setNewAddonCategoryName('');
