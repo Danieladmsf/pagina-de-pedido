@@ -16,7 +16,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Pencil, Trash2, Plus, LayoutDashboard, Utensils, Tag, LogOut, Loader2, ShieldAlert, ShoppingBag, Clock, CheckCircle2, User, MapPin, Phone, ExternalLink, Upload, BarChart3, TrendingUp, Users, ChevronDown, ChevronRight, Wallet, Store, GripVertical, Search, Copy } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { DashboardTab } from '@/components/admin/DashboardTab';
-import { AddonsHelpDialog } from '@/components/admin/AddonsHelpDialog';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import confetti from 'canvas-confetti';
@@ -41,7 +40,7 @@ import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
-import { Settings, MessageCircle, MapPinned, Box, Menu } from 'lucide-react';
+import { Settings, MessageCircle, MapPinned, Box, Menu, HelpCircle } from 'lucide-react';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
@@ -2297,7 +2296,15 @@ export default function AdminPage() {
             <div className="mt-2 flex-1 min-h-0 flex flex-col">
               <div className="mb-3 px-2 shrink-0 flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-black tracking-tight text-slate-800">Grupos de Adicionais</h1>
-                <AddonsHelpDialog />
+                <a
+                  href="/ajuda/adicionais"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Como funcionam os adicionais? Abre o guia visual"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors hover:bg-emerald-200"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </a>
                 <p className="text-sm text-muted-foreground font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
               </div>
               <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
