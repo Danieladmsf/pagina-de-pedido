@@ -8,8 +8,7 @@ import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import Image from 'next/image';
-import { Minus, Plus, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const checkCartStock = (
@@ -209,7 +208,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
   // Validação
   let canAddToCart = true;
-  let validationMessage = '';
 
   if (item.addonGroups && item.addonGroups.length > 0) {
     for (let i = 0; i < item.addonGroups.length; i++) {
@@ -219,7 +217,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
       const minRequired = getNumericGroupValue(groupCategory ? (groupCategory.min ?? g.min) : g.min);
       if (selectedCount < minRequired) {
         canAddToCart = false;
-        validationMessage = `Selecione ao menos ${minRequired} em: ${g.name}`;
         break;
       }
     }
@@ -359,9 +356,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
                     <div className="flex gap-1">
-                      {minChoices > 0 && currentSelected.length < minChoices && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">Obrigatório</span>
-                      )}
                       <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
                         {minChoices > 0
                           ? (maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : `Escolha ao menos ${minChoices}`)
@@ -441,13 +435,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
         </div>
 
         <DialogFooter className="flex-col gap-4 border-t bg-background pt-4 shrink-0">
-          {!canAddToCart && (
-            <Alert variant="destructive" className="py-2">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="text-xs font-semibold">{validationMessage}</AlertDescription>
-            </Alert>
-          )}
-          
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:justify-between">
             <div className="flex items-center gap-4 bg-muted p-1 rounded-lg w-full sm:w-auto justify-center">
               <Button variant="ghost" size="icon" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
