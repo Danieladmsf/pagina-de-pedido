@@ -83,13 +83,15 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
   const bannerMobileUrl = storeProfile?.general?.bannerMobileUrl as string | undefined;
   const defaultProductImageUrl = storeProfile?.general?.defaultProductImageUrl as string | undefined;
   const ogImageUrl = storeProfile?.general?.ogImageUrl as string | undefined;
+  const logoUrl = storeProfile?.general?.logoUrl as string | undefined;
   const fileInputDesktopRef = useRef<HTMLInputElement>(null);
   const fileInputMobileRef = useRef<HTMLInputElement>(null);
   const fileInputDefaultProductRef = useRef<HTMLInputElement>(null);
   const fileInputOgImageRef = useRef<HTMLInputElement>(null);
-  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | 'defaultProduct' | 'ogImage' | null>(null);
+  const fileInputLogoRef = useRef<HTMLInputElement>(null);
+  const [uploadingTarget, setUploadingTarget] = useState<'desktop' | 'mobile' | 'defaultProduct' | 'ogImage' | 'logo' | null>(null);
 
-  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl' | 'defaultProductImageUrl' | 'ogImageUrl', value: string | null) => {
+  const persistBannerField = async (field: 'bannerUrl' | 'bannerMobileUrl' | 'defaultProductImageUrl' | 'ogImageUrl' | 'logoUrl', value: string | null) => {
     if (!db || !user?.uid) return;
     await setDoc(
       doc(db, 'store_profiles', user.uid),
@@ -98,7 +100,7 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     );
   };
 
-  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage') => {
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage' | 'logo') => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -112,7 +114,7 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     setUploadingTarget(target);
     try {
       const url = await uploadImage(file);
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : 'defaultProductImageUrl', url);
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : target === 'logo' ? 'logoUrl' : 'defaultProductImageUrl', url);
       toast({ title: 'Imagem atualizada!', description: 'A nova imagem já aparece no cardápio público.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro no upload', description: err.message || 'Não foi possível enviar.' });
@@ -121,10 +123,10 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
     }
   };
 
-  const handleBannerRemove = async (target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage') => {
+  const handleBannerRemove = async (target: 'desktop' | 'mobile' | 'defaultProduct' | 'ogImage' | 'logo') => {
     setUploadingTarget(target);
     try {
-      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : 'defaultProductImageUrl', null);
+      await persistBannerField(target === 'desktop' ? 'bannerUrl' : target === 'mobile' ? 'bannerMobileUrl' : target === 'ogImage' ? 'ogImageUrl' : target === 'logo' ? 'logoUrl' : 'defaultProductImageUrl', null);
       toast({ title: 'Imagem removida' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message || 'Falha ao remover.' });
@@ -187,6 +189,46 @@ export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
         <div className="flex gap-1">
           <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: currentTheme.colors.primary }} />
           <span className="w-4 h-4 rounded-full ring-1 ring-black/5" style={{ background: currentTheme.colors.accent }} />
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-4 border-t">
+        <div>
+          <h3 className="text-base font-bold text-slate-800">Logo (foto de perfil)</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Aparece no topo da página de pedido, na abertura (splash), como ícone do app/aba do navegador e no painel do PDV.
+            <br />
+            <span className="text-[11px] opacity-80">Ideal: quadrada, 512 x 512 px, PNG. Para o ícone ficar bonito no celular, deixe a marca com folga nas bordas.</span>
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center gap-4">
+            <div className="shrink-0 w-[112px] h-[112px] rounded-2xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-center overflow-hidden">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo da loja" className="w-full h-full object-cover" />
+              ) : (
+                <>
+                  <ImageIcon className="w-6 h-6 text-slate-300" />
+                  <span className="text-[10px] text-muted-foreground mt-1">Sem<br/>logo</span>
+                </>
+              )}
+            </div>
+            <div className="flex-1 space-y-3">
+              <input ref={fileInputLogoRef} type="file" accept="image/*" onChange={(e) => handleBannerUpload(e, 'logo')} className="hidden" />
+              <Button size="sm" variant="outline" className="w-full" onClick={() => fileInputLogoRef.current?.click()} disabled={uploadingTarget === 'logo'}>
+                {uploadingTarget === 'logo' ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</>
+                ) : (
+                  <><Upload className="w-4 h-4 mr-2" /> {logoUrl ? 'Trocar logo' : 'Enviar logo'}</>
+                )}
+              </Button>
+              {logoUrl && (
+                <Button size="sm" variant="ghost" onClick={() => handleBannerRemove('logo')} disabled={uploadingTarget === 'logo'} className="w-full text-red-500 hover:text-red-600 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-2" /> Remover
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
