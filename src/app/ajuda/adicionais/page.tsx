@@ -99,7 +99,7 @@ const SetaBaixo = () => (
 export default function AjudaAdicionaisPage() {
   const indice = [
     ['mapa', 'O mapa geral'],
-    ['despensa', 'A despensa (Lista Matriz)'],
+    ['despensa', 'A Lista Matriz'],
     ['caixinhas', 'As caixinhas (containers)'],
     ['tela', 'A tela, parte por parte'],
     ['regra', 'A regra de ouro'],
@@ -116,7 +116,7 @@ export default function AjudaAdicionaisPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><HelpCircle className="h-5 w-5" /></span>
             <div>
               <h1 className="text-lg font-black leading-tight text-slate-800">Guia dos Adicionais</h1>
-              <p className="text-[11px] text-slate-400">Despensa, caixinhas e o pedido do cliente — sem complicação</p>
+              <p className="text-[11px] text-slate-400">Lista Matriz, caixinhas e o pedido do cliente — sem complicação</p>
             </div>
           </div>
           <Link href="/" className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-300 hover:text-emerald-700">
@@ -144,13 +144,13 @@ export default function AjudaAdicionaisPage() {
         <main className="min-w-0 flex-1 space-y-12 pb-20">
 
           {/* ── 0. mapa geral ── */}
-          <Secao id="mapa" numero="1" titulo="O mapa geral" lead="Todo o sistema de adicionais cabe nesta linha: o item nasce na despensa, entra em caixinhas, as caixinhas viram etapas do produto e o cliente escolhe.">
+          <Secao id="mapa" numero="1" titulo="O mapa geral" lead="Todo o sistema de adicionais cabe nesta linha: o item nasce na Lista Matriz, entra em caixinhas, as caixinhas viram etapas do produto e o cliente escolhe.">
             <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
               <div className="grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]">
                 <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-center">
                   <Store className="mx-auto mb-1 h-6 w-6 text-amber-600" />
-                  <p className="text-[12px] font-black text-amber-800">DESPENSA</p>
-                  <p className="text-[11px] text-amber-700/80">Lista Matriz: cada item cadastrado uma vez</p>
+                  <p className="text-[12px] font-black text-amber-800">LISTA MATRIZ</p>
+                  <p className="text-[11px] text-amber-700/80">Cada item cadastrado uma única vez</p>
                 </div>
                 <SetaDireita /><SetaBaixo />
                 <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-3 text-center">
@@ -175,9 +175,9 @@ export default function AjudaAdicionaisPage() {
           </Secao>
 
           {/* ── 1. despensa ── */}
-          <Secao id="despensa" numero="2" titulo="A despensa (Lista Matriz)" lead="Pense na Lista Matriz como a despensa da loja: é o único lugar onde o item existe de verdade, com nome e preço. As caixinhas só pegam emprestado.">
+          <Secao id="despensa" numero="2" titulo="A Lista Matriz" lead="A Lista Matriz funciona como a despensa da loja: é o único lugar onde o item existe de verdade, com nome e preço. As caixinhas só pegam emprestado.">
             <div className="rounded-3xl border-2 border-dashed border-amber-300 bg-amber-50/50 p-5">
-              <p className="mb-3 flex items-center gap-2 text-sm font-black text-amber-800"><Store className="h-4 w-4" /> LISTA MATRIZ — a despensa</p>
+              <p className="mb-3 flex items-center gap-2 text-sm font-black text-amber-800"><Store className="h-4 w-4" /> LISTA MATRIZ — o cadastro geral dos adicionais</p>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 <ItemLinha nome="🍗 Filé de frango" ligado preco="R$ 9,00" />
                 <ItemLinha nome="🥤 Coca Zero" ligado preco="R$ 6,00" />
@@ -194,11 +194,11 @@ export default function AjudaAdicionaisPage() {
           </Secao>
 
           {/* ── 2. caixinhas ── */}
-          <Secao id="caixinhas" numero="3" titulo="As caixinhas (containers)" lead="Uma caixinha agrupa itens da despensa para virar uma escolha. O MESMO item pode morar em várias caixinhas ao mesmo tempo — e é aqui que mora a pegadinha.">
+          <Secao id="caixinhas" numero="3" titulo="As caixinhas (containers)" lead="Uma caixinha agrupa itens da Lista Matriz para virar uma escolha. O MESMO item pode morar em várias caixinhas ao mesmo tempo — e é aqui que mora a pegadinha.">
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               {/* diagrama: um item -> três caixinhas */}
               <div className="mb-2 flex justify-center">
-                <span className="rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-black text-amber-800 shadow-sm">🥤 Coca Zero <span className="font-semibold text-amber-600">(1 cadastro na despensa)</span></span>
+                <span className="rounded-full border-2 border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-black text-amber-800 shadow-sm">🥤 Coca Zero <span className="font-semibold text-amber-600">(1 cadastro na Lista Matriz)</span></span>
               </div>
               <svg viewBox="0 0 600 60" className="mx-auto block h-12 w-full max-w-xl" aria-hidden>
                 <path d="M300 4 C300 30 110 26 105 56" fill="none" stroke="#34d399" strokeWidth="2.5" strokeDasharray="5 4" />
@@ -212,7 +212,7 @@ export default function AjudaAdicionaisPage() {
               </div>
               <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-[13px] text-emerald-900">
                 ✅ É uma Coca Zero só — aparecendo em três escolhas diferentes. Nada foi copiado:
-                se o preço mudar na despensa, muda nas três caixinhas ao mesmo tempo.
+                se o preço mudar na Lista Matriz, muda nas três caixinhas ao mesmo tempo.
               </p>
             </div>
           </Secao>
@@ -261,11 +261,11 @@ export default function AjudaAdicionaisPage() {
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               <div className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3">
                 <Callout n={1} />
-                <p className="text-[12px] text-slate-600"><strong>Suas caixinhas.</strong> Clique para abrir uma. A "Lista Matriz" no topo é a despensa inteira.</p>
+                <p className="text-[12px] text-slate-600"><strong>Suas caixinhas.</strong> Clique para abrir uma. A "Lista Matriz" no topo é o cadastro completo.</p>
               </div>
               <div className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3">
                 <Callout n={2} />
-                <p className="text-[12px] text-slate-600"><strong>Os itens da caixinha aberta</strong> (ou da despensa), com busca e os interruptores de ligar/desligar.</p>
+                <p className="text-[12px] text-slate-600"><strong>Os itens da caixinha aberta</strong> (ou da Lista Matriz), com busca e os interruptores de ligar/desligar.</p>
               </div>
               <div className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3">
                 <Callout n={3} />
@@ -284,7 +284,7 @@ export default function AjudaAdicionaisPage() {
               {/* global */}
               <div className="overflow-hidden rounded-3xl border-2 border-red-200 bg-white shadow-sm">
                 <div className="bg-red-50 px-4 py-3">
-                  <p className="flex items-center gap-2 text-sm font-black text-red-700"><Store className="h-4 w-4" /> Desligou na DESPENSA (Lista Matriz)</p>
+                  <p className="flex items-center gap-2 text-sm font-black text-red-700"><Store className="h-4 w-4" /> Desligou na LISTA MATRIZ</p>
                   <p className="text-[12px] text-red-600/80">Some de <strong>todas</strong> as caixinhas de uma vez</p>
                 </div>
                 <div className="space-y-3 p-4">
@@ -401,7 +401,7 @@ export default function AjudaAdicionaisPage() {
                   <Trash2 className="h-5 w-5 text-red-400" />
                   <div>
                     <p className="text-[13px] font-black text-slate-800">Lixeira dentro da caixinha</p>
-                    <p className="text-[12px] text-slate-500">Tira o item <em>daquela caixinha</em>. Ele continua na despensa e nas outras caixinhas. Use quando o item <em>não pertence</em> àquela escolha.</p>
+                    <p className="text-[12px] text-slate-500">Tira o item <em>daquela caixinha</em>. Ele continua na Lista Matriz e nas outras caixinhas. Use quando o item <em>não pertence</em> àquela escolha.</p>
                   </div>
                   <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase text-amber-700">Dá para recolocar</span>
                 </div>
@@ -409,7 +409,7 @@ export default function AjudaAdicionaisPage() {
                   <Trash2 className="h-5 w-5 text-red-600" />
                   <div>
                     <p className="text-[13px] font-black text-slate-800">Lixeira na Lista Matriz</p>
-                    <p className="text-[12px] text-slate-500">Apaga o item da despensa <em>de verdade</em> — some de todas as caixinhas e produtos, para sempre.</p>
+                    <p className="text-[12px] text-slate-500">Apaga o item da Lista Matriz <em>de verdade</em> — some de todas as caixinhas e produtos, para sempre.</p>
                   </div>
                   <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-black uppercase text-red-600">Permanente</span>
                 </div>
@@ -418,7 +418,7 @@ export default function AjudaAdicionaisPage() {
             <p className="mt-4 flex items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-600">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
               <span>
-                <strong>Para não esquecer:</strong> selo vermelho <strong>"Pausado"</strong> ao lado do nome = pausado na despensa (sumiu de tudo).
+                <strong>Para não esquecer:</strong> selo vermelho <strong>"Pausado"</strong> ao lado do nome = pausado na Lista Matriz (sumiu de tudo).
                 Interruptor <strong>"Pausado aqui"</strong> = pausado só na caixinha aberta. Na dúvida, abra a Lista Matriz — ela é a verdade.
               </span>
             </p>
