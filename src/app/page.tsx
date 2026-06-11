@@ -2315,13 +2315,19 @@ export default function AdminPage() {
                     <p className="text-xs font-bold text-slate-700">Containers</p>
                   </div>
                   <div className="min-h-0 flex-1 space-y-1 overflow-y-auto custom-scrollbar p-2">
+                    {/* Lista Matriz com identidade âmbar (mesma cor do guia de ajuda),
+                        para não se confundir com os containers */}
                     <Button
-                      variant={addonCategoryFilter === 'all' ? 'default' : 'outline'}
+                      variant="outline"
                       onClick={() => { setAddonCategoryFilter('all'); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                       size="sm"
-                      className="w-full justify-start rounded-lg"
+                      className={`w-full justify-start gap-2 rounded-lg border-2 font-bold ${
+                        addonCategoryFilter === 'all'
+                          ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600 hover:text-white'
+                          : 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400 hover:bg-amber-100 hover:text-amber-900'
+                      }`}
                     >
-                      Lista Matriz
+                      <Store className="h-3.5 w-3.5" /> Lista Matriz
                     </Button>
                     {orderedGroups.map(g => (
                       <Button
