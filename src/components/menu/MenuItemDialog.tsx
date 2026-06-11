@@ -346,8 +346,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             const usesPrice = groupUsesPrice(group);
             const category = getCategoryForGroup(group);
             const maxChoices = getNumericGroupValue(category ? category.max : group.max);
-            const minChoices = getNumericGroupValue(category ? (category.min ?? group.min) : group.min);
-            
+
             if (availableAddons.length === 0) return null;
 
             return (
@@ -355,13 +354,6 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
-                    <div className="flex gap-1">
-                      <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-medium">
-                        {minChoices > 0
-                          ? (maxChoices > 0 ? `Escolha de ${minChoices} a ${maxChoices}` : `Escolha ao menos ${minChoices}`)
-                          : (maxChoices > 0 ? `Escolha até ${maxChoices}` : 'Sem limite')}
-                      </span>
-                    </div>
                   </div>
                   <span className="text-[10px] text-muted-foreground font-medium">
                     {currentSelected.length} {maxChoices > 0 ? `de ${maxChoices}` : ''} selecionados
