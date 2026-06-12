@@ -1,6 +1,7 @@
 export type WhatsAppMessageKey =
   | 'firstContact'
   | 'orderReceived'
+  | 'pixProofRequest'
   | 'orderReadyDelivery'
   | 'orderReadyPickup'
   | 'orderReadyDineIn'
@@ -21,6 +22,7 @@ type WorkingHour = {
 export const WHATSAPP_MESSAGE_LABELS: Record<WhatsAppMessageKey, string> = {
   firstContact: 'Primeiro contato',
   orderReceived: 'Pedido recebido',
+  pixProofRequest: 'Comprovante Pix (enviada ~3 min após o pedido)',
   orderReadyDelivery: 'Pedido pronto/finalizando',
   orderReadyPickup: 'Retirada pronta',
   orderReadyDineIn: 'Pedido pronto na mesa',
@@ -35,6 +37,8 @@ export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
     'Ol\u00e1! Seja bem-vindo(a) \u00e0 {loja}.\n\nFa\u00e7a seu pedido pelo nosso card\u00e1pio digital:\n{link}',
   orderReceived:
     'Olá, {primeiro_nome}! tudo bem?😊\nSeu pedido nº #{pedido} foi recebido com sucesso!\n\n📦 Resumo do pedido:\n{itens}\n------------------------------\n\nNome: {cliente}\n------------------------------\nCelular: {celular}\n------------------------------\nFormas de Pagamento: {pagamento}\n{endereco}\n\n------------------------------\nSubtotal: {subtotal}\nTaxa de entrega: {taxa_entrega}\nValor Total: {total}{tempo_estimado}',
+  pixProofRequest:
+    'Ol\u00e1, {primeiro_nome}! \ud83d\ude0a\nVimos que voc\u00ea escolheu pagar o pedido n\u00ba #{pedido} com *Pix* \ud83d\udca0\n\nValor: {total}\n\nAssim que fizer o pagamento, \u00e9 s\u00f3 enviar o *comprovante* aqui nesta conversa para agilizarmos a confirma\u00e7\u00e3o do seu pedido. \ud83d\ude4f\n\nQualquer d\u00favida, estamos por aqui!',
   orderReadyDelivery:
     'Ol\u00e1, {primeiro_nome}! \u2705\nSeu pedido n\u00ba #{pedido} est\u00e1 sendo finalizado! Em breve sair\u00e1 para entrega. \u{1F6F5}',
   orderReadyPickup:

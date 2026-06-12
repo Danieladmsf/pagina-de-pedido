@@ -43,6 +43,7 @@ interface WhatsAppTabProps {
 const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'firstContact',
   'orderReceived',
+  'pixProofRequest',
   'orderReadyDelivery',
   'orderReadyPickup',
   'orderReadyDineIn',

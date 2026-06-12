@@ -75,6 +75,8 @@ export default function AdminPage() {
   // chegou enquanto este PC recarregava). A reserva atômica + a fila garantem que
   // só sai 1 mensagem por pedido, sem estourar o limite da w-api. A janela de 30min
   // evita re-tentar pedidos antigos para sempre.
+  // Também dispara o lembrete do comprovante Pix ~3 min após o pedido (apenas
+  // pagamento pix, e somente depois do aviso de "pedido recebido").
   useEffect(() => {
     if (!db || !user) return;
     const id = setInterval(() => {
@@ -84,10 +86,19 @@ export default function AdminPage() {
       const now = Date.now();
       for (const o of list) {
         if (!o || o.source === 'pdv' || !o.customerPhone) continue;
-        if (o.receivedMessageSent === true || o.status === 'canceled') continue;
-        if (!o.orderDateTime) continue;
-        if (now - new Date(o.orderDateTime).getTime() > 30 * 60 * 1000) continue;
-        void whatsappQueue(() => send(o, 'received'));
+        if (o.status === 'canceled' || !o.orderDateTime) continue;
+        const ageMs = now - new Date(o.orderDateTime).getTime();
+        if (ageMs > 30 * 60 * 1000) continue;
+        if (o.receivedMessageSent !== true) {
+          void whatsappQueue(() => send(o, 'received'));
+          continue; // o lembrete do Pix só sai DEPOIS do aviso de pedido recebido
+        }
+        // Lembrete amigável do comprovante Pix, ~3 min após o pedido.
+        // Mesma reserva atômica (pixProofMessageSent) das demais mensagens:
+        // não duplica entre PCs e não interfere nos avisos de status seguintes.
+        if (o.paymentMethod === 'pix' && o.pixProofMessageSent !== true && o.status !== 'delivered' && ageMs >= 3 * 60 * 1000) {
+          void whatsappQueue(() => send(o, 'pix_proof'));
+        }
       }
     }, 30000);
     return () => clearInterval(id);
@@ -1022,6 +1033,7 @@ export default function AdminPage() {
     let msgType = '';
     let templateKey:
       | 'orderReceived'
+      | 'pixProofRequest'
       | 'orderReadyDelivery'
       | 'orderReadyPickup'
       | 'orderReadyDineIn'
@@ -1033,6 +1045,9 @@ export default function AdminPage() {
     if (status === 'received') {
       templateKey = 'orderReceived';
       msgType = 'order_created';
+    } else if (status === 'pix_proof') {
+      templateKey = 'pixProofRequest';
+      msgType = 'pix_proof_request';
     } else if (status === 'ready') {
       // Notificação de preparo concluído
       if (order.orderType === 'pickup') {
@@ -1087,6 +1102,7 @@ export default function AdminPage() {
     // o outro vê a flag já marcada e desiste — eliminando a mensagem duplicada.
     const flagField =
       status === 'received' ? 'receivedMessageSent'
+      : status === 'pix_proof' ? 'pixProofMessageSent'
       : status === 'out_for_delivery' ? 'outForDeliveryMessageSent'
       : null;
 
