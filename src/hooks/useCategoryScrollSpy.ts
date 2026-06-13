@@ -41,7 +41,12 @@ export function useCategoryScrollSpy(groupIds: string[]) {
     if (!bar) return;
     const tab = bar.querySelector(`[data-cat-tab="${id}"]`) as HTMLElement | null;
     if (!tab) return;
-    const left = tab.offsetLeft - bar.clientWidth / 2 + tab.clientWidth / 2;
+    // Calcula via getBoundingClientRect (robusto independ. do offsetParent):
+    // centro da pill relativo ao conteudo rolavel da barra.
+    const barRect = bar.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    const tabCenterInContent = tabRect.left - barRect.left + bar.scrollLeft + tabRect.width / 2;
+    const left = tabCenterInContent - bar.clientWidth / 2;
     bar.scrollTo({ left, behavior: 'smooth' });
   }, []);
 
