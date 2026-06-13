@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth } from '@/firebase';
-import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, runTransaction } from 'firebase/firestore';
+import { collection, doc, deleteDoc, setDoc, updateDoc, orderBy, query, where, writeBatch, getDocs, getDoc, runTransaction } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -950,7 +950,7 @@ export default function AdminPage() {
   const sendOrderWhatsAppNotification = async (order: any, status: string) => {
     if (!user) return { sent: false, skipped: true, reason: 'Usuario indisponivel.' };
     if (!order?.customerPhone) return { sent: false, skipped: true, reason: 'Pedido sem telefone do cliente.' };
-    if (!['received', 'ready', 'out_for_delivery'].includes(status)) {
+    if (!['received', 'pix_proof', 'ready', 'out_for_delivery'].includes(status)) {
       return { sent: false, skipped: true, reason: 'Status sem notificacao automatica.' };
     }
 
@@ -958,6 +958,13 @@ export default function AdminPage() {
       if (order.receivedMessageSent) {
         console.log('[WhatsApp] Mensagem de recebido ja enviada para o pedido:', order.id);
         return { sent: false, skipped: true, reason: 'Mensagem de recebido ja enviada.' };
+      }
+    }
+
+    if (status === 'pix_proof') {
+      if (order.pixProofMessageSent) {
+        console.log('[WhatsApp] Lembrete do comprovante Pix ja enviado para o pedido:', order.id);
+        return { sent: false, skipped: true, reason: 'Lembrete do comprovante Pix ja enviado.' };
       }
     }
 
@@ -1118,10 +1125,25 @@ export default function AdminPage() {
           claimed = true;
         });
       } catch (err) {
-        // Falha de transação (rede): segue para não PERDER a mensagem (prefere
-        // arriscar um raro duplicado a deixar o cliente sem aviso).
+        // Falha de transação (esta máquina tem o streaming/long-polling do
+        // Firestore instável). Em vez de enviar SEM marcar a flag — o que faria
+        // a varredura de 30s reenviar a mesma mensagem e duplicar —, fazemos uma
+        // reserva best-effort NÃO transacional: se a flag já estiver marcada,
+        // desiste (evita duplicar); senão marca e segue (prefere enviar a perder).
         console.warn('[WhatsApp] Falha ao reivindicar envio (transação):', err);
-        claimed = true;
+        try {
+          const ref = doc(db, 'orders', order.id);
+          const snap = await getDoc(ref);
+          if (snap.exists() && (snap.data() as any)?.[flagField]) {
+            return { sent: false, skipped: true, reason: 'Envio já reivindicado (fallback).' };
+          }
+          await updateDoc(ref, { [flagField]: true });
+          claimed = true;
+        } catch {
+          // Sem conseguir nem ler/escrever a flag: envia mesmo assim para não
+          // deixar o cliente sem aviso (aceita o risco raro de 1 duplicado).
+          claimed = true;
+        }
       }
       if (!claimed) {
         return { sent: false, skipped: true, reason: 'Envio já reivindicado por outro dispositivo.' };
