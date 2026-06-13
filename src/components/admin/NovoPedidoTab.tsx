@@ -18,6 +18,7 @@ import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
@@ -79,7 +80,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
   }
   const { toast } = useToast();
-  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
@@ -176,13 +176,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
-    const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
-    return matchesCat && matchesSearch;
+    return matchesSearch;
   });
 
-  // Em "Todos" os produtos sao agrupados por categoria (na mesma ordem dos
-  // filtros), em vez de virem soltos na ordem crua da colecao.
+  // Os produtos sao sempre agrupados por categoria (na mesma ordem dos
+  // filtros). Clicar numa categoria rola ate a secao; rolar a lista
+  // atualiza a pill ativa — igual ao cardapio do cliente.
   const groupedItems = (categories || [])
     .map((cat: any) => ({
       id: cat.id,
@@ -196,6 +196,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   if (uncategorizedItems.length > 0) {
     groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
   }
+  const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
+    useCategoryScrollSpy(groupedItems.map(g => g.id));
   
   // Endereço e cálculo de frete
   const storeAddress = storeProfile?.general?.address || '';
@@ -823,31 +825,34 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           />
         </div>
 
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 shrink-0">
+        <div ref={categoryBarRef} className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 shrink-0">
           <Badge
+            data-cat-tab="all"
             variant={activeCategory === 'all' ? 'default' : 'outline'}
             className="cursor-pointer h-8 px-4 flex-shrink-0"
-            onClick={() => { setActiveCategory('all'); setSearchTerm(''); }}
+            onClick={() => { setSearchTerm(''); scrollToCategory('all'); }}
           >
             Todos
           </Badge>
-          {categories?.map(cat => (
-            <Badge 
-              key={cat.id}
-              variant={activeCategory === cat.id ? 'default' : 'outline'}
+          {groupedItems.map(group => (
+            <Badge
+              key={group.id}
+              data-cat-tab={group.id}
+              variant={activeCategory === group.id ? 'default' : 'outline'}
               className="cursor-pointer h-8 px-4 flex-shrink-0"
-              onClick={() => { setActiveCategory(cat.id); setSearchTerm(''); }}
+              onClick={() => scrollToCategory(group.id)}
             >
-              {cat.name}
+              {group.name}
             </Badge>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {activeCategory === 'all' ? (
-            // Em "Todos": agrupa por categoria, com cabecalho de secao.
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
+          {groupedItems.length === 0 ? (
+            <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
+          ) : (
             groupedItems.map(group => (
-              <div key={group.id} className="mb-4">
+              <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                 <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                   {group.name}
                 </h2>
@@ -856,11 +861,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 </div>
               </div>
             ))
-          ) : (
-            // Categoria especifica: grade simples.
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pr-2 pb-4">
-              {filteredItems?.map(renderItemCard)}
-            </div>
           )}
         </div>
       </div>

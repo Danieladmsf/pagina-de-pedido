@@ -18,6 +18,7 @@ import { validateCustomerCredit } from '@/lib/customer-credit';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -78,7 +79,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   // Estados para edição de itens do pedido
   const [isEditItemsOpen, setIsEditItemsOpen] = useState(false);
   const [editItemsCart, setEditItemsCart] = useState<any[]>([]);
-  const [editCategory, setEditCategory] = useState<string>('all');
   const [editSearch, setEditSearch] = useState<string>('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [isSavingItems, setIsSavingItems] = useState(false);
@@ -195,7 +195,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         cartItemId: i.cartItemId || `${i.id}-${Date.now()}-${Math.random()}`
       }))
     );
-    setEditCategory('all');
     setEditSearch('');
     setIsEditItemsOpen(true);
   };
@@ -579,9 +578,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   // categoria quando o filtro esta em "Todos".
   const editFilteredItems = (items || []).filter((item: any) => {
     if (item.isAvailable === false) return false;
-    const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
-    return matchesCat && matchesSearch;
+    return matchesSearch;
   });
   const editGroupedItems = (categories || [])
     .map((cat: any) => ({
@@ -596,6 +594,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   if (editUncategorizedItems.length > 0) {
     editGroupedItems.push({ id: '__none__', name: 'Outros', items: editUncategorizedItems });
   }
+  const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory: editCategory } =
+    useCategoryScrollSpy(editGroupedItems.map(g => g.id));
   const renderEditItemCard = (item: any) => {
     const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
     return (
@@ -1143,22 +1143,24 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
             {/* Direita: Seleção rápida de itens do cardápio */}
             <div className="w-1/2 flex flex-col bg-white min-h-0 overflow-hidden">
-              <div className="p-3 border-b shrink-0 flex gap-2 overflow-x-auto custom-scrollbar bg-slate-50">
-                <Badge 
-                  variant="secondary" 
+              <div ref={categoryBarRef} className="p-3 border-b shrink-0 flex gap-2 overflow-x-auto custom-scrollbar bg-slate-50">
+                <Badge
+                  data-cat-tab="all"
+                  variant="secondary"
                   className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => { setEditCategory('all'); setEditSearch(''); }}
+                  onClick={() => { setEditSearch(''); scrollToCategory('all'); }}
                 >
                   Todos
                 </Badge>
-                {categories.map(cat => (
-                  <Badge 
-                    key={cat.id} 
-                    variant="secondary" 
-                    className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => { setEditCategory(cat.id); setEditSearch(''); }}
+                {editGroupedItems.map(group => (
+                  <Badge
+                    key={group.id}
+                    data-cat-tab={group.id}
+                    variant="secondary"
+                    className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => scrollToCategory(group.id)}
                   >
-                    {cat.name}
+                    {group.name}
                   </Badge>
                 ))}
               </div>
@@ -1170,13 +1172,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   className="h-8 text-xs font-medium"
                 />
               </div>
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/30">
-                {editFilteredItems.length === 0 ? (
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/30">
+                {editGroupedItems.length === 0 ? (
                   <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
-                ) : editCategory === 'all' ? (
-                  // Em "Todos": agrupa por categoria, com cabecalho de secao.
+                ) : (
                   editGroupedItems.map(group => (
-                    <div key={group.id} className="mb-4">
+                    <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                       <h2 className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                         {group.name}
                       </h2>
@@ -1185,11 +1186,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                       </div>
                     </div>
                   ))
-                ) : (
-                  // Categoria especifica: grade simples.
-                  <div className="grid grid-cols-2 gap-2 content-start">
-                    {editFilteredItems.map(renderEditItemCard)}
-                  </div>
                 )}
               </div>
             </div>

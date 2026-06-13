@@ -15,6 +15,7 @@ import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
@@ -53,7 +54,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
 
   // PDV States
-  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<any[]>([]);
   const [originalCart, setOriginalCart] = useState<any[]>([]);
@@ -153,13 +153,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, 'dine_in')) return false;
-    const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
-    return matchesCat && matchesSearch;
+    return matchesSearch;
   }) || [];
 
-  // Em "Todos" os produtos sao agrupados por categoria (na mesma ordem dos
-  // filtros), em vez de virem soltos na ordem crua da colecao.
+  // Os produtos sao sempre agrupados por categoria; clicar numa categoria
+  // rola ate a secao e rolar a lista atualiza a pill ativa (igual cliente).
   const groupedItems = (categories || [])
     .map((cat: any) => ({
       id: cat.id,
@@ -173,6 +172,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   if (uncategorizedItems.length > 0) {
     groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
   }
+  const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
+    useCategoryScrollSpy(groupedItems.map(g => g.id));
 
   const itemNeedsCustomization = (item: any) => {
     const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
@@ -1017,32 +1018,33 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   />
                 </div>
               </div>
-              <div className="p-3 border-b flex gap-2 overflow-x-auto custom-scrollbar shrink-0">
-                <Badge 
-                  variant="secondary" 
+              <div ref={categoryBarRef} className="p-3 border-b flex gap-2 overflow-x-auto custom-scrollbar shrink-0">
+                <Badge
+                  data-cat-tab="all"
+                  variant="secondary"
                   className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => { setActiveCategory('all'); setSearchTerm(''); }}
+                  onClick={() => { setSearchTerm(''); scrollToCategory('all'); }}
                 >
                   Todos
                 </Badge>
-                {categories.map(cat => (
-                  <Badge 
-                    key={cat.id} 
-                    variant="secondary" 
-                    className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === cat.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => { setActiveCategory(cat.id); setSearchTerm(''); }}
+                {groupedItems.map(group => (
+                  <Badge
+                    key={group.id}
+                    data-cat-tab={group.id}
+                    variant="secondary"
+                    className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => scrollToCategory(group.id)}
                   >
-                    {cat.name}
+                    {group.name}
                   </Badge>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-                {filteredItems.length === 0 ? (
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+                {groupedItems.length === 0 ? (
                   <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
-                ) : activeCategory === 'all' ? (
-                  // Em "Todos": agrupa por categoria, com cabecalho de secao.
+                ) : (
                   groupedItems.map(group => (
-                    <div key={group.id} className="mb-4">
+                    <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                       <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                         {group.name}
                       </h2>
@@ -1051,11 +1053,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       </div>
                     </div>
                   ))
-                ) : (
-                  // Categoria especifica: grade simples.
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
-                    {filteredItems.map(renderItemCard)}
-                  </div>
                 )}
               </div>
             </div>
