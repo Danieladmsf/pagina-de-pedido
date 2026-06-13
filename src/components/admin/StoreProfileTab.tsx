@@ -59,7 +59,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     autoPrint: false,
     manualPrint: false,
     printMode: 'auto_silent' as 'auto_silent' | 'auto_sound' | 'manual',
-    disableDelivery: false,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -172,7 +171,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           printMode: formData.printMode,
           // Mantém o legado em sincronia: outros módulos (Delivery/Mesas) ainda leem manualPrint.
           manualPrint: formData.printMode === 'manual',
-          disableDelivery: formData.disableDelivery || false,
+          // disableDelivery e controlado pelo botao "Delivery" no topo do painel;
+          // o perfil nao grava esse campo para nao sobrescrever o toggle do header.
         },
         fees: {
           deliveryCities: formData.deliveryCities,
@@ -694,28 +694,10 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
                       Ao ligar, os produtos exibirão a quantidade disponível no App do Cliente. O sistema impedirá vendas se o estoque zerar e fará o abatimento automático.
                     </p>
                   </div>
-                  <Switch 
+                  <Switch
                     checked={formData.enableInventory}
                     onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
                     className="data-[state=checked]:bg-violet-600"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      Serviço de Delivery (Entrega)
-                      {!formData.disableDelivery && <Badge className="bg-emerald-500 hover:bg-emerald-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Ligado</Badge>}
-                      {formData.disableDelivery && <Badge className="bg-red-500 hover:bg-red-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">Desligado</Badge>}
-                    </Label>
-                    <p className="text-[11px] text-slate-500 max-w-md">
-                      Permitir que clientes façam pedidos com a opção de entrega em domicílio. Se desativado, apenas Retirada e Comer no Local estarão disponíveis.
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={!formData.disableDelivery}
-                    onCheckedChange={(checked) => setFormData({ ...formData, disableDelivery: !checked })}
-                    className="data-[state=checked]:bg-emerald-600"
                   />
                 </div>
               </div>
