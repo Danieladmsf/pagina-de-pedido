@@ -180,6 +180,22 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
     return matchesCat && matchesSearch;
   });
+
+  // Em "Todos" os produtos sao agrupados por categoria (na mesma ordem dos
+  // filtros), em vez de virem soltos na ordem crua da colecao.
+  const groupedItems = (categories || [])
+    .map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      items: (filteredItems || []).filter(it => it.categoryId === cat.id),
+    }))
+    .filter(group => group.items.length > 0);
+  const uncategorizedItems = (filteredItems || []).filter(
+    it => !categories?.some((c: any) => c.id === it.categoryId)
+  );
+  if (uncategorizedItems.length > 0) {
+    groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
+  }
   
   // Endereço e cálculo de frete
   const storeAddress = storeProfile?.general?.address || '';
@@ -723,6 +739,75 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     </div>
   ) : null;
 
+  const renderItemCard = (item: any) => {
+    const needsCust = itemNeedsCustomization(item);
+    const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+    const simpleItemInCart = cart.find(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+    const simpleCartItemId = simpleItemInCart ? (simpleItemInCart.cartItemId || simpleItemInCart.id) : item.id;
+    const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+
+    return (
+      <Card key={item.id} className={`overflow-hidden transition-all flex flex-col group border-slate-200 relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`} onClick={outOfStock ? undefined : () => addToCart(item)}>
+        {outOfStock && (
+          <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
+            Sem estoque
+          </Badge>
+        )}
+        {qtyInCart > 0 && (
+          <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
+            {qtyInCart}
+          </Badge>
+        )}
+
+        <div className="flex gap-2 p-2">
+          {item.imageUrl ? (
+            <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
+              <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="80px" />
+            </div>
+          ) : (
+            <div className="w-20 h-20 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+              <Tag className="h-6 w-6 text-slate-300" />
+            </div>
+          )}
+          <div className="flex flex-col flex-1 py-1">
+            <h3 className="font-bold text-sm leading-tight text-slate-800 line-clamp-2">{item.name}</h3>
+            <div className="mt-auto pt-1">
+               <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600">R$ {item.price.toFixed(2)}</Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t p-2" onClick={(e) => e.stopPropagation()}>
+          {outOfStock ? (
+            <Button variant="ghost" size="sm" disabled className="w-full h-8 text-xs font-bold text-slate-400 cursor-not-allowed">
+               Sem estoque
+            </Button>
+          ) : needsCust ? (
+            <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
+               <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
+            </Button>
+          ) : (
+            qtyInCart > 0 ? (
+              <div className="flex justify-between items-center px-4 h-8 bg-slate-50 rounded">
+                 <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, -1)}>
+                   <Minus className="h-3 w-3" />
+                 </Button>
+                 <span className="font-bold text-sm">{qtyInCart}</span>
+                 <Button variant="default" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, 1)}>
+                   <Plus className="h-3 w-3" />
+                 </Button>
+              </div>
+            ) : (
+              <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
+                 <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
+              </Button>
+            )
+          )}
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div className="flex flex-col md:flex-row gap-4 flex-1 w-full overflow-hidden">
       {/* Coluna Esquerda: Produtos e Filtros */}
@@ -759,76 +844,24 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pr-2 pb-4">
-            {filteredItems?.map(item => {
-              const needsCust = itemNeedsCustomization(item);
-              const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
-              const simpleItemInCart = cart.find(i => i.id === item.id && (!i.addons || i.addons.length === 0));
-              const simpleCartItemId = simpleItemInCart ? (simpleItemInCart.cartItemId || simpleItemInCart.id) : item.id;
-              const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
-
-              return (
-                <Card key={item.id} className={`overflow-hidden transition-all flex flex-col group border-slate-200 relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`} onClick={outOfStock ? undefined : () => addToCart(item)}>
-                  {outOfStock && (
-                    <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
-                      Sem estoque
-                    </Badge>
-                  )}
-                  {qtyInCart > 0 && (
-                    <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
-                      {qtyInCart}
-                    </Badge>
-                  )}
-                  
-                  <div className="flex gap-2 p-2">
-                    {item.imageUrl ? (
-                      <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
-                        <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="80px" />
-                      </div>
-                    ) : (
-                      <div className="w-20 h-20 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                        <Tag className="h-6 w-6 text-slate-300" />
-                      </div>
-                    )}
-                    <div className="flex flex-col flex-1 py-1">
-                      <h3 className="font-bold text-sm leading-tight text-slate-800 line-clamp-2">{item.name}</h3>
-                      <div className="mt-auto pt-1">
-                         <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600">R$ {item.price.toFixed(2)}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t p-2" onClick={(e) => e.stopPropagation()}>
-                    {outOfStock ? (
-                      <Button variant="ghost" size="sm" disabled className="w-full h-8 text-xs font-bold text-slate-400 cursor-not-allowed">
-                         Sem estoque
-                      </Button>
-                    ) : needsCust ? (
-                      <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
-                         <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
-                      </Button>
-                    ) : (
-                      qtyInCart > 0 ? (
-                        <div className="flex justify-between items-center px-4 h-8 bg-slate-50 rounded">
-                           <Button variant="outline" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, -1)}>
-                             <Minus className="h-3 w-3" />
-                           </Button>
-                           <span className="font-bold text-sm">{qtyInCart}</span>
-                           <Button variant="default" size="icon" className="h-6 w-6 rounded-full" onClick={() => updateQuantity(simpleCartItemId, 1)}>
-                             <Plus className="h-3 w-3" />
-                           </Button>
-                        </div>
-                      ) : (
-                        <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
-                           <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
-                        </Button>
-                      )
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          {activeCategory === 'all' ? (
+            // Em "Todos": agrupa por categoria, com cabecalho de secao.
+            groupedItems.map(group => (
+              <div key={group.id} className="mb-4">
+                <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  {group.name}
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pr-2">
+                  {group.items.map(renderItemCard)}
+                </div>
+              </div>
+            ))
+          ) : (
+            // Categoria especifica: grade simples.
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pr-2 pb-4">
+              {filteredItems?.map(renderItemCard)}
+            </div>
+          )}
         </div>
       </div>
 
