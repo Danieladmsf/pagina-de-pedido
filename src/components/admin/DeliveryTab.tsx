@@ -575,6 +575,58 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
   };
 
+  // Lista de itens do dialogo "Adicionar / Remover Itens", agrupada por
+  // categoria quando o filtro esta em "Todos".
+  const editFilteredItems = (items || []).filter((item: any) => {
+    if (item.isAvailable === false) return false;
+    const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
+    const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
+    return matchesCat && matchesSearch;
+  });
+  const editGroupedItems = (categories || [])
+    .map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      items: editFilteredItems.filter((it: any) => it.categoryId === cat.id),
+    }))
+    .filter(group => group.items.length > 0);
+  const editUncategorizedItems = editFilteredItems.filter(
+    (it: any) => !categories?.some((c: any) => c.id === it.categoryId)
+  );
+  if (editUncategorizedItems.length > 0) {
+    editGroupedItems.push({ id: '__none__', name: 'Outros', items: editUncategorizedItems });
+  }
+  const renderEditItemCard = (item: any) => {
+    const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+    return (
+      <button
+        key={item.id}
+        onClick={outOfStock ? undefined : () => setSelectedItemForDialog(item)}
+        disabled={outOfStock}
+        className={`text-left border bg-white p-2.5 rounded-lg transition-colors group flex items-center gap-3 min-h-[80px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
+      >
+        {outOfStock && (
+          <Badge className="absolute top-1.5 left-1.5 bg-slate-700 text-white font-bold text-[9px] px-1.5 py-0.5 rounded z-10">
+            Sem estoque
+          </Badge>
+        )}
+        {item.imageUrl ? (
+          <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
+            <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
+          </div>
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <Tag className="h-5 w-5 text-slate-300" />
+          </div>
+        )}
+        <div className="flex flex-col flex-1 min-w-0 gap-1">
+          <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
+          <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+        </div>
+      </button>
+    );
+  };
+
   return (
     <>
     <div className="flex flex-col md:flex-row gap-4 flex-1 w-full overflow-hidden">
@@ -1118,42 +1170,27 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   className="h-8 text-xs font-medium"
                 />
               </div>
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-2 gap-2 content-start bg-slate-50/30">
-                {items?.filter(item => {
-                  if (item.isAvailable === false) return false;
-                  const matchesCat = editCategory === 'all' || item.categoryId === editCategory;
-                  const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(editSearch));
-                  return matchesCat && matchesSearch;
-                }).map(item => {
-                  const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
-                  return (
-                  <button
-                    key={item.id}
-                    onClick={outOfStock ? undefined : () => setSelectedItemForDialog(item)}
-                    disabled={outOfStock}
-                    className={`text-left border bg-white p-2.5 rounded-lg transition-colors group flex items-center gap-3 min-h-[80px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
-                  >
-                    {outOfStock && (
-                      <Badge className="absolute top-1.5 left-1.5 bg-slate-700 text-white font-bold text-[9px] px-1.5 py-0.5 rounded z-10">
-                        Sem estoque
-                      </Badge>
-                    )}
-                    {item.imageUrl ? (
-                      <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                        <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="56px" />
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/30">
+                {editFilteredItems.length === 0 ? (
+                  <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
+                ) : editCategory === 'all' ? (
+                  // Em "Todos": agrupa por categoria, com cabecalho de secao.
+                  editGroupedItems.map(group => (
+                    <div key={group.id} className="mb-4">
+                      <h2 className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                        {group.name}
+                      </h2>
+                      <div className="grid grid-cols-2 gap-2 content-start">
+                        {group.items.map(renderEditItemCard)}
                       </div>
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                        <Tag className="h-5 w-5 text-slate-300" />
-                      </div>
-                    )}
-                    <div className="flex flex-col flex-1 min-w-0 gap-1">
-                      <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
-                      <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}</span>
                     </div>
-                  </button>
-                  );
-                })}
+                  ))
+                ) : (
+                  // Categoria especifica: grade simples.
+                  <div className="grid grid-cols-2 gap-2 content-start">
+                    {editFilteredItems.map(renderEditItemCard)}
+                  </div>
+                )}
               </div>
             </div>
           </div>

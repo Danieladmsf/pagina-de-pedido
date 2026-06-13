@@ -156,7 +156,23 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     const matchesCat = activeCategory === 'all' || item.categoryId === activeCategory;
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
     return matchesCat && matchesSearch;
-  });
+  }) || [];
+
+  // Em "Todos" os produtos sao agrupados por categoria (na mesma ordem dos
+  // filtros), em vez de virem soltos na ordem crua da colecao.
+  const groupedItems = (categories || [])
+    .map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      items: filteredItems.filter((it: any) => it.categoryId === cat.id),
+    }))
+    .filter(group => group.items.length > 0);
+  const uncategorizedItems = filteredItems.filter(
+    (it: any) => !categories?.some((c: any) => c.id === it.categoryId)
+  );
+  if (uncategorizedItems.length > 0) {
+    groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
+  }
 
   const itemNeedsCustomization = (item: any) => {
     const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
@@ -673,9 +689,46 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     );
   }
 
+  const renderItemCard = (item: any) => {
+    const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+    const outOfStock = !!storeInfo?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+    return (
+      <button
+        key={item.id}
+        onClick={outOfStock ? undefined : () => addToCart(item)}
+        disabled={outOfStock}
+        className={`text-left border p-3 rounded-lg transition-colors group flex items-center gap-3 min-h-[88px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
+      >
+        {outOfStock && (
+          <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
+            Sem estoque
+          </Badge>
+        )}
+        {qtyInCart > 0 && (
+          <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
+            {qtyInCart}
+          </Badge>
+        )}
+        {item.imageUrl ? (
+          <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0">
+            <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="64px" />
+          </div>
+        ) : (
+          <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <Tag className="h-6 w-6 text-slate-300" />
+          </div>
+        )}
+        <div className="flex flex-col flex-1 min-w-0 gap-1.5">
+          <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
+          <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+        </div>
+      </button>
+    );
+  };
+
   return (
     <div className="flex gap-4 flex-1 overflow-hidden">
-      
+
       {/* Visão de gestão: mapa de mesas (esquerda) + fila de pedidos online (direita) */}
       {!selectedTable && (
         <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden w-full">
@@ -983,45 +1036,26 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   </Badge>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
-                {filteredItems.map(item => {
-                  const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
-                  const outOfStock = !!storeInfo?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={outOfStock ? undefined : () => addToCart(item)}
-                      disabled={outOfStock}
-                      className={`text-left border p-3 rounded-lg transition-colors group flex items-center gap-3 min-h-[88px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
-                    >
-                      {outOfStock && (
-                        <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
-                          Sem estoque
-                        </Badge>
-                      )}
-                      {qtyInCart > 0 && (
-                        <Badge className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full z-10">
-                          {qtyInCart}
-                        </Badge>
-                      )}
-                      {item.imageUrl ? (
-                        <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0">
-                          <Image src={item.imageUrl} alt={item.name} fill className="object-cover" sizes="64px" />
-                        </div>
-                      ) : (
-                        <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                          <Tag className="h-6 w-6 text-slate-300" />
-                        </div>
-                      )}
-                      <div className="flex flex-col flex-1 min-w-0 gap-1.5">
-                        <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
-                        <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+                {filteredItems.length === 0 ? (
+                  <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
+                ) : activeCategory === 'all' ? (
+                  // Em "Todos": agrupa por categoria, com cabecalho de secao.
+                  groupedItems.map(group => (
+                    <div key={group.id} className="mb-4">
+                      <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                        {group.name}
+                      </h2>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+                        {group.items.map(renderItemCard)}
                       </div>
-                    </button>
-                  );
-                })}
-                {filteredItems.length === 0 && (
-                  <div className="col-span-full text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
+                    </div>
+                  ))
+                ) : (
+                  // Categoria especifica: grade simples.
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+                    {filteredItems.map(renderItemCard)}
+                  </div>
                 )}
               </div>
             </div>
