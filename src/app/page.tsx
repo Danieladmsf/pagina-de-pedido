@@ -2327,7 +2327,7 @@ export default function AdminPage() {
               <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col lg:flex-row">
                 {/* ── Coluna 1: containers (lista vertical) ── */}
-                <div className="flex shrink-0 flex-col border-b bg-white lg:w-[230px] lg:border-b-0 lg:border-r min-h-0 max-h-44 lg:max-h-none">
+                <div className="flex shrink-0 flex-col border-b bg-white lg:w-[270px] lg:border-b-0 lg:border-r min-h-0 max-h-44 lg:max-h-none">
                   <div className="shrink-0 border-b px-3 py-2">
                     <p className="text-xs font-bold text-slate-700">Containers</p>
                   </div>
@@ -2352,13 +2352,13 @@ export default function AdminPage() {
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
                         onClick={() => { setAddonCategoryFilter(g); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
                         size="sm"
-                        className={`w-full justify-between gap-2 rounded-lg flex items-center group ${
+                        className={`w-full h-auto min-h-9 py-1.5 justify-between gap-2 rounded-lg flex items-center group ${
                           highlightedContainers.has(g) && addonCategoryFilter !== g
                             ? 'border-orange-400 bg-orange-100 text-orange-700 hover:bg-orange-200'
                             : ''
                         }`}
                       >
-                        <span className="truncate">{g}</span>
+                        <span className="text-left whitespace-normal break-words leading-tight">{g}</span>
                         <span className="flex shrink-0 items-center gap-1">
                           <span className="rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px]">
                             {getContainerAddonIds(g).length}
