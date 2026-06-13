@@ -6,6 +6,8 @@ import { doc, setDoc } from 'firebase/firestore';
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
+  Hash,
   Loader2,
   MessageCircle,
   Phone,
@@ -734,6 +736,18 @@ function InfoGrid({
   storeName: string;
   integration: Integration;
 }) {
+  const { toast } = useToast();
+
+  const copyInstanceId = async () => {
+    if (!integration.wapiInstanceId) return;
+    try {
+      await navigator.clipboard.writeText(integration.wapiInstanceId);
+      toast({ title: 'ID copiado', description: 'ID da instancia copiado para a area de transferencia.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Nao foi possivel copiar', description: 'Copie o ID manualmente.' });
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="rounded-xl border bg-white p-3.5">
@@ -756,6 +770,28 @@ function InfoGrid({
             <span className="text-slate-400 font-normal text-sm">Aguardando conexao</span>
           )}
         </p>
+      </div>
+      <div className="rounded-xl border bg-white p-3.5 md:col-span-2">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1">
+          <Hash className="h-3 w-3 text-slate-400" />
+          ID da instancia
+        </p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <code className="font-mono text-sm font-bold text-slate-900 truncate">
+            {integration.wapiInstanceId || '—'}
+          </code>
+          {integration.wapiInstanceId && (
+            <button
+              type="button"
+              onClick={copyInstanceId}
+              title="Copiar ID da instancia"
+              className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 transition-colors"
+            >
+              <Copy className="h-3 w-3" />
+              Copiar
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
