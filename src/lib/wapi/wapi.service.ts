@@ -162,19 +162,23 @@ export interface WapiStatusResponse {
   instanceId: string;
   connected?: boolean | string;
   isConnected?: boolean | string;
+  smartphoneConnected?: boolean | string;
   status?: string;
   state?: string;
   connectionStatus?: string;
+  instanceStatus?: string;
   connectedPhone?: string;
   phone?: string;
   number?: string;
   instance?: {
     connected?: boolean | string;
     status?: string;
+    instanceStatus?: string;
     connectedPhone?: string;
     phone?: string;
     number?: string;
   };
+  data?: any;
 }
 
 export function extractWapiQrCode(response: WapiQrCodeResponse | any) {
@@ -215,17 +219,39 @@ function statusMeansConnected(value: unknown) {
 }
 
 export function isWapiConnectedStatus(response: WapiStatusResponse | any) {
-  const rawConnected = response?.connected ?? response?.isConnected ?? response?.instance?.connected;
+  if (typeof response === 'string') {
+    return statusMeansConnected(response) || response.trim().toLowerCase() === 'true';
+  }
+  if (!response || typeof response !== 'object') return false;
 
-  if (typeof rawConnected === 'boolean') return rawConnected;
-  if (typeof rawConnected === 'string') return statusMeansConnected(rawConnected) || rawConnected.toLowerCase() === 'true';
-
-  return (
-    statusMeansConnected(response?.status) ||
-    statusMeansConnected(response?.state) ||
-    statusMeansConnected(response?.connectionStatus) ||
-    statusMeansConnected(response?.instance?.status)
+  // A W-API aninha o estado da conexao em locais diferentes conforme o plano
+  // (LITE/PRO) e o endpoint. Varremos todas as fontes conhecidas: raiz,
+  // `instance`, `data` e `data.instance`. Um sinal positivo em qualquer uma
+  // delas conta como conectado (um `connected:false` no topo nao mascara um
+  // estado conectado aninhado em `data`).
+  const sources = [response, response.instance, response.data, response.data?.instance].filter(
+    (src) => src && typeof src === 'object',
   );
+
+  for (const src of sources) {
+    const rawConnected = src.connected ?? src.isConnected ?? src.smartphoneConnected;
+    if (typeof rawConnected === 'boolean') {
+      if (rawConnected) return true;
+    } else if (typeof rawConnected === 'string') {
+      if (statusMeansConnected(rawConnected) || rawConnected.trim().toLowerCase() === 'true') return true;
+    }
+
+    if (
+      statusMeansConnected(src.status) ||
+      statusMeansConnected(src.state) ||
+      statusMeansConnected(src.connectionStatus) ||
+      statusMeansConnected(src.instanceStatus)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function normalizePhoneCandidate(value: unknown) {

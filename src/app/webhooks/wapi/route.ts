@@ -49,10 +49,19 @@ function stateValues(payload: any, event: string) {
     payload?.status,
     payload?.state,
     payload?.connectionStatus,
+    payload?.instanceStatus,
     payload?.connected,
     payload?.isConnected,
+    payload?.smartphoneConnected,
     payload?.instance?.status,
+    payload?.instance?.instanceStatus,
     payload?.instance?.connected,
+    payload?.data?.status,
+    payload?.data?.instanceStatus,
+    payload?.data?.connected,
+    payload?.data?.isConnected,
+    payload?.data?.instance?.status,
+    payload?.data?.instance?.connected,
   ];
 }
 
