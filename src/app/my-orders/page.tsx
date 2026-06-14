@@ -6,7 +6,7 @@ import { useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc, setDoc, getDoc, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw, Receipt, QrCode, Wallet, CalendarDays, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw, Receipt, QrCode, Wallet, CalendarDays, CheckCircle2, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -66,6 +66,15 @@ const statusMessage = (status: string, orderType: string) => {
 };
 
 function OrderTimeline({ status, orderType }: { status: string; orderType: string }) {
+  // Pedido cancelado: no lugar das etapas, mostra um aviso vermelho.
+  if (status === 'canceled') {
+    return (
+      <div className="flex items-center justify-center gap-1.5 py-2 rounded-md bg-red-50 text-red-600 border border-red-200">
+        <XCircle className="h-4 w-4" />
+        <span className="text-xs font-bold uppercase tracking-wide">Pedido Cancelado</span>
+      </div>
+    );
+  }
   const steps = orderType === 'pickup' ? PICKUP_STEPS : orderType === 'dine_in' ? DINE_IN_STEPS : DELIVERY_STEPS;
   const currentIdx = steps.findIndex(s => s.key === status);
   return (
