@@ -924,7 +924,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     {addons.length > 0 && (
                       <div className="text-xs text-muted-foreground pl-2 space-y-0.5">
                         {addons.map(a => (
-                          <div key={a.id}>+ {a.name} (R$ {a.price.toFixed(2)})</div>
+                          <div key={a.id}>+ {a.name}{a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
                         ))}
                       </div>
                     )}

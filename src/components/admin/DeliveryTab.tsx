@@ -816,7 +816,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                       <td className="px-4 py-3 text-center">{item.quantity}</td>
                       <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {item.addons?.map((a: any) => `1x ${a.name} - R$ ${a.price.toFixed(2)}`).join('\n')}
+                        {item.addons?.map((a: any) => `1x ${a.name}${a.price > 0 ? ` - R$ ${a.price.toFixed(2)}` : ''}`).join('\n')}
                       </td>
                       <td className="px-4 py-3 text-right">R$ {item.unitPrice?.toFixed(2)}</td>
                       <td className="px-4 py-3 text-right font-medium">R$ {(item.unitPrice * item.quantity).toFixed(2)}</td>
