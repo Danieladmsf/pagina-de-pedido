@@ -582,13 +582,10 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               <div className="mt-4">
                 <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                   <Bookmark className="h-3.5 w-3.5" /> Listas salvas
+                  <InfoTip text="Nenhuma lista salva ainda — selecione contatos e clique em “Salvar como nova lista”." />
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  {broadcastLists.length === 0 ? (
-                    <p className="text-[12px] text-slate-400">
-                      Nenhuma lista salva ainda — selecione contatos e clique em “Salvar como nova lista”.
-                    </p>
-                  ) : (
+                  {broadcastLists.length === 0 ? null : (
                     broadcastLists.map((l) => {
                       const count = (l.contactIds || []).length;
                       // Lista "ativa" = a seleção atual bate exatamente com os contatos dela.
@@ -667,7 +664,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               subtitle="Escreva um rascunho e deixe a IA ajustar, ou personalize com as variáveis">
 
               <div className="mb-4">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nome da campanha <span className="font-normal normal-case">(só para identificar no histórico)</span></p>
+                <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Nome da campanha <InfoTip text="Só para identificar no histórico." /></p>
                 <Input value={draft.name} onChange={(e) => set({ name: e.target.value })}
                   placeholder="Ex.: Promoção de Sexta — Pizza em dobro" className="h-11" />
               </div>
@@ -876,6 +873,22 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 }
 
 /* Subcomponentes locais */
+
+// Ícone "i" com tooltip ao passar o mouse — usado para esconder textos auxiliares.
+function InfoTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" aria-label="Mais informações"
+          className="flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-emerald-600">
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px] text-[12px]">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function StepSection({ step, title, subtitle, badge, children }: {
   step: number; title: string; subtitle?: string; badge?: string; children: React.ReactNode;
 }) {
@@ -886,17 +899,7 @@ function StepSection({ step, title, subtitle, badge, children }: {
         <div className="min-w-0 flex-1">
           <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
             {title}
-            {subtitle && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" aria-label="Mais informações"
-                    className="flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-emerald-600">
-                    <Info className="h-3.5 w-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[260px] text-[12px]">{subtitle}</TooltipContent>
-              </Tooltip>
-            )}
+            {subtitle && <InfoTip text={subtitle} />}
           </h3>
         </div>
         {badge && (
