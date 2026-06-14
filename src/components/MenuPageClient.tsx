@@ -959,6 +959,7 @@ export function MenuPageClient({
               storeOwnerId={storeId}
               deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0}
               storeAddress={storeProfile?.general?.address || (storeInfo as any)?.storeAddress || ''}
+              deliveryCities={storeProfile?.general?.deliveryCities || storeProfile?.fees?.deliveryCities || []}
               deliveryFeeRules={storeProfile?.fees?.feeRules || storeProfile?.feeRules || (storeInfo as any)?.deliveryFeeRules || []}
               customAddressRules={storeProfile?.fees?.customAddressRules || storeProfile?.customAddressRules || []}
               maxDeliveryRadius={storeProfile?.fees?.maxDeliveryRadius || 0}

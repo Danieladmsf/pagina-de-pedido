@@ -35,6 +35,7 @@ interface CartDrawerProps {
   storeOwnerId?: string | null;
   deliveryFee?: number; // Taxa fixa (fallback)
   storeAddress?: string; // Endereço do restaurante para cálculo de distância
+  deliveryCities?: string[]; // Cidades de entrega da loja (filtra o autocomplete de endereço)
   deliveryFeeRules?: Array<{ maxKm: number; fee: number; perKmExtra?: number }>; // Regras por distância
   maxDeliveryRadius?: number; // Limite de KM
   customAddressRules?: Array<{ keyword: string; fee: number }>; // Regras personalizadas por bairro/rua
@@ -137,7 +138,7 @@ const formatDate = (val: string) => {
   return f;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryCities = [], deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   const [contaCasaEnabled, setContaCasaEnabled] = useState(false);
   
@@ -1088,7 +1089,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                         }
                       }}
                       forceClose={distanceInfo !== null || deliveryBlocked}
-                      locationContext={city || undefined}
+                      locationContext={(city || deliveryCities.join(', ')) || undefined}
                       placeholder="Digite rua, bairro ou cidade..."
                     />
                     <input type="hidden" autoComplete="street-address" value={street} onChange={() => {}} />

@@ -131,6 +131,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [formCreditPayDay, setFormCreditPayDay] = useState('');
   // Bairros cadastrados em "Taxas por Bairro" (store_profiles), usados como sugestao no campo Bairro
   const [registeredNeighborhoods, setRegisteredNeighborhoods] = useState<string[]>([]);
+  const [deliveryCities, setDeliveryCities] = useState<string[]>([]);
   const [showBairroSuggestions, setShowBairroSuggestions] = useState(false);
 
   React.useEffect(() => {
@@ -147,6 +148,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
         // Lista completa de bairros das cidades de entrega (mesma fonte do StoreProfileTab)
         const cities: string[] = data?.general?.deliveryCities || data?.fees?.deliveryCities || [];
+        setDeliveryCities(cities);
         const fetched: string[] = [];
         for (const city of cities) {
           try {
@@ -774,6 +776,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                     value={formLogradouro}
                     onChange={setFormLogradouro}
                     onSelectPlace={handlePlaceSelected}
+                    locationContext={(formCidade.trim() || deliveryCities.join(', ')) || undefined}
                     placeholder="Buscar endereço no Maps..."
                     className="bg-slate-50/50 h-7 text-xs"
                   />

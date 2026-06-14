@@ -203,7 +203,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const storeAddress = storeProfile?.general?.address || '';
   const deliveryFeeRules = storeProfile?.feeRules || storeProfile?.fees?.feeRules || [];
   const maxDeliveryRadius = storeProfile?.fees?.maxDeliveryRadius || 0;
-  
+  const deliveryCities: string[] = storeProfile?.general?.deliveryCities || storeProfile?.fees?.deliveryCities || [];
+
   const [addressObj, setAddressObj] = useState<{street: string, number: string, neighborhood: string, city: string}>({ street: '', number: '', neighborhood: '', city: '' });
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [deliveryBlocked, setDeliveryBlocked] = useState(false);
@@ -983,6 +984,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     }}
                     forceClose={distanceInfo !== null || deliveryBlocked}
                     disableSearch={!!addressObj.city && !!addressObj.neighborhood}
+                    locationContext={(addressObj.city?.trim() || deliveryCities.join(', ')) || undefined}
                     placeholder="Buscar endereço no Maps..."
                   />
                   <input type="hidden" autoComplete="street-address" value={addressObj.street} onChange={() => {}} />
