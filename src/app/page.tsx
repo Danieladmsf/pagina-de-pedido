@@ -75,7 +75,7 @@ export default function AdminPage() {
   // chegou enquanto este PC recarregava). A reserva atômica + a fila garantem que
   // só sai 1 mensagem por pedido, sem estourar o limite da w-api. A janela de 30min
   // evita re-tentar pedidos antigos para sempre.
-  // Também dispara o lembrete do comprovante Pix ~3 min após o pedido (apenas
+  // Também dispara o lembrete do comprovante Pix ~1 min após o pedido (apenas
   // pagamento pix, e somente depois do aviso de "pedido recebido").
   useEffect(() => {
     if (!db || !user) return;
@@ -93,10 +93,10 @@ export default function AdminPage() {
           void whatsappQueue(() => send(o, 'received'));
           continue; // o lembrete do Pix só sai DEPOIS do aviso de pedido recebido
         }
-        // Lembrete amigável do comprovante Pix, ~3 min após o pedido.
+        // Lembrete amigável do comprovante Pix, ~1 min após o pedido.
         // Mesma reserva atômica (pixProofMessageSent) das demais mensagens:
         // não duplica entre PCs e não interfere nos avisos de status seguintes.
-        if (o.paymentMethod === 'pix' && o.pixProofMessageSent !== true && o.status !== 'delivered' && ageMs >= 3 * 60 * 1000) {
+        if (o.paymentMethod === 'pix' && o.pixProofMessageSent !== true && o.status !== 'delivered' && ageMs >= 1 * 60 * 1000) {
           void whatsappQueue(() => send(o, 'pix_proof'));
         }
       }

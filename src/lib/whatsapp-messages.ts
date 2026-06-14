@@ -22,7 +22,7 @@ type WorkingHour = {
 export const WHATSAPP_MESSAGE_LABELS: Record<WhatsAppMessageKey, string> = {
   firstContact: 'Primeiro contato',
   orderReceived: 'Pedido recebido',
-  pixProofRequest: 'Comprovante Pix (enviada ~3 min após o pedido)',
+  pixProofRequest: 'Comprovante Pix (enviada ~1 min após o pedido)',
   orderReadyDelivery: 'Pedido pronto/finalizando',
   orderReadyPickup: 'Retirada pronta',
   orderReadyDineIn: 'Pedido pronto na mesa',
