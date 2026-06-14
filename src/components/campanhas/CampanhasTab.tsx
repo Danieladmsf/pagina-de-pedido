@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
@@ -390,6 +391,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   };
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="flex h-full min-h-0 flex-col bg-slate-50">
 
       {/* Cabeçalho fino */}
@@ -401,15 +403,12 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
             <p className="text-[11px] text-slate-400">Escolha os contatos e dispare pelo WhatsApp</p>
           </div>
         </div>
-        <Badge variant="outline" className="gap-1.5 text-[11px] text-slate-500">
-          <Users className="h-3 w-3" /> {clients.length} clientes
-        </Badge>
-      </div>
-
-      {/* Barra de importacao: traz contatos de fora (CSV ou agenda do WhatsApp) */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2 sm:px-6">
-        <span className="text-[11px] text-slate-400">Sem contatos suficientes? Importe de um arquivo CSV (use o modelo).</span>
-        <ImportContacts db={db} user={user} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="gap-1.5 text-[11px] text-slate-500">
+            <Users className="h-3 w-3" /> {clients.length} clientes
+          </Badge>
+          <ImportContacts db={db} user={user} />
+        </div>
       </div>
 
       {/* Corpo: ESQUERDA contatos (altura total) | DIREITA composição (rola) */}
@@ -554,7 +553,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
         {/* ── Composição (rola independente) ── */}
         <div className="min-h-0 overflow-y-auto custom-scrollbar">
-          <div className="mx-auto w-full max-w-[1100px] space-y-5 p-4 sm:p-6 lg:px-8">
+          <div className="w-full space-y-5 p-4 sm:p-6 lg:px-8">
 
             {/* ── Passo 1: público — grupos prontos, listas salvas e ordenação ── */}
             <StepSection step={1} title="Escolha quem vai receber"
@@ -872,6 +871,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -884,8 +884,20 @@ function StepSection({ step, title, subtitle, badge, children }: {
       <div className="mb-4 flex items-start gap-3">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[13px] font-black text-white">{step}</div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-          {subtitle && <p className="text-[11px] text-slate-400">{subtitle}</p>}
+          <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+            {title}
+            {subtitle && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" aria-label="Mais informações"
+                    className="flex h-4 w-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-emerald-600">
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px] text-[12px]">{subtitle}</TooltipContent>
+              </Tooltip>
+            )}
+          </h3>
         </div>
         {badge && (
           <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{badge}</span>
