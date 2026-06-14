@@ -276,19 +276,25 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
 
   // Cidades
   const addCity = () => {
-    if (formData.cityInput.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        deliveryCities: [...prev.deliveryCities, prev.cityInput.trim()],
-        cityInput: ''
-      }));
-    }
+    const newCity = formData.cityInput.trim();
+    if (!newCity) return;
+    const updatedCities = [...formData.deliveryCities, newCity];
+    setFormData(prev => ({
+      ...prev,
+      deliveryCities: [...prev.deliveryCities, newCity],
+      cityInput: ''
+    }));
+    // Carrega os bairros da nova cidade na hora, sem depender do botao "Carregar Bairros".
+    fetchNeighborhoodsFromCities(updatedCities);
   };
   const removeCity = (idx: number) => {
+    const updatedCities = formData.deliveryCities.filter((_, i) => i !== idx);
     setFormData(prev => ({
       ...prev,
       deliveryCities: prev.deliveryCities.filter((_, i) => i !== idx)
     }));
+    // Atualiza a lista de bairros para refletir as cidades restantes (sem orfaos).
+    fetchNeighborhoodsFromCities(updatedCities);
   };
 
   // Motoboys
