@@ -55,6 +55,9 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const [draft, setDraft] = useState<CampaignDraft>(EMPTY_DRAFT);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Textarea da mensagem + posição de cursor a restaurar após inserir variável.
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchContacts, setSearchContacts] = useState('');
@@ -139,6 +142,16 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   useEffect(() => {
     currentRowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [live?.currentId]);
+
+  // Depois de inserir/remover uma variável, devolve o foco e o cursor ao textarea.
+  useEffect(() => {
+    if (pendingCaret.current == null || !messageRef.current) return;
+    const pos = pendingCaret.current;
+    pendingCaret.current = null;
+    const el = messageRef.current;
+    el.focus();
+    el.setSelectionRange(pos, pos);
+  }, [draft.message]);
 
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -294,11 +307,40 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   const canSend = (draft.message.trim().length > 0 || !!imageFile) && audienceCount > 0;
 
-  const toggleToken = (token: string) => setEnabledTokens(prev => {
-    const n = new Set(prev);
-    n.has(token) ? n.delete(token) : n.add(token);
-    return n;
-  });
+  // Clicar numa variável insere/remove o token NO PRÓPRIO TEXTO atual — mantém o
+  // mesmo texto e só encaixa (ou tira) a variável, sem precisar gerar de novo com IA.
+  const toggleToken = (token: string) => {
+    // Liga = ainda não está no texto. O estado visual segue a presença real no texto.
+    const turningOn = !draft.message.includes(token);
+    // Mantém o flag (a IA também respeita quais variáveis estão ligadas).
+    setEnabledTokens(prev => {
+      const n = new Set(prev);
+      turningOn ? n.add(token) : n.delete(token);
+      return n;
+    });
+    setDraft(d => {
+      const msg = d.message;
+      if (!turningOn) {
+        // Remove todas as ocorrências e limpa espaços duplicados que sobrarem.
+        const cleaned = msg.split(token).join('').replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.!?])/g, '$1');
+        pendingCaret.current = cleaned.length;
+        return { ...d, message: cleaned };
+      }
+      if (msg.includes(token)) return d; // já está no texto
+      // Insere na posição do cursor (se o textarea estiver focado) ou no fim.
+      const el = messageRef.current;
+      const focused = el && document.activeElement === el;
+      const start = focused ? (el!.selectionStart ?? msg.length) : msg.length;
+      const end = focused ? (el!.selectionEnd ?? msg.length) : msg.length;
+      const before = msg.slice(0, start);
+      const after = msg.slice(end);
+      const needSpaceBefore = before.length > 0 && !/\s$/.test(before);
+      const needSpaceAfter = after.length > 0 && !/^\s/.test(after);
+      const piece = `${needSpaceBefore ? ' ' : ''}${token}${needSpaceAfter ? ' ' : ''}`;
+      pendingCaret.current = before.length + piece.length;
+      return { ...d, message: before + piece + after };
+    });
+  };
 
   // Gera/ajusta o texto da mensagem com IA (Claude) a partir do rascunho do lojista.
   const improveWithAI = async () => {
@@ -705,20 +747,20 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                   {aiLoading ? 'Gerando…' : 'Melhorar com IA'}
                 </Button>
               </div>
-              <Textarea value={draft.message} onChange={(e) => set({ message: e.target.value })}
+              <Textarea ref={messageRef} value={draft.message} onChange={(e) => set({ message: e.target.value })}
                 placeholder={'Olá {primeiro_nome}! 🍕 Hoje na {loja} tem oferta especial...'}
                 className="min-h-[150px] resize-none text-sm leading-relaxed" />
               <div className="mt-2.5">
-                <p className="mb-1.5 text-[11px] text-slate-400">Variáveis que a IA pode usar (clique para ligar/desligar):</p>
+                <p className="mb-1.5 text-[11px] text-slate-400">Variáveis (clique para inserir ou remover no texto — cada uma vira o dado real de cada cliente no envio):</p>
                 <div className="flex flex-wrap gap-1.5">
                   {MESSAGE_TOKENS.map((t) => {
-                    const on = enabledTokens.has(t.token);
+                    const on = draft.message.includes(t.token);
                     return (
                       <button key={t.token} type="button" onClick={() => toggleToken(t.token)}
                         className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
                           on ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-300'
                         }`}
-                        title={on ? `A IA pode usar ${t.label}` : `${t.label} desligado — a IA não vai usar`}>
+                        title={on ? `Clique para remover ${t.label} do texto` : `Clique para inserir ${t.label} no texto`}>
                         {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
                         {t.label}
                       </button>
