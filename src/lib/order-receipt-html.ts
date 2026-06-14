@@ -87,6 +87,21 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
       const valueCell = !isKitchen
         ? `<td class="val">R$ ${money((item.unitPrice || 0) * (item.quantity || 0))}</td>`
         : '';
+      // 58mm: adicionais/obs vão para uma linha de largura total começando na
+      // margem esquerda, aproveitando todo o espaço (sem quebrar palavra à toa
+      // na coluna estreita). A linha do item (qtd/nome/valor) fica intacta, e o
+      // 80mm também (detalhes seguem dentro da célula do item).
+      if (is58) {
+        const details =
+          addons || notes
+            ? `<tr><td colspan="${isKitchen ? 2 : 3}" class="details">${addons}${notes}</td></tr>`
+            : '';
+        return `<tr>
+        <td class="qtd">${esc(item.quantity)}</td>
+        <td><div class="item-name">${esc(item.name)}</div></td>
+        ${valueCell}
+      </tr>${details}`;
+      }
       return `<tr>
         <td class="qtd">${esc(item.quantity)}</td>
         <td><div class="item-name">${esc(item.name)}</div>${addons}${notes}</td>
@@ -149,6 +164,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     .item-name { font-weight:bold; font-size:13px; }
     .addon { font-size:10px; font-weight:bold; padding-left:8px; }
     .obs { font-size:12px; font-weight:bold; padding-left:8px; font-style:italic; }
+    .details .addon, .details .obs { padding-left:0; }
     .total-row { font-weight:bold; font-size:13px; text-transform:uppercase; }
     .pay { margin-top:16px; text-transform:uppercase; font-weight:bold; font-size:14px; }
     .forma { margin-top:16px; text-transform:uppercase; font-size:13px; }
