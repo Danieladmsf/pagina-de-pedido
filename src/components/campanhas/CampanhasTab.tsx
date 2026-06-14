@@ -17,7 +17,7 @@ import { buildStoreLink } from '@/lib/whatsapp-messages';
 import { normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
-  Rocket, ChevronRight, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
+  Rocket, ChevronRight, ChevronDown, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
   ListPlus, Trash2, Bookmark, MoreVertical, Repeat,
 } from 'lucide-react';
 import {
@@ -194,15 +194,11 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     else selectableVisible.forEach(c => n.add(c.id));
     return n;
   });
-  // Chip de preset: FILTRA a lista para o grupo (e já seleciona). Clicar de novo
-  // no mesmo chip volta a mostrar todos (mantendo a seleção).
-  const applyPreset = (id: AudienceId) => {
-    const turningOff = activePreset === id;
-    setActivePreset(turningOff ? null : id);
-    if (!turningOff) {
-      setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
-      setActiveListId(null);
-    }
+  // Dropdown de grupos: seleciona o grupo direto (filtra + marca os contatos dele).
+  const selectPreset = (id: AudienceId) => {
+    setActivePreset(id);
+    setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+    setActiveListId(null);
   };
   const clearSelection = () => { setSelectedIds(new Set()); setActiveListId(null); };
 
@@ -561,23 +557,33 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               badge={audienceCount > 0 ? `${audienceCount} contato(s) selecionado(s)` : undefined}>
 
               <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Grupos prontos</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {AUDIENCE_PRESETS.map((a) => {
-                  const active = activePreset === a.id;
-                  const count = resolveAudience(clients, a.id as AudienceId).length;
-                  return (
-                    <button key={a.id} type="button" onClick={() => applyPreset(a.id as AudienceId)} title={a.description}
-                      className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left transition-colors ${
-                        active
-                          ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50'
-                      }`}>
-                      <span className="text-[12px] font-semibold leading-tight">{a.label}</span>
-                      <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>{count} contatos</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button"
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                    <span className="flex items-center gap-2 truncate">
+                      <Users className="h-4 w-4 shrink-0 text-emerald-500" />
+                      {activePreset ? AUDIENCE_PRESETS.find(a => a.id === activePreset)?.label : 'Escolher grupo'}
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]">
+                  {AUDIENCE_PRESETS.map((a) => {
+                    const active = activePreset === a.id;
+                    const count = resolveAudience(clients, a.id as AudienceId).length;
+                    return (
+                      <DropdownMenuItem key={a.id} onClick={() => selectPreset(a.id as AudienceId)} className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2">
+                          {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
+                          <span className="font-medium">{a.label}</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">{count} contatos</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <div className="mt-4">
                 <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -641,21 +647,29 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                 <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                   <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar contatos por
                 </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {SORT_OPTIONS.map((o) => {
-                    const active = sortKey === o.key;
-                    return (
-                      <button key={o.key} type="button" onClick={() => setSortKey(o.key)}
-                        className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
-                          active
-                            ? 'border-slate-700 bg-slate-700 text-white'
-                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400'
-                        }`}>
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button"
+                      className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-slate-400">
+                      <span className="flex items-center gap-2 truncate">
+                        <ArrowDownWideNarrow className="h-4 w-4 shrink-0 text-slate-500" />
+                        {SORT_OPTIONS.find(o => o.key === sortKey)?.label}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px]">
+                    {SORT_OPTIONS.map((o) => {
+                      const active = sortKey === o.key;
+                      return (
+                        <DropdownMenuItem key={o.key} onClick={() => setSortKey(o.key)} className="flex items-center gap-2">
+                          {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
+                          <span className="font-medium">{o.label}</span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </StepSection>
 
