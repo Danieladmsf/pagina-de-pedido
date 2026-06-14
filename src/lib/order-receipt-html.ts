@@ -28,8 +28,13 @@ function resolvePrinterSize(storeInfo: any): PrinterSize {
 /** Monta a string HTML completa do cupom (igual em conteúdo ao PrintReceipt). */
 export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = false): string {
   const printerSize = resolvePrinterSize(storeInfo);
-  const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
-  const fontSize = printerSize === '58mm' ? '10px' : '12px';
+  const is58 = printerSize === '58mm';
+  const maxWidth = is58 ? '58mm' : '80mm';
+  // 58mm: bobina pequena imprime fraco. Fonte base sobe de 10px → 12px e o cupom
+  // inteiro sai em negrito (ocupa mais o vertical do rolo, já que a largura é
+  // apertada). 80mm permanece intacto: 12px e peso normal.
+  const fontSize = '12px';
+  const bodyWeight = is58 ? 'bold' : 'normal';
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
 
   const dt = new Date(order?.orderDateTime || Date.now());
@@ -122,7 +127,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
 
   const css = `
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Courier New',Courier,monospace; color:#000; background:#fff; font-size:${fontSize}; line-height:1.25; padding:16px; max-width:${maxWidth}; margin:0 auto; }
+    body { font-family:'Courier New',Courier,monospace; color:#000; background:#fff; font-size:${fontSize}; font-weight:${bodyWeight}; line-height:1.25; padding:16px; max-width:${maxWidth}; margin:0 auto; }
     .center { text-align:center; }
     .bold { font-weight:bold; }
     .upper { text-transform:uppercase; }

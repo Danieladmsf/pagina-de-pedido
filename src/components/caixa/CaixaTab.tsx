@@ -215,13 +215,18 @@ export function CaixaTab({
   );
 
   const printerSize = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
-  const maxWidth = printerSize === '58mm' ? '58mm' : '80mm';
-  const fontSize = printerSize === '58mm' ? '10px' : '12px';
+  const is58 = printerSize === '58mm';
+  const maxWidth = is58 ? '58mm' : '80mm';
+  // 58mm: bobina pequena imprime fraco. Fonte base sobe de 10px → 12px e o cupom
+  // inteiro sai em negrito (ocupa mais o vertical do rolo, já que a largura é
+  // apertada). 80mm permanece intacto: 12px e peso normal.
+  const fontSize = '12px';
+  const bodyWeight = is58 ? 'bold' : 'normal';
 
   // ── Estilo térmico compartilhado ──
   const thermalCSS = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
+    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; font-weight: ${bodyWeight}; line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
     .header { text-align: center; margin-bottom: 4px; }
     .header h1 { font-size: 14px; font-weight: bold; text-transform: uppercase; }
     .header p { font-size: 11px; }
