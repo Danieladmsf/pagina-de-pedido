@@ -922,9 +922,20 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       <span className="font-semibold text-primary">R$ {(unitPrice * item.quantity).toFixed(2)}</span>
                     </div>
                     {addons.length > 0 && (
-                      <div className="text-xs text-muted-foreground pl-2 space-y-0.5">
-                        {addons.map(a => (
-                          <div key={a.id}>+ {a.name}{a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                      <div className="text-xs text-muted-foreground pl-2 space-y-2">
+                        {Object.entries(
+                          addons.reduce((acc: Record<string, typeof addons>, a) => {
+                            const groupName = (a.group || '').trim() || 'Adicionais';
+                            (acc[groupName] = acc[groupName] || []).push(a);
+                            return acc;
+                          }, {})
+                        ).map(([groupName, groupAddons]) => (
+                          <div key={groupName} className="space-y-0.5">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground/60">{groupName}</p>
+                            {groupAddons.map((a, idx) => (
+                              <div key={a.id || idx} className="pl-1">+ {a.name}{a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                            ))}
+                          </div>
                         ))}
                       </div>
                     )}
