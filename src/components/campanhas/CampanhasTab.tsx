@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
@@ -182,6 +182,11 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
   // Conjunto de ids existentes — para saber qual lista salva bate com a seleção atual.
   const clientIdSet = useMemo(() => new Set(clients.map(c => c.id)), [clients]);
+  // Nome da lista carregada (para o rótulo do dropdown e o botão "Atualizar").
+  const activeListName = useMemo(
+    () => broadcastLists.find((l: any) => l.id === activeListId)?.name as string | undefined,
+    [broadcastLists, activeListId],
+  );
 
   const toggle = (id: string) => setSelectedIds(prev => {
     const n = new Set(prev);
@@ -556,120 +561,129 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
               subtitle="Marque contatos na lista ao lado, use um grupo pronto ou carregue uma lista salva"
               badge={audienceCount > 0 ? `${audienceCount} contato(s) selecionado(s)` : undefined}>
 
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Grupos prontos</p>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button"
-                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
-                    <span className="flex items-center gap-2 truncate">
-                      <Users className="h-4 w-4 shrink-0 text-emerald-500" />
-                      {activePreset ? AUDIENCE_PRESETS.find(a => a.id === activePreset)?.label : 'Escolher grupo'}
-                    </span>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]">
-                  {AUDIENCE_PRESETS.map((a) => {
-                    const active = activePreset === a.id;
-                    const count = resolveAudience(clients, a.id as AudienceId).length;
-                    return (
-                      <DropdownMenuItem key={a.id} onClick={() => selectPreset(a.id as AudienceId)} className="flex items-center justify-between gap-3">
-                        <span className="flex items-center gap-2">
-                          {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
-                          <span className="font-medium">{a.label}</span>
+              {/* Três seletores enfileirados: grupo pronto, lista salva e ordenação */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+
+                {/* Grupos prontos */}
+                <div className="min-w-0">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Grupos prontos</p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button"
+                        className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                        <span className="flex items-center gap-2 truncate">
+                          <Users className="h-4 w-4 shrink-0 text-emerald-500" />
+                          <span className="truncate">{activePreset ? AUDIENCE_PRESETS.find(a => a.id === activePreset)?.label : 'Escolher grupo'}</span>
                         </span>
-                        <span className="text-[11px] text-slate-400">{count} contatos</span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]">
+                      {AUDIENCE_PRESETS.map((a) => {
+                        const active = activePreset === a.id;
+                        const count = resolveAudience(clients, a.id as AudienceId).length;
+                        return (
+                          <DropdownMenuItem key={a.id} onClick={() => selectPreset(a.id as AudienceId)} className="flex items-center justify-between gap-3">
+                            <span className="flex items-center gap-2">
+                              {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
+                              <span className="font-medium">{a.label}</span>
+                            </span>
+                            <span className="text-[11px] text-slate-400">{count} contatos</span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* Listas salvas */}
+                <div className="min-w-0">
+                  <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    <Bookmark className="h-3.5 w-3.5" /> Listas salvas
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button"
+                        className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50">
+                        <span className="flex items-center gap-2 truncate">
+                          <Bookmark className="h-4 w-4 shrink-0 text-emerald-500" />
+                          <span className="truncate">{activeListName || 'Carregar lista'}</span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]">
+                      {broadcastLists.length === 0 ? (
+                        <DropdownMenuItem disabled className="text-[12px]">Nenhuma lista salva ainda</DropdownMenuItem>
+                      ) : (
+                        broadcastLists.map((l) => {
+                          const count = (l.contactIds || []).length;
+                          const validIds = ((l.contactIds || []) as string[]).filter(id => clientIdSet.has(id));
+                          const active = selectedIds.size > 0 && validIds.length === selectedIds.size && validIds.every(id => selectedIds.has(id));
+                          return (
+                            <DropdownMenuItem key={l.id} onClick={() => active ? clearSelection() : loadList(l)}
+                              className="flex items-center justify-between gap-3">
+                              <span className="flex items-center gap-2 truncate">
+                                {active ? <Check className="h-4 w-4 text-emerald-600" /> : <Bookmark className="h-4 w-4 text-emerald-500" />}
+                                <span className="truncate font-medium">{l.name}</span>
+                                <span className="text-[11px] text-slate-400">({count})</span>
+                              </span>
+                              <button type="button" title="Remover lista"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); setListToDelete(l); }}
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-300 hover:bg-rose-100 hover:text-rose-500">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </DropdownMenuItem>
+                          );
+                        })
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem disabled={selectedIds.size === 0}
+                        onClick={() => { setListName(''); setListDialogOpen(true); }}
+                        className="gap-2 font-medium text-emerald-700">
+                        <ListPlus className="h-4 w-4" /> Salvar como nova lista ({selectedIds.size})
                       </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <div className="mt-4">
-                <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  <Bookmark className="h-3.5 w-3.5" /> Listas salvas
-                  <InfoTip text="Nenhuma lista salva ainda — selecione contatos e clique em “Salvar como nova lista”." />
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {broadcastLists.length === 0 ? null : (
-                    broadcastLists.map((l) => {
-                      const count = (l.contactIds || []).length;
-                      // Lista "ativa" = a seleção atual bate exatamente com os contatos dela.
-                      const validIds = ((l.contactIds || []) as string[]).filter(id => clientIdSet.has(id));
-                      const active = selectedIds.size > 0 && validIds.length === selectedIds.size && validIds.every(id => selectedIds.has(id));
-                      return (
-                        <div key={l.id}
-                          className={`group flex items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 transition-colors ${
-                            active
-                              ? 'border-emerald-500 bg-emerald-500 shadow-sm'
-                              : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
-                          }`}>
-                          <button type="button" onClick={() => active ? clearSelection() : loadList(l)}
-                            title={active ? 'Clique para desmarcar' : 'Carregar esta lista'}
-                            className={`flex items-center gap-1.5 text-[12px] font-medium ${active ? 'text-white' : 'text-slate-700'}`}>
-                            {active ? <Check className="h-3.5 w-3.5 text-white" /> : <Bookmark className="h-3.5 w-3.5 text-emerald-500" />}
-                            {l.name}
-                            <span className={`text-[11px] ${active ? 'text-emerald-50' : 'text-slate-400'}`}>({count})</span>
-                          </button>
-                          <button type="button" onClick={() => setListToDelete(l)} title="Remover lista"
-                            className={`flex h-5 w-5 items-center justify-center rounded-full ${
-                              active ? 'text-emerald-100 hover:bg-emerald-600 hover:text-white' : 'text-slate-300 hover:bg-rose-100 hover:text-rose-500'
-                            }`}>
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" disabled={selectedIds.size === 0}
-                    onClick={() => { setListName(''); setListDialogOpen(true); }}
-                    className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
-                    <ListPlus className="h-4 w-4" /> Salvar como nova lista ({selectedIds.size})
-                  </Button>
-                  {activeListId && (() => {
-                    const activeList = broadcastLists.find((l: any) => l.id === activeListId);
-                    if (!activeList) return null;
-                    return (
-                      <Button type="button" size="sm" disabled={selectedIds.size === 0 || savingList}
-                        onClick={updateActiveList}
-                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
-                        {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        Atualizar “{activeList.name}” ({selectedIds.size})
-                      </Button>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar contatos por
-                </p>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button type="button"
-                      className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-slate-400">
-                      <span className="flex items-center gap-2 truncate">
-                        <ArrowDownWideNarrow className="h-4 w-4 shrink-0 text-slate-500" />
-                        {SORT_OPTIONS.find(o => o.key === sortKey)?.label}
-                      </span>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px]">
-                    {SORT_OPTIONS.map((o) => {
-                      const active = sortKey === o.key;
-                      return (
-                        <DropdownMenuItem key={o.key} onClick={() => setSortKey(o.key)} className="flex items-center gap-2">
-                          {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
-                          <span className="font-medium">{o.label}</span>
+                      {activeListId && activeListName && (
+                        <DropdownMenuItem disabled={selectedIds.size === 0 || savingList}
+                          onClick={updateActiveList} className="gap-2 font-medium text-emerald-700">
+                          {savingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          Atualizar “{activeListName}” ({selectedIds.size})
                         </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* Ordenar contatos por */}
+                <div className="min-w-0">
+                  <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    <ArrowDownWideNarrow className="h-3.5 w-3.5" /> Ordenar por
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button"
+                        className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:border-slate-400">
+                        <span className="flex items-center gap-2 truncate">
+                          <ArrowDownWideNarrow className="h-4 w-4 shrink-0 text-slate-500" />
+                          <span className="truncate">{SORT_OPTIONS.find(o => o.key === sortKey)?.label}</span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[200px]">
+                      {SORT_OPTIONS.map((o) => {
+                        const active = sortKey === o.key;
+                        return (
+                          <DropdownMenuItem key={o.key} onClick={() => setSortKey(o.key)} className="flex items-center gap-2">
+                            {active ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4" />}
+                            <span className="font-medium">{o.label}</span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </StepSection>
 
