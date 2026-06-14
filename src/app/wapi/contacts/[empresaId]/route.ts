@@ -1,5 +1,5 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
-import { ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
+import { ok, requireIntegration, withAuth } from '@/app/wapi/_lib';
 import { fetchWapiChats } from '@/lib/wapi/wapi.service';
 
 export const runtime = 'nodejs';
@@ -11,11 +11,15 @@ export const dynamic = 'force-dynamic';
  * da W-API — para uma lista simples de { name, phone }, ignorando grupos,
  * listas de transmissao, status e numeros invalidos.
  */
-export async function GET(request: Request, { params }: { params: Promise<{ empresaId: string }> }) {
-  return withAuth(request, async (user) => {
+export async function GET(_request: Request, _ctx: { params: Promise<{ empresaId: string }> }) {
+  return withAuth(_request, async (user) => {
     try {
-      const { empresaId: rawEmpresaId } = await params;
-      const empresaId = requireEmpresa(user, rawEmpresaId);
+      // A rota so serve os contatos do PROPRIO usuario autenticado: usamos o uid
+      // do token (verificado no servidor) como empresa, ignorando o uid da URL.
+      // Assim nao da 403 quando o cliente envia um token de sessao anterior
+      // (cache) cujo uid diverge do que esta na URL — e segue seguro, pois o
+      // usuario so consegue ler os proprios contatos.
+      const empresaId = user.uid;
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
 
       const raw = await fetchWapiChats(integration.wapiInstanceId, token);

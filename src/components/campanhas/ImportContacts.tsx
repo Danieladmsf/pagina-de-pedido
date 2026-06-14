@@ -53,7 +53,9 @@ export function ImportContacts({ db, user }: ImportContactsProps) {
     if (!db || !user) return;
     setWapiLoading(true);
     try {
-      const token = await user.getIdToken();
+      // Força refresh do token: logo após restaurar a sessão, o token em cache
+      // pode ainda ser de outra sessão (uid divergente) e causar 403.
+      const token = await user.getIdToken(true);
       const res = await fetch(`/wapi/contacts/${user.uid}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
