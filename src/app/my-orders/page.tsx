@@ -39,21 +39,32 @@ const PICKUP_STEPS = [
   { key: 'ready', label: 'Pronto p/ Retirar' },
   { key: 'delivered', label: 'Retirado' },
 ];
+// Comer no local (dine_in): não tem etapa de entrega — termina em "Servido".
+const DINE_IN_STEPS = [
+  { key: 'pending', label: 'Enviado' },
+  { key: 'received', label: 'Recebido' },
+  { key: 'ready', label: 'Pronto' },
+  { key: 'delivered', label: 'Servido' },
+];
 
 const statusMessage = (status: string, orderType: string) => {
   if (status === 'received') return { title: 'Pedido Recebido!', description: 'A loja confirmou o recebimento do seu pedido.' };
-  if (status === 'ready') return orderType === 'pickup'
-    ? { title: 'Pedido Pronto para Retirar!', description: 'Você já pode buscar seu pedido na loja.' }
-    : { title: 'Pedido Pronto!', description: 'Seu pedido está sendo preparado para sair.' };
+  if (status === 'ready') {
+    if (orderType === 'pickup') return { title: 'Pedido Pronto para Retirar!', description: 'Você já pode buscar seu pedido na loja.' };
+    if (orderType === 'dine_in') return { title: 'Pedido Pronto!', description: 'Seu pedido já vai ser servido.' };
+    return { title: 'Pedido Pronto!', description: 'Seu pedido está sendo preparado para sair.' };
+  }
   if (status === 'out_for_delivery') return { title: 'Saiu para Entrega!', description: 'Seu pedido está a caminho.' };
-  if (status === 'delivered') return orderType === 'pickup'
-    ? { title: 'Pedido Retirado', description: 'Obrigado pela preferência!' }
-    : { title: 'Pedido Entregue', description: 'Aproveite!' };
+  if (status === 'delivered') {
+    if (orderType === 'pickup') return { title: 'Pedido Retirado', description: 'Obrigado pela preferência!' };
+    if (orderType === 'dine_in') return { title: 'Pedido Servido', description: 'Bom apetite!' };
+    return { title: 'Pedido Entregue', description: 'Aproveite!' };
+  }
   return null;
 };
 
 function OrderTimeline({ status, orderType }: { status: string; orderType: string }) {
-  const steps = orderType === 'pickup' ? PICKUP_STEPS : DELIVERY_STEPS;
+  const steps = orderType === 'pickup' ? PICKUP_STEPS : orderType === 'dine_in' ? DINE_IN_STEPS : DELIVERY_STEPS;
   const currentIdx = steps.findIndex(s => s.key === status);
   return (
     <div className="flex items-center justify-between gap-0 py-1">
