@@ -75,26 +75,42 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
 
   const itemsRows = items
     .map((item) => {
-      const addons = (item.addons || [])
-        .map(
-          (a: any) =>
-            `<div class="addon">&gt; ${esc(a.name)} ${
-              !isKitchen && a.price ? `(+R$ ${money(a.price)})` : ''
-            }</div>`,
-        )
-        .join('');
+      const addonList: any[] = item.addons || [];
+      const addonHtml = (a: any) =>
+        `<div class="addon">&gt; ${esc(a.name)} ${
+          !isKitchen && a.price ? `(+R$ ${money(a.price)})` : ''
+        }</div>`;
+      // 80mm (intacto): lista plana dos adicionais.
+      const addons = addonList.map(addonHtml).join('');
+      // 58mm: agrupa por grupo e mostra o título de cada um (Refogado, Farofa,
+      // ...), igual ao carrinho. Mantém a ordem em que os grupos aparecem.
+      const addonsGrouped = (() => {
+        if (addonList.length === 0) return '';
+        const groupOrder: string[] = [];
+        const byGroup: Record<string, any[]> = {};
+        for (const a of addonList) {
+          const g = (a.group || '').trim() || 'Adicionais';
+          if (!byGroup[g]) {
+            byGroup[g] = [];
+            groupOrder.push(g);
+          }
+          byGroup[g].push(a);
+        }
+        return groupOrder
+          .map((g) => `<div class="addon-title">${esc(g)}</div>${byGroup[g].map(addonHtml).join('')}`)
+          .join('');
+      })();
       const notes = item.notes ? `<div class="obs">Obs: ${esc(item.notes)}</div>` : '';
       const valueCell = !isKitchen
         ? `<td class="val">R$ ${money((item.unitPrice || 0) * (item.quantity || 0))}</td>`
         : '';
-      // 58mm: adicionais/obs vão para uma linha de largura total começando na
-      // margem esquerda, aproveitando todo o espaço (sem quebrar palavra à toa
-      // na coluna estreita). A linha do item (qtd/nome/valor) fica intacta, e o
-      // 80mm também (detalhes seguem dentro da célula do item).
+      // 58mm: detalhes (título do grupo + adicionais + obs) numa linha de largura
+      // total começando na margem esquerda — aproveita o espaço e não quebra
+      // palavra. A linha do item (qtd/nome/valor) e o layout 80mm ficam intactos.
       if (is58) {
         const details =
-          addons || notes
-            ? `<tr><td colspan="${isKitchen ? 2 : 3}" class="details">${addons}${notes}</td></tr>`
+          addonsGrouped || notes
+            ? `<tr><td colspan="${isKitchen ? 2 : 3}" class="details">${addonsGrouped}${notes}</td></tr>`
             : '';
         return `<tr>
         <td class="qtd">${esc(item.quantity)}</td>
@@ -165,6 +181,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     .addon { font-size:10px; font-weight:bold; padding-left:8px; }
     .obs { font-size:12px; font-weight:bold; padding-left:8px; font-style:italic; }
     .details .addon, .details .obs { padding-left:0; }
+    .addon-title { font-weight:bold; text-transform:uppercase; font-size:11px; margin-top:3px; }
     .total-row { font-weight:bold; font-size:13px; text-transform:uppercase; }
     .pay { margin-top:16px; text-transform:uppercase; font-weight:bold; font-size:14px; }
     .forma { margin-top:16px; text-transform:uppercase; font-size:13px; }
