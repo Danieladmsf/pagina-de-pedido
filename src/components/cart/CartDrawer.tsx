@@ -512,6 +512,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       toast({ variant: "destructive", title: "Link da loja inválido", description: "Acesse pelo link de compartilhamento da loja." });
       return;
     }
+    // Salva uma observação que ficou aberta no editor mas não foi confirmada com
+    // "Salvar": sem isso o texto se perderia ao avançar e não sairia no cupom.
+    if (editingNoteCartId) {
+      updateItemNotes(editingNoteCartId, noteDraft.trim());
+      closeItemNoteEditor();
+    }
     setStep('info');
     setCheckoutStep(1);
   };
