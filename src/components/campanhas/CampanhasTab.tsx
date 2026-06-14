@@ -27,6 +27,7 @@ import {
 import type { AudienceId, CampaignDraft, ScheduledCampaign } from '@/lib/campanhas/types';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
+import { ImportContacts } from '@/components/campanhas/ImportContacts';
 
 interface CampanhasTabProps {
   db?: any;
@@ -403,6 +404,12 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
         <Badge variant="outline" className="gap-1.5 text-[11px] text-slate-500">
           <Users className="h-3 w-3" /> {clients.length} clientes
         </Badge>
+      </div>
+
+      {/* Barra de importacao: traz contatos de fora (CSV ou agenda do WhatsApp) */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2 sm:px-6">
+        <span className="text-[11px] text-slate-400">Sem contatos suficientes? Importe de um CSV ou do WhatsApp da loja.</span>
+        <ImportContacts db={db} user={user} />
       </div>
 
       {/* Corpo: ESQUERDA contatos (altura total) | DIREITA composição (rola) */}
