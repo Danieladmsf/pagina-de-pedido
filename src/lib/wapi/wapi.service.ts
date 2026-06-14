@@ -387,20 +387,6 @@ export function disconnectWapiInstance(instanceId: string, token: string) {
   });
 }
 
-/**
- * Lista os chats/conversas da instancia (quem ja conversou com o numero).
- * Usado para importar contatos do WhatsApp para a base de Campanhas.
- * O formato da resposta varia (array direto, {chats}, {data}...): a
- * normalizacao fica a cargo de quem consome (rota /wapi/contacts).
- */
-export function fetchWapiChats(instanceId: string, token: string) {
-  return requestWapi<any>('/chats/fetch-chats', {
-    token,
-    query: { instanceId },
-    context: 'status',
-  });
-}
-
 export function restartWapiInstance(instanceId: string, token: string) {
   return requestWapi<{ error?: boolean; message?: string }>('/instance/restart', {
     token,

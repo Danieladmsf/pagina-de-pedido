@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Upload, Smartphone, Loader2 } from 'lucide-react';
+import { Download, Upload, Loader2 } from 'lucide-react';
 import {
   downloadContactsCsvTemplate,
   parseContactsCsvFile,
@@ -16,15 +16,14 @@ interface ImportContactsProps {
 }
 
 /**
- * Barra de importacao de contatos para Campanhas: modelo CSV, upload de CSV e
- * importacao direta dos contatos do WhatsApp da loja. Tudo cai na base
- * `clientes`, entao os importados aparecem na lista de contatos automaticamente.
+ * Barra de importacao de contatos para Campanhas via CSV: baixa um modelo e
+ * importa um arquivo (nome,celular). Os contatos caem na base `clientes`, entao
+ * aparecem na lista de contatos automaticamente.
  */
 export function ImportContacts({ db, user }: ImportContactsProps) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvLoading, setCsvLoading] = useState(false);
-  const [wapiLoading, setWapiLoading] = useState(false);
 
   const handleCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,37 +45,6 @@ export function ImportContacts({ db, user }: ImportContactsProps) {
     } finally {
       setCsvLoading(false);
       if (fileRef.current) fileRef.current.value = '';
-    }
-  };
-
-  const handleWhatsapp = async () => {
-    if (!db || !user) return;
-    setWapiLoading(true);
-    try {
-      // Força refresh do token: logo após restaurar a sessão, o token em cache
-      // pode ainda ser de outra sessão (uid divergente) e causar 403.
-      const token = await user.getIdToken(true);
-      const res = await fetch(`/wapi/contacts/${user.uid}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.error) {
-        throw new Error(data?.error || 'Nao foi possivel buscar os contatos do WhatsApp.');
-      }
-      const contacts = (data.contacts || []).map((c: any) => ({ nome: c.name || '', celular: c.phone || '' }));
-      if (contacts.length === 0) {
-        toast({ title: 'Nenhum contato encontrado', description: 'O WhatsApp da loja precisa estar conectado e ter conversas.' });
-        return;
-      }
-      const { imported, skipped } = await importContactsToClientes(db, user.uid, contacts);
-      toast({
-        title: `${imported} contato(s) importado(s) do WhatsApp`,
-        description: skipped > 0 ? `${skipped} ja estavam na base.` : 'Prontos para usar nas campanhas.',
-      });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Erro ao importar do WhatsApp', description: err?.message || 'Verifique a conexao do WhatsApp.' });
-    } finally {
-      setWapiLoading(false);
     }
   };
 
@@ -102,17 +70,6 @@ export function ImportContacts({ db, user }: ImportContactsProps) {
       >
         {csvLoading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
         Importar CSV
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={handleWhatsapp}
-        disabled={wapiLoading}
-        className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-      >
-        {wapiLoading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Smartphone className="h-3.5 w-3.5 mr-1.5" />}
-        Importar do WhatsApp
       </Button>
     </div>
   );

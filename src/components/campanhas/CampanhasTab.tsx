@@ -408,7 +408,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
 
       {/* Barra de importacao: traz contatos de fora (CSV ou agenda do WhatsApp) */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-2 sm:px-6">
-        <span className="text-[11px] text-slate-400">Sem contatos suficientes? Importe de um CSV ou do WhatsApp da loja.</span>
+        <span className="text-[11px] text-slate-400">Sem contatos suficientes? Importe de um arquivo CSV (use o modelo).</span>
         <ImportContacts db={db} user={user} />
       </div>
 

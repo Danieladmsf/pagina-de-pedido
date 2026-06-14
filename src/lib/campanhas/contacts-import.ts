@@ -1,8 +1,7 @@
 /**
- * Importacao de contatos para a base de Campanhas (colecao `clientes`).
- * Fonte dupla: arquivo CSV (modelo abaixo) e contatos do WhatsApp (via
- * /wapi/contacts). Grava SEM sobrescrever clientes ja existentes — contatos
- * importados nascem com totalPedidos 0 e marca `source: 'import'`.
+ * Importacao de contatos para a base de Campanhas (colecao `clientes`) via
+ * arquivo CSV (modelo abaixo). Grava SEM sobrescrever clientes ja existentes —
+ * contatos importados nascem com totalPedidos 0 e marca `source: 'import'`.
  */
 import { collection, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { normalizeCreditPhone } from '@/lib/customer-credit';
