@@ -24,6 +24,7 @@ const STATUS_LABELS: Record<string, string> = {
   ready: 'Pedido Pronto',
   out_for_delivery: 'Saiu para Entrega',
   delivered: 'Concluído',
+  canceled: 'Cancelado',
 };
 
 const DELIVERY_STEPS = [
@@ -48,6 +49,7 @@ const DINE_IN_STEPS = [
 ];
 
 const statusMessage = (status: string, orderType: string) => {
+  if (status === 'canceled') return { title: 'Pedido Cancelado', description: 'Seu pedido foi cancelado pela loja. Em caso de dúvida, fale com a loja.' };
   if (status === 'received') return { title: 'Pedido Recebido!', description: 'A loja confirmou o recebimento do seu pedido.' };
   if (status === 'ready') {
     if (orderType === 'pickup') return { title: 'Pedido Pronto para Retirar!', description: 'Você já pode buscar seu pedido na loja.' };
@@ -364,6 +366,7 @@ export default function MyOrdersPage() {
     s === 'received' ? 'bg-blue-500 text-white' :
     s === 'ready' ? 'bg-green-500 text-white' :
     s === 'out_for_delivery' ? 'bg-purple-500 text-white' :
+    s === 'canceled' ? 'bg-red-500 text-white' :
     'bg-gray-500 text-white';
 
 
