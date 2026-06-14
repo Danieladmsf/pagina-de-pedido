@@ -1,5 +1,5 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
-import { ok, requireIntegration, withAuth } from '@/app/wapi/_lib';
+import { ok, requireIntegration, requireIntegrationService, withAuth } from '@/app/wapi/_lib';
 import { fetchWapiChats } from '@/lib/wapi/wapi.service';
 
 export const runtime = 'nodejs';
@@ -20,7 +20,17 @@ export async function GET(_request: Request, _ctx: { params: Promise<{ empresaId
       // (cache) cujo uid diverge do que esta na URL — e segue seguro, pois o
       // usuario so consegue ler os proprios contatos.
       const empresaId = user.uid;
-      const { integration, token } = await requireIntegration(empresaId, user.idToken);
+      // Resolve a instancia via Admin SDK (privilegio de servidor, ignora as
+      // regras do Firestore) — assim a leitura da integracao NUNCA retorna 403.
+      // Se o Admin nao estiver configurado neste ambiente, cai no caminho REST
+      // (com o token do usuario).
+      let integration: any;
+      let token: string;
+      try {
+        ({ integration, token } = await requireIntegrationService(empresaId));
+      } catch {
+        ({ integration, token } = await requireIntegration(empresaId, user.idToken));
+      }
 
       const raw = await fetchWapiChats(integration.wapiInstanceId, token);
       const list: any[] = Array.isArray(raw)
