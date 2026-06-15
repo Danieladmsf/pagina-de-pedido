@@ -198,6 +198,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   }
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
     useCategoryScrollSpy(groupedItems.map(g => g.id));
+  // Filtro por categoria: ao escolher uma categoria, lista SÓ os produtos dela.
+  // "Todos" (ou uma busca ativa) mantém a lista completa com rolagem/scroll-spy.
+  const [selectedCat, setSelectedCat] = useState<string>('all');
+  const activePill = selectedCat === 'all' ? activeCategory : selectedCat;
+  const isSearching = searchTerm.trim() !== '';
+  const visibleGroups =
+    selectedCat === 'all' || isSearching ? groupedItems : groupedItems.filter(g => g.id === selectedCat);
   
   // Endereço e cálculo de frete
   const storeAddress = storeProfile?.general?.address || '';
@@ -829,9 +836,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         <div ref={categoryBarRef} className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 shrink-0">
           <Badge
             data-cat-tab="all"
-            variant={activeCategory === 'all' ? 'default' : 'outline'}
+            variant={activePill === 'all' ? 'default' : 'outline'}
             className="cursor-pointer h-8 px-4 flex-shrink-0"
-            onClick={() => { setSearchTerm(''); scrollToCategory('all'); }}
+            onClick={() => { setSearchTerm(''); setSelectedCat('all'); scrollToCategory('all'); }}
           >
             Todos
           </Badge>
@@ -839,9 +846,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             <Badge
               key={group.id}
               data-cat-tab={group.id}
-              variant={activeCategory === group.id ? 'default' : 'outline'}
+              variant={activePill === group.id ? 'default' : 'outline'}
               className="cursor-pointer h-8 px-4 flex-shrink-0"
-              onClick={() => scrollToCategory(group.id)}
+              onClick={() => { setSelectedCat(group.id); scrollToCategory(group.id); }}
             >
               {group.name}
             </Badge>
@@ -849,10 +856,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         </div>
 
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
-          {groupedItems.length === 0 ? (
+          {visibleGroups.length === 0 ? (
             <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
           ) : (
-            groupedItems.map(group => (
+            visibleGroups.map(group => (
               <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                 <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                   {group.name}

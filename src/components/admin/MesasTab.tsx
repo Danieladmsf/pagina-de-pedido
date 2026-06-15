@@ -174,6 +174,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   }
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
     useCategoryScrollSpy(groupedItems.map(g => g.id));
+  // Filtro por categoria: ao escolher uma categoria, lista SÓ os produtos dela.
+  // "Todos" (ou uma busca ativa) mantém a lista completa com rolagem/scroll-spy.
+  const [selectedCat, setSelectedCat] = useState<string>('all');
+  const activePill = selectedCat === 'all' ? activeCategory : selectedCat;
+  const isSearching = searchTerm.trim() !== '';
+  const visibleGroups =
+    selectedCat === 'all' || isSearching ? groupedItems : groupedItems.filter(g => g.id === selectedCat);
 
   const itemNeedsCustomization = (item: any) => {
     const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
@@ -1022,8 +1029,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 <Badge
                   data-cat-tab="all"
                   variant="secondary"
-                  className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => { setSearchTerm(''); scrollToCategory('all'); }}
+                  className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activePill === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  onClick={() => { setSearchTerm(''); setSelectedCat('all'); scrollToCategory('all'); }}
                 >
                   Todos
                 </Badge>
@@ -1032,18 +1039,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     key={group.id}
                     data-cat-tab={group.id}
                     variant="secondary"
-                    className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activeCategory === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => scrollToCategory(group.id)}
+                    className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activePill === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => { setSelectedCat(group.id); scrollToCategory(group.id); }}
                   >
                     {group.name}
                   </Badge>
                 ))}
               </div>
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-                {groupedItems.length === 0 ? (
+                {visibleGroups.length === 0 ? (
                   <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
                 ) : (
-                  groupedItems.map(group => (
+                  visibleGroups.map(group => (
                     <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                       <h2 className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                         {group.name}

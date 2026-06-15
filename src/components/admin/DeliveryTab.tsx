@@ -596,6 +596,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   }
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory: editCategory } =
     useCategoryScrollSpy(editGroupedItems.map(g => g.id));
+  // Filtro por categoria: ao escolher uma categoria, lista SÓ os produtos dela.
+  // "Todos" (ou uma busca ativa) mantém a lista completa com rolagem/scroll-spy.
+  const [editSelectedCat, setEditSelectedCat] = useState<string>('all');
+  const editActivePill = editSelectedCat === 'all' ? editCategory : editSelectedCat;
+  const editIsSearching = editSearch.trim() !== '';
+  const editVisibleGroups =
+    editSelectedCat === 'all' || editIsSearching ? editGroupedItems : editGroupedItems.filter(g => g.id === editSelectedCat);
   const renderEditItemCard = (item: any) => {
     const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
     return (
@@ -1147,8 +1154,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 <Badge
                   data-cat-tab="all"
                   variant="secondary"
-                  className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                  onClick={() => { setEditSearch(''); scrollToCategory('all'); }}
+                  className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editActivePill === 'all' ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  onClick={() => { setEditSearch(''); setEditSelectedCat('all'); scrollToCategory('all'); }}
                 >
                   Todos
                 </Badge>
@@ -1157,8 +1164,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                     key={group.id}
                     data-cat-tab={group.id}
                     variant="secondary"
-                    className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editCategory === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
-                    onClick={() => scrollToCategory(group.id)}
+                    className={`cursor-pointer whitespace-nowrap text-xs py-1 px-2.5 ${editActivePill === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                    onClick={() => { setEditSelectedCat(group.id); scrollToCategory(group.id); }}
                   >
                     {group.name}
                   </Badge>
@@ -1173,10 +1180,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 />
               </div>
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-slate-50/30">
-                {editGroupedItems.length === 0 ? (
+                {editVisibleGroups.length === 0 ? (
                   <div className="text-center text-sm text-slate-400 py-8">Nenhum produto encontrado.</div>
                 ) : (
-                  editGroupedItems.map(group => (
+                  editVisibleGroups.map(group => (
                     <div key={group.id} ref={setSectionRef(group.id)} className="mb-4">
                       <h2 className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm py-1.5 mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                         {group.name}
