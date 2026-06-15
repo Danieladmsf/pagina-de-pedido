@@ -950,7 +950,7 @@ export default function AdminPage() {
   const sendOrderWhatsAppNotification = async (order: any, status: string) => {
     if (!user) return { sent: false, skipped: true, reason: 'Usuario indisponivel.' };
     if (!order?.customerPhone) return { sent: false, skipped: true, reason: 'Pedido sem telefone do cliente.' };
-    if (!['received', 'pix_proof', 'ready', 'out_for_delivery'].includes(status)) {
+    if (!['received', 'pix_proof', 'ready', 'out_for_delivery', 'canceled'].includes(status)) {
       return { sent: false, skipped: true, reason: 'Status sem notificacao automatica.' };
     }
 
@@ -972,6 +972,13 @@ export default function AdminPage() {
       if (order.outForDeliveryMessageSent) {
         console.log('[WhatsApp] Mensagem de saiu para entrega ja enviada para o pedido:', order.id);
         return { sent: false, skipped: true, reason: 'Mensagem de saiu para entrega ja enviada.' };
+      }
+    }
+
+    if (status === 'canceled') {
+      if (order.canceledMessageSent) {
+        console.log('[WhatsApp] Mensagem de cancelamento ja enviada para o pedido:', order.id);
+        return { sent: false, skipped: true, reason: 'Mensagem de cancelamento ja enviada.' };
       }
     }
 
@@ -1047,6 +1054,7 @@ export default function AdminPage() {
       | 'orderOutForDelivery'
       | 'orderPickupReady'
       | 'orderDineInReady'
+      | 'orderCanceled'
       | null = null;
 
     if (status === 'received') {
@@ -1079,6 +1087,9 @@ export default function AdminPage() {
         templateKey = 'orderOutForDelivery';
         msgType = 'delivery_out';
       }
+    } else if (status === 'canceled') {
+      templateKey = 'orderCanceled';
+      msgType = 'order_canceled';
     }
 
     if (templateKey) {
@@ -1111,6 +1122,7 @@ export default function AdminPage() {
       status === 'received' ? 'receivedMessageSent'
       : status === 'pix_proof' ? 'pixProofMessageSent'
       : status === 'out_for_delivery' ? 'outForDeliveryMessageSent'
+      : status === 'canceled' ? 'canceledMessageSent'
       : null;
 
     if (flagField && db && order.id) {
@@ -1221,6 +1233,8 @@ export default function AdminPage() {
           order: { ref: doc(db, 'orders', orderId), mode: 'update', data: updates },
         });
         toast({ title: "Status Atualizado", description: res.changed ? "O pedido foi cancelado e o estoque foi retornado." : "O pedido foi cancelado." });
+        // Avisa o cliente do cancelamento pelo WhatsApp (anti-duplicação via flag).
+        await sendOrderWhatsAppNotification({ ...currentOrder, ...updates }, 'canceled');
         return true;
       }
 

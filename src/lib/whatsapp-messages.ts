@@ -8,6 +8,7 @@ export type WhatsAppMessageKey =
   | 'orderOutForDelivery'
   | 'orderPickupReady'
   | 'orderDineInReady'
+  | 'orderCanceled'
   | 'storeClosed';
 
 export type WhatsAppMessageTemplates = Record<WhatsAppMessageKey, string>;
@@ -29,6 +30,7 @@ export const WHATSAPP_MESSAGE_LABELS: Record<WhatsAppMessageKey, string> = {
   orderOutForDelivery: 'Saiu para entrega',
   orderPickupReady: 'Pronto para retirada',
   orderDineInReady: 'Disponivel no salao',
+  orderCanceled: 'Pedido cancelado',
   storeClosed: 'Loja fechada',
 };
 
@@ -51,6 +53,8 @@ export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
     'Ol\u00e1, {primeiro_nome}! \u2705\u{1F3EA}\nSeu pedido n\u00ba #{pedido} est\u00e1 *pronto para retirada*!\n\nPode vir buscar a qualquer momento. Obrigado pela prefer\u00eancia! \u{1F60A}',
   orderDineInReady:
     'Ol\u00e1, {primeiro_nome}! \u{1F37D}\uFE0F\u2728\nSeu pedido n\u00ba #{pedido} est\u00e1 *dispon\u00edvel*!\n\nSeu prato j\u00e1 est\u00e1 pronto. Bom apetite! \u{1F60B}',
+  orderCanceled:
+    'Ol\u00e1, {primeiro_nome}. \u{1F614}\nInfelizmente seu pedido n\u00ba #{pedido} foi *cancelado*.\n\nQualquer d\u00favida, \u00e9 s\u00f3 falar com a gente. Obrigado pela compreens\u00e3o!',
   storeClosed:
     'Olá! No momento a {loja} está fechada.\n\nNosso horário de atendimento:\n{horarios}\n\n{proxima_abertura}\n\nEnquanto isso, você já pode dar uma espiadinha no nosso cardápio e deixar tudo pronto para pedir quando abrirmos:\n{link}\n\nAgradecemos o carinho e a preferência! 🥰',
 };

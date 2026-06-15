@@ -52,6 +52,7 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'orderOutForDelivery',
   'orderPickupReady',
   'orderDineInReady',
+  'orderCanceled',
   'storeClosed',
 ];
 
