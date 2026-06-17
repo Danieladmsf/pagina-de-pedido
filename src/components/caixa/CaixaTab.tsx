@@ -1242,8 +1242,8 @@ export function CaixaTab({
 
       {/* Tela: Caixas Anteriores */}
       {view === 'anteriores' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
+        <div className="flex flex-col h-full min-h-0 gap-4">
+          <div className="flex justify-between items-center shrink-0">
             <div>
               <h2 className="text-xl font-bold text-slate-700">Caixas Anteriores</h2>
               <p className="text-sm text-muted-foreground">Histórico de todas as sessões</p>
@@ -1252,9 +1252,9 @@ export function CaixaTab({
               Voltar ao Caixa
             </Button>
           </div>
-          <Card className="border shadow-md rounded-2xl overflow-hidden">
-            <CardContent className="p-0">
-              <div className="max-h-[60vh] overflow-y-auto">
+          <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+            <CardContent className="p-0 flex-1 min-h-0">
+              <div className="h-full overflow-y-auto">
               <Table>
                 <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur">
                   <TableRow>
