@@ -30,10 +30,11 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   const printerSize = resolvePrinterSize(storeInfo);
   const is58 = printerSize === '58mm';
   const maxWidth = is58 ? '58mm' : '80mm';
-  // 58mm: bobina pequena imprime fraco. Fonte base sobe de 10px → 12px e o cupom
-  // inteiro sai em negrito (ocupa mais o vertical do rolo, já que a largura é
-  // apertada). 80mm permanece intacto: 12px e peso normal.
-  const fontSize = '12px';
+  // Fonte POR tamanho de papel (independentes — cada conta usa só um). 58mm:
+  // bobina pequena imprime fraco, então a fonte é maior (13px) e o cupom inteiro
+  // sai em negrito, aproveitando o vertical do rolo já que a largura é apertada.
+  // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
+  const fontSize = is58 ? '13px' : '12px';
   const bodyWeight = is58 ? 'bold' : 'normal';
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
 
