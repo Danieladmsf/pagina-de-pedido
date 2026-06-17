@@ -1253,8 +1253,9 @@ export function CaixaTab({
           </div>
           <Card className="border shadow-md rounded-2xl overflow-hidden">
             <CardContent className="p-0">
+              <div className="max-h-[60vh] overflow-y-auto">
               <Table>
-                <TableHeader className="bg-muted/30">
+                <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur">
                   <TableRow>
                     <TableHead className="pl-4">Sessão</TableHead>
                     <TableHead>Data Abertura</TableHead>
@@ -1292,6 +1293,7 @@ export function CaixaTab({
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
