@@ -16,7 +16,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
-import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
+import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner, isCreditEnabled } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { removeAccents, normalizeSearch } from '@/lib/utils';
@@ -173,6 +173,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
@@ -419,6 +420,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   }, [activeLookupField, customerName, customerPhone, allCustomers]);
 
   const applyCustomer = (c: any) => {
+    setSelectedCustomer(c);
     const name = getCustomerDisplayName(c);
     const phone = String(c.celular || '');
     if (name) setCustomerName(name);
@@ -454,6 +456,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     setCustomerLookupStatus('idle');
     setMatchedCustomerName('');
     setActiveLookupField(null);
+    setSelectedCustomer(null);
   };
 
   const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
@@ -730,7 +733,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   }
 
   const suggestionsDropdown = customerMatches.length > 0 ? (
-    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
+    <div className="absolute z-30 left-0 right-0 bottom-full mb-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
       {customerMatches.map((c: any) => {
         const addr = getCustomerAddress(c);
         const addrLine = [addr.street, addr.neighborhood].filter(Boolean).join(', ');
@@ -931,26 +934,38 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 const nameField = (
                   <div className="relative">
                     <Input autoComplete="new-password" placeholder="Nome do Cliente" value={customerName}
-                      onChange={e => setCustomerName(e.target.value)}
+                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); }}
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
                       className="h-7 text-xs" />
-                    {orderType === 'delivery' && activeLookupField === 'name' && suggestionsDropdown}
+                    {activeLookupField === 'name' && suggestionsDropdown}
                   </div>
                 );
                 const phoneField = (
                   <div className="relative">
                     <Input autoComplete="new-password" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
-                      onChange={e => setCustomerPhone(e.target.value)}
+                      onChange={e => { setCustomerPhone(e.target.value); setSelectedCustomer(null); }}
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
                       className={`h-7 text-xs ${orderType === 'delivery' ? 'border-blue-300 focus-visible:ring-blue-400 font-semibold' : ''}`} />
-                    {orderType === 'delivery' && activeLookupField === 'phone' && suggestionsDropdown}
+                    {activeLookupField === 'phone' && suggestionsDropdown}
                   </div>
                 );
                 return orderType === 'delivery'
                   ? (<>{phoneField}{nameField}</>)
                   : (<>{nameField}{phoneField}</>);
+              })()}
+              {selectedCustomer && isCreditEnabled(selectedCustomer) && (() => {
+                const limit = Number(selectedCustomer.creditLimit) || 0;
+                const balance = Number(selectedCustomer.creditBalance) || 0;
+                return (
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+                    <span>📝 Prazo ativo</span>
+                    {limit > 0 && (
+                      <span className="font-semibold text-amber-600">· disponível R$ {(limit - balance).toFixed(2)} de R$ {limit.toFixed(2)}</span>
+                    )}
+                  </div>
+                );
               })()}
               {orderType === 'delivery' && customerLookupStatus !== 'idle' && (
                 <p
