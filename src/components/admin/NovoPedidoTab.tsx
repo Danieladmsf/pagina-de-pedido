@@ -220,6 +220,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [deliveryBlocked, setDeliveryBlocked] = useState(false);
   const [distanceInfo, setDistanceInfo] = useState<{distanceKm: number, distanceText: string} | null>(null);
   const [dynamicFee, setDynamicFee] = useState<number | null>(null);
+  const [showNeighborhoodSuggestions, setShowNeighborhoodSuggestions] = useState(false);
 
   // Calcula a taxa chamando a API
   const calculateDeliveryFee = useCallback(async (fullAddr: string, neighborhoodHint?: string) => {
@@ -1031,7 +1032,52 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     }} onBlur={() => {
                       if (addressObj.street) calculateDeliveryFee(`${addressObj.street}, ${addressObj.number}`);
                     }} className="h-7 text-xs w-1/3" />
-                    <Input autoComplete="address-level3" placeholder="Bairro" value={addressObj.neighborhood} onChange={e => setAddressObj(prev => ({...prev, neighborhood: e.target.value}))} className="h-7 text-xs flex-1" />
+                    <div className="relative flex-1">
+                      <Input
+                        autoComplete="off"
+                        placeholder="Bairro"
+                        value={addressObj.neighborhood}
+                        onChange={e => { setAddressObj(prev => ({...prev, neighborhood: e.target.value})); setShowNeighborhoodSuggestions(true); }}
+                        onFocus={() => setShowNeighborhoodSuggestions(true)}
+                        onBlur={() => {
+                          window.setTimeout(() => setShowNeighborhoodSuggestions(false), 200);
+                          if (addressObj.street && addressObj.neighborhood) {
+                            const fullAddr = [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ');
+                            calculateDeliveryFee(fullAddr);
+                          }
+                        }}
+                        className="h-7 text-xs w-full"
+                      />
+                      {showNeighborhoodSuggestions && (() => {
+                        const nbRules = (customAddressRules || []).filter((r: any) => (r?.type === 'neighborhood' || !r?.type) && r?.keyword);
+                        const typed = addressObj.neighborhood.trim();
+                        const filtered = typed.length > 0
+                          ? nbRules.filter((r: any) => normalizeSearch(r.keyword).includes(normalizeSearch(typed)))
+                          : nbRules;
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-44 overflow-y-auto">
+                            {filtered.map((rule: any, idx: number) => (
+                              <button
+                                key={rule.keyword + idx}
+                                type="button"
+                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between border-b last:border-0 transition-colors"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setAddressObj(prev => ({...prev, neighborhood: rule.keyword}));
+                                  setShowNeighborhoodSuggestions(false);
+                                  const fullAddr = [addressObj.street, addressObj.number, rule.keyword, addressObj.city].filter(Boolean).join(', ');
+                                  calculateDeliveryFee(fullAddr, rule.keyword);
+                                }}
+                              >
+                                <span className="font-medium text-slate-700">{rule.keyword}</span>
+                                <span className="text-[11px] text-blue-600 font-bold">R$ {Number(rule.fee).toFixed(2)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <Input autoComplete="address-level2" placeholder="Cidade" value={addressObj.city} onChange={e => setAddressObj(prev => ({...prev, city: e.target.value}))} className="h-7 text-xs flex-1" />
                   </div>
                   {distanceInfo && (
