@@ -743,7 +743,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   }
 
   const suggestionsDropdown = customerMatches.length > 0 ? (
-    <div className="absolute z-30 left-0 right-0 bottom-full mb-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
+    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
       {customerMatches.map((c: any) => {
         const addr = getCustomerAddress(c);
         const addrLine = [addr.street, addr.neighborhood].filter(Boolean).join(', ');
