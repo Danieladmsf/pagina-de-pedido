@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardPublicApi } from '@/lib/api-guard';
+import { normalizeSearch } from '@/lib/utils';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
 
@@ -75,20 +76,23 @@ export async function POST(req: NextRequest) {
 
     // Separar regras por tipo: endereço (address) tem prioridade sobre bairro (neighborhood)
     if (customAddressRules && Array.isArray(customAddressRules) && customAddressRules.length > 0) {
-      const customerAddrLower = customerAddress.toLowerCase();
+      // Normaliza (remove acento + minúsculas) para casar igual a UI faz com normalizeSearch.
+      // Sem isso, "São José"/"sao jose"/"Sumaré"/"sumare" não batem e o pedido cai na taxa por KM.
+      const customerAddrNorm = normalizeSearch(customerAddress);
       const addrRules = customAddressRules.filter((r: any) => r.type === 'address');
       const neighborhoodRules = customAddressRules.filter((r: any) => r.type === 'neighborhood');
 
       // Prioridade 1: Regras por Rua/Endereço (mais específico)
-      const sortedAddr = [...addrRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+      const sortedAddr = [...addrRules].sort((a: any, b: any) => (b.keyword || '').length - (a.keyword || '').length);
       for (const rule of sortedAddr) {
-        if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+        if (rule.keyword && customerAddrNorm.includes(normalizeSearch(rule.keyword))) {
           // Se a regra exigir um número específico, verifica se o endereço do cliente contém esse número
-          if (rule.addressNumber && rule.addressNumber.trim() !== '') {
-            const numStr = rule.addressNumber.trim();
+          if (rule.addressNumber && String(rule.addressNumber).trim() !== '') {
+            // Escapa metacaracteres para um número com símbolo não quebrar o RegExp (cai no catch -> 500)
+            const numStr = String(rule.addressNumber).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             // Verifica com regex de limite de palavra (word boundary) para não dar falso positivo (ex: '1' dentro de '123')
             const regex = new RegExp(`\\b${numStr}\\b`, 'i');
-            if (!regex.test(customerAddrLower)) {
+            if (!regex.test(customerAddrNorm)) {
               continue; // Ignora esta regra se o número não bater, passa para a próxima
             }
           }
@@ -100,16 +104,19 @@ export async function POST(req: NextRequest) {
 
       // Prioridade 2: Regras por Bairro
       if (!customMatched) {
-        const sortedNeighborhood = [...neighborhoodRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+        const sortedNeighborhood = [...neighborhoodRules].sort((a: any, b: any) => (b.keyword || '').length - (a.keyword || '').length);
         // Combinar: buscar no endereço completo OU no bairro informado separadamente
-        const neighborhoodHintLower = (neighborhoodHint || '').toLowerCase().trim();
+        const neighborhoodHintNorm = normalizeSearch(neighborhoodHint || '').trim();
         for (const rule of sortedNeighborhood) {
           if (!rule.keyword) continue;
-          const keywordLower = rule.keyword.toLowerCase();
-          // Match no endereço completo OU match direto no bairro informado
-          if (customerAddrLower.includes(keywordLower) || 
-              (neighborhoodHintLower && neighborhoodHintLower.includes(keywordLower)) ||
-              (neighborhoodHintLower && keywordLower.includes(neighborhoodHintLower))) {
+          const keywordNorm = normalizeSearch(rule.keyword);
+          // Match no endereço completo OU match direto no bairro informado (igualdade ou substring nos dois sentidos)
+          if (customerAddrNorm.includes(keywordNorm) ||
+              (neighborhoodHintNorm && (
+                neighborhoodHintNorm === keywordNorm ||
+                neighborhoodHintNorm.includes(keywordNorm) ||
+                keywordNorm.includes(neighborhoodHintNorm)
+              ))) {
             calculatedFee = rule.fee;
             customMatched = true;
             break;
@@ -120,9 +127,9 @@ export async function POST(req: NextRequest) {
       // Fallback para regras antigas sem type (migração)
       if (!customMatched) {
         const legacyRules = customAddressRules.filter((r: any) => !r.type);
-        const sortedLegacy = [...legacyRules].sort((a: any, b: any) => b.keyword.length - a.keyword.length);
+        const sortedLegacy = [...legacyRules].sort((a: any, b: any) => (b.keyword || '').length - (a.keyword || '').length);
         for (const rule of sortedLegacy) {
-          if (rule.keyword && customerAddrLower.includes(rule.keyword.toLowerCase())) {
+          if (rule.keyword && customerAddrNorm.includes(normalizeSearch(rule.keyword))) {
             calculatedFee = rule.fee;
             customMatched = true;
             break;
