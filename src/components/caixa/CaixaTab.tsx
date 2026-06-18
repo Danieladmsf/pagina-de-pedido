@@ -152,6 +152,7 @@ export function CaixaTab({
     let totalDebito = 0;
     let totalDinheiro = 0;
     let totalPix = 0;
+    let totalPrazo = 0;
 
     lancamentos.forEach(lanc => {
       const v = lanc.valor || 0;
@@ -170,12 +171,13 @@ export function CaixaTab({
         else if (fp.includes('debito') || fp.includes('débito')) totalDebito += v;
         else if (fp.includes('pix')) totalPix += v;
         else if (fp.includes('dinheiro')) totalDinheiro += v;
+        else if (fp.includes('prazo') || fp.includes('conta_casa') || fp.includes('conta da casa')) totalPrazo += v;
       }
     });
 
     const valorEmCaixa = Math.abs(saldoInicial) + totalSuprimentoDinheiro + totalDinheiro + totalSangriaDinheiro; // sangria já é negativo
 
-    return { saldoInicial, valorEmCaixa, totalSangria, totalSangriaDinheiro, totalSuprimento, totalSuprimentoDinheiro, totalCredito, totalDebito, totalDinheiro, totalPix };
+    return { saldoInicial, valorEmCaixa, totalSangria, totalSangriaDinheiro, totalSuprimento, totalSuprimentoDinheiro, totalCredito, totalDebito, totalDinheiro, totalPix, totalPrazo };
   }, [lancamentos]);
 
   const sangriasDinheiro = useMemo(() => {
@@ -947,6 +949,7 @@ export function CaixaTab({
         <div class="row"><span>Pix</span><span>R$ ${totais.totalPix.toFixed(2)}</span></div>
         <div class="row"><span>Débito</span><span>R$ ${totais.totalDebito.toFixed(2)}</span></div>
         <div class="row"><span>Crédito</span><span>R$ ${totais.totalCredito.toFixed(2)}</span></div>
+        <div class="row"><span>Prazo</span><span>R$ ${totais.totalPrazo.toFixed(2)}</span></div>
       </div>
 
       <p class="sep">${sep}</p>
@@ -1114,6 +1117,7 @@ export function CaixaTab({
                 <SelectItem value="pix">Pix</SelectItem>
                 <SelectItem value="debito">Débito</SelectItem>
                 <SelectItem value="credito">Crédito</SelectItem>
+                <SelectItem value="conta_casa">Prazo</SelectItem>
                 <SelectItem value="--">--</SelectItem>
               </SelectContent>
             </Select>
@@ -1133,8 +1137,8 @@ export function CaixaTab({
             </Select>
           </div>
 
-          {/* ─── Cards Totalizadores (8 Cards) ─── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 shrink-0">
+          {/* ─── Cards Totalizadores (9 Cards) ─── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3 shrink-0">
             <SummaryCard label="Saldo Inicial" value={totais.saldoInicial} color="bg-orange-400" />
             <SummaryCard label="Valor em Caixa" value={totais.valorEmCaixa} color="bg-blue-600" border />
             <SummaryCard label="Sangria" value={totais.totalSangria} color="bg-rose-500" />
@@ -1143,6 +1147,7 @@ export function CaixaTab({
             <SummaryCard label="Debito" value={totais.totalDebito} color="bg-slate-500" />
             <SummaryCard label="Dinheiro" value={totais.totalDinheiro} color="bg-amber-600" />
             <SummaryCard label="Pix" value={totais.totalPix} color="bg-teal-500" />
+            <SummaryCard label="Prazo" value={totais.totalPrazo} color="bg-fuchsia-500" />
           </div>
 
           {/* ─── Tabela de Lançamentos ─── */}
@@ -1194,7 +1199,7 @@ export function CaixaTab({
                           <TableCell className={`font-bold whitespace-nowrap ${isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
                             {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
                           </TableCell>
-                          <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento}</TableCell>
+                          <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
                           <TableCell className="pr-6">
                             <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
                           </TableCell>
@@ -1522,7 +1527,7 @@ export function CaixaTab({
                   <h3 className="font-bold text-sm text-slate-700 flex items-center gap-2">
                     <BarChart3 className="h-4 w-4" /> Resumo de Vendas
                   </h3>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-center">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 text-center">
                     <div className="bg-white p-3 rounded-md border">
                       <div className="text-xs text-muted-foreground">Dinheiro</div>
                       <div className="font-bold text-amber-600">R$ {totais.totalDinheiro.toFixed(2)}</div>
@@ -1538,6 +1543,10 @@ export function CaixaTab({
                     <div className="bg-white p-3 rounded-md border">
                       <div className="text-xs text-muted-foreground">Credito</div>
                       <div className="font-bold text-violet-600">R$ {totais.totalCredito.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-md border">
+                      <div className="text-xs text-muted-foreground">Prazo</div>
+                      <div className="font-bold text-fuchsia-600">R$ {totais.totalPrazo.toFixed(2)}</div>
                     </div>
                   </div>
                   <div className="grid gap-2 border-t pt-3 text-sm sm:grid-cols-3">
@@ -1916,7 +1925,7 @@ export function CaixaTab({
             {/* Seção 1: Resumo de Vendas */}
             <div className="bg-slate-50 rounded-xl p-3 border space-y-1.5">
               <h3 className="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1"><BarChart3 className="h-3.5 w-3.5" /> Resumo de Vendas</h3>
-              <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="grid grid-cols-5 gap-2 text-center">
                 <div className="bg-white p-2 rounded-lg border">
                   <div className="text-[10px] text-muted-foreground">Dinheiro</div>
                   <div className="font-bold text-amber-600 text-sm">R$ {totais.totalDinheiro.toFixed(2)}</div>
@@ -1932,6 +1941,10 @@ export function CaixaTab({
                 <div className="bg-white p-2 rounded-lg border">
                   <div className="text-[10px] text-muted-foreground">Crédito</div>
                   <div className="font-bold text-violet-600 text-sm">R$ {totais.totalCredito.toFixed(2)}</div>
+                </div>
+                <div className="bg-white p-2 rounded-lg border">
+                  <div className="text-[10px] text-muted-foreground">Prazo</div>
+                  <div className="font-bold text-fuchsia-600 text-sm">R$ {totais.totalPrazo.toFixed(2)}</div>
                 </div>
               </div>
               <div className="flex justify-between text-[11px] pt-1.5 border-t">

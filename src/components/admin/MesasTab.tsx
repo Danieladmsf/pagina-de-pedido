@@ -719,6 +719,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                    description: `Mesa ${selectedTable}`
                 });
                 await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+                // Registra também no caixa (forma "Prazo") para aparecer na lista e
+                // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
+                if (caixaAberto) {
+                  await registrarLancamento?.({
+                    tipo: 'venda',
+                    titulo: `Mesa ${selectedTable} - Finalizada (Prazo)`,
+                    valor: split.amount,
+                    formaPagamento: 'conta_casa',
+                  });
+                }
              } else {
                 toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
              }

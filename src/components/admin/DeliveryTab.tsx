@@ -469,6 +469,16 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                    description: `Delivery #${paymentModalOrder.id.substring(0,5)}`
                 });
                 await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+                // Registra também no caixa (forma "Prazo") para aparecer na lista e
+                // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
+                if (registrarLancamento) {
+                  await registrarLancamento({
+                    tipo: 'venda',
+                    titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName} (Prazo)`,
+                    valor: split.amount,
+                    formaPagamento: 'conta_casa',
+                  });
+                }
              } else {
                 toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
              }

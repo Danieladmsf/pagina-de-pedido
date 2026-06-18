@@ -668,6 +668,16 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                  description: `PDV #${newOrderRef.id.substring(0,5)}`
               });
               await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
+              // Registra também no caixa (forma "Prazo") para aparecer na lista e
+              // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
+              if (registrarLancamento && caixaAberto) {
+                await registrarLancamento({
+                  tipo: 'venda',
+                  titulo: `PDV #${newOrderRef.id.substring(0, 5)} - Balcão (Prazo)`,
+                  valor: split.amount,
+                  formaPagamento: 'conta_casa',
+                });
+              }
            } else {
               toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
            }
