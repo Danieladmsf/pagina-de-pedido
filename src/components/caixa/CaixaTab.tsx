@@ -225,11 +225,15 @@ export function CaixaTab({
   // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
   const fontSize = is58 ? '13px' : '12px';
   const bodyWeight = is58 ? 'bold' : 'normal';
+  // 58mm imprime apagado mesmo em negrito; o text-stroke engrossa cada letra no
+  // render do QZ (Chromium) e sai bem mais escuro. Propriedade herdada → pega o
+  // cupom inteiro. 80mm fica intacto (sem stroke).
+  const inkBoost = is58 ? '-webkit-text-stroke: 0.4px #000;' : '';
 
   // ── Estilo térmico compartilhado ──
   const thermalCSS = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; font-weight: ${bodyWeight}; line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
+    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; font-weight: ${bodyWeight}; ${inkBoost} line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
     .header { text-align: center; margin-bottom: 4px; }
     .header h1 { font-size: 14px; font-weight: bold; text-transform: uppercase; }
     .header p { font-size: 11px; }

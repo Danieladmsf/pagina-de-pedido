@@ -36,6 +36,10 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
   const fontSize = is58 ? '13px' : '12px';
   const bodyWeight = is58 ? 'bold' : 'normal';
+  // 58mm imprime apagado mesmo em negrito; o text-stroke engrossa cada letra no
+  // render do QZ (Chromium) e sai bem mais escuro. Propriedade herdada → pega o
+  // cupom inteiro. 80mm fica intacto (sem stroke).
+  const inkBoost = is58 ? '-webkit-text-stroke:0.4px #000;' : '';
   // Adicionais ("> nome"): no 58mm a bobina imprime fraco, então sobe pra 14px
   // pra ficar legível. 80mm permanece em 10px (intacto).
   const addonFontSize = is58 ? '14px' : '10px';
@@ -164,7 +168,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
 
   const css = `
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Courier New',Courier,monospace; color:#000; background:#fff; font-size:${fontSize}; font-weight:${bodyWeight}; line-height:1.25; padding:16px; max-width:${maxWidth}; margin:0 auto; }
+    body { font-family:'Courier New',Courier,monospace; color:#000; background:#fff; font-size:${fontSize}; font-weight:${bodyWeight}; ${inkBoost} line-height:1.25; padding:16px; max-width:${maxWidth}; margin:0 auto; }
     .center { text-align:center; }
     .bold { font-weight:bold; }
     .upper { text-transform:uppercase; }
