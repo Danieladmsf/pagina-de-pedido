@@ -210,6 +210,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   // Endereço e cálculo de frete
   const storeAddress = storeProfile?.general?.address || '';
   const deliveryFeeRules = storeProfile?.feeRules || storeProfile?.fees?.feeRules || [];
+  // Regras de taxa por bairro (têm prioridade sobre KM). Sem isso o PDV cobrava SEMPRE por KM.
+  const customAddressRules = storeProfile?.customAddressRules || storeProfile?.fees?.customAddressRules || [];
   const maxDeliveryRadius = storeProfile?.fees?.maxDeliveryRadius || 0;
   const deliveryCities: string[] = storeProfile?.general?.deliveryCities || storeProfile?.fees?.deliveryCities || [];
 
@@ -220,8 +222,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [dynamicFee, setDynamicFee] = useState<number | null>(null);
 
   // Calcula a taxa chamando a API
-  const calculateDeliveryFee = useCallback(async (fullAddr: string) => {
-    if (!storeAddress || !deliveryFeeRules || deliveryFeeRules.length === 0) return;
+  const calculateDeliveryFee = useCallback(async (fullAddr: string, neighborhoodHint?: string) => {
+    const hasRules = (deliveryFeeRules && deliveryFeeRules.length > 0) || (customAddressRules && customAddressRules.length > 0);
+    if (!storeAddress || !hasRules) return;
     if (!fullAddr || fullAddr.length < 5) return;
 
     setCalculatingFee(true);
@@ -233,6 +236,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           storeAddress,
           customerAddress: fullAddr,
           feeRules: deliveryFeeRules,
+          customAddressRules,
+          neighborhoodHint: neighborhoodHint ?? addressObj.neighborhood,
         }),
       });
       const data = await res.json();
@@ -263,7 +268,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     } finally {
       setCalculatingFee(false);
     }
-  }, [storeAddress, deliveryFeeRules, maxDeliveryRadius, toast]);
+  }, [storeAddress, deliveryFeeRules, customAddressRules, maxDeliveryRadius, addressObj.neighborhood, toast]);
 
   React.useEffect(() => {
     const normalizedPhone = normalizeCreditPhone(customerPhone);
