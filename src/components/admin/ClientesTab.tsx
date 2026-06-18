@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, Gift, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { normalizeSearch } from '@/lib/utils';
@@ -489,19 +489,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   };
 
   // ─── Stats ───
-  const stats = useMemo(() => {
-    const total = clientes.length;
-    const comTelefone = clientes.filter(c => c.celular?.trim()).length;
-    const aniversariantes = clientes.filter(c => {
-      if (!c.dataNascimento) return false;
-      const parts = c.dataNascimento.split('/');
-      if (parts.length < 3) return false;
-      const month = parseInt(parts[1]);
-      return month === new Date().getMonth() + 1;
-    }).length;
-    return { total, comTelefone, aniversariantes };
-  }, [clientes]);
-
   // Cabeçalho de coluna clicável (ordena ao clicar; inverte ao clicar de novo).
   const SortableHead = ({ k, label, className, justify = 'start' }: { k: SortKey; label: string; className?: string; justify?: 'start' | 'center' | 'end' }) => {
     const active = sortBy === k;
@@ -533,48 +520,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         <p className="text-muted-foreground mt-1 font-medium">Cadastre, gerencie e acompanhe o histórico de pedidos da sua carteira de clientes.</p>
       </div>
 
-      {/* SEÇÃO 1 — Resumo */}
-      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden shrink-0">
-        <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/15 to-indigo-500/15 border border-blue-500/20 flex items-center justify-center">
-            <TrendingUp className="h-5 w-5 text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-base font-bold text-slate-800">Resumo da carteira</h2>
-            <p className="text-xs text-muted-foreground">Indicadores gerais da sua base de clientes.</p>
-          </div>
-          {stats.total > 0 && (
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-              <CheckCircle2 className="h-3 w-3" /> {stats.total} cliente{stats.total !== 1 ? 's' : ''}
-            </Badge>
-          )}
-        </header>
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/60 border border-blue-100">
-            <div className="p-2.5 bg-blue-100 rounded-xl"><Users className="h-5 w-5 text-blue-600" /></div>
-            <div>
-              <p className="text-2xl font-black text-blue-700">{stats.total}</p>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total de Clientes</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
-            <div className="p-2.5 bg-emerald-100 rounded-xl"><Phone className="h-5 w-5 text-emerald-600" /></div>
-            <div>
-              <p className="text-2xl font-black text-emerald-700">{stats.comTelefone}</p>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Com Telefone</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
-            <div className="p-2.5 bg-amber-100 rounded-xl"><Gift className="h-5 w-5 text-amber-600" /></div>
-            <div>
-              <p className="text-2xl font-black text-amber-700">{stats.aniversariantes}</p>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Aniversariantes do Mês</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* SEÇÃO 2 — Tabela de Clientes */}
+      {/* SEÇÃO — Tabela de Clientes */}
       <section className="bg-white rounded-2xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
         <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3 shrink-0">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
