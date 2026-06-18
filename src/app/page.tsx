@@ -2235,25 +2235,42 @@ export default function AdminPage() {
               e.preventDefault();
               if (!user || !db) return;
               const formData = new FormData(e.currentTarget);
-              const addonData = {
-                name: formData.get('addonName') as string,
-                description: ((formData.get('addonDescription') as string) || '').trim(),
-                price: parseFloat(formData.get('addonPrice') as string),
+              const rawName = (formData.get('addonName') as string) || '';
+              const description = ((formData.get('addonDescription') as string) || '').trim();
+              const price = parseFloat(formData.get('addonPrice') as string);
+              const baseData = {
+                description,
+                price,
                 group: editingAddon?.group || '',
                 ownerId: user.uid,
               };
+              // Em modo de criacao, nomes separados por , ou ; criam varios adicionais de uma vez
+              // (todos com o mesmo preco/descricao/containers). Na edicao, mantem nome unico.
+              const names = editingAddon?.id
+                ? [rawName.trim()].filter(Boolean)
+                : Array.from(new Set(
+                    rawName.split(/[,;\n]/).map(n => n.trim()).filter(Boolean)
+                  ));
+              if (names.length === 0) {
+                toast({ variant: 'destructive', title: 'Erro', description: 'Informe ao menos um nome.' });
+                return;
+              }
               try {
-                let savedAddonId = editingAddon?.id;
                 if (editingAddon?.id) {
-                  await updateDoc(doc(db, 'addons', editingAddon.id), addonData);
+                  await updateDoc(doc(db, 'addons', editingAddon.id), { ...baseData, name: names[0] });
+                  await syncAddonContainers(editingAddon.id, editingAddonContainers);
                 } else {
-                  const newDoc = doc(collection(db, 'addons'));
-                  savedAddonId = newDoc.id;
-                  await setDoc(newDoc, { ...addonData, id: newDoc.id });
+                  for (const name of names) {
+                    const newDoc = doc(collection(db, 'addons'));
+                    await setDoc(newDoc, { ...baseData, name, id: newDoc.id });
+                    await syncAddonContainers(newDoc.id, editingAddonContainers);
+                  }
                 }
-                if (savedAddonId) await syncAddonContainers(savedAddonId, editingAddonContainers);
                 setEditingAddon(null);
-                toast({ title: 'Sucesso', description: 'Adicional salvo.' });
+                toast({
+                  title: 'Sucesso',
+                  description: names.length > 1 ? `${names.length} adicionais criados.` : 'Adicional salvo.',
+                });
               } catch (err: any) {
                 console.error('Erro ao salvar adicional:', err);
                 toast({ variant: 'destructive', title: 'Erro', description: err?.message || 'Falha ao salvar adicional.' });
@@ -2692,6 +2709,11 @@ export default function AdminPage() {
                         <div className="space-y-2">
                           <Label htmlFor="addonName">Nome</Label>
                           <Input id="addonName" name="addonName" defaultValue={editingAddon?.name} placeholder="Ex: Bacon, Queijo Extra, Gelo..." required />
+                          {!editingAddon?.id && (
+                            <p className="text-xs text-muted-foreground">
+                              Dica: separe varios nomes com <span className="font-medium">,</span> ou <span className="font-medium">;</span> para criar em massa (mesmo preco e containers).
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="addonDescription">Texto de apresentacao</Label>
