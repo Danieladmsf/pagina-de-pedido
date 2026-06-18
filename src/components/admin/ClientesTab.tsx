@@ -13,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { normalizeSearch } from '@/lib/utils';
@@ -47,6 +48,11 @@ interface Cliente {
   creditBalance?: number;
   creditLimit?: number;
   creditPayDay?: number;
+  tipoPessoa?: 'fisica' | 'juridica';
+  cnpj?: string;
+  razaoSocial?: string;
+  nomeFantasia?: string;
+  inscricaoEstadual?: string;
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -118,9 +124,15 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   }, [contaCasaCliente, db]);
 
   // Form fields
+  const [formTipoPessoa, setFormTipoPessoa] = useState<'fisica' | 'juridica'>('fisica');
   const [formNome, setFormNome] = useState('');
   const [formCelular, setFormCelular] = useState('');
   const [formNascimento, setFormNascimento] = useState('');
+  // Pessoa Jurídica
+  const [formCnpj, setFormCnpj] = useState('');
+  const [formRazaoSocial, setFormRazaoSocial] = useState('');
+  const [formNomeFantasia, setFormNomeFantasia] = useState('');
+  const [formInscricaoEstadual, setFormInscricaoEstadual] = useState('');
   const [formLogradouro, setFormLogradouro] = useState('');
   const [formNumero, setFormNumero] = useState('');
   const [formComplemento, setFormComplemento] = useState('');
@@ -247,7 +259,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   // ─── Handlers ───
 
   const openNewForm = () => {
+    setFormTipoPessoa('fisica');
     setFormNome(''); setFormCelular(''); setFormNascimento('');
+    setFormCnpj(''); setFormRazaoSocial(''); setFormNomeFantasia(''); setFormInscricaoEstadual('');
     setFormLogradouro(''); setFormNumero(''); setFormComplemento('');
     setFormBairro(''); setFormCidade('');
     setFormCreditEnabled(false); setFormCreditLimit(''); setFormCreditPayDay('');
@@ -255,9 +269,14 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   };
 
   const openEditForm = (c: Cliente) => {
+    setFormTipoPessoa(c.tipoPessoa === 'juridica' ? 'juridica' : 'fisica');
     setFormNome(c.nome || '');
     setFormCelular(c.celular || '');
     setFormNascimento(c.dataNascimento || '');
+    setFormCnpj(c.cnpj || '');
+    setFormRazaoSocial(c.razaoSocial || '');
+    setFormNomeFantasia(c.nomeFantasia || '');
+    setFormInscricaoEstadual(c.inscricaoEstadual || '');
     setFormLogradouro(c.logradouro || '');
     setFormNumero(c.logradouroNumero || '');
     setFormComplemento(c.complemento || '');
@@ -284,14 +303,28 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
+  const isFormValid = formTipoPessoa === 'juridica'
+    ? !!formRazaoSocial.trim()
+    : !!formNome.trim();
+
   const handleSave = async () => {
-    if (!db || !user || !formNome.trim()) return;
+    if (!db || !user || !isFormValid) return;
     setIsSubmitting(true);
     try {
+      const isPJ = formTipoPessoa === 'juridica';
+      // Para PJ o "nome" exibido na lista é o nome fantasia (ou razão social).
+      const nome = isPJ
+        ? (formNomeFantasia.trim() || formRazaoSocial.trim())
+        : formNome.trim();
       const data = {
-        nome: formNome.trim(),
+        nome,
         celular: normalizeCreditPhone(formCelular),
-        dataNascimento: formNascimento.trim(),
+        dataNascimento: isPJ ? '' : formNascimento.trim(),
+        tipoPessoa: formTipoPessoa,
+        cnpj: isPJ ? formCnpj.trim() : '',
+        razaoSocial: isPJ ? formRazaoSocial.trim() : '',
+        nomeFantasia: isPJ ? formNomeFantasia.trim() : '',
+        inscricaoEstadual: isPJ ? formInscricaoEstadual.trim() : '',
         logradouro: formLogradouro.trim(),
         logradouroNumero: formNumero.trim(),
         complemento: formComplemento.trim(),
@@ -689,26 +722,71 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           </DialogHeader>
           
           <div className="max-h-[85vh] overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
-            {/* Informações Pessoais */}
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b pb-1">
-                <User className="h-3 w-3 text-slate-500" /> Informações Pessoais
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                <div className="space-y-0.5 md:col-span-2">
-                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nome Completo *</Label>
-                  <Input value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Ex: João da Silva" className="bg-slate-50/50 h-7 text-xs px-2" autoFocus />
+            {/* Tipo de cliente: Pessoa Física x Pessoa Jurídica */}
+            <Tabs value={formTipoPessoa} onValueChange={(v) => setFormTipoPessoa(v as 'fisica' | 'juridica')}>
+              <TabsList className="grid w-full grid-cols-2 h-8">
+                <TabsTrigger value="fisica" className="text-xs gap-1.5">
+                  <User className="h-3 w-3" /> Pessoa Física
+                </TabsTrigger>
+                <TabsTrigger value="juridica" className="text-xs gap-1.5">
+                  <Building2 className="h-3 w-3" /> Pessoa Jurídica
+                </TabsTrigger>
+              </TabsList>
+
+              {/* ── Pessoa Física ── */}
+              <TabsContent value="fisica" className="mt-3">
+                <div className="space-y-1.5">
+                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b pb-1">
+                    <User className="h-3 w-3 text-slate-500" /> Informações Pessoais
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                    <div className="space-y-0.5 md:col-span-2">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nome Completo *</Label>
+                      <Input value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Ex: João da Silva" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
+                      <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nascimento</Label>
+                      <Input value={formNascimento} onChange={(e) => setFormNascimento(e.target.value)} placeholder="DD/MM/AAAA" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-0.5">
-                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
-                  <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+              </TabsContent>
+
+              {/* ── Pessoa Jurídica ── */}
+              <TabsContent value="juridica" className="mt-3">
+                <div className="space-y-1.5">
+                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b pb-1">
+                    <Building2 className="h-3 w-3 text-slate-500" /> Dados da Empresa
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                    <div className="space-y-0.5 md:col-span-2">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Razão Social *</Label>
+                      <Input value={formRazaoSocial} onChange={(e) => setFormRazaoSocial(e.target.value)} placeholder="Ex: Comércio de Alimentos LTDA" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5 md:col-span-2">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nome Fantasia</Label>
+                      <Input value={formNomeFantasia} onChange={(e) => setFormNomeFantasia(e.target.value)} placeholder="Ex: Restaurante do Zé" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5 md:col-span-2">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">CNPJ</Label>
+                      <Input value={formCnpj} onChange={(e) => setFormCnpj(e.target.value)} placeholder="00.000.000/0000-00" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Insc. Estadual</Label>
+                      <Input value={formInscricaoEstadual} onChange={(e) => setFormInscricaoEstadual(e.target.value)} placeholder="Isento / nº" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
+                      <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-0.5">
-                  <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nascimento</Label>
-                  <Input value={formNascimento} onChange={(e) => setFormNascimento(e.target.value)} placeholder="DD/MM/AAAA" className="bg-slate-50/50 h-7 text-xs px-2" />
-                </div>
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
 
             {/* Endereço */}
             <div className="space-y-1.5">
@@ -826,7 +904,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           
           <DialogFooter className="bg-slate-50 px-4 py-2 border-t flex sm:justify-between items-center w-full">
             <Button variant="ghost" size="sm" onClick={() => setEditingCliente(null)} className="text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 h-7 text-xs px-3">Cancelar</Button>
-            <Button size="sm" onClick={handleSave} disabled={isSubmitting || !formNome.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-xs px-5 shadow-sm">
+            <Button size="sm" onClick={handleSave} disabled={isSubmitting || !isFormValid} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-7 text-xs px-5 shadow-sm">
               {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
               Salvar Cliente
             </Button>
@@ -852,14 +930,37 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                     <p className="font-semibold text-sm">{viewingCliente.celular || '-'}</p>
                   </div>
                 </div>
+                {viewingCliente.tipoPessoa === 'juridica' ? (
+                  <div className="flex items-start gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">CNPJ</p>
+                      <p className="font-semibold text-sm">{viewingCliente.cnpj || '-'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Nascimento</p>
+                      <p className="font-semibold text-sm">{viewingCliente.dataNascimento || '-'}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {viewingCliente.tipoPessoa === 'juridica' && (viewingCliente.razaoSocial || viewingCliente.inscricaoEstadual) && (
                 <div className="flex items-start gap-2">
-                  <CalendarDays className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Nascimento</p>
-                    <p className="font-semibold text-sm">{viewingCliente.dataNascimento || '-'}</p>
+                    <p className="text-xs text-muted-foreground">Razão Social</p>
+                    <p className="font-semibold text-sm">{viewingCliente.razaoSocial || '-'}</p>
+                    {viewingCliente.inscricaoEstadual && (
+                      <p className="text-xs text-muted-foreground">IE: {viewingCliente.inscricaoEstadual}</p>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-start gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
