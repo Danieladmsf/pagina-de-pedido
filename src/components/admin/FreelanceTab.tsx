@@ -236,25 +236,23 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
               <SelectItem value="custom">Período personalizado</SelectItem>
             </SelectContent>
           </Select>
-          {periodo === 'custom' && (
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={customStart}
-                max={customEnd || undefined}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
-              />
-              <span className="text-slate-400 text-sm">até</span>
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart || undefined}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
-              />
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              max={customEnd || undefined}
+              onChange={(e) => { setCustomStart(e.target.value); setPeriodo('custom'); }}
+              className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
+            />
+            <span className="text-slate-400 text-sm">até</span>
+            <input
+              type="date"
+              value={customEnd}
+              min={customStart || undefined}
+              onChange={(e) => { setCustomEnd(e.target.value); setPeriodo('custom'); }}
+              className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
+            />
+          </div>
         </div>
       </div>
 
