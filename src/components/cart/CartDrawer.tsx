@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
-import { normalizeSearch } from '@/lib/utils';
+import { normalizeSearch, normalizeNeighborhood } from '@/lib/utils';
 import { getManagedStock, getStockDemand } from '@/lib/inventory';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
@@ -473,7 +473,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       if (!res.ok) throw new Error('Falha ao buscar detalhes do endereço');
       const data = await res.json();
       
-      let newStreet = data.street || description.split(',')[0];
+      // Preferir o trecho que o cliente selecionou (preserva "Residencial X - Rodovia Y");
+      // o componente "route" do Google às vezes corta o nome do condomínio/estabelecimento.
+      const descFirst = (description.split(',')[0] || '').trim();
+      let newStreet = descFirst || data.street || '';
       let newNeighborhood = data.neighborhood || neighborhood;
       let newCity = data.city || city;
 
@@ -1149,7 +1152,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       {showNeighborhoodSuggestions && (() => {
                         const neighborhoodRules = (customAddressRules || []).filter((r: any) => r.type === 'neighborhood' && r.keyword);
                         const filtered = neighborhood.trim().length > 0
-                          ? neighborhoodRules.filter((r: any) => normalizeSearch(r.keyword).includes(normalizeSearch(neighborhood.trim())))
+                          ? neighborhoodRules.filter((r: any) => normalizeNeighborhood(r.keyword).includes(normalizeNeighborhood(neighborhood.trim())))
                           : neighborhoodRules;
                         if (filtered.length === 0) return null;
                         return (

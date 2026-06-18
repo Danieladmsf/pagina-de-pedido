@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardPublicApi } from '@/lib/api-guard';
-import { normalizeSearch } from '@/lib/utils';
+import { normalizeSearch, normalizeNeighborhood } from '@/lib/utils';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
-
-// Abreviações que o cliente/atendente digita no bairro (jd = jardim, etc.).
-// Sem expandir, "jd primavera" não casa "Jardim Primavera" e cai na taxa por KM.
-const NB_ABBR: Record<string, string> = {
-  jd: 'jardim', jardin: 'jardim', pq: 'parque', vl: 'vila',
-  res: 'residencial', resid: 'residencial', cj: 'conjunto', conj: 'conjunto',
-  cjto: 'conjunto', cond: 'condominio', condominio: 'condominio', hab: 'habitacional',
-};
-// Normaliza (acento+caixa) e expande abreviações token a token, para casar o bairro.
-const nbNorm = (s: string | null | undefined): string =>
-  normalizeSearch(s).split(/[^a-z0-9]+/).map((w) => NB_ABBR[w] || w).join(' ').trim();
 
 /**
  * Calcula a taxa de entrega com base na distância real (ruas) entre o restaurante e o cliente.
@@ -116,12 +105,12 @@ export async function POST(req: NextRequest) {
       // Prioridade 2: Regras por Bairro (com expansão de abreviações: jd->jardim, pq->parque...)
       if (!customMatched) {
         const sortedNeighborhood = [...neighborhoodRules].sort((a: any, b: any) => (b.keyword || '').length - (a.keyword || '').length);
-        const customerAddrNb = nbNorm(customerAddress);
+        const customerAddrNb = normalizeNeighborhood(customerAddress);
         // Combinar: buscar no endereço completo OU no bairro informado separadamente
-        const neighborhoodHintNb = nbNorm(neighborhoodHint || '');
+        const neighborhoodHintNb = normalizeNeighborhood(neighborhoodHint || '');
         for (const rule of sortedNeighborhood) {
           if (!rule.keyword) continue;
-          const keywordNb = nbNorm(rule.keyword);
+          const keywordNb = normalizeNeighborhood(rule.keyword);
           if (!keywordNb) continue;
           // Match no endereço completo OU match direto no bairro informado (igualdade ou substring nos dois sentidos)
           if (customerAddrNb.includes(keywordNb) ||
