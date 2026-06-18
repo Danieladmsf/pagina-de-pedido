@@ -39,6 +39,8 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   // Adicionais ("> nome"): no 58mm a bobina imprime fraco, então sobe pra 14px
   // pra ficar legível. 80mm permanece em 10px (intacto).
   const addonFontSize = is58 ? '14px' : '10px';
+  // Espaço vertical entre cada adicionário ("> nome") no 58mm. 80mm fica intacto.
+  const addonGap = is58 ? '4px' : '0';
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
 
   const dt = new Date(order?.orderDateTime || Date.now());
@@ -182,7 +184,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     .qtd { width:32px; }
     .val { width:64px; text-align:right; white-space:nowrap; }
     .item-name { font-weight:bold; font-size:13px; }
-    .addon { font-size:${addonFontSize}; font-weight:bold; padding-left:8px; }
+    .addon { font-size:${addonFontSize}; font-weight:bold; padding-left:8px; margin-bottom:${addonGap}; }
     .obs { font-size:12px; font-weight:bold; padding-left:8px; font-style:italic; }
     .details .addon, .details .obs { padding-left:0; }
     .addon-title { font-weight:bold; text-transform:uppercase; font-size:11px; margin-top:3px; }
