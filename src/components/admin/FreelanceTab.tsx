@@ -393,8 +393,21 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                                   </div>
                                   <p className="text-xs text-slate-600 font-medium">{val.titulo || 'Retirada / Vale'}</p>
                                 </div>
-                                <div className="text-right shrink-0">
+                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
                                   <span className="text-xs font-bold text-rose-600">-R$ {Math.abs(val.valor).toFixed(2)}</span>
+                                  {(() => {
+                                    const fp = (val.formaPagamento || '').trim();
+                                    if (!fp || fp === '--') {
+                                      return <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Acerto fechamento</span>;
+                                    }
+                                    const low = fp.toLowerCase();
+                                    const isDinheiro = low.includes('dinheiro');
+                                    return (
+                                      <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${isDinheiro ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-violet-700 bg-violet-50 border-violet-200'}`}>
+                                        {fp}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             ))}
