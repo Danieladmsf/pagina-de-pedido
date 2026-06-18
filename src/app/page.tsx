@@ -1480,14 +1480,14 @@ export default function AdminPage() {
         )}
 
         <div className={
-          ['produtos', 'addons', 'categorias'].includes(activeTab)
+          ['produtos', 'addons', 'categorias', 'clientes'].includes(activeTab)
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : ['clientes', 'freelance'].includes(activeTab) || activeTab.startsWith('perfil_')
+            : ['freelance'].includes(activeTab) || activeTab.startsWith('perfil_')
               ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
           <div className={
-            (activeTab === 'produtos' || activeTab === 'addons' || activeTab === 'categorias')
+            (activeTab === 'produtos' || activeTab === 'addons' || activeTab === 'categorias' || activeTab === 'clientes')
               ? 'max-w-[1600px] w-full mx-auto px-2 mt-2 flex-1 min-h-0 flex flex-col'
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>

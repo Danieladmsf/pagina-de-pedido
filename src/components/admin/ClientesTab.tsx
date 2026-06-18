@@ -527,14 +527,14 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   }
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto space-y-5 pt-4 pb-12">
-      <div className="mb-6 px-2">
+    <div className="w-full max-w-[1400px] mx-auto flex flex-col h-full min-h-0 gap-4 pt-4 pb-2">
+      <div className="px-2 shrink-0">
         <h1 className="text-3xl font-black tracking-tight text-slate-800">Base de Clientes</h1>
         <p className="text-muted-foreground mt-1 font-medium">Cadastre, gerencie e acompanhe o histórico de pedidos da sua carteira de clientes.</p>
       </div>
 
       {/* SEÇÃO 1 — Resumo */}
-      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden shrink-0">
         <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/15 to-indigo-500/15 border border-blue-500/20 flex items-center justify-center">
             <TrendingUp className="h-5 w-5 text-blue-600" />
@@ -575,8 +575,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       </section>
 
       {/* SEÇÃO 2 — Tabela de Clientes */}
-      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
+      <section className="bg-white rounded-2xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
+        <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3 shrink-0">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
             <Users className="h-5 w-5 text-emerald-600" />
           </div>
@@ -597,7 +597,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         </header>
 
         {/* Filtros */}
-        <div className="p-3 border-b bg-muted/20 flex flex-wrap items-center gap-2">
+        <div className="p-3 border-b bg-muted/20 flex flex-wrap items-center gap-2 shrink-0">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -645,7 +645,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           </Badge>
         </div>
 
-        <div className="max-h-[50vh] overflow-y-auto custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           <Table>
             <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-sm">
               <TableRow>
@@ -717,7 +717,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       </section>
 
       {/* Pagination */}
-      <div className="bg-white rounded-2xl shadow-sm border p-4 flex items-center justify-between sticky bottom-2 z-10">
+      <div className="bg-white rounded-2xl shadow-sm border p-4 flex items-center justify-between shrink-0">
         <p className="text-xs text-muted-foreground flex items-center gap-2">
           <Info className="h-3.5 w-3.5 text-slate-400" />
           Página {currentPage} de {totalPages} — {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
