@@ -29,6 +29,8 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
   const { caixaAtual, lancamentos: lancamentosSessao, loading } = useCaixa();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState('sessao');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const db = useFirestore();
   const { user } = useUser();
@@ -50,9 +52,16 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
       return { start: abertura, end: caixaAtual.status === 'fechado' ? fechamento : now };
     }
     
+    if (periodo === 'custom') {
+      if (!customStart && !customEnd) return null;
+      const start = customStart ? new Date(`${customStart}T00:00:00`) : new Date(0);
+      const end = customEnd ? new Date(`${customEnd}T23:59:59`) : now;
+      return { start, end };
+    }
+
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    
+
     if (periodo === 'hoje') {
       // Mantém hoje à meia-noite
     } else if (periodo === '7d') {
@@ -64,9 +73,9 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     } else if (periodo === 'all') {
       start.setTime(0);
     }
-    
+
     return { start, end: now };
-  }, [periodo, caixaAtual]);
+  }, [periodo, caixaAtual, customStart, customEnd]);
 
   // Pedidos filtrados
   const pedidosFiltrados = useMemo(() => {
@@ -190,6 +199,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
               <SelectItem value="15d">Últimos 15 dias</SelectItem>
               <SelectItem value="30d">Últimos 30 dias</SelectItem>
               <SelectItem value="all">Todo o período</SelectItem>
+              <SelectItem value="custom">Período personalizado</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -223,8 +233,28 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
               <SelectItem value="15d">Últimos 15 dias</SelectItem>
               <SelectItem value="30d">Últimos 30 dias</SelectItem>
               <SelectItem value="all">Todo o histórico</SelectItem>
+              <SelectItem value="custom">Período personalizado</SelectItem>
             </SelectContent>
           </Select>
+          {periodo === 'custom' && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd || undefined}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
+              />
+              <span className="text-slate-400 text-sm">até</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart || undefined}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-9 rounded-md border border-input bg-slate-50 px-2 text-sm"
+              />
+            </div>
+          )}
         </div>
       </div>
 
