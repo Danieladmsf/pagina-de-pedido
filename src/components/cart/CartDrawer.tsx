@@ -108,7 +108,13 @@ const checkCartStock = (
 
 const formatPhone = (val: string) => {
   if (!val) return '';
-  const raw = val.replace(/\D/g, '').slice(0, 11);
+  let digits = val.replace(/\D/g, '');
+  // Remove o código do país 55 quando vem o número completo (12 ou 13 dígitos),
+  // pra não tratar o "55" como DDD. DDD 55 (RS) tem 10-11 dígitos e é preservado.
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+    digits = digits.slice(2);
+  }
+  const raw = digits.slice(0, 11);
   let f = '';
   if (raw.length === 0) f = '';
   else if (raw.length <= 2) f = `(${raw}`;
