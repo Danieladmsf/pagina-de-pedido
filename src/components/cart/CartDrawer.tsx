@@ -463,7 +463,9 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       if (relevantParts.length >= 3) {
         newStreet = relevantParts[0];
-        newNeighborhood = relevantParts[1];
+        // Não adivinha o bairro pelo split por vírgula (estava pegando a cidade, ex.:
+        // "Rua X, Cravinhos, SP"). Fica vazio para o usuário escolher; o bairro real vem
+        // do place-details (sublocality) ou do CEP.
         newCity = relevantParts.slice(2).join(', ');
       } else if (relevantParts.length === 2) {
         newStreet = relevantParts[0];
