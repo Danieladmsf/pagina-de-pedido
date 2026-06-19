@@ -1156,12 +1156,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                           : neighborhoodRules;
                         if (filtered.length === 0) return null;
                         return (
-                          <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                          // Em fluxo (não absoluto): a ScrollArea tem overflow:hidden e cortava o
+                          // dropdown absoluto. Assim ele empurra o conteúdo e nunca fica oculto.
+                          // Sem o valor da taxa aqui — o preço aparece só na linha "Taxa de entrega".
+                          <div className="mt-1 bg-white border rounded-lg shadow-sm max-h-44 overflow-y-auto">
                             {filtered.map((rule: any, idx: number) => (
                               <button
                                 key={rule.keyword + idx}
                                 type="button"
-                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-green-50 flex items-center justify-between gap-2 border-b last:border-0 transition-colors"
+                                className="block w-full text-left px-2.5 py-1.5 text-xs hover:bg-green-50 border-b last:border-0 transition-colors truncate"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
                                   setNeighborhood(rule.keyword);
@@ -1172,8 +1175,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                                   }
                                 }}
                               >
-                                <span className="font-medium truncate">{rule.keyword}</span>
-                                <span className="text-[11px] text-green-600 font-bold shrink-0">R$ {Number(rule.fee).toFixed(2)}</span>
+                                {rule.keyword}
                               </button>
                             ))}
                           </div>
