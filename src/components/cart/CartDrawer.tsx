@@ -426,6 +426,22 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     }
   }, [toast, number, calculateDeliveryFee]);
 
+  // Identifica a cidade pelo texto do endereço usando as cidades atendidas
+  // cadastradas (Área de atuação). Sem isso, o split por vírgula joga pedaços do
+  // nome da rua/bairro (ex.: "João Berbel") no campo Cidade.
+  const resolveServedCity = useCallback((text: string): string | null => {
+    if (!text || !deliveryCities || deliveryCities.length === 0) return null;
+    const textNorm = normalizeSearch(text);
+    for (const c of deliveryCities) {
+      if (!c) continue;
+      const base = String(c).split(/,|\s-\s/)[0].trim(); // nome da cidade antes de ", UF" ou " - UF"
+      if (base && textNorm.includes(normalizeSearch(base))) {
+        return String(c).replace(/,\s*(brasil|brazil)\s*$/i, '').trim();
+      }
+    }
+    return null;
+  }, [deliveryCities]);
+
   // Callback: quando o cliente seleciona um endereço do autocomplete ou perde o foco
   const handleAddressSelected = useCallback((selectedAddress: string) => {
     if (!selectedAddress) return;
@@ -450,6 +466,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         newStreet = relevantParts[0];
       }
 
+      // Corrige a cidade pelo cadastro de cidades atendidas (evita "João Berbel" etc.)
+      const servedCity = resolveServedCity(selectedAddress);
+      if (servedCity) newCity = servedCity;
+
       setStreet(newStreet);
       setNeighborhood(newNeighborhood);
       setCity(newCity);
@@ -465,7 +485,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         calculateDeliveryFee(fullAddr);
       }
     }
-  }, [orderType, number, neighborhood, city, calculateDeliveryFee]);
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee, resolveServedCity]);
 
   const handlePlaceSelected = useCallback(async (placeId: string, description: string) => {
     try {
@@ -478,11 +498,13 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const descFirst = (description.split(',')[0] || '').trim();
       let newStreet = descFirst || data.street || '';
       let newNeighborhood = data.neighborhood || neighborhood;
-      let newCity = data.city || city;
+      // Cidade: prioriza match com as cidades atendidas; senão usa o que o Google retornou
+      const servedCity = resolveServedCity(`${description}, ${data.city || ''}`);
+      let newCity = servedCity || data.city || city;
 
       setStreet(newStreet);
       if (data.neighborhood) setNeighborhood(data.neighborhood);
-      if (data.city) setCity(data.city);
+      if (newCity) setCity(newCity);
 
       if (orderType === 'delivery') {
         const fullAddr = [newStreet, number, newNeighborhood, newCity, 'Brasil'].filter(Boolean).join(', ');
@@ -492,7 +514,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       console.error('[CartDrawer] Erro ao buscar detalhes do place:', err);
       handleAddressSelected(description);
     }
-  }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected]);
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected, resolveServedCity]);
 
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
