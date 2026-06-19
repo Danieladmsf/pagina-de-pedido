@@ -171,7 +171,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
             <button
               key={prediction.placeId || index}
               type="button"
-              className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 flex items-start gap-2 border-b last:border-0 transition-colors"
+              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-slate-50 flex items-start gap-1.5 border-b last:border-0 transition-colors"
               onMouseDown={(e) => {
                 e.preventDefault();
                 markSuggestionInteraction();
@@ -179,7 +179,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onSelectPlace, 
               onTouchStart={markSuggestionInteraction}
               onClick={() => handleSelect(prediction)}
             >
-              <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <MapPin className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
               <span className="leading-snug">{prediction.description}</span>
             </button>
           ))}

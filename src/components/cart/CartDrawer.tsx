@@ -1161,7 +1161,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                               <button
                                 key={rule.keyword + idx}
                                 type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 flex items-center justify-between border-b last:border-0 transition-colors"
+                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-green-50 flex items-center justify-between gap-2 border-b last:border-0 transition-colors"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
                                   setNeighborhood(rule.keyword);
@@ -1172,8 +1172,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                                   }
                                 }}
                               >
-                                <span className="font-medium">{rule.keyword}</span>
-                                <span className="text-xs text-green-600 font-bold">R$ {Number(rule.fee).toFixed(2)}</span>
+                                <span className="font-medium truncate">{rule.keyword}</span>
+                                <span className="text-[11px] text-green-600 font-bold shrink-0">R$ {Number(rule.fee).toFixed(2)}</span>
                               </button>
                             ))}
                           </div>

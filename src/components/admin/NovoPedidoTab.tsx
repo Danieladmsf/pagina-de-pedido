@@ -1061,7 +1061,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                               <button
                                 key={rule.keyword + idx}
                                 type="button"
-                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between border-b last:border-0 transition-colors"
+                                className="w-full text-left px-2 py-1 text-[11px] hover:bg-blue-50 flex items-center justify-between gap-2 border-b last:border-0 transition-colors"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
                                   setAddressObj(prev => ({...prev, neighborhood: rule.keyword}));
@@ -1070,8 +1070,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                                   calculateDeliveryFee(fullAddr, rule.keyword);
                                 }}
                               >
-                                <span className="font-medium text-slate-700">{rule.keyword}</span>
-                                <span className="text-[11px] text-blue-600 font-bold">R$ {Number(rule.fee).toFixed(2)}</span>
+                                <span className="font-medium text-slate-700 truncate">{rule.keyword}</span>
+                                <span className="text-[10px] text-blue-600 font-bold shrink-0">R$ {Number(rule.fee).toFixed(2)}</span>
                               </button>
                             ))}
                           </div>
