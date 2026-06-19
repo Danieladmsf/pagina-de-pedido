@@ -402,6 +402,12 @@ export function CaixaTab({
       return;
     }
 
+    // Sangria em dinheiro não pode estourar o que existe fisicamente na gaveta.
+    if (modalOpen === 'sangria' && isFormaPagamentoDinheiro(formaPagamentoInput) && valorInput > totais.valorEmCaixa + 0.001) {
+      setErrorMsg(`Sangria em dinheiro de R$ ${valorInput.toFixed(2)} maior que o disponível na gaveta (R$ ${totais.valorEmCaixa.toFixed(2)}).`);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (modalOpen === 'abrir') {
@@ -1448,6 +1454,11 @@ export function CaixaTab({
                       <SelectItem value="credito">Crédito</SelectItem>
                     </SelectContent>
                   </Select>
+                  {modalOpen === 'sangria' && isFormaPagamentoDinheiro(formaPagamentoInput) && (
+                    <p className={`text-xs ${valorInput > totais.valorEmCaixa + 0.001 ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
+                      Disponível na gaveta: R$ {totais.valorEmCaixa.toFixed(2)}
+                    </p>
+                  )}
                 </div>
                 
                 {(modalOpen !== 'sangria' || destinatarioTipoInput === 'avulso') && (
