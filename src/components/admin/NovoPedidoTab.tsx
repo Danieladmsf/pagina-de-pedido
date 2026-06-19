@@ -19,7 +19,7 @@ import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner, isCreditEnabled } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
-import { removeAccents, normalizeSearch, normalizeNeighborhood } from '@/lib/utils';
+import { removeAccents, normalizeSearch, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
@@ -1052,7 +1052,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                         const nbRules = (customAddressRules || []).filter((r: any) => (r?.type === 'neighborhood' || !r?.type) && r?.keyword);
                         const typed = addressObj.neighborhood.trim();
                         const filtered = typed.length > 0
-                          ? nbRules.filter((r: any) => normalizeNeighborhood(r.keyword).includes(normalizeNeighborhood(typed)))
+                          ? nbRules.filter((r: any) => neighborhoodMatchesQuery(r.keyword, typed))
                           : nbRules;
                         if (filtered.length === 0) return null;
                         return (

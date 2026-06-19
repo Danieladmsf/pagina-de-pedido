@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
-import { normalizeSearch, normalizeNeighborhood } from '@/lib/utils';
+import { normalizeSearch, neighborhoodMatchesQuery, detectNeighborhood } from '@/lib/utils';
 import { getManagedStock, getStockDemand } from '@/lib/inventory';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
@@ -478,6 +478,11 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       const servedCity = resolveServedCity(selectedAddress);
       if (servedCity) newCity = servedCity;
 
+      // Auto-detecta o bairro cadastrado presente no texto (alta precisão; vazio se incerto)
+      const regNb = (customAddressRules || []).filter((r: any) => r?.type === 'neighborhood' && r?.keyword).map((r: any) => r.keyword);
+      const detectedNb = detectNeighborhood(selectedAddress, regNb, deliveryCities);
+      if (detectedNb) newNeighborhood = detectedNb;
+
       setStreet(newStreet);
       setNeighborhood(newNeighborhood);
       setCity(newCity);
@@ -493,7 +498,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         calculateDeliveryFee(fullAddr);
       }
     }
-  }, [orderType, number, neighborhood, city, calculateDeliveryFee, resolveServedCity]);
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee, resolveServedCity, customAddressRules, deliveryCities]);
 
   const handlePlaceSelected = useCallback(async (placeId: string, description: string) => {
     try {
@@ -505,13 +510,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       // o componente "route" do Google às vezes corta o nome do condomínio/estabelecimento.
       const descFirst = (description.split(',')[0] || '').trim();
       let newStreet = descFirst || data.street || '';
-      let newNeighborhood = data.neighborhood || neighborhood;
+      // Bairro: prioriza um bairro cadastrado detectado no texto; senão o sublocality do Google
+      const regNb = (customAddressRules || []).filter((r: any) => r?.type === 'neighborhood' && r?.keyword).map((r: any) => r.keyword);
+      const detectedNb = detectNeighborhood(`${description}, ${data.neighborhood || ''}`, regNb, deliveryCities);
+      let newNeighborhood = detectedNb || data.neighborhood || neighborhood;
       // Cidade: prioriza match com as cidades atendidas; senão usa o que o Google retornou
       const servedCity = resolveServedCity(`${description}, ${data.city || ''}`);
       let newCity = servedCity || data.city || city;
 
       setStreet(newStreet);
-      if (data.neighborhood) setNeighborhood(data.neighborhood);
+      if (newNeighborhood) setNeighborhood(newNeighborhood);
       if (newCity) setCity(newCity);
 
       if (orderType === 'delivery') {
@@ -522,7 +530,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       console.error('[CartDrawer] Erro ao buscar detalhes do place:', err);
       handleAddressSelected(description);
     }
-  }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected, resolveServedCity]);
+  }, [orderType, number, neighborhood, city, calculateDeliveryFee, handleAddressSelected, resolveServedCity, customAddressRules, deliveryCities]);
 
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   // Detectamos se cidade E rua foram preenchidos (sinal clássico de autofill)
@@ -1182,7 +1190,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       {showNeighborhoodSuggestions && (() => {
                         const neighborhoodRules = (customAddressRules || []).filter((r: any) => r.type === 'neighborhood' && r.keyword);
                         const filtered = neighborhood.trim().length > 0
-                          ? neighborhoodRules.filter((r: any) => normalizeNeighborhood(r.keyword).includes(normalizeNeighborhood(neighborhood.trim())))
+                          ? neighborhoodRules.filter((r: any) => neighborhoodMatchesQuery(r.keyword, neighborhood))
                           : neighborhoodRules;
                         if (filtered.length === 0) return null;
                         return (
