@@ -1121,7 +1121,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       <div key={item.cartItemId || item.id || index} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm">
                         <div className="flex-1 min-w-0">
                           <p className="text-base font-bold text-slate-800 truncate">{item.name}</p>
-                          <p className="text-sm text-green-600 font-bold">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                          <p className="text-sm text-green-600 font-bold">R$ {Number(item.unitPrice ?? item.price ?? 0).toFixed(2)}</p>
                           {item.addons && item.addons.length > 0 && (
                             <div className="text-xs text-muted-foreground leading-tight mt-0.5">
                               {item.addons.map((a: any) => a.name).join(', ')}
