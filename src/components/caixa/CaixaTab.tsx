@@ -849,9 +849,11 @@ export function CaixaTab({
     const totalFreelancersImpressao = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
     const totalMotoboys = totalMotoboysImpressao;
     const totalFreelancersCalc = totalFreelancersImpressao;
-    const valorLiquido = isFechado
-      ? totais.valorEmCaixa
-      : valorEsperadoFechamento;
+    // VALOR ESPERADO precisa descontar taxa/motoboys/freelancers SEMPRE.
+    // Em caixa fechado, esses pagamentos viram sangria com formaPagamento '--',
+    // que NÃO entra em totalSangriaDinheiro — então valorEmCaixa sozinho ignora
+    // essas saídas e fica inconsistente com a Diferença (gravada no fechamento).
+    const valorLiquido = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
     const agora = new Date();
     const dataFormatada = agora.toLocaleDateString('pt-BR');
     const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
