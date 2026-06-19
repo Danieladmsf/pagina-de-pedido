@@ -36,10 +36,11 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
   const fontSize = is58 ? '13px' : '12px';
   const bodyWeight = is58 ? 'bold' : 'normal';
-  // 58mm imprime apagado mesmo em negrito; o text-stroke engrossa cada letra no
-  // render do QZ (Chromium) e sai bem mais escuro. Propriedade herdada → pega o
-  // cupom inteiro. 80mm fica intacto (sem stroke).
-  const inkBoost = is58 ? '-webkit-text-stroke:0.4px #000;' : '';
+  // Impressão térmica sai apagada; o text-stroke engrossa cada letra no render
+  // do QZ (Chromium) e escurece sem aumentar a fonte. Propriedade herdada → pega
+  // o cupom inteiro. 58mm precisa de mais reforço (bobina menor imprime mais
+  // fraco) que o 80mm.
+  const inkBoost = is58 ? '-webkit-text-stroke:0.4px #000;' : '-webkit-text-stroke:0.3px #000;';
   // Adicionais ("> nome"): no 58mm a bobina imprime fraco, então sobe pra 14px
   // pra ficar legível. 80mm permanece em 10px (intacto).
   const addonFontSize = is58 ? '14px' : '10px';
