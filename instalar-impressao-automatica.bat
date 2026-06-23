@@ -61,7 +61,11 @@ if not exist "%CHROME_EXE%" (
   exit /b 1
 )
 
-echo Criando atalho dedicado na Área de Trabalho...
+:: Detecta a pasta real da Área de Trabalho (compatível com OneDrive)
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP_DIR=%%D"
+if not exist "%DESKTOP_DIR%" set "DESKTOP_DIR=%USERPROFILE%\Desktop"
+set "SHORTCUT=%DESKTOP_DIR%\%APP_NAME%.lnk"
+echo Criando atalho dedicado em: %DESKTOP_DIR%
 powershell -NoProfile -ExecutionPolicy Bypass -Command "if (!(Test-Path '%PROFILE_DIR%')) { New-Item -ItemType Directory -Force -Path '%PROFILE_DIR%' | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri 'https://polarispdv.vercel.app/favicon.ico' -OutFile '%PROFILE_DIR%\app-icon.ico' -ErrorAction SilentlyContinue } catch {}; $shortcutPath='%SHORTCUT%'; $chrome='%CHROME_EXE%'; $args='--user-data-dir=\"\"%PROFILE_DIR%\"\" --no-first-run --kiosk-printing --app=\"\"%APP_URL%\"\"'; $shell=New-Object -ComObject WScript.Shell; $s=$shell.CreateShortcut($shortcutPath); $s.TargetPath=$chrome; $s.Arguments=$args; $s.WorkingDirectory=Split-Path $chrome; if (Test-Path '%PROFILE_DIR%\app-icon.ico') { $s.IconLocation='%PROFILE_DIR%\app-icon.ico' } else { $s.IconLocation=$chrome + ',0' }; $s.Description='Cardapio Digital com impressao automatica'; $s.Save()"
 
 if errorlevel 1 (
