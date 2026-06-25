@@ -32,6 +32,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [removeImage, setRemoveImage] = useState(false);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
@@ -44,6 +45,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       setGroups(editingProduct.addonGroups || []);
       setImageFile(null);
       setImagePreview(editingProduct.imageUrl || '');
+      setRemoveImage(false);
       setUploadingImage(false);
     }
   }, [editingProduct, categories]);
@@ -73,6 +75,13 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     if (!file) return;
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setRemoveImage(false);
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setRemoveImage(true);
   };
 
   const handleUploadImage = async (): Promise<string> => {
@@ -102,6 +111,8 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     try {
       if (imageFile) {
         imageUrl = await handleUploadImage();
+      } else if (removeImage) {
+        imageUrl = '';
       }
 
       const fixedItems = fixedItemsText.split(',').map((s: string) => s.trim()).filter((s: string) => s);
@@ -293,11 +304,24 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
               <div className="col-span-4 md:col-span-2 space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
                 <div className="flex items-center gap-2">
-                  {imagePreview && (
-                    <div className="relative h-10 w-10 rounded-lg overflow-hidden border flex-shrink-0">
-                      <Image src={imagePreview} alt="preview" fill className="object-cover" />
+                  {imagePreview ? (
+                    <div className="relative flex-shrink-0">
+                      <div className="relative h-10 w-10 rounded-lg overflow-hidden border">
+                        <Image src={imagePreview} alt="preview" fill className="object-cover" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        title="Remover foto"
+                        aria-label="Remover foto"
+                        className="absolute -top-1.5 -right-1.5 z-10 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow border border-white hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                  )}
+                  ) : removeImage ? (
+                    <span className="text-[10px] font-semibold text-red-500 flex-shrink-0">Foto removida</span>
+                  ) : null}
                   <label className="flex-1 cursor-pointer">
                     <div className="flex items-center justify-center gap-1.5 border border-dashed border-muted-foreground/30 rounded-lg hover:border-primary transition-colors bg-muted/10 h-10 px-2">
                       <Upload className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
