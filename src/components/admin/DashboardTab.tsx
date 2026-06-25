@@ -205,13 +205,19 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
 
     // Tipo de pedido
     const typeCount: Record<string, number> = { delivery: 0, pickup: 0, dine_in: 0 };
+    const typeRevenue: Record<string, number> = { delivery: 0, pickup: 0, dine_in: 0 };
     valid.forEach(o => {
       const t = o.orderType || (o.tableNumber ? 'dine_in' : 'pickup');
       typeCount[t] = (typeCount[t] || 0) + 1;
+      typeRevenue[t] = (typeRevenue[t] || 0) + (o.totalAmount || 0);
     });
     const typeData = Object.entries(typeCount)
       .filter(([, v]) => v > 0)
-      .map(([k, v]) => ({ name: ORDER_TYPE_LABELS[k]?.label || k, value: v }));
+      .map(([k, v]) => ({
+        name: ORDER_TYPE_LABELS[k]?.label || k,
+        value: v,
+        revenue: typeRevenue[k] || 0,
+      }));
 
     // Forma de pagamento
     const paymentCount: Record<string, number> = {};
@@ -539,19 +545,25 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                       </span>
                     </div>
                   </div>
-                  <div className="mt-3 space-y-1.5">
+                  <div className="mt-3 space-y-2">
                     {stats.typeData.map((t, idx) => {
                       const total = stats.typeData.reduce((s, x) => s + x.value, 0) || 1;
                       const pct = Math.round((t.value / total) * 100);
                       return (
-                        <div key={t.name} className="flex items-center gap-2 text-sm">
+                        <div key={t.name} className="flex items-center gap-2">
                           <span
                             className="h-2.5 w-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
                           />
-                          <span className="font-medium text-slate-700 flex-1 truncate">{t.name}</span>
-                          <span className="font-bold text-slate-800 shrink-0">{t.value}</span>
-                          <span className="text-xs text-muted-foreground w-9 text-right shrink-0">{pct}%</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-700 truncate">{t.name}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {t.value} pedido{t.value === 1 ? '' : 's'} · {pct}%
+                            </div>
+                          </div>
+                          <span className="text-sm font-bold text-emerald-600 shrink-0">
+                            {brl(t.revenue)}
+                          </span>
                         </div>
                       );
                     })}
