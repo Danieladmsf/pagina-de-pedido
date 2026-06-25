@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
-import { getWapiConnectedPhone, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
+import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage } from '@/lib/wapi/wapi.service';
 import {
   buildStoreLink,
   formatWorkingHours,
@@ -457,7 +457,19 @@ function buildAutoReply(params: {
   }).trim();
 
   if (!message || !type) return null;
-  return { message, type };
+
+  // A W-API envia texto puro e nao gera o cartao de preview de link (o WhatsApp
+  // so monta o preview quando o proprio app faz o scrape das og tags, o que nao
+  // ocorre via API). Por isso, nas respostas automaticas com link mandamos a
+  // logo da loja como imagem e o texto/link na legenda — assim a marca sempre
+  // aparece junto do link. Sem imagem salva, cai no texto puro.
+  const imageUrl =
+    storeProfile?.general?.logoUrl ||
+    storeProfile?.general?.ogImageUrl ||
+    storeProfile?.general?.bannerUrl ||
+    '';
+
+  return { message, type, imageUrl: imageUrl || undefined };
 }
 
 async function maybeSendAutoReply(params: {
@@ -518,11 +530,18 @@ async function maybeSendAutoReply(params: {
   if (!reply) return false;
 
   const token = decryptSecret(integration.wapiTokenEncrypted);
-  const result = await sendWapiTextMessage(integration.wapiInstanceId, token, {
-    phone: incoming.phone,
-    message: reply.message,
-    delayMessage: 2,
-  });
+  const result = reply.imageUrl
+    ? await sendWapiImageMessage(integration.wapiInstanceId, token, {
+        phone: incoming.phone,
+        image: reply.imageUrl,
+        caption: reply.message,
+        delayMessage: 2,
+      })
+    : await sendWapiTextMessage(integration.wapiInstanceId, token, {
+        phone: incoming.phone,
+        message: reply.message,
+        delayMessage: 2,
+      });
 
   await contactRef.set({
     empresaId: params.empresaId,
