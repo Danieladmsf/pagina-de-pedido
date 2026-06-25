@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ storeSlug
 
   const storeName = profile?.general?.name || roleName || 'Cardápio Digital';
   const description = profile?.general?.description || `Peça online no ${storeName}`;
-  const bannerUrl = profile?.general?.bannerDesktopUrl || profile?.general?.bannerMobileUrl || profile?.general?.bannerImageUrl || '';
+  const bannerUrl = profile?.general?.bannerUrl || profile?.general?.bannerMobileUrl || '';
   const logoUrl = profile?.general?.logoUrl || '';
   const ogImageUrl = profile?.general?.ogImageUrl || '';
   const ogImage = ogImageUrl || bannerUrl || logoUrl || '';
@@ -45,11 +45,12 @@ export async function generateMetadata({ params }: { params: Promise<{ storeSlug
       description,
       type: 'website',
       siteName: 'Cardápio Digital',
+      // Sem width/height fixos: as imagens variam (quadradas, retangulares) e
+      // declarar 1200x630 mentindo confunde alguns crawlers. Omitindo, cada
+      // plataforma baixa a imagem e usa as dimensoes reais.
       ...(ogImage ? {
         images: [{
           url: ogImage,
-          width: 1200,
-          height: 630,
           alt: storeName,
         }],
       } : {}),
