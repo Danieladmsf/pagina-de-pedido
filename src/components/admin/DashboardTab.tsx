@@ -16,7 +16,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 import {
   TrendingUp,
@@ -504,34 +503,60 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                   Sem dados no período.
                 </p>
               ) : (
-                <div className="h-[220px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={stats.typeData}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={48}
-                        outerRadius={80}
-                        paddingAngle={2}
-                      >
-                        {stats.typeData.map((_, idx) => (
-                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        height={28}
-                        wrapperStyle={{ fontSize: 11 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <>
+                  <div className="relative h-[180px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.typeData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={52}
+                          outerRadius={80}
+                          paddingAngle={2}
+                        >
+                          {stats.typeData.map((_, idx) => (
+                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any, name: any) => [
+                            `${value} pedido${Number(value) === 1 ? '' : 's'}`,
+                            name,
+                          ]}
+                          contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-2xl font-black text-slate-800 leading-none">
+                        {stats.typeData.reduce((s, x) => s + x.value, 0)}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
+                        pedidos
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    {stats.typeData.map((t, idx) => {
+                      const total = stats.typeData.reduce((s, x) => s + x.value, 0) || 1;
+                      const pct = Math.round((t.value / total) * 100);
+                      return (
+                        <div key={t.name} className="flex items-center gap-2 text-sm">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                          />
+                          <span className="font-medium text-slate-700 flex-1 truncate">{t.name}</span>
+                          <span className="font-bold text-slate-800 shrink-0">{t.value}</span>
+                          <span className="text-xs text-muted-foreground w-9 text-right shrink-0">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
