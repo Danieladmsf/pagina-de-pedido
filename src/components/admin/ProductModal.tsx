@@ -125,6 +125,8 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         imageUrl
       };
 
+      console.log('[FOTO-DEBUG] salvando produto', { id: editingProduct?.id || '(novo)', name, imageUrl, trocouFoto: !!imageFile });
+
       if (editingProduct?.id) {
         await updateDoc(doc(db, 'menuItems', editingProduct.id), data);
         toast({ title: 'Produto atualizado com sucesso!' });
