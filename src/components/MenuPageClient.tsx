@@ -109,9 +109,6 @@ export function MenuPageClient({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  // [FOTO-DEBUG] diagnostico temporario de imagens — ativar abrindo a URL com ?debugfoto=1
-  const debugFoto = searchParams.get('debugfoto') === '1';
-  const [imgStatus, setImgStatus] = useState<Record<string, { status: string; nw?: number; nh?: number }>>({});
 
   // Manage history state for product detail dialog (selectedItem)
   useEffect(() => {
@@ -243,13 +240,6 @@ export function MenuPageClient({
   const { data: addons } = useCollection(addonsQuery);
   const { data: addonCategories } = useCollection(addonCategoriesQuery);
   const { data: promotionsRaw } = useCollection(promotionsQuery);
-
-  // [FOTO-DEBUG] loga o que cada produto recebeu do Firestore neste aparelho
-  useEffect(() => {
-    if (!items) return;
-    console.log('[FOTO-DEBUG] itens recebidos do Firestore:', items.length, '| BUILD_ID:', process.env.NEXT_PUBLIC_BUILD_ID);
-    items.forEach((i: any) => console.log('[FOTO-DEBUG] item:', i.name, '| imageUrl:', i.imageUrl || '(vazio)'));
-  }, [items]);
 
   // Active promotions: active=true AND within date range
   const activePromotions = useMemo(() => {
@@ -1125,9 +1115,6 @@ export function MenuPageClient({
 
               const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
 
-              // [FOTO-DEBUG]
-              const resolvedSrc = item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400';
-
               return (
                 <Card 
                   key={item.id} 
@@ -1141,32 +1128,11 @@ export function MenuPageClient({
                 >
                   <div className="relative h-44 w-full md:h-56">
                     <Image
-                      src={resolvedSrc}
+                      src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'}
                       alt={item.name}
                       fill
                       className="object-contain group-hover:scale-105 transition-transform duration-700 p-2"
-                      onLoad={(e) => {
-                        const img = e.currentTarget as HTMLImageElement;
-                        console.log('[FOTO-DEBUG] OK', item.name, '|', img.naturalWidth + 'x' + img.naturalHeight, '|', resolvedSrc);
-                        if (debugFoto) setImgStatus((s) => ({ ...s, [item.id]: { status: 'ok', nw: img.naturalWidth, nh: img.naturalHeight } }));
-                      }}
-                      onError={() => {
-                        console.error('[FOTO-DEBUG] ERRO ao carregar', item.name, '|', resolvedSrc);
-                        if (debugFoto) setImgStatus((s) => ({ ...s, [item.id]: { status: 'erro' } }));
-                      }}
                     />
-                    {debugFoto && (
-                      <div className="absolute inset-x-0 bottom-0 z-20 bg-black/85 text-white text-[9px] leading-tight p-1 break-all pointer-events-none">
-                        <div className="font-bold">
-                          {imgStatus[item.id]?.status === 'ok'
-                            ? `✅ OK ${imgStatus[item.id]?.nw}x${imgStatus[item.id]?.nh}`
-                            : imgStatus[item.id]?.status === 'erro'
-                            ? '❌ ERRO AO CARREGAR'
-                            : '⏳ carregando...'}
-                        </div>
-                        <div>{item.imageUrl ? item.imageUrl : '(sem imageUrl — placeholder)'}</div>
-                      </div>
-                    )}
                     {qtyInCart > 0 && (
                       <Badge className={`absolute ${isPromoItem ? 'top-14 md:top-16' : 'top-3 md:top-4'} left-3 md:left-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] md:text-xs px-2 py-0.5 rounded-full z-10 shadow-md`}>
                         {qtyInCart}

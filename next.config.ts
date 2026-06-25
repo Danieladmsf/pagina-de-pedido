@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // Otimizacao de imagem da Vercel DESATIVADA de proposito: o endpoint
+    // /_next/image passou a responder 402 (Payment Required) quando o limite de
+    // transformacoes da conta e atingido, o que quebrava as fotos NOVAS em parte
+    // dos aparelhos (as antigas ja estavam cacheadas). As imagens agora carregam
+    // direto do Firebase Storage, que ja serve via CDN do Google.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
