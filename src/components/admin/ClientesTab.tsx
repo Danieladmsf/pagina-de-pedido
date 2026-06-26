@@ -1147,7 +1147,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 type="button"
                 onClick={handleSendExtratoWhatsApp}
                 disabled={sendingWhats}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25 disabled:opacity-60"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#1ebe5b] disabled:opacity-60"
               >
                 {sendingWhats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
                 {sendingWhats ? 'Enviando…' : 'Enviar extrato no WhatsApp'}
