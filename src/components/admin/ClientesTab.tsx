@@ -438,23 +438,41 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
       return;
     }
+    const fmt = (v: number) => (v || 0).toFixed(2).replace('.', ',');
     const saldo = contaCasaCliente.creditBalance || 0;
-    const linhas = contaCasaTransactions.map(t => {
-      const sinal = t.type === 'debit' ? '+' : '-';
-      const data = new Date(t.date).toLocaleDateString('pt-BR');
-      const desc = t.description || (t.type === 'debit' ? 'Compra' : 'Pagamento');
-      return `• ${data} — ${desc}: ${sinal} R$ ${(t.amount || 0).toFixed(2)}`;
-    }).join('\n');
+    const SEP = '━━━━━━━━━━━━━━';
 
-    let msg = `*Extrato da sua conta*\n`;
-    if (contaCasaCliente.nome) msg += `Cliente: ${contaCasaCliente.nome}\n`;
-    if (linhas) msg += `\n${linhas}\n`;
-    msg += `\n*Saldo devedor: R$ ${saldo.toFixed(2)}*`;
+    // Um bloco por lançamento: compras detalham os itens (casados ao pedido
+    // pelo prefixo do id na descrição); pagamentos viram uma linha de crédito.
+    const blocos = contaCasaTransactions.map(t => {
+      const data = new Date(t.date).toLocaleDateString('pt-BR');
+      if (t.type !== 'debit') {
+        return `${SEP}\n✅ ${data} · Pagamento recebido\n− R$ ${fmt(t.amount)}`;
+      }
+      const hasRef = (t.description || '').includes('#');
+      const ref = hasRef ? (t.description || '').replace(/^.*#/, '').trim() : '';
+      const titulo = hasRef ? `Pedido #${ref}` : (t.description || 'Compra');
+      const matchedOrder = ref ? contaCasaOrders.find((o: any) => o.id?.startsWith(ref)) : null;
+      const itens = (matchedOrder?.items || []).map((it: any) => {
+        const add = (it.addons?.length > 0) ? ` (${it.addons.map((a: any) => a.name).join(', ')})` : '';
+        return `${it.quantity}x ${it.name}${add}`;
+      });
+      let bloco = `${SEP}\n🛒 ${data} · ${titulo}`;
+      if (itens.length > 0) bloco += `\n${itens.join('\n')}`;
+      bloco += `\nSubtotal: R$ ${fmt(t.amount)}`;
+      return bloco;
+    });
+
+    let msg = `🧾 *EXTRATO DA SUA CONTA*\n`;
+    if (contaCasaCliente.nome) msg += `\n👤 *${contaCasaCliente.nome}*\n`;
+    if (blocos.length > 0) msg += `\n${blocos.join('\n')}\n${SEP}\n`;
+    msg += `\n💰 *SALDO DEVEDOR: R$ ${fmt(saldo)}*`;
     if (storePixKey || storePixName) {
-      msg += `\n\n*Pague via PIX:*`;
-      if (storePixKey) msg += `\nChave: ${storePixKey}`;
-      if (storePixName) msg += `\nTitular: ${storePixName}`;
+      msg += `\n\n📲 *Pague via PIX*`;
+      if (storePixKey) msg += `\n🔑 ${storePixKey}`;
+      if (storePixName) msg += `\n🏦 ${storePixName}`;
     }
+    msg += `\n\nEnvie o comprovante por aqui após o pagamento 🙏`;
 
     setSendingWhats(true);
     try {
