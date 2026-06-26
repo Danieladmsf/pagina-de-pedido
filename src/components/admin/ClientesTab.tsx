@@ -122,6 +122,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   // Chave PIX da loja (store_profiles), enviada no extrato pelo WhatsApp.
   const [storePixKey, setStorePixKey] = useState('');
   const [storePixName, setStorePixName] = useState('');
+  const [sendingWhats, setSendingWhats] = useState(false);
 
   React.useEffect(() => {
     if (!contaCasaCliente || !db) return;
@@ -428,12 +429,12 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
-  // Monta o extrato (lançamentos + saldo + chave PIX) e abre o WhatsApp do
-  // cliente com a mensagem pronta para envio.
-  const handleSendExtratoWhatsApp = () => {
-    if (!contaCasaCliente) return;
-    const phone = '55' + normalizeCreditPhone(contaCasaCliente.celular || '');
-    if (phone.length < 12) {
+  // Monta o extrato (lançamentos + saldo + chave PIX) e ENVIA direto pela
+  // integração W-API (mesma usada nas notificações de pedido), sem abrir o app.
+  const handleSendExtratoWhatsApp = async () => {
+    if (!contaCasaCliente || !user) return;
+    const phone = normalizeCreditPhone(contaCasaCliente.celular || '');
+    if (phone.length < 10) {
       toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
       return;
     }
@@ -454,7 +455,25 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       if (storePixKey) msg += `\nChave: ${storePixKey}`;
       if (storePixName) msg += `\nTitular: ${storePixName}`;
     }
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+
+    setSendingWhats(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/wapi/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ empresaId: user.uid, phone, message: msg, type: 'credit_statement' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || 'A integração do WhatsApp recusou o envio.');
+      }
+      toast({ title: 'Extrato enviado no WhatsApp!' });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Não foi possível enviar', description: err?.message || 'Falha ao enviar pelo WhatsApp.' });
+    } finally {
+      setSendingWhats(false);
+    }
   };
 
   const handleReceivePayment = async () => {
@@ -1109,9 +1128,11 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               <button
                 type="button"
                 onClick={handleSendExtratoWhatsApp}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25"
+                disabled={sendingWhats}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25 disabled:opacity-60"
               >
-                <WhatsAppIcon className="h-3.5 w-3.5" /> Enviar extrato no WhatsApp
+                {sendingWhats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
+                {sendingWhats ? 'Enviando…' : 'Enviar extrato no WhatsApp'}
               </button>
             </div>
             
