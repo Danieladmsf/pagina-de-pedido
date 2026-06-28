@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
 import { printHtmlOrFallback, type PrinterSize } from '@/lib/qz-print';
-import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, Lock, Unlock, Trash2, UserPlus, Bike, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
+import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -141,6 +141,9 @@ export function CaixaTab({
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Venda expansível: id do lançamento de venda atualmente aberto (mostra os itens).
+  const [expandedVendaId, setExpandedVendaId] = useState<string | null>(null);
+
   // ---- Totalizadores ----
   const totais = useMemo(() => {
     let saldoInicial = 0;
@@ -215,6 +218,31 @@ export function CaixaTab({
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+
+  // ── Vínculo venda → pedido (para expandir e mostrar os itens) ──
+  // O lançamento de venda NÃO guarda orderId; o vínculo é o prefixo de 5 chars
+  // do id do pedido embutido no título ("Delivery #5WS7N - ...", "PDV #WdsOe -
+  // Balcão"). Indexamos os pedidos por esse prefixo para casar em O(1). Vendas
+  // de Mesa ("Mesa 4 - Finalizada") e vendas manuais não têm "#", então não
+  // expandem — melhor não mostrar do que mostrar itens de outro pedido.
+  const ordersByIdPrefix = useMemo(() => {
+    const pool: any[] = (allOrders && allOrders.length ? allOrders : orders) || [];
+    const map = new Map<string, any>();
+    for (const o of pool) {
+      if (typeof o?.id === 'string' && o.id.length >= 5) {
+        const key = o.id.substring(0, 5);
+        if (!map.has(key)) map.set(key, o); // pool já vem ordenado: 1º vence
+      }
+    }
+    return map;
+  }, [allOrders, orders]);
+
+  const getVendaOrder = (lanc: LancamentoCaixa) => {
+    if (lanc.tipo !== 'venda') return null;
+    const m = (lanc.titulo || '').match(/#([A-Za-z0-9]+)/);
+    if (!m) return null;
+    return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;
+  };
 
   const printerSize = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
   const is58 = printerSize === '58mm';
@@ -1205,18 +1233,44 @@ export function CaixaTab({
                         retirada_fechamento: 'Retirada no Fechamento',
                       };
 
+                      const vendaOrder = getVendaOrder(lanc);
+                      const isExpandable = !!vendaOrder;
+                      const isOpen = expandedVendaId === lanc.id;
+
                       return (
-                        <TableRow key={lanc.id}>
-                          <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">{date}</TableCell>
-                          <TableCell className="font-semibold text-slate-700">{lanc.titulo}</TableCell>
-                          <TableCell className={`font-bold whitespace-nowrap ${isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
-                            {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
-                          <TableCell className="pr-6">
-                            <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
-                          </TableCell>
-                        </TableRow>
+                        <React.Fragment key={lanc.id}>
+                          <TableRow
+                            onClick={isExpandable ? () => setExpandedVendaId(isOpen ? null : lanc.id) : undefined}
+                            className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''}`}
+                          >
+                            <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                {isExpandable ? (
+                                  <ChevronDown className={`h-4 w-4 text-blue-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                                ) : (
+                                  <span className="inline-block w-4" />
+                                )}
+                                {date}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-700">{lanc.titulo}</TableCell>
+                            <TableCell className={`font-bold whitespace-nowrap ${isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
+                              {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
+                            <TableCell className="pr-6">
+                              <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
+                            </TableCell>
+                          </TableRow>
+
+                          {isExpandable && isOpen && (
+                            <TableRow className="hover:bg-transparent border-b-0">
+                              <TableCell colSpan={5} className="p-0 pl-6 pr-6 pb-2">
+                                <VendaDetalhe order={vendaOrder} lanc={lanc} />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -2230,6 +2284,144 @@ export function CaixaTab({
 }
 
 // ─── Componente SummaryCard ───
+// Painel de detalhes de uma venda (itens do pedido), aberto ao clicar na linha.
+function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
+  const brl = (n: number) => `R$ ${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
+  const orderType: string = order?.orderType || 'pickup';
+
+  const tipoMeta: Record<string, { label: string; Icon: any }> = {
+    delivery: { label: 'Delivery', Icon: Bike },
+    pickup: { label: 'Balcão / Retirada', Icon: ShoppingBag },
+    dine_in: { label: 'Mesa', Icon: UtensilsCrossed },
+  };
+  const { label: tipoLabel, Icon } = tipoMeta[orderType] || tipoMeta.pickup;
+
+  const pagamentoMeta: Record<string, { label: string; className: string }> = {
+    dinheiro: { label: 'Dinheiro', className: 'bg-amber-100 text-amber-700 border-amber-200' },
+    pix: { label: 'Pix', className: 'bg-teal-100 text-teal-700 border-teal-200' },
+    debito: { label: 'Débito', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+    credito: { label: 'Crédito', className: 'bg-violet-100 text-violet-700 border-violet-200' },
+    conta_casa: { label: 'Prazo', className: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200' },
+  };
+  const pgto = pagamentoMeta[(lanc.formaPagamento || '').toLowerCase()];
+
+  const items: any[] = Array.isArray(order?.items) ? order.items : [];
+  const subtotal = items.reduce((acc, it) => acc + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0), 0);
+  const fee = Number(order?.deliveryFee) || 0;
+  const isDelivery = orderType === 'delivery';
+  const total = Number(lanc.valor) || subtotal + fee;
+  const desconto = Math.max(0, subtotal + fee - total);
+  const totalItens = items.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+
+  const customerName = order?.customerName && String(order.customerName).trim();
+  const subtitulo =
+    orderType === 'dine_in'
+      ? order?.tableNumber ? `Mesa ${order.tableNumber}` : ''
+      : customerName || (orderType === 'pickup' ? 'Balcão' : '');
+  const hora = lanc.data?.toDate ? lanc.data.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  if (items.length === 0) {
+    return (
+      <div className="border-l-2 border-blue-300 bg-blue-50/40 rounded-r-lg rounded-bl-lg px-4 py-3 my-1 text-[12.5px] text-slate-500">
+        Esta venda não tem itens detalhados disponíveis.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-l-2 border-blue-400 bg-blue-50/40 rounded-r-lg rounded-bl-lg px-4 py-3.5 my-1">
+      {/* Cabeçalho do pedido */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-blue-100">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
+            <Icon className="h-4 w-4" />
+          </span>
+          <div className="leading-tight">
+            <p className="text-[13px] font-bold text-slate-800">
+              {tipoLabel}
+              {subtitulo && <span className="text-slate-500 font-semibold"> · {subtitulo}</span>}
+            </p>
+            <p className="text-[11px] text-slate-400 font-medium">
+              {hora ? `${hora} · ` : ''}{totalItens} {totalItens === 1 ? 'item' : 'itens'}
+            </p>
+          </div>
+        </div>
+        {pgto && (
+          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${pgto.className}`}>
+            {pgto.label}
+          </span>
+        )}
+      </div>
+
+      {/* Itens vendidos */}
+      <ul className="space-y-2.5">
+        {items.map((it, i) => {
+          const addons: any[] = Array.isArray(it.addons) ? it.addons : [];
+          return (
+            <li key={i} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-6 min-w-[1.75rem] items-center justify-center rounded-md bg-white px-1.5 text-[12px] font-bold text-blue-700 ring-1 ring-blue-200 shadow-sm">
+                {Number(it.quantity) || 0}×
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[13px] font-semibold text-slate-800 leading-snug">{it.name}</span>
+                  <span className="text-[13px] font-bold text-slate-700 whitespace-nowrap tabular-nums">
+                    {brl((Number(it.unitPrice) || 0) * (Number(it.quantity) || 0))}
+                  </span>
+                </div>
+                {addons.length > 0 && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {addons.map((a, j) => (
+                      <div key={j} className="flex items-baseline gap-1.5 text-[11.5px] text-slate-500">
+                        <span className="text-blue-400">›</span>
+                        <span>{a.name}</span>
+                        {Number(a.price) > 0 ? <span className="text-slate-400">(+{brl(Number(a.price))})</span> : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {it.notes && (
+                  <p className="mt-1 text-[11.5px] italic text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-0.5 inline-block">
+                    Obs: {it.notes}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Totais */}
+      <div className="mt-3.5 pt-3 border-t border-dashed border-blue-200 space-y-1 text-[12.5px]">
+        <div className="flex justify-between text-slate-500">
+          <span>Subtotal</span>
+          <span className="tabular-nums">{brl(subtotal)}</span>
+        </div>
+        {(fee > 0 || isDelivery) && (
+          <div className="flex justify-between text-slate-500">
+            <span>Taxa de entrega</span>
+            {fee > 0 ? (
+              <span className="tabular-nums">{brl(fee)}</span>
+            ) : (
+              <span className="font-semibold text-emerald-600">Grátis</span>
+            )}
+          </div>
+        )}
+        {desconto > 0.001 && (
+          <div className="flex justify-between text-slate-500">
+            <span>Desconto</span>
+            <span className="tabular-nums text-rose-600">- {brl(desconto)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-baseline pt-1">
+          <span className="text-[13px] font-bold text-slate-800">Total da venda</span>
+          <span className="text-[15px] font-black text-emerald-600 tabular-nums">{brl(total)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, color, border }: { label: string; value: number; color: string; border?: boolean }) {
   return (
     <div className={`${color} text-white rounded-xl px-3 py-2 flex flex-col justify-center items-center shadow-sm ${border ? 'ring-2 ring-white/50' : ''}`}>
