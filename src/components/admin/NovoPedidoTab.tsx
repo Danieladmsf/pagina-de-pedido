@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, Receipt, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
@@ -164,6 +164,12 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [valorRecebido, setValorRecebido] = useState<string>('');
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Ajuste de venda (desconto/acréscimo) + resumo de itens recolhível no modal.
+  const [ajusteTipo, setAjusteTipo] = useState<'desconto' | 'acrescimo'>('desconto');
+  const [ajusteUnidade, setAjusteUnidade] = useState<'reais' | 'percent'>('reais');
+  const [ajusteRaw, setAjusteRaw] = useState('');
+  const [resumoItensAberto, setResumoItensAberto] = useState(false);
 
   // Estados para entrega
   const [orderType, setOrderType] = useState<'pickup' | 'delivery'>('pickup');
@@ -466,7 +472,15 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   };
 
   const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
-  const finalTotal = cartTotal + deliveryFee;
+
+  // Ajuste de venda (desconto/acréscimo) aplicado sobre o subtotal dos itens.
+  // finalTotal continua sendo a fonte única → propaga p/ splits, troco,
+  // totalAmount do pedido e valor lançado no caixa.
+  const ajusteValor = Number((ajusteRaw || '').replace(',', '.')) || 0;
+  const ajusteBruto = ajusteUnidade === 'percent' ? (cartTotal * ajusteValor) / 100 : ajusteValor;
+  const descontoAplicado = ajusteTipo === 'desconto' ? Math.min(Math.max(0, ajusteBruto), cartTotal) : 0;
+  const acrescimoAplicado = ajusteTipo === 'acrescimo' ? Math.max(0, ajusteBruto) : 0;
+  const finalTotal = Math.max(0, cartTotal + deliveryFee - descontoAplicado + acrescimoAplicado);
 
   const handleAddSplit = () => {
     if (!selectedPayment) return;
@@ -638,6 +652,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         paymentRegistered: true, // Indica que o valor já foi lançado no caixa durante a criação no balcão
         subtotal: cartTotal || 0,
         deliveryFee,
+        discount: descontoAplicado || 0,
+        surcharge: acrescimoAplicado || 0,
         distanceKm: (distanceInfo && typeof distanceInfo.distanceKm === 'number') ? distanceInfo.distanceKm : null,
         totalAmount: finalTotal || 0,
         paymentMethod: paymentString || '',
@@ -704,6 +720,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       printOrderReceipt({ order: orderData, storeInfo: storeProfile });
       setTimeout(() => {
         setCart([]);
+        setAjusteRaw('');
+        setAjusteTipo('desconto');
+        setAjusteUnidade('reais');
+        setResumoItensAberto(false);
         setCustomerName('');
         setCustomerPhone('');
         setDeliveryFeeInput('');
@@ -1181,28 +1201,123 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       {/* Modal Forma de Pagamento */}
       <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
-        <DialogContent className="sm:max-w-[380px] p-4">
+        <DialogContent className="sm:max-w-[430px] p-4">
           {(() => {
             const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
             const remaining = Math.max(0, finalTotal - totalPaid);
             const isFullyPaid = remaining <= 0;
+            const recebidoNum = Number(valorRecebido) || 0;
+            const totalItens = cart.reduce((a: number, i: any) => a + (Number(i.quantity) || 0), 0);
+            const trocoModal = !isSplitMode && selectedPayment === 'dinheiro' && recebidoNum > finalTotal ? recebidoNum - finalTotal : 0;
+            const faltaModal = isSplitMode ? remaining : (selectedPayment === 'dinheiro' ? Math.max(0, finalTotal - recebidoNum) : (selectedPayment ? 0 : finalTotal));
+            const quitadoModal = faltaModal <= 0.001 && (isSplitMode ? paymentSplits.length > 0 : !!selectedPayment);
 
             return (
               <>
-                <DialogHeader className="pb-1 border-b">
-                  <DialogTitle className="text-sm flex items-center justify-between pr-6">
-                    <span>💰 Pagamento Balcão</span>
-                    <div className="flex flex-col items-end">
-                      <span className="text-xs text-muted-foreground font-normal">Total: R$ {finalTotal.toFixed(2)}</span>
-                      <span className={`text-lg font-black ${remaining > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                        {remaining > 0 ? `Falta R$ ${remaining.toFixed(2)}` : 'Pago ✅'}
-                      </span>
-                    </div>
+                <DialogHeader className="space-y-0 text-left">
+                  <DialogTitle className="flex items-center gap-2.5 pr-6 text-left">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shrink-0">
+                      <Receipt className="h-[18px] w-[18px]" />
+                    </span>
+                    <span className="leading-tight">
+                      <span className="block text-[15px] font-bold text-slate-900">Pagamento</span>
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Balcão · {totalItens} {totalItens === 1 ? 'item' : 'itens'}</span>
+                    </span>
                   </DialogTitle>
                   <DialogDescription className="text-xs">
-                    {!caixaAberto && <span className="text-red-500 block mb-1">⚠️ Caixa fechado — venda não será registrada nele.</span>}
+                    {!caixaAberto && <span className="text-red-500 block mt-1">⚠️ Caixa fechado — venda não será registrada nele.</span>}
                   </DialogDescription>
                 </DialogHeader>
+
+                {/* Resumo de itens (recolhível) */}
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setResumoItensAberto((v) => !v)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-600">
+                      <Receipt className="h-3.5 w-3.5 text-slate-400" />
+                      Resumo dos itens
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{totalItens}</span>
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${resumoItensAberto ? 'rotate-180' : ''}`} />
+                  </button>
+                  {resumoItensAberto && (
+                    <ul className="max-h-44 divide-y divide-slate-100 overflow-y-auto border-t border-slate-100 px-3 py-1">
+                      {cart.map((it: any, i: number) => (
+                        <li key={i} className="flex items-start justify-between gap-3 py-1.5">
+                          <span className="flex items-start gap-2 text-[12.5px] text-slate-700">
+                            <span className="mt-px font-bold text-blue-600">{Number(it.quantity) || 0}×</span>
+                            <span>
+                              {it.name}
+                              {it.addons?.length ? (
+                                <span className="block text-[11px] text-slate-400">{it.addons.map((a: any) => `+ ${a.name}`).join(' · ')}</span>
+                              ) : null}
+                            </span>
+                          </span>
+                          <span className="whitespace-nowrap text-[12.5px] font-semibold text-slate-600 tabular-nums">R$ {(((it.unitPrice ?? it.price) || 0) * (Number(it.quantity) || 0)).toFixed(2)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Desconto / Acréscimo */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <Tag className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Desconto / Acréscimo</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex rounded-lg bg-white p-0.5 ring-1 ring-slate-200">
+                      <button type="button" onClick={() => setAjusteTipo('desconto')} className={`rounded-md px-2 py-1.5 text-[12px] font-bold transition ${ajusteTipo === 'desconto' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>− Desc.</button>
+                      <button type="button" onClick={() => setAjusteTipo('acrescimo')} className={`rounded-md px-2 py-1.5 text-[12px] font-bold transition ${ajusteTipo === 'acrescimo' ? 'bg-amber-500 text-white' : 'text-slate-500'}`}>+ Acrés.</button>
+                    </div>
+                    <div className="flex rounded-lg bg-white p-0.5 ring-1 ring-slate-200">
+                      <button type="button" onClick={() => setAjusteUnidade('reais')} className={`rounded-md px-2.5 py-1.5 text-[12px] font-bold transition ${ajusteUnidade === 'reais' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>R$</button>
+                      <button type="button" onClick={() => setAjusteUnidade('percent')} className={`rounded-md px-2.5 py-1.5 text-[12px] font-bold transition ${ajusteUnidade === 'percent' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>%</button>
+                    </div>
+                    <div className="relative flex-1">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-300">{ajusteUnidade === 'percent' ? '%' : 'R$'}</span>
+                      <Input inputMode="decimal" placeholder="0" value={ajusteRaw} onChange={(e) => setAjusteRaw(e.target.value.replace(/[^0-9.,]/g, ''))} className="h-9 pl-7 text-right text-sm font-bold text-slate-800" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Totais */}
+                <div className="rounded-xl border border-slate-200 px-4 py-3">
+                  <div className="flex justify-between text-[13px] text-slate-500">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums">R$ {cartTotal.toFixed(2)}</span>
+                  </div>
+                  {deliveryFee > 0 && (
+                    <div className="mt-1 flex justify-between text-[13px] text-slate-500">
+                      <span>Taxa de entrega</span>
+                      <span className="tabular-nums">R$ {deliveryFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {descontoAplicado > 0 && (
+                    <div className="mt-1 flex justify-between text-[13px] font-semibold text-emerald-600">
+                      <span>Desconto{ajusteUnidade === 'percent' ? ` (${ajusteValor}%)` : ''}</span>
+                      <span className="tabular-nums">− R$ {descontoAplicado.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {acrescimoAplicado > 0 && (
+                    <div className="mt-1 flex justify-between text-[13px] font-semibold text-amber-600">
+                      <span>Acréscimo{ajusteUnidade === 'percent' ? ` (${ajusteValor}%)` : ''}</span>
+                      <span className="tabular-nums">+ R$ {acrescimoAplicado.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-end justify-between border-t border-dashed border-slate-200 pt-2.5">
+                    <span className="text-[13px] font-bold text-slate-800">Total a pagar</span>
+                    <span className="text-[26px] font-black leading-none text-slate-900 tabular-nums">R$ {finalTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-end gap-2">
+                    {trocoModal > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[12px] font-bold text-amber-700">Troco R$ {trocoModal.toFixed(2)}</span>}
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold ${quitadoModal ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>{quitadoModal ? 'Pago ✅' : `Falta R$ ${faltaModal.toFixed(2)}`}</span>
+                  </div>
+                </div>
 
               {!isSplitMode ? (
                 <>
@@ -1233,8 +1348,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   </div>
 
                   {selectedPayment === 'dinheiro' && (
-                    <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
-                      <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
+                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                      <label className="text-[12px] font-bold text-amber-800">💵 Valor recebido</label>
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -1245,17 +1360,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                           if (!val) setValorRecebido('');
                           else setValorRecebido((Number(val) / 100).toFixed(2));
                         }}
-                        className="text-sm font-bold text-center bg-white h-9"
+                        className="mt-1.5 text-base font-black text-center bg-white h-10"
                         autoFocus
                       />
-                      {Number(valorRecebido) > 0 && (
-                        <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= finalTotal ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                          {Number(valorRecebido) >= finalTotal 
-                            ? `Troco: R$ ${(Number(valorRecebido) - finalTotal).toFixed(2)}`
-                            : `Falta: R$ ${(finalTotal - Number(valorRecebido)).toFixed(2)}`
-                          }
-                        </div>
-                      )}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {[{ l: 'Exato', v: finalTotal }, { l: 'R$ 50', v: 50 }, { l: 'R$ 100', v: 100 }, { l: 'R$ 200', v: 200 }].map((b, i) => (
+                          <button key={i} type="button" onClick={() => setValorRecebido(b.v.toFixed(2))} className="rounded-lg bg-white px-2.5 py-1 text-[12px] font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100">{b.l}</button>
+                        ))}
+                      </div>
                     </div>
                   )}
 

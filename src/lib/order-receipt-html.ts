@@ -149,6 +149,8 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
               }</span></div>`
             : ''
         }
+        ${order?.discount > 0 ? `<div class="row"><span>Desconto</span><span>- R$ ${money(order.discount)}</span></div>` : ''}
+        ${order?.surcharge > 0 ? `<div class="row"><span>Acréscimo</span><span>+ R$ ${money(order.surcharge)}</span></div>` : ''}
         <div class="t-dash mt2 pt2">
           <div class="row total-row"><span>TOTAL</span><span>R$ ${money(order?.totalAmount || 0)}</span></div>
         </div>
