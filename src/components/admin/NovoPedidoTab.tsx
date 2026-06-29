@@ -1321,28 +1321,28 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
               {!isSplitMode ? (
                 <>
-                  <div className="grid grid-cols-4 gap-2 py-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {FORMAS_PAGAMENTO.map((fp: any) => (
                       <button
                         key={fp.id}
                         type="button"
                         onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
-                        className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
-                          selectedPayment === fp.id 
-                            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
-                            : 'border-muted text-muted-foreground hover:border-slate-300'
+                        className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-2.5 text-[11px] font-bold transition ${
+                          selectedPayment === fp.id
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
                         }`}
                       >
-                        <span className="text-lg">{fp.icon}</span>
+                        <span className="text-xl">{fp.icon}</span>
                         {fp.label}
                       </button>
                     ))}
                     <button
                       type="button"
                       onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
+                      className="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-[11px] font-bold text-slate-500 transition hover:border-blue-300 hover:text-blue-600"
                     >
-                      <span className="text-lg">🔀</span>
+                      <span className="text-xl">🔀</span>
                       Múltiplos
                     </button>
                   </div>
@@ -1412,19 +1412,19 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
                   {!isFullyPaid && (
                     <>
-                      <div className="grid grid-cols-4 gap-2 py-2">
+                      <div className="grid grid-cols-3 gap-2">
                         {FORMAS_PAGAMENTO.map((fp: any) => (
                           <button
                             key={fp.id}
                             type="button"
                             onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
-                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
-                              selectedPayment === fp.id 
-                                ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
-                                : 'border-muted text-muted-foreground hover:border-slate-300'
+                            className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-2.5 text-[11px] font-bold transition ${
+                              selectedPayment === fp.id
+                                ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
                             }`}
                           >
-                            <span className="text-lg">{fp.icon}</span>
+                            <span className="text-xl">{fp.icon}</span>
                             {fp.label}
                           </button>
                         ))}
