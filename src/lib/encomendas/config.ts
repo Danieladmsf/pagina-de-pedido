@@ -49,6 +49,9 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     daysLabel: enc.daysLabel || 'Terça a Sábado',
     hours: enc.hours || '09h às 18h',
     logoUrl: general.logoUrl || '',
-    logoEmoji: enc.logoEmoji || '🎂',
+    // Sempre vazio: emoji de 4 bytes (surrogate pair) corrompe ao cruzar o
+    // boundary RSC server→client (vira U+FFFD). O ícone 🎂 é um literal do
+    // bundle do cliente (EMOJI_FALLBACK em EncomendaWizard / '🎂' na Landing).
+    logoEmoji: '',
   };
 }

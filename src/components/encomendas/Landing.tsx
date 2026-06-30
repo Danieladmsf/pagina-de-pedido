@@ -37,7 +37,8 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
       // eslint-disable-next-line @next/next/no-img-element
       <img src={config.logoUrl} alt={config.name} className="h-full w-full rounded-full object-cover" />
     ) : (
-      <span>{config.logoEmoji}</span>
+      // Literal no cliente (4-byte emoji corrompe via RSC — ver lib/encomendas/config.ts).
+      <span>{config.logoEmoji || '🎂'}</span>
     );
 
   return (

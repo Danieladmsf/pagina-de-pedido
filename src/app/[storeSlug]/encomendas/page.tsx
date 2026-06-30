@@ -27,8 +27,11 @@ export default async function EncomendasPage({ params }: { params: Promise<{ sto
   if (!storeId) notFound();
 
   const profile = await fetchStoreProfile(storeId);
+  // A modalidade é o tema da loja, gravado no NÍVEL RAIZ do doc (AppearanceTab
+  // lê storeProfile.theme). Mantém fallback p/ general.theme por segurança.
+  const theme = profile?.theme || profile?.general?.theme;
   // A página de encomendas é exclusiva da modalidade confeitaria.
-  if (profile?.general?.theme !== 'confeitaria') notFound();
+  if (theme !== 'confeitaria') notFound();
 
   const config = buildEncomendaConfig(profile);
   return <EncomendasClient config={config} />;

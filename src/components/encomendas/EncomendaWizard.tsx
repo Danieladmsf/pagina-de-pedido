@@ -11,13 +11,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import {
   ArrowLeft, ArrowRight, Gift, Building2, Copy, MapPin, Store, Bike, Upload,
-  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home,
+  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check,
 } from 'lucide-react';
 
 type Qmap = Record<string, number>;
+
+// Literal no bundle do cliente (seguro). NÃO vem do config/RSC: emoji de 4 bytes
+// corrompe ao cruzar o boundary server→client. Ver nota em lib/encomendas/config.ts.
+const EMOJI_FALLBACK = '🎂';
 
 function formatDateBR(iso: string) {
   if (!iso) return '—';
@@ -105,7 +109,7 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
 
   function buildWhatsappMessage() {
     const L: string[] = [];
-    L.push(`*Nova encomenda* ${config.logoEmoji}`);
+    L.push(`*Nova encomenda* ${EMOJI_FALLBACK}`);
     L.push('');
     L.push(`*Cliente:* ${name}`);
     L.push(`*WhatsApp:* ${phone}`);
@@ -161,7 +165,7 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
               {config.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={config.logoUrl} alt={config.name} className="h-full w-full rounded-full object-cover" />
-              ) : config.logoEmoji}
+              ) : (config.logoEmoji || EMOJI_FALLBACK)}
             </span>
             <span className="font-display text-base font-bold">{config.name}</span>
           </div>
@@ -186,7 +190,9 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
               </Field>
               <button type="button" onClick={() => setEmpresa((v) => !v)}
                 className={`mt-2 flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition-colors ${isEmpresa ? 'border-primary bg-secondary/50' : 'border-dashed border-border hover:border-primary/40'}`}>
-                <Checkbox checked={isEmpresa} className="mt-0.5" />
+                <span aria-hidden className={cn('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors', isEmpresa ? 'border-primary bg-primary text-primary-foreground' : 'border-primary/30')}>
+                  {isEmpresa && <Check className="h-3.5 w-3.5" />}
+                </span>
                 <span>
                   <span className="flex items-center gap-1.5 font-semibold text-foreground"><Building2 className="h-4 w-4 text-gold" /> Encomenda para empresa — emitir NF-e</span>
                   <span className="block text-xs text-muted-foreground">Marque se precisar de Nota Fiscal Eletrônica.</span>
