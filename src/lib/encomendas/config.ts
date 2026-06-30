@@ -1,0 +1,54 @@
+// Config da página de Encomendas, derivada do perfil da loja (store_profiles/{uid}).
+// O protótipo usava um objeto STORE estático; aqui a fonte é o storeProfile real,
+// com fallbacks seguros para que a página funcione mesmo antes da aba admin existir.
+
+export interface EncomendaConfig {
+  name: string;
+  tagline: string;
+  city: string;
+  whatsapp: string;        // formatado p/ exibir, ex.: "(00) 90000-0000"
+  whatsappDigits: string;  // normalizado p/ wa.me, ex.: "5599999999999"
+  instagram: string;
+  pixKey: string;
+  sinalPercent: number;    // entrada/sinal configurável pelo lojista
+  minDays: number;         // antecedência mínima da encomenda
+  daysLabel: string;       // dias de funcionamento
+  hours: string;
+  logoUrl: string;         // logo real da loja (general.logoUrl), se houver
+  logoEmoji: string;       // fallback visual quando não há logo
+}
+
+// Normaliza um telefone BR para o formato do wa.me (DDI 55 + DDD + número, só dígitos).
+export function normalizeWhatsapp(raw?: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+// `profile` é o objeto já achatado por fetchStoreProfile (REST do Firestore).
+export function buildEncomendaConfig(profile: any): EncomendaConfig {
+  const general = profile?.general || {};
+  const enc = profile?.encomendas || {};
+  const cities: string[] = general.deliveryCities || profile?.fees?.deliveryCities || [];
+
+  const whatsapp = general.whatsapp || general.phone || '';
+
+  return {
+    name: general.name || 'Nossa Confeitaria',
+    tagline: enc.tagline || 'Encomendas feitas à mão para adoçar seus momentos.',
+    city: enc.city || cities[0] || '',
+    whatsapp,
+    whatsappDigits: normalizeWhatsapp(whatsapp),
+    instagram: enc.instagram || general.instagram || '',
+    // Reaproveita a chave PIX do cartão se a loja ainda não definir uma específica.
+    pixKey: enc.pixKey || profile?.creditPixKey || '',
+    sinalPercent: typeof enc.sinalPercent === 'number' ? enc.sinalPercent : 30,
+    minDays: typeof enc.minDays === 'number' ? enc.minDays : 3,
+    daysLabel: enc.daysLabel || 'Terça a Sábado',
+    hours: enc.hours || '09h às 18h',
+    logoUrl: general.logoUrl || '',
+    logoEmoji: enc.logoEmoji || '🎂',
+  };
+}
