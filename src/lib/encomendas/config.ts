@@ -2,6 +2,8 @@
 // O protótipo usava um objeto STORE estático; aqui a fonte é o storeProfile real,
 // com fallbacks seguros para que a página funcione mesmo antes da aba admin existir.
 
+import { type EncomendaContent, mergeContent } from './content';
+
 export interface EncomendaConfig {
   name: string;
   tagline: string;
@@ -16,6 +18,7 @@ export interface EncomendaConfig {
   hours: string;
   logoUrl: string;         // logo real da loja (general.logoUrl), se houver
   logoEmoji: string;       // fallback visual quando não há logo
+  content: EncomendaContent; // textos + fotos editáveis da landing
 }
 
 // Normaliza um telefone BR para o formato do wa.me (DDI 55 + DDD + número, só dígitos).
@@ -48,10 +51,12 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     minDays: typeof enc.minDays === 'number' ? enc.minDays : 3,
     daysLabel: enc.daysLabel || 'Terça a Sábado',
     hours: enc.hours || '09h às 18h',
-    logoUrl: general.logoUrl || '',
+    // logo específica da página de encomendas tem prioridade sobre a da loja
+    logoUrl: enc.content?.logoUrl || general.logoUrl || '',
     // Sempre vazio: emoji de 4 bytes (surrogate pair) corrompe ao cruzar o
     // boundary RSC server→client (vira U+FFFD). O ícone 🎂 é um literal do
     // bundle do cliente (EMOJI_FALLBACK em EncomendaWizard / '🎂' na Landing).
     logoEmoji: '',
+    content: mergeContent(enc.content),
   };
 }

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { CakeSlice, Copy, Check, Loader2, Link2, ExternalLink, Wand2 } from 'lucide-react';
+import { EncomendaEditor } from '@/components/encomendas/EncomendaEditor';
 
 // Aba lateral "Encomendas" = CONFIGURAÇÃO da página pública (a lista de pedidos
 // recebidos fica na aba operacional "Encomendas" do topo). Próxima etapa: editor
@@ -121,17 +122,14 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
         </CardContent>
       </Card>
 
-      {/* Próxima etapa: editor visual (fotos, produtos reais, textos) */}
+      {/* Editor visual: textos + fotos da página (prévia ao vivo). O catálogo de
+          PRODUTOS reais (tamanhos/recheios/tortas/docinhos) é a próxima etapa. */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><Wand2 className="h-5 w-5 text-primary" /> Personalizar a página (fotos, produtos e textos)</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-lg"><Wand2 className="h-5 w-5 text-primary" /> Personalizar a página (textos e fotos)</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Em breve: um editor visual espelhando a página de pedido, onde você troca as fotos, cadastra os produtos reais
-            (tamanhos, recheios, coberturas, tortas, docinhos e preços) e edita os textos. Por enquanto a página usa um
-            catálogo padrão de exemplo.
-          </p>
+          <EncomendaEditor db={db} user={user} storeProfile={storeProfile} />
         </CardContent>
       </Card>
     </div>

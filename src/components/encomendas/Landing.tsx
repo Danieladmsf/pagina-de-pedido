@@ -25,6 +25,7 @@ const SOBRE = [
 ];
 
 export function Landing({ config, onStart }: { config: EncomendaConfig; onStart: () => void }) {
+  const c = config.content;
   const FEATURES = [
     { icon: HeartHandshake, title: 'Feito à mão', desc: 'Cada encomenda é montada com calma, camada por camada.' },
     { icon: Sparkles, title: 'Sabores autorais', desc: 'Recheios clássicos aos de assinatura, criados na casa.' },
@@ -41,6 +42,16 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
       <span>{config.logoEmoji || '🎂'}</span>
     );
 
+  // Título do hero com a palavra em destaque (itálico + cor) se ela existir no texto.
+  const heroTitleNode = (() => {
+    const emp = (c.heroEmphasis || '').trim();
+    if (emp && c.heroTitle.includes(emp)) {
+      const idx = c.heroTitle.indexOf(emp);
+      return <>{c.heroTitle.slice(0, idx)}<span className="italic text-primary">{emp}</span>{c.heroTitle.slice(idx + emp.length)}</>;
+    }
+    return c.heroTitle;
+  })();
+
   return (
     <div>
       {/* Header */}
@@ -50,7 +61,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
             <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-lg ring-1 ring-primary/15"><Logo /></span>
             <div className="leading-none">
               <p className="font-display text-base font-bold text-foreground">{config.name}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Confeitaria artesanal</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{c.subtitleLabel}</p>
             </div>
           </div>
           <Button onClick={onStart} className="rounded-full px-5 shadow-soft">Fazer pedido</Button>
@@ -62,17 +73,17 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
         <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-16 sm:py-24 md:grid-cols-2">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
-              <Sparkles className="h-3.5 w-3.5" /> Encomendas online
+              <Sparkles className="h-3.5 w-3.5" /> {c.heroBadge}
             </span>
             <h1 className="mt-5 font-display text-4xl font-bold leading-[1.05] text-foreground sm:text-6xl">
-              Doces que <span className="italic text-primary">emocionam</span> em cada fatia.
+              {heroTitleNode}
             </h1>
             <p className="mt-5 max-w-md text-base text-muted-foreground">
-              Bolos, tortas e docinhos artesanais, montados sob encomenda e entregues na data que você escolher. Tudo em um único pedido.
+              {c.heroSubtitle}
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button onClick={onStart} size="lg" className="rounded-full px-7 shadow-soft">
-                Montar meu pedido <ArrowRight className="ml-1.5 h-4 w-4" />
+                {c.ctaLabel} <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
               <button onClick={onStart} className="text-sm font-semibold text-foreground/70 underline-offset-4 hover:underline">Ver sabores</button>
             </div>
@@ -85,12 +96,17 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
           <div className="relative hidden md:block">
             <div className="absolute -right-6 -top-6 h-40 w-40 rounded-full bg-accent/15 blur-2xl" />
             <div className="absolute -bottom-8 -left-8 h-48 w-48 rounded-full bg-primary/10 blur-2xl" />
-            <div className="relative grid grid-cols-2 gap-3">
-              <div className="flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🎂</div>
-              <div className="mt-8 flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🍓</div>
-              <div className="flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🧁</div>
-              <div className="mt-8 flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🍰</div>
-            </div>
+            {c.heroImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={c.heroImageUrl} alt={config.name} className="relative aspect-square w-full rounded-3xl object-cover shadow-card" />
+            ) : (
+              <div className="relative grid grid-cols-2 gap-3">
+                <div className="flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🎂</div>
+                <div className="mt-8 flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🍓</div>
+                <div className="flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🧁</div>
+                <div className="mt-8 flex aspect-square items-center justify-center rounded-3xl bg-card text-6xl shadow-card">🍰</div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -112,7 +128,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
       <section className="mx-auto max-w-6xl px-4 py-20">
         <Kicker>O que fazemos</Kicker>
         <h2 className="mx-auto mt-2 max-w-2xl text-center font-display text-3xl font-bold text-foreground sm:text-4xl">
-          Uma mesa de doces inteira, em um só pedido.
+          {c.whatTitle}
         </h2>
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {WHAT.map((c) => (
@@ -157,9 +173,9 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
         </div>
         <div className="order-1 md:order-2">
           <Kicker className="text-left">Sobre nós</Kicker>
-          <h2 className="mt-2 font-display text-3xl font-bold text-foreground sm:text-4xl">Da nossa cozinha para o seu momento.</h2>
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            Nascemos do amor por receitas de família e do prazer de criar momentos doces. Cada bolo é único, feito com massas leves, recheios cremosos e um cuidado que se sente em cada fatia.
+          <h2 className="mt-2 font-display text-3xl font-bold text-foreground sm:text-4xl">{c.aboutTitle}</h2>
+          <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+            {c.aboutText}
           </p>
           <ul className="mt-6 space-y-2.5">
             {SOBRE.map((s) => (
@@ -175,9 +191,9 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
       <section className="mx-auto max-w-6xl px-4 pb-20">
         <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-[#9d164c] px-6 py-12 text-center text-white shadow-soft sm:px-12">
           <ShieldCheck className="mx-auto h-8 w-8 text-white/80" />
-          <h2 className="mt-3 font-display text-3xl font-bold sm:text-4xl">Pronto para encomendar?</h2>
+          <h2 className="mt-3 font-display text-3xl font-bold sm:text-4xl">{c.ctaTitle}</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-white/80">
-            Monte seu pedido em poucos passos. Pagamento por PIX com {config.sinalPercent}% de entrada e confirmação no WhatsApp.
+            {c.ctaSubtitle.replace('{sinal}', String(config.sinalPercent))}
           </p>
           <Button onClick={onStart} size="lg" className="mt-6 rounded-full bg-white px-8 text-primary hover:bg-white/90">
             Começar pedido <ArrowRight className="ml-1.5 h-4 w-4" />
