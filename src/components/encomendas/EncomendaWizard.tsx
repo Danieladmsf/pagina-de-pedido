@@ -12,9 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { useCustomerFirebase } from '@/firebase/customer-client';
+import { ensureAuthenticated } from '@/firebase/non-blocking-login';
+import { useToast } from '@/hooks/use-toast';
+import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
 import {
   ArrowLeft, ArrowRight, Gift, Building2, Copy, MapPin, Store, Bike, Upload,
-  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check,
+  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2,
 } from 'lucide-react';
 
 type Qmap = Record<string, number>;
@@ -29,7 +34,17 @@ function formatDateBR(iso: string) {
   return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
-export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; onHome: () => void }) {
+// ID curto (mesmo alfabeto/entropia dos pedidos do cardápio — ver CartDrawer).
+function genEncomendaId() {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => A[b % A.length]).join('');
+}
+
+export function EncomendaWizard({ config, storeId, onHome }: { config: EncomendaConfig; storeId: string; onHome: () => void }) {
+  // App Firebase isolado do cardápio (auth anônimo), igual ao CartDrawer.
+  const { firestore: db, auth } = useCustomerFirebase();
+  const { toast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
@@ -84,6 +99,13 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
   const grandTotal = subtotal + deliveryFee;
   const sinal = Math.round(grandTotal * config.sinalPercent) / 100;
   const saldo = grandTotal - sinal;
+
+  // Itens resolvidos (id/nome/preço) — reaproveitados no doc persistido.
+  const toLines = (map: Qmap, list: { id: string; name: string; price: number }[]): EncomendaLineItem[] =>
+    list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ id: x.id, name: x.name, qty: map[x.id], unitPrice: x.price, total: map[x.id] * x.price }));
+  const especialLines = has('especial') ? toLines(especial, ESPECIAL_ITEMS) : [];
+  const tortasLines = has('tortas') ? toLines(tortas, TORTAS) : [];
+  const docinhosLines = has('docinhos') ? toLines(docinhos, DOCINHOS) : [];
 
   const canNext = (() => {
     switch (step.id) {
@@ -147,10 +169,71 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
     return L.join('\n');
   }
 
-  function finalizar() {
+  function buildEncomendaDoc(id: string, customerUid: string): Encomenda {
+    return {
+      id,
+      customerUid,
+      ownerId: storeId,
+      customerName: name.trim(),
+      customerPhone: phone.replace(/\D/g, ''),
+      customerBirthDate: birthday || '',
+      isEmpresa,
+      products: Array.from(products),
+      bolo: has('bolo') && sizeObj ? {
+        sizeId: sizeObj.id,
+        size: sizeObj.label,
+        dough: cakeDough,
+        filling: fillObj?.name || '',
+        cover: coverObj?.name || '',
+        plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes },
+        total: boloTotal,
+      } : null,
+      especialItems: especialLines,
+      tortasItems: tortasLines,
+      docinhosItems: docinhosLines,
+      delivery: { date: delDate, time: delTime, type: delType },
+      subtotal,
+      deliveryFee,
+      total: grandTotal,
+      sinalPercent: config.sinalPercent,
+      sinal,
+      saldo,
+      status: 'orcamento',
+      orderNotes: orderNotes || '',
+      source: 'encomenda_web',
+      orderDateTime: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+    };
+  }
+
+  async function finalizar() {
+    if (submitting) return;
     const msg = encodeURIComponent(buildWhatsappMessage());
     const base = config.whatsappDigits ? `https://wa.me/${config.whatsappDigits}` : 'https://wa.me/';
-    window.open(`${base}?text=${msg}`, '_blank');
+    const waUrl = `${base}?text=${msg}`;
+    // Abre a aba já no gesto do clique (evita bloqueio de popup); a URL do
+    // WhatsApp é definida depois de tentar persistir a encomenda.
+    const waTab = window.open('about:blank', '_blank');
+
+    setSubmitting(true);
+    try {
+      if (db && auth && storeId) {
+        const user = await ensureAuthenticated(auth);
+        const id = genEncomendaId();
+        await setDoc(doc(collection(db, 'encomendas'), id), buildEncomendaDoc(id, user.uid));
+      }
+    } catch (err) {
+      console.error('[encomendas] falha ao registrar:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Não consegui registrar aqui',
+        description: 'Sem problema — envie pelo WhatsApp que confirmamos manualmente.',
+      });
+    } finally {
+      setSubmitting(false);
+      if (waTab && !waTab.closed) waTab.location.href = waUrl;
+      else window.open(waUrl, '_blank');
+    }
   }
 
   return (
@@ -367,8 +450,8 @@ export function EncomendaWizard({ config, onHome }: { config: EncomendaConfig; o
               {step.id === 'entrega' ? 'Revisar & pagar' : 'Continuar'} <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={finalizar} size="lg" className="rounded-full bg-[#1c1c1c] px-7 text-white hover:bg-black">
-              <MessageCircle className="mr-2 h-4 w-4" /> Enviar no WhatsApp
+            <Button onClick={finalizar} disabled={submitting} size="lg" className="rounded-full bg-[#1c1c1c] px-7 text-white hover:bg-black">
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />} Enviar no WhatsApp
             </Button>
           )}
         </div>

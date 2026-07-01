@@ -85,6 +85,23 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Encomendas (modalidade confeitaria): mesmo modelo de orders, em coleção
+    // PRÓPRIA (não filtrada pela janela do caixa — registra com caixa fechado).
+    // Cliente (anônimo) cria a própria encomenda (customerUid == uid); o dono
+    // lê/atualiza as encomendas da loja (ownerId == uid).
+    match /encomendas/{encomendaId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid ||
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.customerUid == request.auth.uid ||
+        (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+      );
+      allow update: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow delete: if false;
+    }
+
     match /cash_registers/{registerId} {
       // Movimento financeiro é só do dono. O cardápio do cliente usa
       // store_profiles.isCaixaAberto para saber se o caixa está aberto.

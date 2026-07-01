@@ -34,5 +34,5 @@ export default async function EncomendasPage({ params }: { params: Promise<{ sto
   if (theme !== 'confeitaria') notFound();
 
   const config = buildEncomendaConfig(profile);
-  return <EncomendasClient config={config} />;
+  return <EncomendasClient config={config} storeId={storeId} />;
 }

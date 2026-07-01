@@ -6,7 +6,7 @@ import { Landing } from '@/components/encomendas/Landing';
 import { EncomendaWizard } from '@/components/encomendas/EncomendaWizard';
 import { ensureBrandFontsLoaded } from '@/lib/themes';
 
-export function EncomendasClient({ config }: { config: EncomendaConfig }) {
+export function EncomendasClient({ config, storeId }: { config: EncomendaConfig; storeId: string }) {
   const [view, setView] = useState<'landing' | 'wizard'>('landing');
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function EncomendasClient({ config }: { config: EncomendaConfig }) {
     <div className="encomendas-confeitaria min-h-screen">
       {view === 'landing'
         ? <Landing config={config} onStart={() => setView('wizard')} />
-        : <EncomendaWizard config={config} onHome={() => setView('landing')} />}
+        : <EncomendaWizard config={config} storeId={storeId} onHome={() => setView('landing')} />}
     </div>
   );
 }
