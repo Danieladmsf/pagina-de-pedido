@@ -18,7 +18,8 @@ import {
   MessageCircle,
   Flame,
   Printer,
-  Megaphone
+  Megaphone,
+  CakeSlice
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -28,9 +29,10 @@ interface SidebarNavProps {
   setIsOpen: (isOpen: boolean) => void;
   storeName?: string;
   storeLogo?: string;
+  theme?: string;
 }
 
-export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo }: SidebarNavProps) {
+export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo, theme }: SidebarNavProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const navItems = [
@@ -42,6 +44,8 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'promocoes', label: 'Ofertas', icon: Tag, highlight: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
     { id: 'campanhas', label: 'Campanhas', icon: Megaphone, highlight: true },
+    // Exclusivo da modalidade confeitaria (agendamento de encomendas).
+    ...(theme === 'confeitaria' ? [{ id: 'encomendas', label: 'Encomendas', icon: CakeSlice, highlight: true }] : []),
     { id: 'freelance', label: 'Freelance', icon: Bike },
   ];
 

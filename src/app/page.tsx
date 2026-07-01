@@ -32,6 +32,7 @@ import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
 import { CampanhasTab } from '@/components/campanhas/CampanhasTab';
+import { EncomendasAdminTab } from '@/components/admin/EncomendasAdminTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
@@ -1299,7 +1300,7 @@ export default function AdminPage() {
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
-      <SidebarNav activeTab={activeTab} setActiveTab={handleTabChange} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} />
+      <SidebarNav activeTab={activeTab} setActiveTab={handleTabChange} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} theme={storeProfile?.theme} />
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
         {/* Dark Top Navigation Bar */}
         <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
@@ -1462,6 +1463,14 @@ export default function AdminPage() {
         {activeTab === 'campanhas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <CampanhasTab db={db} user={user} storeProfile={storeProfile} />
+          </div>
+        )}
+
+        {activeTab === 'encomendas' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+              <EncomendasAdminTab db={db} user={user} storeProfile={storeProfile} />
+            </div>
           </div>
         )}
 
