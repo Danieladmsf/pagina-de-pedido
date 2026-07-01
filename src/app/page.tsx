@@ -33,6 +33,7 @@ import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
 import { CampanhasTab } from '@/components/campanhas/CampanhasTab';
 import { EncomendasAdminTab } from '@/components/admin/EncomendasAdminTab';
+import { EncomendasPedidosTab } from '@/components/admin/EncomendasPedidosTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
 import { CATS, ITEMS, ADDONS } from '@/lib/seedData';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
@@ -1340,8 +1341,16 @@ export default function AdminPage() {
               );
             })()}
           </button>
+          {storeProfile?.theme === 'confeitaria' && (
+            <button
+              onClick={() => handleTabChange('encomendas_pedidos')}
+              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'encomendas_pedidos' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+            >
+              Encomendas
+            </button>
+          )}
         </div>
-        
+
         <div className="flex items-center gap-4 h-full">
           <div className="flex items-center gap-2">
             <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
@@ -1471,6 +1480,12 @@ export default function AdminPage() {
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
               <EncomendasAdminTab db={db} user={user} storeProfile={storeProfile} />
             </div>
+          </div>
+        )}
+
+        {activeTab === 'encomendas_pedidos' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile} />
           </div>
         )}
 
