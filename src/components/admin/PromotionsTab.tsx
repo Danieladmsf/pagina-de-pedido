@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import {
   Plus, Trash2, Pencil, Clock, Tag, Flame, Search,
-  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy, Box
+  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy, Box, Check
 } from 'lucide-react';
 
 interface PromotionsTabProps {
@@ -113,6 +113,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
   const [formActive, setFormActive] = useState(true);
   const [formItems, setFormItems] = useState<PromoItem[]>([]);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState('all');
 
   // Firebase query
   const promotionsQuery = useMemoFirebase(() => {
@@ -146,6 +147,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     setFormActive(true);
     setFormItems([]);
     setItemSearchQuery('');
+    setItemCategoryFilter('all');
     setEditingPromo(null);
   };
 
@@ -188,6 +190,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     });
     setFormItems(syncedItems);
     setItemSearchQuery('');
+    setItemCategoryFilter('all');
     setIsModalOpen(true);
   };
 
@@ -209,6 +212,14 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
 
   const removeItemFromPromo = (menuItemId: string) => {
     setFormItems(prev => prev.filter(fi => fi.menuItemId !== menuItemId));
+  };
+
+  const toggleItemInPromo = (menuItem: any) => {
+    if (formItems.some(fi => fi.menuItemId === menuItem.id)) {
+      removeItemFromPromo(menuItem.id);
+    } else {
+      addItemToPromo(menuItem);
+    }
   };
 
   const updatePromoItem = (menuItemId: string, updates: Partial<PromoItem>) => {
@@ -326,15 +337,30 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     return map;
   }, [promotions, editingPromo]);
 
-  // Filter items not yet in the promotion
-  const availableItems = useMemo(() => {
-    const addedIds = new Set(formItems.map(fi => fi.menuItemId));
+  // Todos os produtos que casam com o filtro (busca + categoria). Selecionados
+  // continuam na lista para poder desmarcar (toggle) e ver o estado atual.
+  const pickerItems = useMemo(() => {
     return (items || []).filter((it: any) => {
-      if (addedIds.has(it.id)) return false;
+      if (itemCategoryFilter !== 'all' && it.categoryId !== itemCategoryFilter) return false;
       if (!itemSearchQuery) return true;
       return normalizeSearch(it.name).includes(normalizeSearch(itemSearchQuery));
     });
-  }, [items, formItems, itemSearchQuery]);
+  }, [items, itemSearchQuery, itemCategoryFilter]);
+
+  const selectedIds = useMemo(() => new Set(formItems.map(fi => fi.menuItemId)), [formItems]);
+
+  // Adiciona todos os visíveis que ainda não estão na promo e não estão travados
+  // em outra promoção ativa. addItemToPromo usa atualização funcional, então
+  // chamar em sequência é seguro (sem duplicar).
+  const addAllVisible = () => {
+    pickerItems.forEach((it: any) => {
+      if (selectedIds.has(it.id)) return;
+      if (itemsInOtherPromos[it.id]) return;
+      addItemToPromo(it);
+    });
+  };
+
+  const clearSelection = () => setFormItems([]);
 
   const filteredPromotions = useMemo(() => {
     if (!searchQuery) return promotions;
@@ -610,31 +636,77 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
 
             {/* Product selector */}
             <div>
-              <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2 block">
-                Adicionar Produtos ({formItems.length} selecionados)
-              </Label>
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={itemSearchQuery}
-                  onChange={e => setItemSearchQuery(e.target.value)}
-                  placeholder="Buscar produto para adicionar..."
-                  className="pl-10 text-sm"
-                />
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Adicionar Produtos ({formItems.length} selecionados)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px] gap-1"
+                    onClick={addAllVisible}
+                  >
+                    <Plus className="h-3 w-3" /> Selecionar visíveis
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-[11px] text-red-500 hover:text-red-700"
+                    disabled={formItems.length === 0}
+                    onClick={clearSelection}
+                  >
+                    Limpar
+                  </Button>
+                </div>
               </div>
-              {itemSearchQuery && (
-                <div className="border rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
-                  {availableItems.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic p-3 text-center">Nenhum produto encontrado.</p>
-                  ) : (
-                    availableItems.slice(0, 10).map((item: any) => {
-                      const alreadyInPromo = itemsInOtherPromos[item.id];
-                      return (
+              <div className="flex gap-2 mb-2 flex-col sm:flex-row">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={itemSearchQuery}
+                    onChange={e => setItemSearchQuery(e.target.value)}
+                    placeholder="Buscar produto..."
+                    className="pl-10 text-sm"
+                  />
+                </div>
+                <select
+                  value={itemCategoryFilter}
+                  onChange={e => setItemCategoryFilter(e.target.value)}
+                  className="h-10 text-sm rounded-md border px-2 bg-white sm:w-48"
+                >
+                  <option value="all">Todas as categorias</option>
+                  {(categories || []).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="border rounded-lg max-h-64 overflow-y-auto bg-white shadow-sm">
+                {pickerItems.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic p-3 text-center">Nenhum produto encontrado.</p>
+                ) : (
+                  pickerItems.map((item: any) => {
+                    const isSelected = selectedIds.has(item.id);
+                    const lockedInOther = !isSelected && itemsInOtherPromos[item.id];
+                    return (
                       <button
+                        type="button"
                         key={item.id}
-                        onClick={() => { if (!alreadyInPromo) { addItemToPromo(item); setItemSearchQuery(''); } }}
-                        className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm border-b last:border-0 ${alreadyInPromo ? 'opacity-50 cursor-not-allowed bg-red-50' : 'hover:bg-slate-50'}`}
+                        onClick={() => { if (!lockedInOther) toggleItemInPromo(item); }}
+                        disabled={!!lockedInOther}
+                        className={`w-full text-left px-3 py-2 flex items-center gap-3 text-sm border-b last:border-0 transition-colors ${
+                          lockedInOther
+                            ? 'opacity-50 cursor-not-allowed bg-red-50'
+                            : isSelected
+                            ? 'bg-emerald-50 hover:bg-emerald-100'
+                            : 'hover:bg-slate-50'
+                        }`}
                       >
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 bg-white'}`}>
+                          {isSelected && <Check className="h-3.5 w-3.5 text-white" />}
+                        </div>
                         {item.imageUrl ? (
                           <Image src={item.imageUrl} alt="" width={32} height={32} className="rounded-md object-cover w-8 h-8" />
                         ) : (
@@ -646,20 +718,21 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                           <p className="font-medium truncate">{item.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'}
-                            {alreadyInPromo && <span className="text-red-500 font-bold ml-1">• Já em "{alreadyInPromo}"</span>}
+                            {lockedInOther && <span className="text-red-500 font-bold ml-1">• Já em "{lockedInOther}"</span>}
                           </p>
                         </div>
-                        {alreadyInPromo ? (
+                        {lockedInOther ? (
                           <EyeOff className="h-4 w-4 text-red-400 shrink-0" />
+                        ) : isSelected ? (
+                          <Trash2 className="h-4 w-4 text-red-400 shrink-0" />
                         ) : (
                           <Plus className="h-4 w-4 text-emerald-500 shrink-0" />
                         )}
                       </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             {/* Selected items with discount config */}
