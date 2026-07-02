@@ -109,6 +109,14 @@ export function MenuPageClient({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 10000); // 10s tick
+    return () => clearInterval(timer);
+  }, []);
 
   // Manage history state for product detail dialog (selectedItem)
   useEffect(() => {
@@ -430,12 +438,22 @@ export function MenuPageClient({
 
   const visibleCategories = useMemo(() => {
     if (!categories) return [];
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 is Sunday
-    const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const currentDayName = daysMap[dayOfWeek];
-    const currentHour = today.getHours();
-    const currentMin = today.getMinutes();
+    
+    const timezone = storeProfile?.general?.timezone || 'America/Sao_Paulo';
+    let localNow = new Date();
+    try {
+      localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+    } catch (e) {
+      localNow = new Date(now);
+    }
+    
+    const dayOfWeek = localNow.getDay(); // 0 is Sunday
+    const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const currentDayCleaned = cleanDaysOfWeek[dayOfWeek];
+
+    const currentHour = localNow.getHours();
+    const currentMin = localNow.getMinutes();
     const currentMins = currentHour * 60 + currentMin;
 
     return categories.filter((cat: any) => {
@@ -443,7 +461,13 @@ export function MenuPageClient({
       if (!cat.availability?.enabled) return true;
       
       const { days, startTime, endTime } = cat.availability;
-      if (days && !days.includes(currentDayName)) return false;
+      if (days) {
+        const cleanedDays = days.map((d: string) => cleanDay(d));
+        const isAvailableToday = cleanedDays.some((d: string) => 
+          d === currentDayCleaned || d.includes(currentDayCleaned) || currentDayCleaned.includes(d)
+        );
+        if (!isAvailableToday) return false;
+      }
       
       const [openHour, openMin] = (startTime || '00:00').split(':').map(Number);
       const [closeHour, closeMin] = (endTime || '23:59').split(':').map(Number);
@@ -451,9 +475,11 @@ export function MenuPageClient({
       const openMins = openHour * 60 + openMin;
       const closeMins = closeHour * 60 + closeMin;
       
-      return currentMins >= openMins && currentMins <= closeMins;
+      return closeMins <= openMins
+        ? (currentMins >= openMins || currentMins <= closeMins)
+        : (currentMins >= openMins && currentMins <= closeMins);
     }).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-  }, [categories]);
+  }, [categories, storeProfile, now]);
 
   useEffect(() => {
     const el = categoryScrollRef.current;
@@ -470,7 +496,6 @@ export function MenuPageClient({
 
   const hasCombos = useMemo(() => {
     if (!items) return false;
-    const now = new Date();
     return items.some(item => {
       if (!item.isCombo || item.isAvailable === false) return false;
       if (!isVisibleForCustomerMenu(item)) return false;
@@ -478,7 +503,7 @@ export function MenuPageClient({
       if (item.endDate && now > new Date(item.endDate)) return false;
       return true;
     });
-  }, [items, isVisibleForCustomerMenu]);
+  }, [items, isVisibleForCustomerMenu, now]);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -491,7 +516,6 @@ export function MenuPageClient({
       if (!isVisibleForCustomerMenu(item)) return false;
       
       if (item.startDate || item.endDate) {
-        const now = new Date();
         if (item.startDate && now < new Date(item.startDate)) return false;
         if (item.endDate && now > new Date(item.endDate)) return false;
       }
@@ -656,9 +680,20 @@ export function MenuPageClient({
       return { isOpen: false, reason: 'delivery_disabled' };
     }
 
+    const timezone = storeProfile?.general?.timezone || 'America/Sao_Paulo';
+    let localNow = new Date();
+    try {
+      localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+    } catch (e) {
+      localNow = new Date(now);
+    }
+
     // Check planned closures (feriados/folgas agendadas)
     if (storeProfile.plannedClosures && storeProfile.plannedClosures.length > 0) {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const yyyy = localNow.getFullYear();
+      const mm = String(localNow.getMonth() + 1).padStart(2, '0');
+      const dd = String(localNow.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
       const closure = storeProfile.plannedClosures.find((c: any) => c.date === todayStr);
       if (closure) {
         return { isOpen: false, reason: closure.reason ? `Fechado hoje: ${closure.reason}` : 'hours_closed' };
@@ -667,12 +702,12 @@ export function MenuPageClient({
 
     // Check working hours
     if (storeProfile.workingHours && storeProfile.workingHours.length > 0) {
-      const today = new Date();
-      const dayOfWeek = today.getDay(); // 0 is Sunday
-      const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-      const currentDayName = daysMap[dayOfWeek];
+      const dayOfWeek = localNow.getDay(); // 0 is Sunday
+      const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+      const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const currentDayCleaned = cleanDaysOfWeek[dayOfWeek];
 
-      const todayConfig = storeProfile.workingHours.find((wh: any) => wh.day === currentDayName);
+      const todayConfig = storeProfile.workingHours.find((wh: any) => cleanDay(wh.day) === currentDayCleaned);
 
       if (todayConfig) {
         if (todayConfig.isClosed) return { isOpen: false, reason: 'hours_closed' };
@@ -680,21 +715,25 @@ export function MenuPageClient({
         const [openHour, openMin] = todayConfig.open.split(':').map(Number);
         const [closeHour, closeMin] = todayConfig.close.split(':').map(Number);
         
-        const currentHour = today.getHours();
-        const currentMin = today.getMinutes();
+        const currentHour = localNow.getHours();
+        const currentMin = localNow.getMinutes();
         
         const currentMins = currentHour * 60 + currentMin;
         const openMins = openHour * 60 + openMin;
         const closeMins = closeHour * 60 + closeMin;
         
-        if (currentMins < openMins || currentMins > closeMins) {
+        const isOpen = closeMins <= openMins
+          ? (currentMins >= openMins || currentMins <= closeMins)
+          : (currentMins >= openMins && currentMins <= closeMins);
+
+        if (!isOpen) {
           return { isOpen: false, reason: 'hours_closed' };
         }
       }
     }
 
     return { isOpen: true, reason: '' };
-  }, [storeId, loadingStoreProfile, hasOpenCashRegister, storeProfile]);
+  }, [storeId, loadingStoreProfile, hasOpenCashRegister, storeProfile, now]);
 
   if (!db || !slugResolved || loadingCats || loadingItems) {
     return <StoreSplash logoUrl={splashLogoUrl} storeName={splashStoreName} bgColor={splashBg} />;
@@ -846,9 +885,17 @@ export function MenuPageClient({
                 </header>
                 <div className="p-6 space-y-0">
                   {storeProfile.workingHours.map((wh: any, i: number) => {
-                    const today = new Date();
-                    const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-                    const isToday = wh.day === daysMap[today.getDay()];
+                    const timezone = storeProfile?.general?.timezone || 'America/Sao_Paulo';
+                    let localNow = new Date();
+                    try {
+                      localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+                    } catch (e) {
+                      localNow = new Date(now);
+                    }
+                    const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+                    const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    const currentDayCleaned = cleanDaysOfWeek[localNow.getDay()];
+                    const isToday = cleanDay(wh.day) === currentDayCleaned;
                     return (
                       <div key={i} className={`flex justify-between items-center py-2.5 text-sm ${i < storeProfile.workingHours.length - 1 ? 'border-b border-slate-50' : ''} ${isToday ? 'bg-primary/5 -mx-2 px-2 rounded-lg' : ''}`}>
                         <span className={`font-medium ${isToday ? 'text-primary font-bold' : 'text-slate-600'}`}>

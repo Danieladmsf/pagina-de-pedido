@@ -193,7 +193,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         paymentMethods,
         creditPixKey,
         creditPixName,
-        plannedClosures: plannedClosures.filter(c => c.date >= new Date().toISOString().split('T')[0]),
+        plannedClosures: plannedClosures.filter(c => c.date >= new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })),
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -1214,7 +1214,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         {activeTab === 'horarios' && (() => {
           // Calendar state helpers
           const today = new Date();
-          const todayStr = today.toISOString().split('T')[0];
+          const todayStr = today.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
           
           // Map day index (0=Sun) to workingHours day name
           const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];

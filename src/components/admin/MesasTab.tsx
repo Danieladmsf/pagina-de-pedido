@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { collection, doc, setDoc, updateDoc, query, where, getDocs, increment } from 'firebase/firestore';
@@ -21,6 +21,7 @@ import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
+import { useCollection, useMemoFirebase } from '@/firebase';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -227,6 +228,51 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
 
+  const promotionsQuery = useMemoFirebase(() => {
+    if (!db || !user?.uid) return null;
+    return query(collection(db, 'promotions'), where('ownerId', '==', user.uid));
+  }, [db, user?.uid]);
+
+  const { data: promotionsRaw } = useCollection(promotionsQuery);
+
+  const activePromotions = useMemo(() => {
+    if (!promotionsRaw) return [];
+    return promotionsRaw.filter((p: any) => {
+      if (p.active === false) return false;
+      const timeVal = (value: any) => {
+        if (!value) return NaN;
+        const date = value?.toDate?.() ? value.toDate() : new Date(value);
+        return date.getTime();
+      };
+      const start = timeVal(p.startDate) || 0;
+      const end = p.noEndDate || !p.endDate ? Number.POSITIVE_INFINITY : (timeVal(p.endDate) || Number.POSITIVE_INFINITY);
+      const nowTime = Date.now();
+      return nowTime >= start && nowTime <= end;
+    });
+  }, [promotionsRaw]);
+
+  const promoItemsMap = useMemo(() => {
+    const map: Record<string, { promoPrice: number; originalPrice: number; promoName: string }> = {};
+    activePromotions.forEach((p: any) => {
+      p.products?.forEach((pi: any) => {
+        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, promoName: p.name };
+      });
+    });
+    return map;
+  }, [activePromotions]);
+
+  const promoOnlyIds = useMemo(() => {
+    const ids = new Set<string>();
+    activePromotions.forEach((p: any) => {
+      p.products?.forEach((pi: any) => {
+        if (pi.promoOnly) ids.add(pi.menuItemId);
+      });
+    });
+    return ids;
+  }, [activePromotions]);
+
+  const hasActivePromos = Object.keys(promoItemsMap).length > 0;
+
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, 'dine_in')) return false;
@@ -236,19 +282,35 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   // Os produtos sao sempre agrupados por categoria; clicar numa categoria
   // rola ate a secao e rolar a lista atualiza a pill ativa (igual cliente).
-  const groupedItems = (categories || [])
-    .map((cat: any) => ({
-      id: cat.id,
-      name: cat.name,
-      items: filteredItems.filter((it: any) => it.categoryId === cat.id),
-    }))
-    .filter(group => group.items.length > 0);
-  const uncategorizedItems = filteredItems.filter(
-    (it: any) => !categories?.some((c: any) => c.id === it.categoryId)
-  );
-  if (uncategorizedItems.length > 0) {
-    groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
-  }
+  const groupedItems = useMemo(() => {
+    const groups: { id: string; name: string; items: any[] }[] = [];
+
+    // Promos section
+    if (hasActivePromos) {
+      const promoItems = (filteredItems || []).filter(item => promoItemsMap[item.id]);
+      if (promoItems.length > 0) {
+        groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
+      }
+    }
+
+    // Regular categories
+    (categories || []).forEach((cat: any) => {
+      const catItems = (filteredItems || []).filter(it => it.categoryId === cat.id && !promoOnlyIds.has(it.id));
+      if (catItems.length > 0) {
+        groups.push({ id: cat.id, name: cat.name, items: catItems });
+      }
+    });
+
+    const uncategorizedItems = (filteredItems || []).filter(
+      it => !categories?.some((c: any) => c.id === it.categoryId) && !promoOnlyIds.has(it.id)
+    );
+    if (uncategorizedItems.length > 0) {
+      groups.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
+    }
+
+    return groups;
+  }, [filteredItems, categories, hasActivePromos, promoItemsMap, promoOnlyIds]);
+
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
     useCategoryScrollSpy(groupedItems.map(g => g.id));
   // Filtro por categoria: ao escolher uma categoria, lista SÓ os produtos dela.
@@ -270,32 +332,35 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const addToCart = (item: any) => {
+    const promo = promoItemsMap[item.id];
+    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+
     if (activeOrderId) {
       const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
       if (activeOrder && activeOrder.status === 'awaiting_payment') {
-        setPendingItemToAdd(item);
+        setPendingItemToAdd(effectiveItem);
         setReopenModalOpen(true);
         return;
       }
     }
     
-    if (itemNeedsCustomization(item)) {
-      setSelectedItemForDialog(item);
+    if (itemNeedsCustomization(effectiveItem)) {
+      setSelectedItemForDialog(effectiveItem);
     } else {
       setCart(prev => {
-        const existingIndex = prev.findIndex(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+        const existingIndex = prev.findIndex(i => i.id === effectiveItem.id && (!i.addons || i.addons.length === 0));
         if (existingIndex > -1) {
           return prev.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i);
         } else {
           return [
             ...prev,
             {
-              ...item,
-              cartItemId: `${item.id}-${Date.now()}`,
+              ...effectiveItem,
+              cartItemId: `${effectiveItem.id}-${Date.now()}`,
               quantity: 1,
               addons: [],
               notes: '',
-              unitPrice: item.price
+              unitPrice: effectiveItem.price
             }
           ];
         }
@@ -304,12 +369,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
-    const cartItemId = `${item.id}-${Date.now()}`;
-    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+    const promo = promoItemsMap[item.id];
+    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+    const cartItemId = `${effectiveItem.id}-${Date.now()}`;
+    const unitPrice = effectiveItem.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
     setCart(prev => [
       ...prev,
       {
-        ...item,
+        ...effectiveItem,
         cartItemId,
         quantity,
         addons: options.addons || [],
@@ -850,9 +917,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             <Tag className="h-6 w-6 text-slate-300" />
           </div>
         )}
-        <div className="flex flex-col flex-1 min-w-0 gap-1.5">
+        <div className="flex flex-col flex-1 min-w-0 gap-1">
           <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
-          <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+          {promoItemsMap[item.id] ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
+              <span className="text-sm font-black text-green-600">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}</span>
+            </div>
+          ) : (
+            <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+          )}
         </div>
       </button>
     );
@@ -1223,7 +1297,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     className={`cursor-pointer whitespace-nowrap text-sm py-1 px-3 ${activePill === group.id ? 'bg-primary text-primary-foreground' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
                     onClick={() => { setSelectedCat(group.id); scrollToCategory(group.id); }}
                   >
-                    {group.name}
+                    {group.id === '__promo__' ? (
+                      <span className="flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-orange-500 fill-orange-500 animate-pulse" /> {group.name}</span>
+                    ) : group.name}
                   </Badge>
                 ))}
               </div>

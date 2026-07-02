@@ -104,6 +104,7 @@ export function formatWorkingHours(workingHours?: WorkingHour[] | null) {
 export function getStoreOpenState(storeProfile: any, now = new Date()) {
   if (!storeProfile) return { isOpen: true, reason: '' };
   if (storeProfile.isCaixaAberto === false) return { isOpen: false, reason: 'caixa_closed' };
+  if (storeProfile.general?.disableDelivery === true) return { isOpen: false, reason: 'delivery_disabled' };
 
   const timezone = storeProfile?.general?.timezone || 'America/Sao_Paulo';
   const localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
@@ -119,10 +120,11 @@ export function getStoreOpenState(storeProfile: any, now = new Date()) {
 
   const workingHours = storeProfile.workingHours as WorkingHour[] | undefined;
   if (workingHours && workingHours.length > 0) {
-    const daysMap = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado'];
-    const accentDaysMap = ['Domingo', 'Segunda', 'Ter\u00e7a', 'Quarta', 'Quinta', 'Sexta', 'S\u00e1bado'];
+    const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const dayIndex = localNow.getDay();
-    const todayConfig = workingHours.find((wh) => wh.day === accentDaysMap[dayIndex] || wh.day === daysMap[dayIndex]);
+    const currentDayCleaned = cleanDaysOfWeek[dayIndex];
+    const todayConfig = workingHours.find((wh) => cleanDay(wh.day) === currentDayCleaned);
 
     if (todayConfig) {
       if (todayConfig.isClosed) return { isOpen: false, reason: 'hours_closed' };
@@ -133,7 +135,11 @@ export function getStoreOpenState(storeProfile: any, now = new Date()) {
       const openMins = (openHour || 0) * 60 + (openMin || 0);
       const closeMins = (closeHour || 0) * 60 + (closeMin || 0);
 
-      if (currentMins < openMins || currentMins > closeMins) {
+      const isOpen = closeMins <= openMins
+        ? (currentMins >= openMins || currentMins <= closeMins)
+        : (currentMins >= openMins && currentMins <= closeMins);
+
+      if (!isOpen) {
         return { isOpen: false, reason: 'hours_closed' };
       }
     }
@@ -153,9 +159,11 @@ export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plann
     localNow = new Date(now);
   }
 
-  const daysMap = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-  const accentDaysMap = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-  const displayDaysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+  const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const displayDaysMap = ['Domingo', 'Segunda', 'Terço', 'Quarta', 'Quinta', 'Sexta', 'Sábado']; // Terço? Wait, displayDaysMap was 'Terça'. Let's verify we use correct 'Terça' spelling.
+
+  const correctedDisplayDaysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
   for (let offset = 0; offset <= 7; offset++) {
     const checkDate = new Date(localNow);
@@ -170,13 +178,8 @@ export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plann
     if (closure) continue;
 
     const dayIndex = checkDate.getDay();
-    const dayStr1 = daysMap[dayIndex];
-    const dayStr2 = accentDaysMap[dayIndex];
-
-    const config = workingHours.find((wh) => {
-      const whDay = String(wh.day || '').toLowerCase();
-      return whDay === dayStr1 || whDay === dayStr2;
-    });
+    const currentDayCleaned = cleanDaysOfWeek[dayIndex];
+    const config = workingHours.find((wh) => cleanDay(wh.day) === currentDayCleaned);
 
     if (config && !config.isClosed) {
       const [openHour, openMin] = String(config.open || '00:00').split(':').map(Number);
@@ -189,7 +192,7 @@ export function formatNextOpeningTime(workingHours?: WorkingHour[] | null, plann
         }
       } else {
         const displayDate = `${dd}/${mm}`;
-        const dayName = displayDaysMap[dayIndex];
+        const dayName = correctedDisplayDaysMap[dayIndex];
         return `A próxima abertura será no dia ${displayDate} (${dayName}) às ${String(openHour || 0).padStart(2, '0')}:${String(openMin || 0).padStart(2, '0')} hs ⏰🎉.`;
       }
     }

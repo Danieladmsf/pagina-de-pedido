@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
-import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, Receipt, ChevronDown } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, Receipt, ChevronDown, Flame } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner, isCreditEnabled } from '@/lib/customer-credit';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
@@ -22,6 +22,7 @@ import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { removeAccents, normalizeSearch, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
+import { useCollection, useMemoFirebase } from '@/firebase';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -98,23 +99,25 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   };
 
   const addToCart = (item: any) => {
-    if (itemNeedsCustomization(item)) {
-      setSelectedItemForDialog(item);
+    const promo = promoItemsMap[item.id];
+    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+    if (itemNeedsCustomization(effectiveItem)) {
+      setSelectedItemForDialog(effectiveItem);
     } else {
       setCart(prev => {
-        const existingIndex = prev.findIndex(i => i.id === item.id && (!i.addons || i.addons.length === 0));
+        const existingIndex = prev.findIndex(i => i.id === effectiveItem.id && (!i.addons || i.addons.length === 0));
         if (existingIndex > -1) {
           return prev.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i);
         } else {
           return [
             ...prev,
             {
-              ...item,
-              cartItemId: `${item.id}-${Date.now()}`,
+              ...effectiveItem,
+              cartItemId: `${effectiveItem.id}-${Date.now()}`,
               quantity: 1,
               addons: [],
               notes: '',
-              unitPrice: item.price
+              unitPrice: effectiveItem.price
             }
           ];
         }
@@ -123,12 +126,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
-    const cartItemId = `${item.id}-${Date.now()}`;
-    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+    const promo = promoItemsMap[item.id];
+    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+    const cartItemId = `${effectiveItem.id}-${Date.now()}`;
+    const unitPrice = effectiveItem.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
     setCart(prev => [
       ...prev,
       {
-        ...item,
+        ...effectiveItem,
         cartItemId,
         quantity,
         addons: options.addons || [],
@@ -180,29 +185,87 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  const promotionsQuery = useMemoFirebase(() => {
+    if (!db || !user?.uid) return null;
+    return query(collection(db, 'promotions'), where('ownerId', '==', user.uid));
+  }, [db, user?.uid]);
+
+  const { data: promotionsRaw } = useCollection(promotionsQuery);
+
+  const activePromotions = useMemo(() => {
+    if (!promotionsRaw) return [];
+    return promotionsRaw.filter((p: any) => {
+      if (p.active === false) return false;
+      const timeVal = (value: any) => {
+        if (!value) return NaN;
+        const date = value?.toDate?.() ? value.toDate() : new Date(value);
+        return date.getTime();
+      };
+      const start = timeVal(p.startDate) || 0;
+      const end = p.noEndDate || !p.endDate ? Number.POSITIVE_INFINITY : (timeVal(p.endDate) || Number.POSITIVE_INFINITY);
+      const nowTime = Date.now();
+      return nowTime >= start && nowTime <= end;
+    });
+  }, [promotionsRaw]);
+
+  const promoItemsMap = useMemo(() => {
+    const map: Record<string, { promoPrice: number; originalPrice: number; promoName: string }> = {};
+    activePromotions.forEach((p: any) => {
+      p.products?.forEach((pi: any) => {
+        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, promoName: p.name };
+      });
+    });
+    return map;
+  }, [activePromotions]);
+
+  const promoOnlyIds = useMemo(() => {
+    const ids = new Set<string>();
+    activePromotions.forEach((p: any) => {
+      p.products?.forEach((pi: any) => {
+        if (pi.promoOnly) ids.add(pi.menuItemId);
+      });
+    });
+    return ids;
+  }, [activePromotions]);
+
+  const hasActivePromos = Object.keys(promoItemsMap).length > 0;
+
   const filteredItems = items?.filter(item => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, orderType)) return false;
     const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
     return matchesSearch;
-  });
+  }) || [];
 
-  // Os produtos sao sempre agrupados por categoria (na mesma ordem dos
-  // filtros). Clicar numa categoria rola ate a secao; rolar a lista
-  // atualiza a pill ativa — igual ao cardapio do cliente.
-  const groupedItems = (categories || [])
-    .map((cat: any) => ({
-      id: cat.id,
-      name: cat.name,
-      items: (filteredItems || []).filter(it => it.categoryId === cat.id),
-    }))
-    .filter(group => group.items.length > 0);
-  const uncategorizedItems = (filteredItems || []).filter(
-    it => !categories?.some((c: any) => c.id === it.categoryId)
-  );
-  if (uncategorizedItems.length > 0) {
-    groupedItems.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
-  }
+  const groupedItems = useMemo(() => {
+    const groups: { id: string; name: string; items: any[] }[] = [];
+
+    // Promos section
+    if (hasActivePromos) {
+      const promoItems = (filteredItems || []).filter(item => promoItemsMap[item.id]);
+      if (promoItems.length > 0) {
+        groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
+      }
+    }
+
+    // Regular categories
+    (categories || []).forEach((cat: any) => {
+      const catItems = (filteredItems || []).filter(it => it.categoryId === cat.id && !promoOnlyIds.has(it.id));
+      if (catItems.length > 0) {
+        groups.push({ id: cat.id, name: cat.name, items: catItems });
+      }
+    });
+
+    const uncategorizedItems = (filteredItems || []).filter(
+      it => !categories?.some((c: any) => c.id === it.categoryId) && !promoOnlyIds.has(it.id)
+    );
+    if (uncategorizedItems.length > 0) {
+      groups.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
+    }
+
+    return groups;
+  }, [filteredItems, categories, hasActivePromos, promoItemsMap, promoOnlyIds]);
+
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
     useCategoryScrollSpy(groupedItems.map(g => g.id));
   // Filtro por categoria: ao escolher uma categoria, lista SÓ os produtos dela.
@@ -820,8 +883,15 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           )}
           <div className="flex flex-col flex-1 py-1">
             <h3 className="font-bold text-sm leading-tight text-slate-800 line-clamp-2">{item.name}</h3>
-            <div className="mt-auto pt-1">
-               <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600">R$ {item.price.toFixed(2)}</Badge>
+            <div className="mt-auto pt-1 flex items-center gap-1.5 flex-wrap">
+               {promoItemsMap[item.id] ? (
+                 <>
+                   <span className="text-[10px] text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
+                   <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}</Badge>
+                 </>
+               ) : (
+                 <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {item.price.toFixed(2)}</Badge>
+               )}
             </div>
           </div>
         </div>
@@ -889,7 +959,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
               className="cursor-pointer h-8 px-4 flex-shrink-0"
               onClick={() => { setSelectedCat(group.id); scrollToCategory(group.id); }}
             >
-              {group.name}
+              {group.id === '__promo__' ? (
+                <span className="flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-orange-500 fill-orange-500 animate-pulse" /> {group.name}</span>
+              ) : group.name}
             </Badge>
           ))}
         </div>
