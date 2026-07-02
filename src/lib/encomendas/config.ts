@@ -21,6 +21,12 @@ export interface EncomendaConfig {
   logoEmoji: string;       // fallback visual quando não há logo
   content: EncomendaContent; // textos + fotos editáveis da landing
   catalog: EncomendaCatalog; // produtos reais (tamanhos/recheios/tortas/docinhos...)
+  // Taxa de entrega: MESMAS fontes do cardápio (MenuPageClient → CartDrawer) e do
+  // PDV (NovoPedidoTab). O wizard envia isso ao /api/delivery-fee — ver memória
+  // "delivery-fee-two-entry-points": manter o payload em sincronia nos 3 lugares.
+  storeAddress: string;
+  deliveryFeeRules: any[];      // faixas por KM (fees.feeRules)
+  customAddressRules: any[];    // regras por bairro/rua ("Taxas por Bairro")
 }
 
 // Normaliza um telefone BR para o formato do wa.me (DDI 55 + DDD + número, só dígitos).
@@ -61,5 +67,8 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     logoEmoji: '',
     content: mergeContent(enc.content),
     catalog: mergeCatalog(enc.catalog),
+    storeAddress: general.address || '',
+    deliveryFeeRules: profile?.fees?.feeRules || profile?.feeRules || [],
+    customAddressRules: profile?.fees?.customAddressRules || profile?.customAddressRules || [],
   };
 }

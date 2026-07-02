@@ -55,7 +55,18 @@ export interface Encomenda {
   tortasItems: EncomendaLineItem[];
   docinhosItems: EncomendaLineItem[];
 
-  delivery: { date: string; time: string; type: 'retirada' | 'delivery' | '' };
+  delivery: {
+    date: string;
+    time: string;
+    type: 'retirada' | 'delivery' | '';
+    // Preenchidos quando type === 'delivery'
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    feeStatus?: 'calculada' | 'a_combinar'; // taxa veio do /api/delivery-fee ou ficou pendente
+  };
 
   subtotal: number;
   deliveryFee: number;

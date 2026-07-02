@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { StepIndicator, OptionCard, StepHeader, SkuRow, money } from '@/components/encomendas/primitives';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, neighborhoodMatchesQuery } from '@/lib/utils';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
@@ -74,6 +74,15 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [delTime, setDelTime] = useState('');
   const [delType, setDelType] = useState<'retirada' | 'delivery' | ''>('');
   const [orderNotes, setOrderNotes] = useState('');
+  // Endereço de entrega (só quando delType === 'delivery')
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState(config.city || '');
+  const [showNbSuggestions, setShowNbSuggestions] = useState(false);
+  const [dynamicFee, setDynamicFee] = useState<number | null>(null); // null = "a combinar"
+  const [calculatingFee, setCalculatingFee] = useState(false);
 
   // Catálogo data-driven: vem do config (encomendas.catalog || defaults). Os aliases
   // mantêm o resto do wizard idêntico ao protótipo.
@@ -123,10 +132,41 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const tortasTotal = has('tortas') ? sumQ(tortas, TORTAS) : 0;
   const docinhosTotal = has('docinhos') ? sumQ(docinhos, DOCINHOS) : 0;
   const subtotal = boloTotal + especialTotal + tortasTotal + docinhosTotal;
-  // Taxa de entrega por bairro ainda será integrada (/api/delivery-fee). Por ora
-  // a entrega fica "a combinar" e não infla o total exibido ao cliente.
-  const deliveryFee = 0;
+  // Taxa de entrega: mesma API do cardápio e do PDV (/api/delivery-fee), com o
+  // MESMO payload (ver CartDrawer/NovoPedidoTab — memória delivery-fee-two-entry-points).
+  // Se a API não resolver (sem regras, endereço não casou), fica "a combinar" (null)
+  // e não infla o total exibido ao cliente.
+  const feeKnown = delType === 'delivery' && dynamicFee !== null;
+  const deliveryFee = feeKnown ? (dynamicFee as number) : 0;
   const grandTotal = subtotal + deliveryFee;
+
+  const calculateDeliveryFee = useCallback(async (nbOverride?: string) => {
+    const nb = nbOverride ?? neighborhood;
+    const hasRules = (config.deliveryFeeRules?.length || 0) > 0 || (config.customAddressRules?.length || 0) > 0;
+    if (!config.storeAddress || !hasRules || !street || street.length < 3) { setDynamicFee(null); return; }
+    const customerAddress = [street, number, nb, city, 'Brasil'].filter(Boolean).join(', ');
+    setCalculatingFee(true);
+    try {
+      const res = await fetch('/api/delivery-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeAddress: config.storeAddress,
+          customerAddress,
+          feeRules: config.deliveryFeeRules,
+          customAddressRules: config.customAddressRules,
+          neighborhoodHint: nb,
+        }),
+      });
+      const data = await res.json();
+      setDynamicFee(res.ok && typeof data.fee === 'number' ? data.fee : null);
+    } catch (err) {
+      console.error('[encomendas] erro ao calcular taxa:', err);
+      setDynamicFee(null);
+    } finally {
+      setCalculatingFee(false);
+    }
+  }, [config.storeAddress, config.deliveryFeeRules, config.customAddressRules, street, number, neighborhood, city]);
   const sinal = Math.round(grandTotal * config.sinalPercent) / 100;
   const saldo = grandTotal - sinal;
 
@@ -147,7 +187,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       case 'especial': return especialPrincipalOk;
       case 'tortas': return Object.values(tortas).some((v) => v > 0);
       case 'docinhos': return Object.values(docinhos).some((v) => v > 0);
-      case 'entrega': return !!delDate && !!delTime && !!delType;
+      case 'entrega': return !!delDate && !!delTime && !!delType &&
+        (delType !== 'delivery' || (street.trim().length >= 3 && !!neighborhood.trim()));
       default: return true;
     }
   })();
@@ -190,7 +231,15 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
     L.push('', '*Entrega*');
     L.push(`   - Data: ${formatDateBR(delDate)} ${delTime || ''}`.trim());
-    L.push(`   - Forma: ${delType === 'delivery' ? 'Entrega (taxa por bairro a combinar)' : 'Retirada no local'}`);
+    if (delType === 'delivery') {
+      L.push('   - Forma: Entrega');
+      const addr = [street, number, complement].filter(Boolean).join(', ');
+      if (addr) L.push(`   - Endereço: ${addr}`);
+      if (neighborhood || city) L.push(`   - Bairro: ${[neighborhood, city].filter(Boolean).join(' · ')}`);
+      L.push(`   - Taxa de entrega: ${feeKnown ? money(deliveryFee) : 'a combinar'}`);
+    } else {
+      L.push('   - Forma: Retirada no local');
+    }
 
     L.push('', `*Total: ${money(grandTotal)}*`);
     L.push(`Sinal (${config.sinalPercent}%): ${money(sinal)}${config.pixKey ? ` — PIX ${config.pixKey}` : ''}`);
@@ -221,7 +270,15 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       especialItems: especialLines,
       tortasItems: tortasLines,
       docinhosItems: docinhosLines,
-      delivery: { date: delDate, time: delTime, type: delType },
+      delivery: {
+        date: delDate,
+        time: delTime,
+        type: delType,
+        ...(delType === 'delivery' ? {
+          street, number, complement, neighborhood, city,
+          feeStatus: feeKnown ? 'calculada' as const : 'a_combinar' as const,
+        } : {}),
+      },
       subtotal,
       deliveryFee,
       total: grandTotal,
@@ -485,6 +542,60 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <span><span className="block font-semibold">Entrega</span><span className="block text-xs text-muted-foreground">Taxa conforme o bairro</span></span>
                 </button>
               </div>
+              {delType === 'delivery' && (
+                <div className="mt-4 space-y-3 rounded-2xl bg-secondary/40 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Endereço de entrega</p>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_100px]">
+                    <Field label="Rua / Avenida" required>
+                      <Input value={street} onChange={(e) => setStreet(e.target.value)} onBlur={() => calculateDeliveryFee()} placeholder="Rua das Flores" />
+                    </Field>
+                    <Field label="Número">
+                      <Input value={number} onChange={(e) => setNumber(e.target.value)} onBlur={() => calculateDeliveryFee()} inputMode="numeric" placeholder="123" />
+                    </Field>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="relative">
+                      <Field label="Bairro" required>
+                        <Input value={neighborhood} autoComplete="off" placeholder="Digite o bairro..."
+                          onChange={(e) => { setNeighborhood(e.target.value); setShowNbSuggestions(true); }}
+                          onFocus={() => setShowNbSuggestions(true)}
+                          onBlur={() => { setTimeout(() => setShowNbSuggestions(false), 200); calculateDeliveryFee(); }} />
+                      </Field>
+                      {showNbSuggestions && (() => {
+                        const nbRules = (config.customAddressRules || []).filter((r: any) => r?.type === 'neighborhood' && r?.keyword);
+                        const filtered = neighborhood.trim()
+                          ? nbRules.filter((r: any) => neighborhoodMatchesQuery(r.keyword, neighborhood))
+                          : nbRules;
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="absolute inset-x-0 z-30 mt-1 max-h-44 overflow-y-auto rounded-xl border border-border bg-card shadow-soft">
+                            {filtered.map((rule: any, idx: number) => (
+                              <button key={rule.keyword + idx} type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setNeighborhood(rule.keyword); setShowNbSuggestions(false); calculateDeliveryFee(rule.keyword); }}
+                                className="block w-full truncate border-b border-border px-3 py-2 text-left text-xs transition-colors last:border-0 hover:bg-secondary/60">
+                                {rule.keyword}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <Field label="Complemento">
+                      <Input value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto, bloco..." />
+                    </Field>
+                  </div>
+                  <Field label="Cidade">
+                    <Input value={city} onChange={(e) => setCity(e.target.value)} onBlur={() => calculateDeliveryFee()} placeholder="Sua cidade" />
+                  </Field>
+                  <p className="text-sm font-semibold text-foreground">
+                    Taxa de entrega:{' '}
+                    {calculatingFee ? <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-primary" />
+                      : feeKnown ? <span className="text-primary">{money(deliveryFee)}</span>
+                      : <span className="font-medium text-muted-foreground">a combinar no WhatsApp</span>}
+                  </p>
+                </div>
+              )}
             </Section>
           )}
 
@@ -493,7 +604,9 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
               fillObj={fillObj} coverObj={coverObj} plateOn={plateOn} plate={plate}
               especial={especial} tortas={tortas} docinhos={docinhos}
               delDate={delDate} delTime={delTime} delType={delType}
-              boloTotal={boloTotal} deliveryFee={deliveryFee} grandTotal={grandTotal} sinal={sinal} saldo={saldo}
+              delAddress={[street, number, complement].filter(Boolean).join(', ')}
+              delNeighborhood={[neighborhood, city].filter(Boolean).join(' · ')}
+              boloTotal={boloTotal} deliveryFee={deliveryFee} feeKnown={feeKnown} grandTotal={grandTotal} sinal={sinal} saldo={saldo}
               orderNotes={orderNotes} setOrderNotes={setOrderNotes} />
           )}
         </div>
@@ -580,8 +693,8 @@ function Field({ label, required, children }: { label: React.ReactNode; required
 
 function ResumoStep(props: any) {
   const { config, name, phone, products, sizeObj, cakeDough, fillObj, coverObj, plateOn, plate,
-    especial, tortas, docinhos, delDate, delTime, delType,
-    boloTotal, deliveryFee, grandTotal, sinal, saldo, orderNotes, setOrderNotes } = props;
+    especial, tortas, docinhos, delDate, delTime, delType, delAddress, delNeighborhood,
+    boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes } = props;
   const cat = config.catalog;
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(config.pixKey); setCopied(true); setTimeout(() => setCopied(false), 1500); };
@@ -617,8 +730,9 @@ function ResumoStep(props: any) {
         <Block icon={<MapPin className="h-4 w-4" />} title="Entrega">
           <Row label="Data" value={`${formatDateBR(delDate)} ${delTime || ''}`} />
           <Row label="Forma" value={delType === 'delivery' ? 'Entrega' : 'Retirada no local'} />
-          {delType === 'delivery' && <Row label="Taxa de entrega" value="a combinar" />}
-          {deliveryFee > 0 && <Row label="Taxa de entrega" value={money(deliveryFee)} />}
+          {delType === 'delivery' && delAddress && <Row label="Endereço" value={delAddress} />}
+          {delType === 'delivery' && delNeighborhood && <Row label="Bairro" value={delNeighborhood} />}
+          {delType === 'delivery' && <Row label="Taxa de entrega" value={feeKnown ? money(deliveryFee) : 'a combinar'} />}
         </Block>
         <div className="flex items-center justify-between border-t border-dashed border-border pt-3">
           <span className="font-display text-lg font-bold">Total</span>

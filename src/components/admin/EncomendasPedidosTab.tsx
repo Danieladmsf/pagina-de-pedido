@@ -198,7 +198,9 @@ function EditEncomendaDialog({ db, enc, onClose, onSaved }: {
     try {
       await updateDoc(doc(db, 'encomendas', enc.id), {
         status,
-        delivery: { date, time, type },
+        // Espalha o delivery existente para não clobberar endereço/bairro/taxa
+        // gravados pelo wizard (street/neighborhood/feeStatus...).
+        delivery: { ...(enc.delivery || {}), date, time, type },
         orderNotes: notes,
         customerName: name,
         customerPhone: phone.replace(/\D/g, ''),

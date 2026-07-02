@@ -83,6 +83,12 @@ export function buildEncomendaReceiptHtml(enc: Encomenda, storeInfo: any): strin
     <div class="b">ENTREGA</div>
     <div>Data: ${dateBR(enc.delivery?.date)} ${esc(enc.delivery?.time || '')}</div>
     <div>Forma: ${enc.delivery?.type === 'delivery' ? 'Entrega' : 'Retirada no local'}</div>
+    ${enc.delivery?.type === 'delivery' ? [
+      [enc.delivery.street, enc.delivery.number, enc.delivery.complement].filter(Boolean).length
+        ? `<div>End: ${esc([enc.delivery.street, enc.delivery.number, enc.delivery.complement].filter(Boolean).join(', '))}</div>` : '',
+      enc.delivery.neighborhood ? `<div>Bairro: ${esc([enc.delivery.neighborhood, enc.delivery.city].filter(Boolean).join(' - '))}</div>` : '',
+      `<div>Taxa: ${enc.delivery.feeStatus === 'a_combinar' ? 'a combinar' : money(enc.deliveryFee || 0)}</div>`,
+    ].join('') : ''}
     <div class="hr"></div>
     ${boloBlock}
     ${lineRows('Especial da casa', enc.especialItems || [])}
