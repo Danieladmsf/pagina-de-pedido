@@ -3,6 +3,7 @@
 // com fallbacks seguros para que a página funcione mesmo antes da aba admin existir.
 
 import { type EncomendaContent, mergeContent } from './content';
+import { type EncomendaCatalog, mergeCatalog } from './catalog';
 
 export interface EncomendaConfig {
   name: string;
@@ -19,6 +20,7 @@ export interface EncomendaConfig {
   logoUrl: string;         // logo real da loja (general.logoUrl), se houver
   logoEmoji: string;       // fallback visual quando não há logo
   content: EncomendaContent; // textos + fotos editáveis da landing
+  catalog: EncomendaCatalog; // produtos reais (tamanhos/recheios/tortas/docinhos...)
 }
 
 // Normaliza um telefone BR para o formato do wa.me (DDI 55 + DDD + número, só dígitos).
@@ -58,5 +60,6 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     // bundle do cliente (EMOJI_FALLBACK em EncomendaWizard / '🎂' na Landing).
     logoEmoji: '',
     content: mergeContent(enc.content),
+    catalog: mergeCatalog(enc.catalog),
   };
 }

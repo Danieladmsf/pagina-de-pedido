@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { CakeSlice, Copy, Check, Loader2, Link2, ExternalLink, Wand2 } from 'lucide-react';
 import { EncomendaEditor } from '@/components/encomendas/EncomendaEditor';
+import { EncomendaCatalogEditor } from '@/components/encomendas/EncomendaCatalogEditor';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // Aba lateral "Encomendas" = CONFIGURAÇÃO da página pública (a lista de pedidos
 // recebidos fica na aba operacional "Encomendas" do topo). Próxima etapa: editor
@@ -126,10 +128,21 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
           PRODUTOS reais (tamanhos/recheios/tortas/docinhos) é a próxima etapa. */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><Wand2 className="h-5 w-5 text-primary" /> Personalizar a página (textos e fotos)</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-lg"><Wand2 className="h-5 w-5 text-primary" /> Personalizar a página</CardTitle>
         </CardHeader>
         <CardContent>
-          <EncomendaEditor db={db} user={user} storeProfile={storeProfile} />
+          <Tabs defaultValue="conteudo">
+            <TabsList className="mb-4">
+              <TabsTrigger value="conteudo">Textos &amp; fotos</TabsTrigger>
+              <TabsTrigger value="produtos">Produtos</TabsTrigger>
+            </TabsList>
+            <TabsContent value="conteudo">
+              <EncomendaEditor db={db} user={user} storeProfile={storeProfile} />
+            </TabsContent>
+            <TabsContent value="produtos">
+              <EncomendaCatalogEditor db={db} user={user} storeProfile={storeProfile} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

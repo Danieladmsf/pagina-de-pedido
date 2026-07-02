@@ -37,10 +37,10 @@ export function StepIndicator({ total, current }: { total: number; current: numb
 
 /* ---------- Card selecionável ---------- */
 export function OptionCard({
-  selected, onClick, title, description, icon, price, included, disabled, badge,
+  selected, onClick, title, description, icon, image, price, included, disabled, badge,
 }: {
   selected?: boolean; onClick?: () => void; title: string; description?: string;
-  icon?: string; price?: number; included?: boolean; disabled?: boolean; badge?: string;
+  icon?: string; image?: string; price?: number; included?: boolean; disabled?: boolean; badge?: string;
 }) {
   return (
     <button
@@ -56,11 +56,14 @@ export function OptionCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          {icon && (
+          {image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={image} alt={title} className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+          ) : icon ? (
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xl">
               {icon}
             </span>
-          )}
+          ) : null}
           <div className="min-w-0">
             <p className="font-display text-base sm:text-lg font-bold leading-tight text-foreground">{title}</p>
             {description && <p className="mt-1 text-xs sm:text-[13px] leading-snug text-muted-foreground">{description}</p>}
@@ -88,21 +91,25 @@ export function OptionCard({
 }
 
 /* ---------- Stepper de quantidade ---------- */
+// `min` é o mínimo QUANDO o item está selecionado: o "+" a partir de 0 pula
+// direto para o mínimo (ex.: 50 docinhos) e o "−" abaixo do mínimo volta a 0.
 export function QuantityStepper({ value, onChange, min = 0, step = 1 }: { value: number; onChange: (v: number) => void; min?: number; step?: number; }) {
+  const dec = () => onChange(value - step >= Math.max(min, 1) ? value - step : 0);
+  const inc = () => onChange(value === 0 ? Math.max(min, step) : value + step);
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card p-1">
       <button
         type="button"
-        onClick={() => onChange(Math.max(min, value - step))}
+        onClick={dec}
         className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 disabled:opacity-30"
-        disabled={value <= min}
+        disabled={value <= 0}
       >
         <Minus className="h-4 w-4" />
       </button>
       <span className="min-w-7 text-center text-sm font-bold tabular-nums">{value}</span>
       <button
         type="button"
-        onClick={() => onChange(value + step)}
+        onClick={inc}
         className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
       >
         <Plus className="h-4 w-4" />
@@ -112,15 +119,24 @@ export function QuantityStepper({ value, onChange, min = 0, step = 1 }: { value:
 }
 
 /* ---------- Linha de SKU com quantidade ---------- */
-export function SkuRow({ name, desc, price, qty, onQty, step = 1 }: { name: string; desc?: string; price: number; qty: number; onQty: (v: number) => void; step?: number; }) {
+export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, image }: { name: string; desc?: string; price: number; qty: number; onQty: (v: number) => void; step?: number; minQty?: number; image?: string; }) {
   return (
     <div className={cn('flex items-center justify-between gap-3 rounded-2xl border-2 p-3 sm:p-4 transition-colors', qty > 0 ? 'border-primary/40 bg-secondary/40' : 'border-border bg-card')}>
-      <div className="min-w-0">
-        <p className="font-semibold leading-tight text-foreground text-sm sm:text-[15px]">{name}</p>
-        {desc && <p className="mt-0.5 text-xs leading-snug text-muted-foreground line-clamp-2">{desc}</p>}
-        <p className="mt-1 text-sm font-bold text-primary">{money(price)}</p>
+      <div className="flex min-w-0 items-center gap-3">
+        {image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={image} alt={name} className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+        )}
+        <div className="min-w-0">
+          <p className="font-semibold leading-tight text-foreground text-sm sm:text-[15px]">{name}</p>
+          {desc && <p className="mt-0.5 text-xs leading-snug text-muted-foreground line-clamp-2">{desc}</p>}
+          <p className="mt-1 text-sm font-bold text-primary">
+            {money(price)}
+            {minQty > 1 && <span className="ml-1.5 font-medium text-muted-foreground">· mín. {minQty} un</span>}
+          </p>
+        </div>
       </div>
-      <QuantityStepper value={qty} onChange={onQty} step={step} />
+      <QuantityStepper value={qty} onChange={onQty} step={step} min={minQty} />
     </div>
   );
 }

@@ -1,10 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import {
-  PRODUCTS, CAKE_SIZES, CAKE_DOUGHS, CAKE_FILLINGS, FILLING_TIERS, CAKE_COVERS, PLATE_PRICE,
-  ESPECIAL_INFO, ESPECIAL_ITEMS, TORTAS, DOCINHOS, DELIVERY_TIMES, type ProductKind,
-} from '@/lib/encomendas/catalog';
+import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { StepIndicator, OptionCard, StepHeader, SkuRow, money } from '@/components/encomendas/primitives';
 import { Button } from '@/components/ui/button';
@@ -19,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
 import {
   ArrowLeft, ArrowRight, Gift, Building2, Copy, MapPin, Store, Bike, Upload,
-  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2,
+  CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2, Trash2,
 } from 'lucide-react';
 
 type Qmap = Record<string, number>;
@@ -38,6 +35,19 @@ function formatDateBR(iso: string) {
 function genEncomendaId() {
   const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => A[b % A.length]).join('');
+}
+
+// Agrupa SKUs pelo campo `group` preservando a ordem do catálogo; itens sem
+// grupo ficam numa seção sem título no topo.
+function groupSkus<T extends { group?: string }>(list: T[]): { group: string; items: T[] }[] {
+  const out: { group: string; items: T[] }[] = [];
+  for (const it of list) {
+    const g = it.group || '';
+    const bucket = out.find((o) => o.group === g);
+    if (bucket) bucket.items.push(it);
+    else out.push({ group: g, items: [it] });
+  }
+  return out;
 }
 
 export function EncomendaWizard({ config, storeId, onHome }: { config: EncomendaConfig; storeId: string; onHome: () => void }) {
@@ -64,6 +74,26 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [delTime, setDelTime] = useState('');
   const [delType, setDelType] = useState<'retirada' | 'delivery' | ''>('');
   const [orderNotes, setOrderNotes] = useState('');
+
+  // Catálogo data-driven: vem do config (encomendas.catalog || defaults). Os aliases
+  // mantêm o resto do wizard idêntico ao protótipo.
+  const cat = config.catalog;
+  const PRODUCTS = cat.products.filter((p) => p.enabled !== false);
+  const CAKE_SIZES = cat.cakeSizes;
+  const CAKE_DOUGHS = cat.cakeDoughs;
+  const CAKE_FILLINGS = cat.cakeFillings;
+  const FILLING_TIERS = cat.fillingTiers;
+  const CAKE_COVERS = cat.cakeCovers;
+  const PLATE_PRICE = cat.platePrice;
+  const ESPECIAL_INFO = cat.especialInfo;
+  const ESPECIAL_ITEMS = cat.especialItems.filter((x) => x.enabled !== false);
+  const TORTAS = cat.tortas.filter((x) => x.enabled !== false);
+  const DOCINHOS = cat.docinhos.filter((x) => x.enabled !== false);
+  const DELIVERY_TIMES = cat.deliveryTimes;
+
+  // Especial: exige ao menos 1 item "principal" (adicionais não contam sozinhos).
+  const especialPrincipais = ESPECIAL_ITEMS.filter((x) => x.role !== 'adicional');
+  const especialPrincipalOk = especialPrincipais.some((x) => (especial[x.id] || 0) > 0);
 
   const has = (k: ProductKind) => products.has(k);
 
@@ -114,7 +144,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       case 'tamanho': return !!cakeSize;
       case 'recheio': return !!cakeDough && !!cakeFilling;
       case 'cobertura': return !!cakeCover;
-      case 'especial': return Object.values(especial).some((v) => v > 0);
+      case 'especial': return especialPrincipalOk;
       case 'tortas': return Object.values(tortas).some((v) => v > 0);
       case 'docinhos': return Object.values(docinhos).some((v) => v > 0);
       case 'entrega': return !!delDate && !!delTime && !!delType;
@@ -288,7 +318,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
             <Section title="O que você quer encomendar?" subtitle="Pode combinar bolo, tortas, docinhos e o especial da casa no mesmo pedido.">
               <div className="grid gap-3 sm:grid-cols-2">
                 {PRODUCTS.map((p) => (
-                  <OptionCard key={p.kind} icon={p.icon} title={p.title} description={p.description}
+                  <OptionCard key={p.kind} icon={p.icon} image={p.imageUrl} title={p.title} description={p.description}
                     selected={has(p.kind)} onClick={() => toggleProduct(p.kind)}
                     badge={p.kind === 'especial' ? 'Edição limitada' : undefined} />
                 ))}
@@ -377,26 +407,53 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
               </div>
               <div className="mt-3 space-y-2.5">
                 {ESPECIAL_ITEMS.map((it) => (
-                  <SkuRow key={it.id} name={it.name} desc={it.desc} price={it.price}
+                  <SkuRow key={it.id} name={it.name} desc={it.desc} price={it.price} image={it.imageUrl}
+                    minQty={it.minQty || 0} step={it.stepQty || 1}
                     qty={especial[it.id] || 0} onQty={(v) => setEspecial({ ...especial, [it.id]: v })} />
                 ))}
               </div>
+              {!especialPrincipalOk && (
+                <p className="mt-3 text-center text-xs font-semibold text-primary">
+                  Adicione pelo menos 1 {especialPrincipais.length === 1 ? especialPrincipais[0].name : 'item principal'} para continuar.
+                </p>
+              )}
+              <SelectedList title={ESPECIAL_INFO.title} map={especial} list={ESPECIAL_ITEMS}
+                onRemove={(id) => setEspecial({ ...especial, [id]: 0 })} />
             </Section>
           )}
 
           {step.id === 'tortas' && (
             <Section title="Tortas geladas" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Escolha as tortas e a quantidade de cada.">
-              <div className="space-y-2.5">
-                {TORTAS.map((t) => <SkuRow key={t.id} name={t.name} price={t.price} qty={tortas[t.id] || 0} onQty={(v) => setTortas({ ...tortas, [t.id]: v })} />)}
-              </div>
+              {groupSkus(TORTAS).map(({ group, items }) => (
+                <div key={group || '_'} className="space-y-2.5">
+                  {group && <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{group}</p>}
+                  {items.map((t) => (
+                    <SkuRow key={t.id} name={t.name} desc={t.desc} price={t.price} image={t.imageUrl}
+                      minQty={t.minQty || 0} step={t.stepQty || 1}
+                      qty={tortas[t.id] || 0} onQty={(v) => setTortas({ ...tortas, [t.id]: v })} />
+                  ))}
+                </div>
+              ))}
+              <SelectedList title="Tortas" map={tortas} list={TORTAS}
+                onRemove={(id) => setTortas({ ...tortas, [id]: 0 })} />
             </Section>
           )}
 
           {step.id === 'docinhos' && (
-            <Section title="Docinhos finos" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Mínimo de 50 unidades por sabor.">
-              <div className="space-y-2.5">
-                {DOCINHOS.map((d) => <SkuRow key={d.id} name={d.name} desc={d.desc} price={d.price} qty={docinhos[d.id] || 0} onQty={(v) => setDocinhos({ ...docinhos, [d.id]: v })} step={50} />)}
-              </div>
+            <Section title="Docinhos finos" kicker={`Passo ${safeIdx + 1} de ${total}`}
+              subtitle={DOCINHOS.some((d) => (d.minQty || 0) > 1) ? 'A quantidade mínima por sabor está indicada em cada item.' : 'Escolha os sabores e a quantidade de cada.'}>
+              {groupSkus(DOCINHOS).map(({ group, items }) => (
+                <div key={group || '_'} className="space-y-2.5">
+                  {group && <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{group}</p>}
+                  {items.map((d) => (
+                    <SkuRow key={d.id} name={d.name} desc={d.desc} price={d.price} image={d.imageUrl}
+                      minQty={d.minQty || 0} step={d.stepQty || 1}
+                      qty={docinhos[d.id] || 0} onQty={(v) => setDocinhos({ ...docinhos, [d.id]: v })} />
+                  ))}
+                </div>
+              ))}
+              <SelectedList title="Docinhos" map={docinhos} list={DOCINHOS}
+                onRemove={(id) => setDocinhos({ ...docinhos, [id]: 0 })} />
             </Section>
           )}
 
@@ -469,6 +526,40 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   );
 }
 
+// Mini-resumo da etapa: itens já escolhidos, com remoção rápida e subtotal da seção.
+function SelectedList({ title, map, list, onRemove }: {
+  title: string; map: Qmap; list: { id: string; name: string; price: number }[]; onRemove: (id: string) => void;
+}) {
+  const sel = list.filter((x) => (map[x.id] || 0) > 0);
+  if (sel.length === 0) return null;
+  const total = sel.reduce((acc, x) => acc + map[x.id] * x.price, 0);
+  return (
+    <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+          <p className="font-display text-base font-bold text-foreground">{sel.length} {sel.length === 1 ? 'item' : 'itens'}</p>
+        </div>
+        <span className="font-display text-lg font-bold text-primary">{money(total)}</span>
+      </div>
+      <div className="mt-2 space-y-1.5 border-t border-dashed border-border pt-2">
+        {sel.map((x) => (
+          <div key={x.id} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 truncate text-muted-foreground">{map[x.id]}× {x.name}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="font-medium text-foreground">{money(map[x.id] * x.price)}</span>
+              <button type="button" onClick={() => onRemove(x.id)} title="Remover"
+                className="text-muted-foreground transition-colors hover:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, subtitle, kicker, children }: { title: string; subtitle?: string; kicker?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-5">
@@ -491,6 +582,7 @@ function ResumoStep(props: any) {
   const { config, name, phone, products, sizeObj, cakeDough, fillObj, coverObj, plateOn, plate,
     especial, tortas, docinhos, delDate, delTime, delType,
     boloTotal, deliveryFee, grandTotal, sinal, saldo, orderNotes, setOrderNotes } = props;
+  const cat = config.catalog;
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(config.pixKey); setCopied(true); setTimeout(() => setCopied(false), 1500); };
   const lines = (map: Qmap, list: any[]) => list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ name: x.name, qty: map[x.id], total: map[x.id] * x.price }));
@@ -513,14 +605,14 @@ function ResumoStep(props: any) {
         )}
         {products.has('especial') && (
           <Block icon={<Sparkles className="h-4 w-4" />} title="Especial da casa">
-            {lines(especial, ESPECIAL_ITEMS).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}
+            {lines(especial, cat.especialItems).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}
           </Block>
         )}
         {products.has('tortas') && (
-          <Block title="Tortas">{lines(tortas, TORTAS).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title="Tortas">{lines(tortas, cat.tortas).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
         )}
         {products.has('docinhos') && (
-          <Block title="Docinhos">{lines(docinhos, DOCINHOS).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title="Docinhos">{lines(docinhos, cat.docinhos).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
         )}
         <Block icon={<MapPin className="h-4 w-4" />} title="Entrega">
           <Row label="Data" value={`${formatDateBR(delDate)} ${delTime || ''}`} />

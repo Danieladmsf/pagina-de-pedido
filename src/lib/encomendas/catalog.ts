@@ -10,6 +10,8 @@ export interface CatalogProduct {
   icon: string;
   title: string;
   description: string;
+  imageUrl?: string;   // foto real do produto (substitui o emoji quando definida)
+  enabled?: boolean;   // lojista pode desativar um tipo de produto (default: ativo)
 }
 
 export const PRODUCTS: CatalogProduct[] = [
@@ -56,7 +58,18 @@ export const CAKE_COVERS: CoverOption[] = [
 
 export const PLATE_PRICE = 30;
 
-export interface SkuOption { id: string; name: string; desc?: string; price: number; }
+export interface SkuOption {
+  id: string;
+  name: string;
+  desc?: string;
+  price: number;
+  imageUrl?: string;
+  group?: string;                   // seção na página (ex.: "Tortas Pequenas (P)", "Doces finos")
+  minQty?: number;                  // pedido mínimo por item (ex.: 50 unidades por sabor)
+  stepQty?: number;                 // incremento do stepper depois do mínimo (default 1)
+  role?: 'principal' | 'adicional'; // Especial: o pedido exige ao menos 1 item "principal"
+  enabled?: boolean;                // ocultar sem excluir (default: ativo)
+}
 
 // Especial da casa — produto sazonal com data fixa (genérico, sem marca).
 export const ESPECIAL_INFO = {
@@ -65,26 +78,77 @@ export const ESPECIAL_INFO = {
   windowLabel: 'Retirada apenas no período divulgado da campanha.',
 };
 export const ESPECIAL_ITEMS: SkuOption[] = [
-  { id: 'esp-pote', name: 'Bolo no pote', desc: 'Porção individual, aprox. 250g.', price: 22 },
-  { id: 'esp-cento', name: 'Caixa com 6 potes', desc: 'Sortidos a combinar.', price: 120 },
+  { id: 'esp-pote', name: 'Bolo no pote', desc: 'Porção individual, aprox. 250g.', price: 22, role: 'principal' },
+  { id: 'esp-calda', name: 'Calda extra da estação', desc: 'Porção para acompanhar.', price: 8, role: 'adicional' },
 ];
 
-// Tortas prontas por tamanho
+// Tortas prontas — o campo `group` cria as seções na página (ex.: por tamanho)
 export const TORTAS: SkuOption[] = [
-  { id: 'banoffe-p', name: 'Banoffe · P', price: 55 },
-  { id: 'limao-p', name: 'Torta de limão · P', price: 55 },
-  { id: 'pistache-p', name: 'Pistache · P', price: 65 },
-  { id: 'banoffe-g', name: 'Banoffe · G', price: 110 },
-  { id: 'limao-g', name: 'Torta de limão · G', price: 110 },
-  { id: 'frutas-g', name: 'Frutas vermelhas · G', price: 125 },
+  { id: 'banoffe-p', name: 'Banoffe', price: 55, group: 'Tortas Pequenas (P)' },
+  { id: 'limao-p', name: 'Torta de limão', price: 55, group: 'Tortas Pequenas (P)' },
+  { id: 'pistache-p', name: 'Pistache', price: 65, group: 'Tortas Pequenas (P)' },
+  { id: 'banoffe-g', name: 'Banoffe', price: 110, group: 'Tortas Grandes (G)' },
+  { id: 'limao-g', name: 'Torta de limão', price: 110, group: 'Tortas Grandes (G)' },
+  { id: 'frutas-g', name: 'Frutas vermelhas', price: 125, group: 'Tortas Grandes (G)' },
 ];
 
-// Docinhos — mín. 50 por sabor (cento/meio-cento)
+// Docinhos — preço por unidade; `minQty` é o pedido mínimo por sabor
 export const DOCINHOS: SkuOption[] = [
-  { id: 'brig', name: 'Brigadeiro tradicional (50un)', desc: 'Preço por meio-cento', price: 85 },
-  { id: 'beijinho', name: 'Beijinho (50un)', price: 85 },
-  { id: 'ninho-doce', name: 'Leite ninho (50un)', price: 95 },
-  { id: 'gourmet', name: 'Gourmet sortido (50un)', desc: 'Seleção especial da casa', price: 135 },
+  { id: 'brig', name: 'Brigadeiro tradicional', desc: 'Preço por unidade', price: 1.7, group: 'Doces tradicionais', minQty: 50, stepQty: 10 },
+  { id: 'beijinho', name: 'Beijinho', desc: 'Preço por unidade', price: 1.7, group: 'Doces tradicionais', minQty: 50, stepQty: 10 },
+  { id: 'ninho-doce', name: 'Leite ninho', desc: 'Preço por unidade', price: 1.9, group: 'Doces tradicionais', minQty: 50, stepQty: 10 },
+  { id: 'gourmet', name: 'Gourmet sortido', desc: 'Seleção especial da casa', price: 2.7, group: 'Doces finos', minQty: 50, stepQty: 10 },
 ];
 
 export const DELIVERY_TIMES = ['10:00', '11:00', '14:00', '15:00', '16:00', '17:00'];
+
+// ---- Catálogo agregado: o wizard consome e a aba admin edita ----
+export interface EncomendaCatalog {
+  products: CatalogProduct[];
+  cakeSizes: SizeOption[];
+  cakeDoughs: string[];
+  cakeFillings: FillingOption[];
+  fillingTiers: string[];
+  cakeCovers: CoverOption[];
+  platePrice: number;
+  especialInfo: { title: string; desc: string; windowLabel: string };
+  especialItems: SkuOption[];
+  tortas: SkuOption[];
+  docinhos: SkuOption[];
+  deliveryTimes: string[];
+}
+
+export const DEFAULT_CATALOG: EncomendaCatalog = {
+  products: PRODUCTS,
+  cakeSizes: CAKE_SIZES,
+  cakeDoughs: CAKE_DOUGHS,
+  cakeFillings: CAKE_FILLINGS,
+  fillingTiers: FILLING_TIERS,
+  cakeCovers: CAKE_COVERS,
+  platePrice: PLATE_PRICE,
+  especialInfo: ESPECIAL_INFO,
+  especialItems: ESPECIAL_ITEMS,
+  tortas: TORTAS,
+  docinhos: DOCINHOS,
+  deliveryTimes: DELIVERY_TIMES,
+};
+
+// Catálogo por loja (encomendas.catalog) sobre os defaults; campo ausente cai no default.
+export function mergeCatalog(partial: any): EncomendaCatalog {
+  const p = (partial && typeof partial === 'object') ? partial : {};
+  const arr = <T,>(v: any, d: T[]): T[] => (Array.isArray(v) ? v : d);
+  return {
+    products: arr(p.products, DEFAULT_CATALOG.products),
+    cakeSizes: arr(p.cakeSizes, DEFAULT_CATALOG.cakeSizes),
+    cakeDoughs: arr(p.cakeDoughs, DEFAULT_CATALOG.cakeDoughs),
+    cakeFillings: arr(p.cakeFillings, DEFAULT_CATALOG.cakeFillings),
+    fillingTiers: arr(p.fillingTiers, DEFAULT_CATALOG.fillingTiers),
+    cakeCovers: arr(p.cakeCovers, DEFAULT_CATALOG.cakeCovers),
+    platePrice: typeof p.platePrice === 'number' ? p.platePrice : DEFAULT_CATALOG.platePrice,
+    especialInfo: (p.especialInfo && typeof p.especialInfo === 'object') ? { ...DEFAULT_CATALOG.especialInfo, ...p.especialInfo } : DEFAULT_CATALOG.especialInfo,
+    especialItems: arr(p.especialItems, DEFAULT_CATALOG.especialItems),
+    tortas: arr(p.tortas, DEFAULT_CATALOG.tortas),
+    docinhos: arr(p.docinhos, DEFAULT_CATALOG.docinhos),
+    deliveryTimes: arr(p.deliveryTimes, DEFAULT_CATALOG.deliveryTimes),
+  };
+}
