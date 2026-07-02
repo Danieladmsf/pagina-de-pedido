@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
-import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon } from 'lucide-react';
+import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote } from 'lucide-react';
 
 const money = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatDateBR = (iso?: string) => {
@@ -41,10 +41,15 @@ function itemsSummary(enc: Encomenda): string[] {
   return out;
 }
 
-export function EncomendasPedidosTab({ db, user, storeProfile }: { db: any; user: any; storeProfile: any }) {
+export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false }: {
+  db: any; user: any; storeProfile: any;
+  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  caixaAberto?: boolean;
+}) {
   const { toast } = useToast();
   const [filter, setFilter] = useState<'todas' | EncomendaStatus>('todas');
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
+  const [lancandoId, setLancandoId] = useState<string | null>(null);
 
   const encomendasQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
@@ -57,9 +62,41 @@ export function EncomendasPedidosTab({ db, user, storeProfile }: { db: any; user
     return filter === 'todas' ? list : list.filter((e) => (e.status || 'orcamento') === filter);
   }, [encomendasRaw, filter]);
 
-  async function changeStatus(id: string, status: EncomendaStatus) {
+  // Lança o sinal (PIX) como venda no caixa aberto. Idempotente: marca
+  // sinalLancado no doc e nunca lança duas vezes. Título SEM "#" de propósito —
+  // o card de venda do caixa casa "#XXXXX" com a coleção orders (prefixo de 5
+  // chars), e o id da encomenda não está lá; sem # não há falso vínculo.
+  async function lancarSinal(enc: Encomenda & { id: string }): Promise<boolean> {
+    if (!registrarLancamento || enc.sinalLancado || !(enc.sinal > 0)) return false;
+    if (!caixaAberto) {
+      toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa e use "Lançar sinal no caixa" no card da encomenda.' });
+      return false;
+    }
+    setLancandoId(enc.id);
     try {
-      await updateDoc(doc(db, 'encomendas', id), { status });
+      await registrarLancamento({
+        tipo: 'venda',
+        titulo: `Encomenda ${enc.id.substring(0, 5)} - Sinal (${enc.customerName})`,
+        valor: enc.sinal,
+        formaPagamento: 'pix',
+      });
+      await updateDoc(doc(db, 'encomendas', enc.id), { sinalLancado: true });
+      toast({ title: 'Sinal lançado no caixa', description: `${money(enc.sinal)} (PIX) — Encomenda ${enc.id.substring(0, 5)}.` });
+      return true;
+    } catch (err) {
+      console.error('[encomendas] erro ao lançar sinal no caixa:', err);
+      toast({ variant: 'destructive', title: 'Erro ao lançar o sinal', description: 'O status foi mantido; tente pelo botão no card.' });
+      return false;
+    } finally {
+      setLancandoId(null);
+    }
+  }
+
+  async function changeStatus(enc: Encomenda & { id: string }, status: EncomendaStatus) {
+    try {
+      await updateDoc(doc(db, 'encomendas', enc.id), { status });
+      // Confirmar = sinal pago → registra no caixa (se ainda não registrado).
+      if (status === 'confirmada') await lancarSinal(enc);
     } catch (err) {
       console.error('[encomendas] erro ao atualizar status:', err);
       toast({ variant: 'destructive', title: 'Erro ao atualizar status' });
@@ -99,9 +136,12 @@ export function EncomendasPedidosTab({ db, user, storeProfile }: { db: any; user
               <PedidoCard
                 key={e.id}
                 enc={e}
-                onStatus={changeStatus}
+                onStatus={(s) => changeStatus(e, s)}
                 onEdit={() => setEditing(e)}
                 onPrint={() => printEncomendaReceipt({ enc: e, storeInfo: storeProfile })}
+                canLancarSinal={!!registrarLancamento}
+                lancando={lancandoId === e.id}
+                onLancarSinal={() => lancarSinal(e)}
               />
             ))}
           </div>
@@ -120,14 +160,21 @@ export function EncomendasPedidosTab({ db, user, storeProfile }: { db: any; user
   );
 }
 
-function PedidoCard({ enc, onStatus, onEdit, onPrint }: {
+function PedidoCard({ enc, onStatus, onEdit, onPrint, canLancarSinal, lancando, onLancarSinal }: {
   enc: Encomenda & { id: string };
-  onStatus: (id: string, s: EncomendaStatus) => void;
+  onStatus: (s: EncomendaStatus) => void;
   onEdit: () => void;
   onPrint: () => void;
+  canLancarSinal: boolean;
+  lancando: boolean;
+  onLancarSinal: () => void;
 }) {
   const status = (enc.status || 'orcamento') as EncomendaStatus;
   const items = itemsSummary(enc);
+  // Sinal pendente de lançar no caixa: encomenda já confirmada (ou adiante),
+  // tem sinal e ainda não foi registrado (ex.: caixa estava fechado na hora).
+  const sinalPendente = canLancarSinal && !enc.sinalLancado && enc.sinal > 0 &&
+    !['orcamento', 'cancelada'].includes(status);
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -145,6 +192,7 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint }: {
         <div className="text-right">
           <p className="text-lg font-bold text-primary">{money(enc.total)}</p>
           <p className="text-xs text-muted-foreground">Sinal {money(enc.sinal)} · saldo {money(enc.saldo)}</p>
+          {enc.sinalLancado && <p className="text-[11px] font-semibold text-emerald-600">Sinal lançado no caixa ✓</p>}
         </div>
       </div>
 
@@ -162,12 +210,18 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint }: {
         <div className="flex items-center gap-2">
           <select
             value={status}
-            onChange={(ev) => onStatus(enc.id, ev.target.value as EncomendaStatus)}
+            onChange={(ev) => onStatus(ev.target.value as EncomendaStatus)}
             className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             title="Status"
           >
             {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
           </select>
+          {sinalPendente && (
+            <Button size="sm" onClick={onLancarSinal} disabled={lancando} className="bg-emerald-600 text-white hover:bg-emerald-700">
+              {lancando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Banknote className="mr-1 h-3.5 w-3.5" />}
+              Lançar sinal no caixa
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" /> Editar</Button>
           <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-3.5 w-3.5" /> Reimprimir</Button>
         </div>

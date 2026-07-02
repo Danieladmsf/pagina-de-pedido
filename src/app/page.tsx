@@ -1485,7 +1485,8 @@ export default function AdminPage() {
 
         {activeTab === 'encomendas_pedidos' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile} />
+            <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile}
+              registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
           </div>
         )}
 

@@ -76,6 +76,7 @@ export interface Encomenda {
   saldo: number;
 
   status: EncomendaStatus;
+  sinalLancado?: boolean;       // sinal já registrado no caixa (trava contra lançamento duplo)
   comprovanteUrl?: string;      // comprovante do PIX do sinal (upload opcional do cliente)
   orderNotes?: string;
   source: string;               // 'encomenda_web'
