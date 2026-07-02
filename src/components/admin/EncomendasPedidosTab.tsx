@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
-import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2 } from 'lucide-react';
+import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon } from 'lucide-react';
 
 const money = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatDateBR = (iso?: string) => {
@@ -172,6 +172,28 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint }: {
           <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-3.5 w-3.5" /> Reimprimir</Button>
         </div>
       </div>
+
+      {(enc.comprovanteUrl || enc.bolo?.plate?.imageUrl || (enc.delivery?.type === 'delivery' && (enc.delivery?.street || enc.delivery?.neighborhood))) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          {enc.delivery?.type === 'delivery' && (enc.delivery?.street || enc.delivery?.neighborhood) && (
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              {[[enc.delivery.street, enc.delivery.number].filter(Boolean).join(', '), enc.delivery.neighborhood].filter(Boolean).join(' · ')}
+              {enc.delivery.feeStatus === 'a_combinar' && <span className="font-semibold text-amber-600">(taxa a combinar)</span>}
+            </span>
+          )}
+          {enc.comprovanteUrl && (
+            <a href={enc.comprovanteUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
+              <Paperclip className="h-3.5 w-3.5" /> Comprovante PIX
+            </a>
+          )}
+          {enc.bolo?.plate?.imageUrl && (
+            <a href={enc.bolo.plate.imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
+              <ImageIcon className="h-3.5 w-3.5" /> Referência da plaquinha
+            </a>
+          )}
+        </div>
+      )}
 
       {enc.orderNotes && <p className="mt-2 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground"><b>Obs.:</b> {enc.orderNotes}</p>}
     </div>

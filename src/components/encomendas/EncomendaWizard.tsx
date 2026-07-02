@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { StepIndicator, OptionCard, StepHeader, SkuRow, money } from '@/components/encomendas/primitives';
@@ -12,6 +12,7 @@ import { cn, neighborhoodMatchesQuery } from '@/lib/utils';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
+import { uploadFileToApp } from '@/lib/upload';
 import { useToast } from '@/hooks/use-toast';
 import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
 import {
@@ -29,6 +30,21 @@ function formatDateBR(iso: string) {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+// Data local em ISO (yyyy-mm-dd) somando `days` dias — sem toISOString(),
+// que converte para UTC e vira o dia errado à noite no fuso BR.
+function localIsoPlusDays(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function weekdayOfIso(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1).getDay();
 }
 
 // ID curto (mesmo alfabeto/entropia dos pedidos do cardápio — ver CartDrawer).
@@ -52,7 +68,7 @@ function groupSkus<T extends { group?: string }>(list: T[]): { group: string; it
 
 export function EncomendaWizard({ config, storeId, onHome }: { config: EncomendaConfig; storeId: string; onHome: () => void }) {
   // App Firebase isolado do cardápio (auth anônimo), igual ao CartDrawer.
-  const { firestore: db, auth } = useCustomerFirebase();
+  const { firebaseApp, firestore: db, auth } = useCustomerFirebase();
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
@@ -83,6 +99,20 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [showNbSuggestions, setShowNbSuggestions] = useState(false);
   const [dynamicFee, setDynamicFee] = useState<number | null>(null); // null = "a combinar"
   const [calculatingFee, setCalculatingFee] = useState(false);
+  // Uploads reais (Storage do app "customer", auth anônimo)
+  const [plateImageUrl, setPlateImageUrl] = useState('');
+  const [plateUploading, setPlateUploading] = useState(false);
+  const [compUrl, setCompUrl] = useState('');
+  const [compName, setCompName] = useState('');
+  const [compUploading, setCompUploading] = useState(false);
+
+  // Sobe um arquivo do cliente (foto da plaquinha / comprovante PIX). Máx. 5MB.
+  const uploadCustomerFile = useCallback(async (file: File): Promise<string> => {
+    if (file.size > 5 * 1024 * 1024) throw new Error('Arquivo acima de 5MB.');
+    if (!firebaseApp || !auth) throw new Error('Conexão indisponível.');
+    await ensureAuthenticated(auth);
+    return uploadFileToApp(firebaseApp, file, `encomendas/${storeId || 'geral'}`);
+  }, [firebaseApp, auth, storeId]);
 
   // Catálogo data-driven: vem do config (encomendas.catalog || defaults). Os aliases
   // mantêm o resto do wizard idêntico ao protótipo.
@@ -105,6 +135,20 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const especialPrincipalOk = especialPrincipais.some((x) => (especial[x.id] || 0) > 0);
 
   const has = (k: ProductKind) => products.has(k);
+
+  // Validação da data de retirada/entrega: antecedência mínima (config.minDays)
+  // e dias da semana atendidos (config.weekDays; vazio = todos os dias).
+  const minDateIso = localIsoPlusDays(config.minDays || 0);
+  const dateError = (() => {
+    if (!delDate) return '';
+    if (delDate < minDateIso) {
+      return `Precisamos de pelo menos ${config.minDays} ${config.minDays === 1 ? 'dia' : 'dias'} de antecedência — escolha a partir de ${formatDateBR(minDateIso)}.`;
+    }
+    if (config.weekDays.length > 0 && !config.weekDays.includes(weekdayOfIso(delDate))) {
+      return `Não atendemos encomendas nesse dia. Dias disponíveis: ${config.weekDays.map((d) => WEEKDAY_LABELS[d]).join(', ')}.`;
+    }
+    return '';
+  })();
 
   const steps = useMemo(() => {
     const s: { id: string }[] = [{ id: 'contato' }, { id: 'produtos' }];
@@ -187,7 +231,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       case 'especial': return especialPrincipalOk;
       case 'tortas': return Object.values(tortas).some((v) => v > 0);
       case 'docinhos': return Object.values(docinhos).some((v) => v > 0);
-      case 'entrega': return !!delDate && !!delTime && !!delType &&
+      case 'entrega': return !!delDate && !!delTime && !!delType && !dateError &&
         (delType !== 'delivery' || (street.trim().length >= 3 && !!neighborhood.trim()));
       default: return true;
     }
@@ -222,6 +266,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         const det = [plate.name && `nome "${plate.name}"`, plate.age && `${plate.age} anos`, plate.theme && `tema ${plate.theme}`].filter(Boolean).join(', ');
         L.push(`   - Plaquinha: ${det || 'sim'}`);
         if (plate.notes) L.push(`     Obs. plaquinha: ${plate.notes}`);
+        if (plateImageUrl) L.push(`     Imagem de referência: ${plateImageUrl}`);
       }
       L.push(`   Subtotal bolo: ${money(boloTotal)}`);
     }
@@ -244,6 +289,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     L.push('', `*Total: ${money(grandTotal)}*`);
     L.push(`Sinal (${config.sinalPercent}%): ${money(sinal)}${config.pixKey ? ` — PIX ${config.pixKey}` : ''}`);
     L.push(`Saldo na entrega: ${money(saldo)}`);
+    if (compUrl) L.push(`Comprovante do sinal: ${compUrl}`);
     if (orderNotes) L.push('', `*Observação:* ${orderNotes}`);
     return L.join('\n');
   }
@@ -264,7 +310,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         dough: cakeDough,
         filling: fillObj?.name || '',
         cover: coverObj?.name || '',
-        plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes },
+        plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes, imageUrl: plateImageUrl },
         total: boloTotal,
       } : null,
       especialItems: especialLines,
@@ -286,6 +332,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       sinal,
       saldo,
       status: 'orcamento',
+      comprovanteUrl: compUrl || '',
       orderNotes: orderNotes || '',
       source: 'encomenda_web',
       orderDateTime: new Date().toISOString(),
@@ -446,9 +493,21 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <Field label="Tema"><Input value={plate.theme} onChange={(e) => setPlate({ ...plate, theme: e.target.value })} placeholder="Ex: jardim, futebol, princesa..." /></Field>
                   <Field label="Observações"><Textarea value={plate.notes} onChange={(e) => setPlate({ ...plate, notes: e.target.value })} placeholder="Cores, alergias, detalhes especiais..." rows={3} /></Field>
                   <Field label={<span>Imagem de referência <span className="font-normal text-muted-foreground">(opcional)</span></span>}>
-                    <div className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card py-6 text-sm text-muted-foreground">
-                      <Upload className="h-4 w-4" /> Enviar foto (até 5MB)
-                    </div>
+                    <FileUploadBox
+                      accept="image/*"
+                      uploading={plateUploading}
+                      previewUrl={plateImageUrl}
+                      label="Enviar foto (até 5MB)"
+                      onClear={() => setPlateImageUrl('')}
+                      onFile={async (file) => {
+                        setPlateUploading(true);
+                        try { setPlateImageUrl(await uploadCustomerFile(file)); }
+                        catch (err: any) {
+                          console.error('[encomendas] upload plaquinha:', err);
+                          toast({ variant: 'destructive', title: 'Não consegui enviar a foto', description: err?.message || 'Tente novamente.' });
+                        } finally { setPlateUploading(false); }
+                      }}
+                    />
                   </Field>
                 </div>
               )}
@@ -518,8 +577,10 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
             <Section title="Retirada ou entrega" kicker={`Passo ${safeIdx + 1} de ${total}`}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={<span className="flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-primary" /> Data</span>} required>
-                  <Input type="date" value={delDate} onChange={(e) => setDelDate(e.target.value)} />
-                  <p className="mt-1 text-xs text-muted-foreground">Mín. {config.minDays} dias · {config.daysLabel}</p>
+                  <Input type="date" value={delDate} min={minDateIso} onChange={(e) => setDelDate(e.target.value)} />
+                  {dateError
+                    ? <p className="mt-1 text-xs font-semibold text-destructive">{dateError}</p>
+                    : <p className="mt-1 text-xs text-muted-foreground">Mín. {config.minDays} dias · {config.daysLabel}</p>}
                 </Field>
                 <Field label={<span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" /> Horário</span>} required>
                   <select value={delTime} onChange={(e) => setDelTime(e.target.value)}
@@ -607,7 +668,17 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
               delAddress={[street, number, complement].filter(Boolean).join(', ')}
               delNeighborhood={[neighborhood, city].filter(Boolean).join(' · ')}
               boloTotal={boloTotal} deliveryFee={deliveryFee} feeKnown={feeKnown} grandTotal={grandTotal} sinal={sinal} saldo={saldo}
-              orderNotes={orderNotes} setOrderNotes={setOrderNotes} />
+              orderNotes={orderNotes} setOrderNotes={setOrderNotes}
+              compUrl={compUrl} compName={compName} compUploading={compUploading}
+              onClearComp={() => { setCompUrl(''); setCompName(''); }}
+              onComprovante={async (file: File) => {
+                setCompUploading(true);
+                try { setCompUrl(await uploadCustomerFile(file)); setCompName(file.name); }
+                catch (err: any) {
+                  console.error('[encomendas] upload comprovante:', err);
+                  toast({ variant: 'destructive', title: 'Não consegui enviar o comprovante', description: err?.message || 'Tente novamente.' });
+                } finally { setCompUploading(false); }
+              }} />
           )}
         </div>
 
@@ -635,6 +706,46 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Caixa de upload real (foto da plaquinha / comprovante PIX): botão tracejado
+// enquanto vazio; depois mostra a prévia/nome do arquivo com opção de remover.
+function FileUploadBox({ accept, uploading, previewUrl, fileName, label, hint, onFile, onClear }: {
+  accept: string; uploading: boolean; previewUrl?: string; fileName?: string; label: string; hint?: string;
+  onFile: (f: File) => void; onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hasFile = !!previewUrl || !!fileName;
+  return (
+    <div>
+      <input ref={inputRef} type="file" accept={accept} className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); if (inputRef.current) inputRef.current.value = ''; }} />
+      {hasFile ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-primary/40 bg-secondary/40 p-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+            ) : (
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Check className="h-5 w-5" /></span>
+            )}
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">{fileName || 'Foto enviada ✓'}</span>
+          </div>
+          <button type="button" onClick={onClear} title="Remover"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card py-6 text-sm text-muted-foreground transition-colors hover:border-primary/40 disabled:opacity-60">
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? 'Enviando...' : label}
+        </button>
+      )}
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -694,7 +805,8 @@ function Field({ label, required, children }: { label: React.ReactNode; required
 function ResumoStep(props: any) {
   const { config, name, phone, products, sizeObj, cakeDough, fillObj, coverObj, plateOn, plate,
     especial, tortas, docinhos, delDate, delTime, delType, delAddress, delNeighborhood,
-    boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes } = props;
+    boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes,
+    compUrl, compName, compUploading, onComprovante, onClearComp } = props;
   const cat = config.catalog;
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(config.pixKey); setCopied(true); setTimeout(() => setCopied(false), 1500); };
@@ -759,9 +871,18 @@ function ResumoStep(props: any) {
         )}
       </div>
 
-      <div className="rounded-2xl border-2 border-dashed border-border p-4 text-center">
-        <p className="flex items-center justify-center gap-2 text-sm font-semibold text-foreground"><Upload className="h-4 w-4" /> Anexar comprovante do PIX <span className="font-normal text-muted-foreground">(opcional)</span></p>
-        <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, WEBP ou PDF · agiliza a confirmação 💛</p>
+      <div>
+        <p className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-foreground"><Upload className="h-4 w-4" /> Anexar comprovante do PIX <span className="font-normal text-muted-foreground">(opcional)</span></p>
+        <FileUploadBox
+          accept="image/*,application/pdf"
+          uploading={compUploading}
+          previewUrl={compName?.toLowerCase().endsWith('.pdf') ? '' : compUrl}
+          fileName={compName}
+          label="Selecionar arquivo (até 5MB)"
+          hint="JPG, PNG, WEBP ou PDF · agiliza a confirmação 💛"
+          onClear={onClearComp}
+          onFile={onComprovante}
+        />
       </div>
     </div>
   );

@@ -15,7 +15,8 @@ export interface EncomendaConfig {
   pixKey: string;
   sinalPercent: number;    // entrada/sinal configurável pelo lojista
   minDays: number;         // antecedência mínima da encomenda
-  daysLabel: string;       // dias de funcionamento
+  daysLabel: string;       // dias de funcionamento (texto exibido)
+  weekDays: number[];      // dias que aceitam retirada/entrega (0=Dom..6=Sáb); [] = todos
   hours: string;
   logoUrl: string;         // logo real da loja (general.logoUrl), se houver
   logoEmoji: string;       // fallback visual quando não há logo
@@ -58,6 +59,7 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     sinalPercent: typeof enc.sinalPercent === 'number' ? enc.sinalPercent : 30,
     minDays: typeof enc.minDays === 'number' ? enc.minDays : 3,
     daysLabel: enc.daysLabel || 'Terça a Sábado',
+    weekDays: Array.isArray(enc.weekDays) ? enc.weekDays.filter((d: any) => typeof d === 'number' && d >= 0 && d <= 6) : [],
     hours: enc.hours || '09h às 18h',
     // logo específica da página de encomendas tem prioridade sobre a da loja
     logoUrl: enc.content?.logoUrl || general.logoUrl || '',

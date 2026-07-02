@@ -25,6 +25,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
   const [pixKey, setPixKey] = useState('');
   const [minDays, setMinDays] = useState(3);
   const [daysLabel, setDaysLabel] = useState('Terça a Sábado');
+  const [weekDays, setWeekDays] = useState<number[]>([]);
   const [savingCfg, setSavingCfg] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -35,6 +36,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setPixKey(e.pixKey || storeProfile?.creditPixKey || '');
     setMinDays(typeof e.minDays === 'number' ? e.minDays : 3);
     setDaysLabel(e.daysLabel || 'Terça a Sábado');
+    setWeekDays(Array.isArray(e.weekDays) ? e.weekDays : []);
   }, [storeProfile]);
 
   const shareUrl = useMemo(() => {
@@ -48,7 +50,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setSavingCfg(true);
     try {
       await setDoc(doc(db, 'store_profiles', user.uid), {
-        encomendas: { enabled, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel },
+        encomendas: { enabled, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
       }, { merge: true });
       toast({ title: 'Configuração salva', description: 'As encomendas usam esses valores a partir de agora.' });
     } catch (err) {
@@ -114,6 +116,23 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
               <Label className="text-sm">Dias de funcionamento (texto)</Label>
               <Input value={daysLabel} onChange={(e) => setDaysLabel(e.target.value)} placeholder="Ex.: Terça a Sábado" />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm">Dias que aceitam retirada/entrega</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => {
+                const on = weekDays.includes(i);
+                return (
+                  <button key={d} type="button"
+                    onClick={() => setWeekDays((prev) => on ? prev.filter((x) => x !== i) : [...prev, i].sort())}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-muted-foreground hover:border-primary/50'}`}>
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">A página bloqueia datas fora desses dias. Nenhum marcado = todos os dias.</p>
           </div>
 
           <div className="flex justify-end">

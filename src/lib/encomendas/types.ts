@@ -35,7 +35,7 @@ export interface EncomendaBolo {
   dough: string;
   filling: string;     // nome do recheio
   cover: string;       // nome da cobertura
-  plate: { on: boolean; name?: string; age?: string; theme?: string; notes?: string };
+  plate: { on: boolean; name?: string; age?: string; theme?: string; notes?: string; imageUrl?: string };
   total: number;
 }
 
@@ -76,6 +76,7 @@ export interface Encomenda {
   saldo: number;
 
   status: EncomendaStatus;
+  comprovanteUrl?: string;      // comprovante do PIX do sinal (upload opcional do cliente)
   orderNotes?: string;
   source: string;               // 'encomenda_web'
   orderDateTime: string;        // ISO local
