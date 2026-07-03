@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Claude Round-Robin Load Balancer (Agressive Mode)
+# Claude Round-Robin Load Balancer v2 — Dispatcher de Inferência Paralela
 # ============================================================================
-# Arquitetura de Alto Desempenho:
-#   1. Sobe N instâncias do Claude em background (Worker Pool).
-#   2. Sobe um Proxy Reverso TCP em Python (Round-Robin) na porta 8080.
-#   3. Todas as requisições são divididas igualmente entre as instâncias.
-#   4. Auto-Healing: Se um worker cair, ele é reiniciado.
-#   5. Kill cirúrgico sem deixar órfãos no Windows.
+# Por que v2: o CLI do Claude NÃO abre porta de inferência (CLAUDE_CODE_SSE_PORT
+# é da integração com IDE) — proxy TCP reverso não move tráfego nenhum.
+# O tráfego real é: processo claude -> api.anthropic.com (HTTPS).
+#
+# Arquitetura que anda:
+#   1. Servidor HTTP na porta 8080 recebe jobs (POST /run {"prompt": ...}).
+#   2. Pool de N slots (fila FIFO): cada job vira um processo `claude -p`
+#      headless. N jobs rodam em paralelo; o resto espera na fila.
+#   3. Resposta JSON do CLI volta para o cliente (ou stream NDJSON).
+#   4. Timeout por job com kill da árvore do processo (sem órfãos).
+#
+# Endpoints:
+#   POST /run     {"prompt": "...", opcionais: model, system_prompt, cwd,
+#                  session_id, permission_mode, allowed_tools, max_turns,
+#                  timeout_s, stream, dangerously_skip_permissions}
+#   GET  /health  status do pool
+#
+# Exemplo:
+#   curl -s http://127.0.0.1:8080/run -d '{"prompt":"diga ok"}'
+#
+# Nota honesta: todos os slots usam a MESMA conta — os rate limits são por
+# conta, não por processo. Paralelismo ganha tempo de parede em jobs
+# independentes; não multiplica quota.
 # ============================================================================
 
 set -euo pipefail
@@ -25,13 +42,15 @@ else
 fi
 
 SESSIONS_DIR="${WIN_HOME}/.claude/balancer"
-STATE_FILE="${SESSIONS_DIR}/workers.json"
 PID_DIR="${SESSIONS_DIR}/pids"
 mkdir -p "$SESSIONS_DIR" "$PID_DIR"
+rm -f "${PID_DIR}"/*.pid 2>/dev/null || true
 
 FRONTEND_PORT="${CLAUDE_FRONTEND_PORT:-8080}"
-BASE_PORT="${CLAUDE_BASE_PORT:-62608}"
+BIND_ADDR="${CLAUDE_LB_BIND:-127.0.0.1}"     # 0.0.0.0 expõe na rede: só com CLAUDE_LB_TOKEN
 NUM_WORKERS="${CLAUDE_NUM_WORKERS:-3}"
+JOB_TIMEOUT="${CLAUDE_LB_TIMEOUT:-600}"       # segundos, por job
+AUTH_TOKEN="${CLAUDE_LB_TOKEN:-}"             # se setado, exige Authorization: Bearer
 
 # --- Cores ---
 if [[ -t 1 ]]; then
@@ -40,17 +59,6 @@ if [[ -t 1 ]]; then
 else
     CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; RED=''; NC=''
 fi
-
-# --- Dependências ---
-require() {
-    for cmd in "$@"; do
-        command -v "$cmd" >/dev/null 2>&1 || {
-            echo -e "${RED}Dependência faltando: $cmd${NC}" >&2
-            exit 1
-        }
-    done
-}
-require jq
 
 # Detecção agressiva de Python (Ignora o alias da Microsoft Store)
 PYTHON_BIN=""
@@ -66,7 +74,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
     exit 1
 fi
 
-# Encontra o executável do claude
+# Encontra o executável do claude (o Python refina para o binário nativo)
 CLAUDE_BIN="claude"
 if ! command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
     CLAUDE_BIN="${WIN_HOME}/.local/bin/claude.exe"
@@ -74,200 +82,362 @@ if ! command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
 fi
 
 # ============================================================================
-# MOTOR 1: Spawner e Auto-Healer dos Workers
+# DISPATCHER: HTTP -> fila FIFO -> N processos `claude -p` em paralelo
 # ============================================================================
-spawn_workers() {
-    echo -e "${CYAN}Spawnando ${NUM_WORKERS} Workers Claude...${NC}"
-    jq -n --argjson base "$BASE_PORT" --argjson n "$NUM_WORKERS" \
-        '[range(1; $n + 1) | {id: ., port: ($base + . - 1)}]' | tr -d '\r' > "$STATE_FILE"
-
-    while IFS=$'\t' read -r id port; do
-        id=$(echo "$id" | tr -d '\r'); port=$(echo "$port" | tr -d '\r')
-        local pid_file="${PID_DIR}/worker_${id}.pid"
-        local out_log="${SESSIONS_DIR}/worker_${id}.log"
-        
-        # Inicia em background
-        CLAUDE_CODE_SSE_PORT=$port "$CLAUDE_BIN" > "$out_log" 2>&1 &
-        echo $! > "$pid_file"
-        echo -e "  ${GREEN}✓${NC} Worker $id ativo na porta $port"
-    done < <(jq -r '.[] | [.id, .port] | @tsv' "$STATE_FILE")
-}
-
-# ============================================================================
-# MOTOR 2: Proxy Reverso Round-Robin (Em Python Embutido)
-# ============================================================================
-start_load_balancer() {
-    "$PYTHON_BIN" - "$FRONTEND_PORT" "$STATE_FILE" "$PID_DIR" "$CLAUDE_BIN" "$BASE_PORT" <<'PYEOF'
-import socket
-import threading
+start_dispatcher() {
+    PYTHONIOENCODING=utf-8 PYTHONUNBUFFERED=1 \
+    "$PYTHON_BIN" - "$FRONTEND_PORT" "$BIND_ADDR" "$NUM_WORKERS" "$CLAUDE_BIN" \
+        "$JOB_TIMEOUT" "$PID_DIR" "$PWD" "$AUTH_TOKEN" <<'PYEOF' &
 import json
 import os
-import time
-import sys
+import queue
+import re
 import shutil
 import subprocess
+import sys
+import threading
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FRONTEND_PORT = int(sys.argv[1])
-STATE_FILE = sys.argv[2]
-PID_DIR = sys.argv[3]
+BIND_ADDR = sys.argv[2]
+NUM_WORKERS = int(sys.argv[3])
 CLAUDE_BIN = sys.argv[4]
-BASE_PORT = int(sys.argv[5])
+JOB_TIMEOUT = int(sys.argv[5])
+PID_DIR = sys.argv[6]
+LAUNCH_DIR = sys.argv[7]
+AUTH_TOKEN = sys.argv[8] if len(sys.argv) > 8 else ""
 
-# CreateProcess do Windows não resolve "claude" -> claude.cmd/claude.exe como o
-# Git Bash faz (WinError 2). Resolve o caminho real uma vez, no boot.
+MAX_BODY = 10_000_000
+MAX_TIMEOUT = 3600
+
+# CreateProcess não resolve "claude" -> shim como o Git Bash faz. Prefere o
+# binário nativo do pacote npm (evita cmd.exe e problemas de quoting).
 def resolve_claude():
     exts = ('.exe', '.cmd', '.bat')
-    if CLAUDE_BIN.lower().endswith(exts) and os.path.isfile(CLAUDE_BIN):
-        return CLAUDE_BIN
-    for ext in exts:
-        found = shutil.which(CLAUDE_BIN + ext)
-        if found:
-            return found
-    return shutil.which(CLAUDE_BIN) or CLAUDE_BIN
+    base = CLAUDE_BIN if (CLAUDE_BIN.lower().endswith(exts) and os.path.isfile(CLAUDE_BIN)) else None
+    if base is None:
+        for ext in exts + ('',):
+            found = shutil.which(CLAUDE_BIN + ext)
+            if found:
+                base = found
+                break
+    if base is None:
+        return None
+    native = os.path.join(os.path.dirname(base), 'node_modules',
+                          '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
+    if os.name == 'nt' and os.path.isfile(native):
+        return [native]
+    if base.lower().endswith(('.cmd', '.bat')):
+        return ["cmd.exe", "/c", base]
+    return [base]
 
-CLAUDE_EXE = resolve_claude()
+CLAUDE_ARGV = resolve_claude()
+if not CLAUDE_ARGV:
+    print(f"[FATAL] Não achei o executável do claude ({CLAUDE_BIN})")
+    sys.exit(1)
 
-def claude_argv():
-    # Scripts .cmd/.bat só rodam via interpretador cmd.exe
-    if CLAUDE_EXE.lower().endswith(('.cmd', '.bat')):
-        return ["cmd.exe", "/c", CLAUDE_EXE]
-    return [CLAUDE_EXE]
+# Pool: fila FIFO com os IDs dos slots. get() bloqueia = backpressure natural.
+slots = queue.Queue()
+for i in range(1, NUM_WORKERS + 1):
+    slots.put(i)
 
-def get_workers():
+stats_lock = threading.Lock()
+stats = {"done": 0, "errors": 0, "waiting": 0, "started_at": time.time()}
+live_procs = set()
+procs_lock = threading.Lock()
+
+RE_MODEL = re.compile(r'^[\w.:\-\[\]]{1,128}$')
+RE_SESSION = re.compile(r'^[0-9a-fA-F\-]{8,64}$')
+RE_TOOL = re.compile(r'^[\w()*:,.\s\-/]{1,200}$')
+PERMISSION_MODES = {"default", "acceptEdits", "plan", "bypassPermissions"}
+
+def kill_tree(proc):
     try:
-        with open(STATE_FILE, 'r') as f:
-            return json.load(f)
-    except:
-        return []
+        if os.name == 'nt':
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            proc.kill()
+    except Exception:
+        pass
 
-def restart_worker(worker_id):
-    port = BASE_PORT + worker_id - 1
-    pid_file = os.path.join(PID_DIR, f"worker_{worker_id}.pid")
-    out_log = os.path.join(os.path.dirname(PID_DIR), f"worker_{worker_id}.log")
-    
-    # Mata o velho (// é escape do Git Bash; direto no Windows é /F /T /PID)
-    if os.path.exists(pid_file):
-        with open(pid_file, 'r') as f:
-            old_pid = f.read().strip()
-        if old_pid:
-            if os.name == 'nt':
-                try: subprocess.run(["taskkill", "/F", "/T", "/PID", old_pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except: pass
-            else:
-                try: os.kill(int(old_pid), 15)
-                except: pass
+def build_argv(p, stream):
+    argv = list(CLAUDE_ARGV) + ["-p", "--output-format",
+                                "stream-json" if stream else "json"]
+    if stream:
+        argv.append("--verbose")
+    if p.get("model"):
+        argv += ["--model", p["model"]]
+    if p.get("system_prompt"):
+        argv += ["--append-system-prompt", p["system_prompt"]]
+    if p.get("session_id"):
+        argv += ["--resume", p["session_id"]]
+    if p.get("permission_mode"):
+        argv += ["--permission-mode", p["permission_mode"]]
+    if p.get("allowed_tools"):
+        argv += ["--allowed-tools", ",".join(p["allowed_tools"])]
+    if p.get("max_turns"):
+        argv += ["--max-turns", str(p["max_turns"])]
+    if p.get("dangerously_skip_permissions"):
+        argv.append("--dangerously-skip-permissions")
+    return argv
 
-    # Sobe o novo
-    env = os.environ.copy()
-    env["CLAUDE_CODE_SSE_PORT"] = str(port)
-    proc = subprocess.Popen(claude_argv(), stdin=subprocess.DEVNULL,
-                            stdout=open(out_log, 'a'), stderr=subprocess.STDOUT, env=env)
+def validate(p):
+    if not isinstance(p, dict):
+        return "corpo deve ser um objeto JSON"
+    prompt = p.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return "campo 'prompt' (string não vazia) é obrigatório"
+    if p.get("model") is not None and not RE_MODEL.match(str(p["model"])):
+        return "campo 'model' inválido"
+    if p.get("session_id") is not None and not RE_SESSION.match(str(p["session_id"])):
+        return "campo 'session_id' inválido"
+    if p.get("permission_mode") is not None and p["permission_mode"] not in PERMISSION_MODES:
+        return f"'permission_mode' deve ser um de {sorted(PERMISSION_MODES)}"
+    if p.get("allowed_tools") is not None:
+        if not isinstance(p["allowed_tools"], list) or \
+           not all(isinstance(t, str) and RE_TOOL.match(t) for t in p["allowed_tools"]):
+            return "'allowed_tools' deve ser lista de strings simples"
+    if p.get("max_turns") is not None and \
+       (not isinstance(p["max_turns"], int) or not 1 <= p["max_turns"] <= 1000):
+        return "'max_turns' deve ser inteiro entre 1 e 1000"
+    if p.get("cwd") is not None and not os.path.isdir(str(p["cwd"])):
+        return "'cwd' não é um diretório existente"
+    if p.get("timeout_s") is not None and \
+       (not isinstance(p["timeout_s"], (int, float)) or not 10 <= p["timeout_s"] <= MAX_TIMEOUT):
+        return f"'timeout_s' deve estar entre 10 e {MAX_TIMEOUT}"
+    if p.get("system_prompt") is not None and not isinstance(p["system_prompt"], str):
+        return "'system_prompt' deve ser string"
+    return None
+
+def spawn_job(payload, stream):
+    argv = build_argv(payload, stream)
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        cwd=payload.get("cwd") or LAUNCH_DIR,
+        text=True, encoding='utf-8', errors='replace')
+    with procs_lock:
+        live_procs.add(proc)
+    pid_file = os.path.join(PID_DIR, f"job_{uuid.uuid4().hex}.pid")
     with open(pid_file, 'w') as f:
         f.write(str(proc.pid))
-    print(f"[Auto-Healer] Worker {worker_id} reiniciado na porta {port}")
+    return proc, pid_file
 
-def check_port(port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(0.5)
+def reap_job(proc, pid_file, timer):
+    if timer:
+        timer.cancel()
+    with procs_lock:
+        live_procs.discard(proc)
     try:
-        s.connect(('127.0.0.1', port))
-        s.close()
-        return True
-    except:
-        return False
+        os.remove(pid_file)
+    except OSError:
+        pass
 
-def health_check_loop():
-    while True:
-        time.sleep(10)
-        workers = get_workers()
-        for w in workers:
-            if not check_port(w['port']):
-                print(f"[Health-Check] Worker {w['id']} caiu! Reiniciando...")
-                # Falha no restart não pode derrubar a thread do Auto-Healer
-                try:
-                    restart_worker(w['id'])
-                except Exception as e:
-                    print(f"[Auto-Healer] Falha ao reiniciar Worker {w['id']}: {e}")
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    server_version = "ClaudeLB/2.0"
 
-def forward(src, dst):
-    try:
-        while True:
-            data = src.recv(8192)
-            if not data: break
-            dst.sendall(data)
-    except: pass
-    finally:
-        try: src.close()
-        except: pass
-        try: dst.close()
-        except: pass
+    def log_message(self, fmt, *args):
+        pass
 
-def handle_client(client_sock):
-    workers = get_workers()
-    if not workers: return
-    
-    # Round-Robin Simples (Tenta achar um vivo)
-    for _ in range(len(workers)):
-        global rr_index
-        rr_index = (rr_index + 1) % len(workers)
-        target = workers[rr_index]
-        
-        if check_port(target['port']):
+    def send_json(self, status, obj):
+        body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def authorized(self):
+        if not AUTH_TOKEN:
+            return True
+        got = self.headers.get("Authorization", "")
+        import hmac
+        return hmac.compare_digest(got, f"Bearer {AUTH_TOKEN}")
+
+    def do_GET(self):
+        if self.path != "/health":
+            return self.send_json(404, {"error": "use POST /run ou GET /health"})
+        with stats_lock:
+            snap = dict(stats)
+        self.send_json(200, {
+            "ok": True,
+            "slots": NUM_WORKERS,
+            "busy": NUM_WORKERS - slots.qsize(),
+            "waiting": snap["waiting"],
+            "done": snap["done"],
+            "errors": snap["errors"],
+            "uptime_s": round(time.time() - snap["started_at"], 1),
+            "claude": CLAUDE_ARGV,
+        })
+
+    def do_POST(self):
+        if self.path != "/run":
+            return self.send_json(404, {"error": "use POST /run"})
+        if not self.authorized():
+            return self.send_json(401, {"error": "token inválido (Authorization: Bearer ...)"})
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        if not 0 < length <= MAX_BODY:
+            return self.send_json(413, {"error": f"Content-Length obrigatório, máx {MAX_BODY}"})
+        try:
+            payload = json.loads(self.rfile.read(length).decode('utf-8'))
+        except Exception:
+            return self.send_json(400, {"error": "JSON inválido"})
+        err = validate(payload)
+        if err:
+            return self.send_json(400, {"error": err})
+
+        timeout = float(payload.get("timeout_s") or JOB_TIMEOUT)
+        stream = bool(payload.get("stream"))
+
+        with stats_lock:
+            stats["waiting"] += 1
+        slot = slots.get()  # bloqueia até ter slot livre (fila FIFO)
+        with stats_lock:
+            stats["waiting"] -= 1
+
+        t0 = time.time()
+        print(f"[Worker {slot}] job iniciado (stream={stream}, timeout={int(timeout)}s)")
+        try:
+            if stream:
+                self.run_streaming(payload, slot, timeout, t0)
+            else:
+                self.run_buffered(payload, slot, timeout, t0)
+        except Exception as e:
+            with stats_lock:
+                stats["errors"] += 1
+            print(f"[Worker {slot}] erro interno: {type(e).__name__}: {e}")
             try:
-                backend = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                backend.connect(('127.0.0.1', target['port']))
-                t1 = threading.Thread(target=forward, args=(client_sock, backend))
-                t2 = threading.Thread(target=forward, args=(backend, client_sock))
-                t1.daemon = True; t2.daemon = True
-                t1.start(); t2.start()
-                t1.join()
-                return
-            except: pass
-    
-    client_sock.close()
+                self.send_json(500, {"ok": False, "worker": slot,
+                                     "error": f"{type(e).__name__}: {e}"})
+            except Exception:
+                pass
+        finally:
+            slots.put(slot)
 
-rr_index = -1
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(('0.0.0.0', FRONTEND_PORT))
-server.listen(5)
+    def run_buffered(self, payload, slot, timeout, t0):
+        proc, pid_file = spawn_job(payload, stream=False)
+        timer = None
+        try:
+            try:
+                out, errout = proc.communicate(payload["prompt"], timeout=timeout)
+            except subprocess.TimeoutExpired:
+                kill_tree(proc)
+                out, errout = proc.communicate()
+                with stats_lock:
+                    stats["errors"] += 1
+                print(f"[Worker {slot}] TIMEOUT após {int(timeout)}s")
+                return self.send_json(504, {
+                    "ok": False, "worker": slot, "error": f"timeout de {int(timeout)}s",
+                    "stdout_tail": out[-2000:], "stderr_tail": errout[-2000:]})
+        finally:
+            reap_job(proc, pid_file, timer)
 
-# Inicia o Auto-Healer em background
-t_hc = threading.Thread(target=health_check_loop)
-t_hc.daemon = True
-t_hc.start()
+        dur = round((time.time() - t0) * 1000)
+        if proc.returncode != 0:
+            with stats_lock:
+                stats["errors"] += 1
+            print(f"[Worker {slot}] job falhou (exit {proc.returncode}, {dur}ms)")
+            return self.send_json(502, {
+                "ok": False, "worker": slot, "exit_code": proc.returncode,
+                "duration_ms": dur,
+                "stdout_tail": out[-2000:], "stderr_tail": errout[-2000:]})
 
-print(f"[Load Balancer] Escutando na porta {FRONTEND_PORT} - Modo Round-Robin")
+        try:
+            result = json.loads(out.strip().splitlines()[-1])
+        except Exception:
+            result = {"raw_stdout": out[-8000:]}
+        with stats_lock:
+            stats["done"] += 1
+        print(f"[Worker {slot}] job ok ({dur}ms)")
+        self.send_json(200, {"ok": True, "worker": slot,
+                             "duration_ms": dur, "response": result})
 
-while True:
-    client, addr = server.accept()
-    t = threading.Thread(target=handle_client, args=(client,))
-    t.daemon = True
-    t.start()
+    def run_streaming(self, payload, slot, timeout, t0):
+        proc, pid_file = spawn_job(payload, stream=True)
+        timer = threading.Timer(timeout, kill_tree, args=(proc,))
+        timer.daemon = True
+        timer.start()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            proc.stdin.write(payload["prompt"])
+            proc.stdin.close()
+            for line in proc.stdout:
+                self.wfile.write(line.encode('utf-8'))
+                self.wfile.flush()
+            proc.wait()
+        except (BrokenPipeError, ConnectionError, OSError):
+            kill_tree(proc)  # cliente desconectou: não deixa o job rodando à toa
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+        finally:
+            reap_job(proc, pid_file, timer)
+        dur = round((time.time() - t0) * 1000)
+        ok = proc.returncode == 0
+        with stats_lock:
+            stats["done" if ok else "errors"] += 1
+        try:
+            tail = json.dumps({"type": "balancer", "worker": slot,
+                               "exit_code": proc.returncode, "duration_ms": dur})
+            self.wfile.write((tail + "\n").encode('utf-8'))
+        except OSError:
+            pass
+        print(f"[Worker {slot}] stream encerrado (exit {proc.returncode}, {dur}ms)")
+
+exe_shown = CLAUDE_ARGV[-1]
+print(f"[Dispatcher] claude: {exe_shown}")
+print(f"[Dispatcher] {NUM_WORKERS} slots paralelos | timeout {JOB_TIMEOUT}s/job")
+print(f"[Load Balancer] Escutando em {BIND_ADDR}:{FRONTEND_PORT} - POST /run | GET /health")
+
+server = ThreadingHTTPServer((BIND_ADDR, FRONTEND_PORT), Handler)
+server.daemon_threads = True
+try:
+    server.serve_forever()
+except KeyboardInterrupt:
+    pass
+finally:
+    with procs_lock:
+        pending = list(live_procs)
+    for p in pending:
+        kill_tree(p)
+    print("[Dispatcher] encerrado")
 PYEOF
+    PYTHON_PID=$!
 }
 
 # ============================================================================
-# SISTEMA DE LIMPEZA CIRÚRGICO (Sem Órfãos)
+# LIMPEZA CIRÚRGICA (Sem Órfãos)
 # ============================================================================
+PYTHON_PID=""
+CLEANUP_DONE=""
 cleanup() {
-    echo -e "\n${RED}🛑 Desligando o Cluster...${NC}"
-    
-    # Mata os Workers usando o PID salvo e Taskkill
-    if [[ -f "$STATE_FILE" ]]; then
-        while IFS=$'\t' read -r id port; do
-            id=$(echo "$id" | tr -d '\r')
-            local pid_file="${PID_DIR}/worker_${id}.pid"
-            if [[ -f "$pid_file" ]]; then
-                local pid=$(cat "$pid_file" | tr -d '\r')
-                # No Git Bash, matamos a árvore do processo
-                kill "$pid" 2>/dev/null || true
-                taskkill //F //PID "$pid" >/dev/null 2>&1 || true
-                rm -f "$pid_file"
-            fi
-        done < <(jq -r '.[] | [.id, .port] | @tsv' "$STATE_FILE" 2>/dev/null)
+    [[ -n "$CLEANUP_DONE" ]] && return 0
+    CLEANUP_DONE=1
+    echo -e "\n${RED}🛑 Desligando o Dispatcher...${NC}"
+    # Mata o servidor Python e toda a árvore (inclui jobs claude em andamento)
+    if [[ -n "$PYTHON_PID" ]]; then
+        taskkill //F //T //PID "$PYTHON_PID" >/dev/null 2>&1 || kill "$PYTHON_PID" 2>/dev/null || true
     fi
-    echo -e "${GREEN}✓ Cluster desligado. Nenhum órfão deixado.${NC}"
+    # Backstop: varre pidfiles de jobs que porventura sobraram
+    for f in "${PID_DIR}"/*.pid; do
+        [[ -f "$f" ]] || continue
+        pid=$(tr -d '\r\n' < "$f")
+        [[ -n "$pid" ]] && taskkill //F //T //PID "$pid" >/dev/null 2>&1 || true
+        rm -f "$f"
+    done
+    echo -e "${GREEN}✓ Dispatcher desligado. Nenhum órfão deixado.${NC}"
 }
 trap cleanup EXIT INT TERM
 
@@ -275,25 +445,26 @@ trap cleanup EXIT INT TERM
 # MAIN
 # ============================================================================
 main() {
-    clear
+    clear 2>/dev/null || true
     echo -e "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║${NC}  ${PURPLE}⚡ CLAUDE ROUND-ROBIN LOAD BALANCER ⚡${NC}                ${RED}║${NC}"
+    echo -e "${RED}║${NC}  ${PURPLE}⚡ CLAUDE LOAD BALANCER v2 — INFERÊNCIA PARALELA ⚡${NC}    ${RED}║${NC}"
     echo -e "${RED}╚════════════════════════════════════════════════════════════╝${NC}"
     echo
-    
-    spawn_workers
+    echo -e "  ${GREEN}🌐 Endpoint:${NC}        ${YELLOW}http://${BIND_ADDR}:${FRONTEND_PORT}${NC}"
+    echo -e "  ${GREEN}⚙️ Pool:${NC}            ${YELLOW}${NUM_WORKERS} jobs claude -p em paralelo (fila FIFO)${NC}"
+    echo -e "  ${GREEN}⏱️ Timeout:${NC}         ${YELLOW}${JOB_TIMEOUT}s por job${NC}"
+    if [[ -n "$AUTH_TOKEN" ]]; then
+        echo -e "  ${GREEN}🔒 Auth:${NC}            ${YELLOW}Bearer token exigido${NC}"
+    fi
     echo
-    
-    echo -e "  ${GREEN}🌐 Proxy Frontal:${NC}       ${YELLOW}127.0.0.1:${FRONTEND_PORT}${NC}"
-    echo -e "  ${GREEN}⚙️ Algoritmo:${NC}           ${YELLOW}Round-Robin (Paralelo)${NC}"
-    echo -e "  ${GREEN}🩺 Auto-Healing:${NC}        ${YELLOW}Ativado (10s check)${NC}"
+    echo -e "${CYAN}  POST /run    ${NC}curl -s http://${BIND_ADDR}:${FRONTEND_PORT}/run -d '{\"prompt\":\"diga ok\"}'"
+    echo -e "${CYAN}  GET  /health ${NC}curl -s http://${BIND_ADDR}:${FRONTEND_PORT}/health"
     echo
-    echo -e "${YELLOW}>>> Conecte suas ferramentas/scripts na porta ${FRONTEND_PORT} <<<${NC}"
     echo -e "${YELLOW}>>> Pressione Ctrl+C para desligar tudo <<<${NC}"
     echo
-    
-    # Inicia o Proxy e prende o terminal
-    start_load_balancer
+
+    start_dispatcher
+    wait "$PYTHON_PID"
 }
 
 main "$@"
