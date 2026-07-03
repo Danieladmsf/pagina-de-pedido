@@ -1,53 +1,39 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Claude Auto - Inicia Claude com Auto-Switch de Portas
+# Claude Round-Robin Load Balancer (Agressive Mode)
 # ============================================================================
-# Script que:
-#   1. Garante N sessões com portas em ~/.claude/tmux-sessions/sessions.json
-#   2. Sorteia porta inicial e exporta CLAUDE_CODE_SSE_PORT
-#   3. Mantém um switcher em background que atualiza um arquivo de estado
-#      (current_port) a cada SWITCH_INTERVAL segundos, com health-check
-#   4. Inicia o Claude CLI
-#
-# Nota: exportar env var de um subshell em background NÃO afeta o processo
-# pai já em execução. Por isso o switcher grava em `current_port` — qualquer
-# wrapper/consumidor pode reler esse arquivo. A porta inicial passada ao
-# Claude é aplicada via export antes do exec.
+# Arquitetura de Alto Desempenho:
+#   1. Sobe N instâncias do Claude em background (Worker Pool).
+#   2. Sobe um Proxy Reverso TCP em Python (Round-Robin) na porta 8080.
+#   3. Todas as requisições são divididas igualmente entre as instâncias.
+#   4. Auto-Healing: Se um worker cair, ele é reiniciado.
+#   5. Kill cirúrgico sem deixar órfãos no Windows.
+# ============================================================================
 
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
-# Adiciona o diretório do script ao PATH (para encontrar jq.exe local)
-# ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="${SCRIPT_DIR}:${HOME}/bin:${PATH}"
 
-# ---------------------------------------------------------------------------
-# Configuração (sobrescrevível por env)
-# ---------------------------------------------------------------------------
-# Detecta HOME correto no Windows (WSL usa /mnt/c, Git Bash usa /c)
-if [[ -d "/mnt/c/Users/Administrador" ]]; then
-    WIN_HOME="/mnt/c/Users/Administrador"
-elif [[ -d "/c/Users/Administrador" ]]; then
+# --- Configurações ---
+if [[ -d "/c/Users/Administrador" ]]; then
     WIN_HOME="/c/Users/Administrador"
+elif [[ -d "/mnt/c/Users/Administrador" ]]; then
+    WIN_HOME="/mnt/c/Users/Administrador"
 else
     WIN_HOME="$HOME"
 fi
-SESSIONS_DIR="${CLAUDE_SESSIONS_DIR:-${WIN_HOME}/.claude/tmux-sessions}"
-STATE_FILE="${SESSIONS_DIR}/sessions.json"
-CURRENT_PORT_FILE="${SESSIONS_DIR}/current_port"
-LOG_FILE="${SESSIONS_DIR}/auto_switch.log"
-LOCK_FILE="${SESSIONS_DIR}/.auto_switcher.lock"
-PID_FILE="${SESSIONS_DIR}/.auto_switcher.pid"
-LAST_PORT_FILE="${SESSIONS_DIR}/.last_port"
 
+SESSIONS_DIR="${WIN_HOME}/.claude/balancer"
+STATE_FILE="${SESSIONS_DIR}/workers.json"
+PID_DIR="${SESSIONS_DIR}/pids"
+mkdir -p "$SESSIONS_DIR" "$PID_DIR"
+
+FRONTEND_PORT="${CLAUDE_FRONTEND_PORT:-8080}"
 BASE_PORT="${CLAUDE_BASE_PORT:-62608}"
-NUM_SESSIONS="${CLAUDE_NUM_SESSIONS:-3}"
-SWITCH_INTERVAL="${CLAUDE_SWITCH_INTERVAL:-60}"
-LOG_MAX_BYTES="${CLAUDE_LOG_MAX_BYTES:-1048576}"   # 1 MiB
-HEALTH_TIMEOUT="${CLAUDE_HEALTH_TIMEOUT:-1}"
+NUM_WORKERS="${CLAUDE_NUM_WORKERS:-3}"
 
-# Cores (desabilitadas se não for TTY)
+# --- Cores ---
 if [[ -t 1 ]]; then
     CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
     PURPLE='\033[0;35m'; RED='\033[0;31m'; NC='\033[0m'
@@ -55,161 +41,259 @@ else
     CYAN=''; GREEN=''; YELLOW=''; PURPLE=''; RED=''; NC=''
 fi
 
-# ---------------------------------------------------------------------------
-# Dependências
-# ---------------------------------------------------------------------------
-# No Windows (WSL/Git Bash), tenta localizar binários se não estiverem no PATH
-_find_cmd() {
-    local cmd="$1"; shift
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        for _candidate in "$@"; do
-            if [[ -x "$_candidate" ]]; then
-                eval "$cmd() { \"$_candidate\" \"\$@\"; }"
-                return 0
-            fi
-        done
-    fi
-}
-_find_cmd jq \
-    "${SCRIPT_DIR}/jq.exe" \
-    "${SCRIPT_DIR}/jq" \
-    "/mnt/c/Users/Administrador/bin/jq.exe" \
-    "/c/Users/Administrador/bin/jq.exe"
-_find_cmd claude \
-    "/mnt/c/Users/Administrador/.local/bin/claude.exe" \
-    "/c/Users/Administrador/.local/bin/claude.exe" \
-    "/c/Users/Administrador/.local/bin/claude"
-
+# --- Dependências ---
 require() {
     for cmd in "$@"; do
-        command -v "$cmd" >/dev/null 2>&1 || type "$cmd" >/dev/null 2>&1 || {
+        command -v "$cmd" >/dev/null 2>&1 || {
             echo -e "${RED}Dependência faltando: $cmd${NC}" >&2
             exit 1
         }
     done
 }
-require jq claude
+require jq
 
-# ---------------------------------------------------------------------------
-# Estado das sessões
-# ---------------------------------------------------------------------------
-ensure_sessions() {
-    mkdir -p "$SESSIONS_DIR"
-    if [[ ! -s "$STATE_FILE" ]] || [[ "$(jq 'length' "$STATE_FILE")" -eq 0 ]]; then
-        echo -e "${CYAN}Criando ${NUM_SESSIONS} sessões...${NC}"
-        jq -n \
-            --argjson base "$BASE_PORT" \
-            --argjson n "$NUM_SESSIONS" \
-            '[range(1; $n + 1) | {id: ., port: ($base + .), tmux_session: "claude-\(.)"}]' \
-            > "$STATE_FILE"
-        echo -e "${GREEN}✓ ${NUM_SESSIONS} sessões criadas${NC}"
+# Detecção agressiva de Python (Ignora o alias da Microsoft Store)
+PYTHON_BIN=""
+for cmd in python3 python py; do
+    path=$(command -v "$cmd" 2>/dev/null || true)
+    if [[ -n "$path" ]] && [[ "$path" != *"WindowsApps"* ]]; then
+        PYTHON_BIN="$cmd"
+        break
     fi
+done
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo -e "${RED}Python real não encontrado. Instale do python.org${NC}" >&2
+    exit 1
+fi
+
+# Encontra o executável do claude
+CLAUDE_BIN="claude"
+if ! command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
+    CLAUDE_BIN="${WIN_HOME}/.local/bin/claude.exe"
+    [[ -x "$CLAUDE_BIN" ]] || { echo -e "${RED}Claude CLI não encontrado${NC}"; exit 1; }
+fi
+
+# ============================================================================
+# MOTOR 1: Spawner e Auto-Healer dos Workers
+# ============================================================================
+spawn_workers() {
+    echo -e "${CYAN}Spawnando ${NUM_WORKERS} Workers Claude...${NC}"
+    jq -n --argjson base "$BASE_PORT" --argjson n "$NUM_WORKERS" \
+        '[range(1; $n + 1) | {id: ., port: ($base + . - 1)}]' | tr -d '\r' > "$STATE_FILE"
+
+    while IFS=$'\t' read -r id port; do
+        id=$(echo "$id" | tr -d '\r'); port=$(echo "$port" | tr -d '\r')
+        local pid_file="${PID_DIR}/worker_${id}.pid"
+        local out_log="${SESSIONS_DIR}/worker_${id}.log"
+        
+        # Inicia em background
+        CLAUDE_CODE_SSE_PORT=$port "$CLAUDE_BIN" > "$out_log" 2>&1 &
+        echo $! > "$pid_file"
+        echo -e "  ${GREEN}✓${NC} Worker $id ativo na porta $port"
+    done < <(jq -r '.[] | [.id, .port] | @tsv' "$STATE_FILE")
 }
 
-# Todas as portas, uma por linha
-list_ports() {
-    jq -r '.[].port' "$STATE_FILE"
+# ============================================================================
+# MOTOR 2: Proxy Reverso Round-Robin (Em Python Embutido)
+# ============================================================================
+start_load_balancer() {
+    "$PYTHON_BIN" - "$FRONTEND_PORT" "$STATE_FILE" "$PID_DIR" "$CLAUDE_BIN" "$BASE_PORT" <<'PYEOF'
+import socket
+import threading
+import json
+import os
+import time
+import sys
+import shutil
+import subprocess
+
+FRONTEND_PORT = int(sys.argv[1])
+STATE_FILE = sys.argv[2]
+PID_DIR = sys.argv[3]
+CLAUDE_BIN = sys.argv[4]
+BASE_PORT = int(sys.argv[5])
+
+# CreateProcess do Windows não resolve "claude" -> claude.cmd/claude.exe como o
+# Git Bash faz (WinError 2). Resolve o caminho real uma vez, no boot.
+def resolve_claude():
+    exts = ('.exe', '.cmd', '.bat')
+    if CLAUDE_BIN.lower().endswith(exts) and os.path.isfile(CLAUDE_BIN):
+        return CLAUDE_BIN
+    for ext in exts:
+        found = shutil.which(CLAUDE_BIN + ext)
+        if found:
+            return found
+    return shutil.which(CLAUDE_BIN) or CLAUDE_BIN
+
+CLAUDE_EXE = resolve_claude()
+
+def claude_argv():
+    # Scripts .cmd/.bat só rodam via interpretador cmd.exe
+    if CLAUDE_EXE.lower().endswith(('.cmd', '.bat')):
+        return ["cmd.exe", "/c", CLAUDE_EXE]
+    return [CLAUDE_EXE]
+
+def get_workers():
+    try:
+        with open(STATE_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return []
+
+def restart_worker(worker_id):
+    port = BASE_PORT + worker_id - 1
+    pid_file = os.path.join(PID_DIR, f"worker_{worker_id}.pid")
+    out_log = os.path.join(os.path.dirname(PID_DIR), f"worker_{worker_id}.log")
+    
+    # Mata o velho (// é escape do Git Bash; direto no Windows é /F /T /PID)
+    if os.path.exists(pid_file):
+        with open(pid_file, 'r') as f:
+            old_pid = f.read().strip()
+        if old_pid:
+            if os.name == 'nt':
+                try: subprocess.run(["taskkill", "/F", "/T", "/PID", old_pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except: pass
+            else:
+                try: os.kill(int(old_pid), 15)
+                except: pass
+
+    # Sobe o novo
+    env = os.environ.copy()
+    env["CLAUDE_CODE_SSE_PORT"] = str(port)
+    proc = subprocess.Popen(claude_argv(), stdin=subprocess.DEVNULL,
+                            stdout=open(out_log, 'a'), stderr=subprocess.STDOUT, env=env)
+    with open(pid_file, 'w') as f:
+        f.write(str(proc.pid))
+    print(f"[Auto-Healer] Worker {worker_id} reiniciado na porta {port}")
+
+def check_port(port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.5)
+    try:
+        s.connect(('127.0.0.1', port))
+        s.close()
+        return True
+    except:
+        return False
+
+def health_check_loop():
+    while True:
+        time.sleep(10)
+        workers = get_workers()
+        for w in workers:
+            if not check_port(w['port']):
+                print(f"[Health-Check] Worker {w['id']} caiu! Reiniciando...")
+                # Falha no restart não pode derrubar a thread do Auto-Healer
+                try:
+                    restart_worker(w['id'])
+                except Exception as e:
+                    print(f"[Auto-Healer] Falha ao reiniciar Worker {w['id']}: {e}")
+
+def forward(src, dst):
+    try:
+        while True:
+            data = src.recv(8192)
+            if not data: break
+            dst.sendall(data)
+    except: pass
+    finally:
+        try: src.close()
+        except: pass
+        try: dst.close()
+        except: pass
+
+def handle_client(client_sock):
+    workers = get_workers()
+    if not workers: return
+    
+    # Round-Robin Simples (Tenta achar um vivo)
+    for _ in range(len(workers)):
+        global rr_index
+        rr_index = (rr_index + 1) % len(workers)
+        target = workers[rr_index]
+        
+        if check_port(target['port']):
+            try:
+                backend = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                backend.connect(('127.0.0.1', target['port']))
+                t1 = threading.Thread(target=forward, args=(client_sock, backend))
+                t2 = threading.Thread(target=forward, args=(backend, client_sock))
+                t1.daemon = True; t2.daemon = True
+                t1.start(); t2.start()
+                t1.join()
+                return
+            except: pass
+    
+    client_sock.close()
+
+rr_index = -1
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('0.0.0.0', FRONTEND_PORT))
+server.listen(5)
+
+# Inicia o Auto-Healer em background
+t_hc = threading.Thread(target=health_check_loop)
+t_hc.daemon = True
+t_hc.start()
+
+print(f"[Load Balancer] Escutando na porta {FRONTEND_PORT} - Modo Round-Robin")
+
+while True:
+    client, addr = server.accept()
+    t = threading.Thread(target=handle_client, args=(client,))
+    t.daemon = True
+    t.start()
+PYEOF
 }
 
-# Sorteia uma porta saudável, evitando repetir a anterior quando possível
-pick_port() {
-    local last=""
-    [[ -f "$LAST_PORT_FILE" ]] && last=$(<"$LAST_PORT_FILE")
-
-    mapfile -t ports < <(list_ports | shuf)
-    local fallback=""
-    for p in "${ports[@]}"; do
-        [[ -z "$fallback" ]] && fallback="$p"
-        [[ "$p" == "$last" ]] && continue
-        if curl -sf -m "$HEALTH_TIMEOUT" "http://127.0.0.1:${p}/" >/dev/null 2>&1; then
-            echo "$p"; return 0
-        fi
-    done
-    # Nenhuma respondeu ao health-check: devolve uma aleatória mesmo assim
-    echo "${fallback:-${ports[0]}}"
-}
-
-# ---------------------------------------------------------------------------
-# Log rotativo simples
-# ---------------------------------------------------------------------------
-log_line() {
-    local msg="$1"
-    if [[ -f "$LOG_FILE" ]]; then
-        local size
-        size=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
-        (( size > LOG_MAX_BYTES )) && mv -f "$LOG_FILE" "${LOG_FILE}.1"
+# ============================================================================
+# SISTEMA DE LIMPEZA CIRÚRGICO (Sem Órfãos)
+# ============================================================================
+cleanup() {
+    echo -e "\n${RED}🛑 Desligando o Cluster...${NC}"
+    
+    # Mata os Workers usando o PID salvo e Taskkill
+    if [[ -f "$STATE_FILE" ]]; then
+        while IFS=$'\t' read -r id port; do
+            id=$(echo "$id" | tr -d '\r')
+            local pid_file="${PID_DIR}/worker_${id}.pid"
+            if [[ -f "$pid_file" ]]; then
+                local pid=$(cat "$pid_file" | tr -d '\r')
+                # No Git Bash, matamos a árvore do processo
+                kill "$pid" 2>/dev/null || true
+                taskkill //F //PID "$pid" >/dev/null 2>&1 || true
+                rm -f "$pid_file"
+            fi
+        done < <(jq -r '.[] | [.id, .port] | @tsv' "$STATE_FILE" 2>/dev/null)
     fi
-    printf '%s %s\n' "$(date '+%F %T')" "$msg" >> "$LOG_FILE"
+    echo -e "${GREEN}✓ Cluster desligado. Nenhum órfão deixado.${NC}"
 }
+trap cleanup EXIT INT TERM
 
-# ---------------------------------------------------------------------------
-# Auto-switcher em background (com lock para evitar concorrência)
-# ---------------------------------------------------------------------------
-start_auto_switcher() {
-    # Mata switcher anterior, se vivo
-    if [[ -f "$PID_FILE" ]]; then
-        local old; old=$(<"$PID_FILE")
-        if [[ -n "$old" ]] && kill -0 "$old" 2>/dev/null; then
-            kill "$old" 2>/dev/null || true
-        fi
-        rm -f "$PID_FILE"
-    fi
-
-    (
-        exec 9>"$LOCK_FILE"
-        flock -n 9 || exit 0
-        while true; do
-            sleep "$SWITCH_INTERVAL"
-            local new_port
-            new_port=$(pick_port)
-            printf '%s' "$new_port" > "$CURRENT_PORT_FILE"
-            printf '%s' "$new_port" > "$LAST_PORT_FILE"
-            log_line "auto-switch -> $new_port"
-        done
-    ) &
-    echo $! > "$PID_FILE"
-}
-
-stop_auto_switcher() {
-    if [[ -f "$PID_FILE" ]]; then
-        local pid; pid=$(<"$PID_FILE")
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
-        fi
-        rm -f "$PID_FILE"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# ============================================================================
+# MAIN
+# ============================================================================
 main() {
-    ensure_sessions
-
-    local initial_port
-    initial_port=$(pick_port)
-    export CLAUDE_CODE_SSE_PORT="$initial_port"
-    printf '%s' "$initial_port" > "$CURRENT_PORT_FILE"
-    printf '%s' "$initial_port" > "$LAST_PORT_FILE"
-
     clear
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}  ${PURPLE}🎲 Claude Auto - Randomização Ativa${NC}                   ${CYAN}║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║${NC}  ${PURPLE}⚡ CLAUDE ROUND-ROBIN LOAD BALANCER ⚡${NC}                ${RED}║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════════════════════════╝${NC}"
     echo
-    echo -e "  ${GREEN}🔌 Porta Inicial:${NC} ${YELLOW}${initial_port}${NC}"
-    echo -e "  ${GREEN}🔄 Auto-Switch:${NC}   ${YELLOW}${SWITCH_INTERVAL}s${NC}"
-    echo -e "  ${GREEN}📋 Sessões:${NC}      ${YELLOW}${NUM_SESSIONS}${NC} (base ${BASE_PORT})"
-    echo -e "  ${GREEN}📝 Estado:${NC}       ${CURRENT_PORT_FILE}"
+    
+    spawn_workers
     echo
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    echo -e "  ${GREEN}🌐 Proxy Frontal:${NC}       ${YELLOW}127.0.0.1:${FRONTEND_PORT}${NC}"
+    echo -e "  ${GREEN}⚙️ Algoritmo:${NC}           ${YELLOW}Round-Robin (Paralelo)${NC}"
+    echo -e "  ${GREEN}🩺 Auto-Healing:${NC}        ${YELLOW}Ativado (10s check)${NC}"
     echo
-
-    start_auto_switcher
-    trap stop_auto_switcher EXIT INT TERM
-
-    # Sem `exec`: garante que o trap dispare ao sair do Claude
-    claude "$@"
+    echo -e "${YELLOW}>>> Conecte suas ferramentas/scripts na porta ${FRONTEND_PORT} <<<${NC}"
+    echo -e "${YELLOW}>>> Pressione Ctrl+C para desligar tudo <<<${NC}"
+    echo
+    
+    # Inicia o Proxy e prende o terminal
+    start_load_balancer
 }
 
 main "$@"
