@@ -73,6 +73,8 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   // Pagamento + troco (mesma lógica do PrintReceipt).
   let paymentText: string = order?.paymentMethod || 'Pagamento na Entrega/Retirada';
   if (paymentText === 'conta_casa') paymentText = 'Prazo';
+  // Frete a Prazo é acerto direto cliente→motoboy: não entra na nota.
+  paymentText = paymentText.replace(/\s*\(Taxa de entrega paga direto ao motoboy\)/i, '').trim();
   let changeFor = 0;
   let changeAmount = 0;
   const trocoMatch = paymentText.match(/Troco para R\$\s*([\d.,]+)/i);
@@ -144,11 +146,9 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
       <div class="sec mb">
         <div class="row"><span>Subtotal</span><span>R$ ${money(subtotal)}</span></div>
         ${
-          order?.orderType === 'delivery'
+          order?.orderType === 'delivery' && order?.payDeliveryToMotoboy !== true
             ? `<div class="row"><span>Taxa de entrega</span><span>${
-                order?.deliveryFee > 0
-                  ? `R$ ${money(order.deliveryFee)}${order?.payDeliveryToMotoboy === true ? ' (motoboy)' : ''}`
-                  : 'Grátis'
+                order?.deliveryFee > 0 ? `R$ ${money(order.deliveryFee)}` : 'Grátis'
               }</span></div>`
             : ''
         }

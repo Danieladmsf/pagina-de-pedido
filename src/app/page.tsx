@@ -1025,10 +1025,10 @@ export default function AdminPage() {
     const subtotalVal = order.subtotal !== undefined ? order.subtotal : ((order.totalAmount || 0) - (order.deliveryFee || 0));
     const subtotalStr = `R$ ${subtotalVal.toFixed(2).replace('.', ',')}`;
     const feeVal = order.deliveryFee || 0;
-    // Prazo: o frete fica fora do total e é pago em mãos ao motoboy — a mensagem
-    // precisa dizer isso, senão "Subtotal + Taxa ≠ Total" parece erro.
+    // Frete a Prazo não é registrado pela loja (acerto direto cliente→entregador):
+    // o resumo não lista valor, só a instrução — e o Total segue sem a taxa.
     const feeStr = feeVal > 0 && order.payDeliveryToMotoboy === true
-      ? `R$ ${feeVal.toFixed(2).replace('.', ',')} (pagar direto ao motoboy na entrega)`
+      ? 'paga direto ao entregador na entrega'
       : `R$ ${feeVal.toFixed(2).replace('.', ',')}`;
 
     const formatPhoneDisplay = (phoneStr: string) => {

@@ -2307,7 +2307,10 @@ function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
 
   const items: any[] = Array.isArray(order?.items) ? order.items : [];
   const subtotal = items.reduce((acc, it) => acc + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0), 0);
-  const fee = Number(order?.deliveryFee) || 0;
+  // Frete pago direto ao motoboy é acerto cliente→entregador: não faz parte da
+  // venda registrada (senão o card mostraria taxa e um "desconto" fantasma).
+  const feeToMotoboy = order?.payDeliveryToMotoboy === true;
+  const fee = feeToMotoboy ? 0 : (Number(order?.deliveryFee) || 0);
   const isDelivery = orderType === 'delivery';
   const total = Number(lanc.valor) || subtotal + fee;
   const desconto = Math.max(0, subtotal + fee - total);
@@ -2397,7 +2400,7 @@ function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
           <span>Subtotal</span>
           <span className="tabular-nums">{brl(subtotal)}</span>
         </div>
-        {(fee > 0 || isDelivery) && (
+        {(fee > 0 || (isDelivery && !feeToMotoboy)) && (
           <div className="flex justify-between text-slate-500">
             <span>Taxa de entrega</span>
             {fee > 0 ? (

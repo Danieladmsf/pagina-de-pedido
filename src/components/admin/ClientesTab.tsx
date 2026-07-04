@@ -1236,7 +1236,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                                   <span className="shrink-0 text-slate-400">R$ {((it.unitPrice || 0) * (it.quantity || 1)).toFixed(2)}</span>
                                 </div>
                               ))}
-                              {matchedOrder.deliveryFee > 0 && (
+                              {matchedOrder.deliveryFee > 0 && matchedOrder.payDeliveryToMotoboy !== true && (
                                 <div className="flex justify-between border-t border-dashed border-slate-200 pt-0.5 mt-0.5 text-[10px] text-slate-400">
                                   <span>Frete</span>
                                   <span>R$ {(matchedOrder.deliveryFee || 0).toFixed(2)}</span>
