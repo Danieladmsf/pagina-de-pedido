@@ -82,18 +82,13 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [editSearch, setEditSearch] = useState<string>('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [isSavingItems, setIsSavingItems] = useState(false);
-  const [feePaidDirectly, setFeePaidDirectly] = useState(false);
-
-  // Modal "taxa já paga ao motoboy?" — substitui o confirm() nativo do
-  // navegador, que tinha botões OK/Cancelar ambíguos para uma pergunta de
-  // Sim/Não (e alguns navegadores suprimem diálogos nativos).
-  const [feeConfirm, setFeeConfirm] = useState<{ fee: number; newTotal: number | null; resolve: (paid: boolean) => void } | null>(null);
-  const askFeePaidDirectly = (fee: number, newTotal: number | null) =>
-    new Promise<boolean>((resolve) => setFeeConfirm({ fee, newTotal, resolve }));
-  const answerFeeConfirm = (paid: boolean) => {
-    feeConfirm?.resolve(paid);
-    setFeeConfirm(null);
-  };
+  // Regra fixa: pagamento a Prazo ⇒ a taxa de entrega é paga na entrega, direto
+  // ao motoboy — sai da cobrança automaticamente, sem perguntar nada.
+  // payDeliveryToMotoboy === true no pedido = frete já nasceu fora do total (cardápio).
+  const orderFee = Number(paymentModalOrder?.deliveryFee) || 0;
+  const feeAlreadyOffTotal = paymentModalOrder?.payDeliveryToMotoboy === true;
+  const prazoInvolved = selectedPayment === 'conta_casa' || paymentSplits.some(s => s.methodId === 'conta_casa');
+  const feeExcludedFromCharge = orderFee > 0 && prazoInvolved && !feeAlreadyOffTotal;
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
   
@@ -184,7 +179,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     setValorRecebido('');
     setPaymentSplits([]);
     setIsSplitMode(false);
-    setFeePaidDirectly(false);
   };
 
   const handleOpenEditItems = () => {
@@ -335,19 +329,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     
     setIsProcessing(true);
     try {
-      let isFeePaidDirectlyLocal = feePaidDirectly;
-
-      // Se pgto simples for Prazo e houver taxa de entrega
-      if (!isSplitMode && selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0) {
-        const paid = await askFeePaidDirectly(
-          Number(paymentModalOrder.deliveryFee),
-          Number(paymentModalOrder.totalAmount) - Number(paymentModalOrder.deliveryFee)
-        );
-        if (paid) {
-          isFeePaidDirectlyLocal = true;
-          setFeePaidDirectly(true);
-        }
-      }
+      // Prazo ⇒ frete sai da cobrança (pago direto ao motoboy), sem perguntar.
+      // feeOffApplied marca quando o desconto foi feito AGORA (pedido ainda
+      // tinha o frete dentro do total) para ajustar o totalAmount na finalização.
+      let feeOffApplied = false;
 
       let paymentString = '';
       const splitsToProcess = isSplitMode ? [...paymentSplits] : [];
@@ -366,8 +351,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         if (selectedPayment === 'conta_casa') label = 'Prazo';
         
         let amount = paymentModalOrder.totalAmount;
-        if (isFeePaidDirectlyLocal && selectedPayment === 'conta_casa') {
-          amount = paymentModalOrder.totalAmount - (Number(paymentModalOrder.deliveryFee) || 0);
+        if (selectedPayment === 'conta_casa' && orderFee > 0) {
+          if (!feeAlreadyOffTotal) {
+            amount = paymentModalOrder.totalAmount - orderFee;
+            feeOffApplied = true;
+          }
           paymentString = `${label} (Taxa de entrega paga direto ao motoboy)`;
         } else {
           paymentString = selectedPayment === 'dinheiro' && change > 0 
@@ -378,7 +366,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       } else {
         // Fluxo MÚLTIPLO (Split)
         if (selectedPayment) {
-          const remaining = Math.max(0, paymentModalOrder.totalAmount - splitsToProcess.reduce((sum, s) => sum + s.amount, 0));
+          const chargeBasis = paymentModalOrder.totalAmount - (feeExcludedFromCharge ? orderFee : 0);
+          const remaining = Math.max(0, chargeBasis - splitsToProcess.reduce((sum, s) => sum + s.amount, 0));
           let amount = remaining;
           let received: number | undefined = undefined;
           const valRec = valorRecebido ? Number(valorRecebido) : 0;
@@ -403,11 +392,14 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         }
 
         paymentString = splitsToProcess.map(s => `${s.label}: R$ ${s.amount.toFixed(2)}`).join(' | ');
-        if (isFeePaidDirectlyLocal) {
+        const splitsTemPrazo = splitsToProcess.some(s => s.methodId === 'conta_casa');
+        if (splitsTemPrazo && orderFee > 0) {
           paymentString += ' (Taxa de entrega paga direto ao motoboy)';
+          if (!feeAlreadyOffTotal) feeOffApplied = true;
         }
+        const cobrado = paymentModalOrder.totalAmount - (feeOffApplied ? orderFee : 0);
         const totalReceived = splitsToProcess.reduce((acc, s) => acc + (s.received || s.amount), 0);
-        if (totalReceived > paymentModalOrder.totalAmount) {
+        if (totalReceived > cobrado) {
            paymentString += ` (Troco para R$ ${totalReceived.toFixed(2)})`;
         }
       }
@@ -447,8 +439,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
       const updates: any = { status: 'delivered', paymentMethod: paymentString };
-      if (isFeePaidDirectlyLocal) {
-        updates.totalAmount = paymentModalOrder.totalAmount - (Number(paymentModalOrder.deliveryFee) || 0);
+      if (feeOffApplied) {
+        updates.totalAmount = paymentModalOrder.totalAmount - orderFee;
         updates.payDeliveryToMotoboy = true;
       }
       const statusUpdated = await updateOrderStatus(paymentModalOrder.id, updates);
@@ -506,16 +498,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const handleAddSplit = async () => {
     if (!selectedPayment || !paymentModalOrder) return;
 
-    let isFeePaidDirectlyLocal = feePaidDirectly;
-    if (selectedPayment === 'conta_casa' && Number(paymentModalOrder.deliveryFee) > 0 && !feePaidDirectly) {
-      const paid = await askFeePaidDirectly(Number(paymentModalOrder.deliveryFee), null);
-      if (paid) {
-        isFeePaidDirectlyLocal = true;
-        setFeePaidDirectly(true);
-      }
-    }
-
-    const currentTotalOrder = paymentModalOrder.totalAmount - (isFeePaidDirectlyLocal ? (Number(paymentModalOrder.deliveryFee) || 0) : 0);
+    const currentTotalOrder = paymentModalOrder.totalAmount - (feeExcludedFromCharge ? orderFee : 0);
     const remaining = Math.max(0, currentTotalOrder - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
     
     let amount = remaining;
@@ -796,6 +779,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 <div className="border border-teal-200 bg-teal-50 px-3 py-1 rounded text-teal-700 font-bold whitespace-nowrap">
                   🛵 Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
                   {selectedOrder.distanceKm && <span className="text-[10px] font-normal ml-1">({selectedOrder.distanceKm}km)</span>}
+                  {selectedOrder.payDeliveryToMotoboy === true && <span className="text-[10px] font-normal ml-1">· pago ao motoboy</span>}
                 </div>
               )}
             </div>
@@ -853,7 +837,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
       <DialogContent className="sm:max-w-[380px] p-4">
         {(() => {
-          const totalOrder = (paymentModalOrder?.totalAmount || 0) - (feePaidDirectly ? (Number(paymentModalOrder?.deliveryFee) || 0) : 0);
+          const totalOrder = (paymentModalOrder?.totalAmount || 0) - (feeExcludedFromCharge ? orderFee : 0);
           const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
           const remaining = Math.max(0, totalOrder - totalPaid);
           const isFullyPaid = remaining <= 0;
@@ -872,6 +856,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 </DialogTitle>
                 <DialogDescription className="text-xs">
                   {!caixaAberto && <span className="text-red-500 block mb-1">⚠️ Caixa fechado — venda não será registrada nele.</span>}
+                  {orderFee > 0 && prazoInvolved && (
+                    <span className="text-blue-600 block mb-1">🛵 Prazo: a taxa de entrega (R$ {orderFee.toFixed(2)}) fica de fora da cobrança — o cliente paga direto ao motoboy.</span>
+                  )}
                 </DialogDescription>
               </DialogHeader>
 
@@ -1218,24 +1205,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             >
               {isSavingItems ? 'Salvando...' : '💾 Salvar Alterações'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={feeConfirm !== null} onOpenChange={(open) => { if (!open) answerFeeConfirm(false); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Bike className="h-5 w-5" /> Taxa de entrega</DialogTitle>
-            <DialogDescription>
-              O cliente já pagou a taxa de entrega de <strong>R$ {(feeConfirm?.fee || 0).toFixed(2)}</strong> diretamente ao motoboy?
-              {feeConfirm?.newTotal != null && (
-                <> Se sim, a dívida a Prazo será de <strong>R$ {feeConfirm.newTotal.toFixed(2)}</strong>.</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => answerFeeConfirm(false)}>Não, cobrar no Prazo</Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={() => answerFeeConfirm(true)}>Sim, já pagou</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

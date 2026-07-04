@@ -72,6 +72,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
 
   // Pagamento + troco (mesma lógica do PrintReceipt).
   let paymentText: string = order?.paymentMethod || 'Pagamento na Entrega/Retirada';
+  if (paymentText === 'conta_casa') paymentText = 'Prazo';
   let changeFor = 0;
   let changeAmount = 0;
   const trocoMatch = paymentText.match(/Troco para R\$\s*([\d.,]+)/i);
@@ -145,7 +146,9 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
         ${
           order?.orderType === 'delivery'
             ? `<div class="row"><span>Taxa de entrega</span><span>${
-                order?.deliveryFee > 0 ? `R$ ${money(order.deliveryFee)}` : 'Grátis'
+                order?.deliveryFee > 0
+                  ? `R$ ${money(order.deliveryFee)}${order?.payDeliveryToMotoboy === true ? ' (motoboy)' : ''}`
+                  : 'Grátis'
               }</span></div>`
             : ''
         }

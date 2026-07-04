@@ -518,7 +518,7 @@ export default function MyOrdersPage() {
                             ))}
                             {matchedOrder.deliveryFee > 0 && (
                               <div className="flex justify-between text-[10px] text-slate-400 border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
-                                <span>Frete</span>
+                                <span>Frete{matchedOrder.payDeliveryToMotoboy === true ? ' (pago direto ao motoboy)' : ''}</span>
                                 <span>R$ {matchedOrder.deliveryFee.toFixed(2)}</span>
                               </div>
                             )}
@@ -568,7 +568,7 @@ export default function MyOrdersPage() {
                       </div>
                       <div className="flex items-center justify-between pt-1 border-t border-dashed">
                         <div className="text-[10px] text-slate-400">
-                          {order.deliveryFee > 0 && <span>Frete: R$ {order.deliveryFee.toFixed(2)}</span>}
+                          {order.deliveryFee > 0 && <span>Frete: R$ {order.deliveryFee.toFixed(2)}{order.payDeliveryToMotoboy === true ? ' (ao motoboy)' : ''}</span>}
                         </div>
                         <span className="text-sm font-black text-primary">R$ {order.totalAmount.toFixed(2)}</span>
                       </div>

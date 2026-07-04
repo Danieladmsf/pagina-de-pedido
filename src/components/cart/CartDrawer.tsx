@@ -214,7 +214,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   // Pagamento
   const [paymentMethod, setPaymentMethod] = useState('');
   const [cashChange, setCashChange] = useState('');
-  const [payDeliverySeparately, setPayDeliverySeparately] = useState(false);
 
   // Campos de endereço
   const [cep, setCep] = useState('');
@@ -235,7 +234,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   const isFreeDelivery = freeDeliveryOver > 0 && totalPrice >= freeDeliveryOver;
   const baseDeliveryFee = orderType === 'delivery' && !isFreeDelivery ? (dynamicFee !== null ? dynamicFee : deliveryFee) : 0;
-  const appliedDeliveryFee = (paymentMethod === 'conta_casa' && payDeliverySeparately) ? 0 : baseDeliveryFee;
+  // Regra fixa: no Prazo, a taxa de entrega é paga na entrega direto ao motoboy;
+  // ela nunca entra no total do pedido nem na conta (Prazo) do cliente.
+  const prazoFeeToMotoboy = paymentMethod === 'conta_casa' && baseDeliveryFee > 0;
+  const appliedDeliveryFee = prazoFeeToMotoboy ? 0 : baseDeliveryFee;
   const grandTotal = totalPrice + appliedDeliveryFee;
 
   const openItemNoteEditor = (item: any) => {
@@ -807,7 +809,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         totalAmount: safeGrandTotal,
         subtotal: safeSubtotal,
         deliveryFee: baseDeliveryFee,
-          payDeliveryToMotoboy: paymentMethod === 'conta_casa' && payDeliverySeparately,
+        payDeliveryToMotoboy: prazoFeeToMotoboy,
         distanceKm: distanceInfo?.distanceKm || null,
         paymentStatus: 'pending',
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
@@ -1278,6 +1280,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     </div>
                   </div>
 
+                  {prazoFeeToMotoboy && (
+                    <div className="bg-blue-50 p-2.5 rounded-lg border border-blue-200 flex items-start gap-1.5">
+                      <span className="text-base leading-none">🛵</span>
+                      <p className="text-[11px] text-blue-800 leading-tight">
+                        <b>Atenção:</b> a taxa de entrega de <b>R$ {baseDeliveryFee.toFixed(2)}</b> não entra no Prazo — você paga direto ao motoboy na hora da entrega. Na sua conta será lançado somente o valor dos itens.
+                      </p>
+                    </div>
+                  )}
+
                   {paymentMethod === 'dinheiro' && (
                     <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
                       <Label htmlFor="troco-input" className="text-amber-800 text-xs font-bold flex flex-col gap-0.5">
@@ -1383,6 +1394,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <span>Taxa de entrega {distanceInfo ? `(${distanceInfo.distanceText})` : ''}</span>
                   {isFreeDelivery ? (
                     <span className="text-green-600 font-bold">Grátis</span>
+                  ) : prazoFeeToMotoboy ? (
+                    <span className="text-blue-600 font-bold">R$ {baseDeliveryFee.toFixed(2)} ao motoboy</span>
                   ) : (
                     <span>R$ {appliedDeliveryFee.toFixed(2)}</span>
                   )}

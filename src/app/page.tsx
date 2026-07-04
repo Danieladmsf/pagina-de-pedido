@@ -1011,6 +1011,7 @@ export default function AdminPage() {
     if (order.paymentMethod === 'debit_card' || order.paymentMethod === 'debito') paymentText = 'Débito';
     if (order.paymentMethod === 'pix') paymentText = 'Pix';
     if (order.paymentMethod === 'cash' || order.paymentMethod === 'dinheiro') paymentText = 'Dinheiro';
+    if (order.paymentMethod === 'conta_casa') paymentText = 'Prazo';
 
     let addressLine = '';
     if (order.orderType === 'delivery') {
@@ -1024,7 +1025,11 @@ export default function AdminPage() {
     const subtotalVal = order.subtotal !== undefined ? order.subtotal : ((order.totalAmount || 0) - (order.deliveryFee || 0));
     const subtotalStr = `R$ ${subtotalVal.toFixed(2).replace('.', ',')}`;
     const feeVal = order.deliveryFee || 0;
-    const feeStr = `R$ ${feeVal.toFixed(2).replace('.', ',')}`;
+    // Prazo: o frete fica fora do total e é pago em mãos ao motoboy — a mensagem
+    // precisa dizer isso, senão "Subtotal + Taxa ≠ Total" parece erro.
+    const feeStr = feeVal > 0 && order.payDeliveryToMotoboy === true
+      ? `R$ ${feeVal.toFixed(2).replace('.', ',')} (pagar direto ao motoboy na entrega)`
+      : `R$ ${feeVal.toFixed(2).replace('.', ',')}`;
 
     const formatPhoneDisplay = (phoneStr: string) => {
       const digits = phoneStr.replace(/\D/g, '');
