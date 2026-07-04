@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImage } from '@/lib/upload';
-import { mergeCatalog, type EncomendaCatalog, type SkuOption } from '@/lib/encomendas/catalog';
-import { Loader2, Save, Plus, Trash2, Upload, ExternalLink } from 'lucide-react';
+import { applyProductLinks, mergeCatalog, type EncomendaCatalog, type LinkedProduct, type SkuOption } from '@/lib/encomendas/catalog';
+import { Loader2, Save, Plus, Trash2, Upload, ExternalLink, Link2, Unlink, Search } from 'lucide-react';
 
 const genId = () => Math.random().toString(36).slice(2, 9);
 const num = (v: string) => Number(String(v).replace(',', '.')) || 0;
@@ -19,11 +19,24 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
   const [cat, setCat] = useState<EncomendaCatalog>(mergeCatalog(storeProfile?.encomendas?.catalog));
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Produtos da aba Produtos (menuItems) — fonte dos SKUs vinculados (ponte cardápio→encomendas).
+  const [menuProducts, setMenuProducts] = useState<LinkedProduct[]>([]);
 
   useEffect(() => {
     setCat(mergeCatalog(storeProfile?.encomendas?.catalog));
     setDirty(false);
   }, [storeProfile]);
+
+  useEffect(() => {
+    if (!db || !user?.uid) return;
+    getDocs(query(collection(db, 'menuItems'), where('ownerId', '==', user.uid)))
+      .then((snap) => {
+        const items = snap.docs.map((d) => ({ ...(d.data() as any), id: d.id }));
+        items.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+        setMenuProducts(items);
+      })
+      .catch((err) => console.error('[encomendas-catalog] erro ao carregar produtos do cardápio:', err));
+  }, [db, user?.uid]);
 
   const mut = (fn: (c: any) => void) => {
     setCat((prev) => { const c = structuredClone(prev) as any; fn(c); return c; });
@@ -33,6 +46,17 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
   const delItem = (key: keyof EncomendaCatalog, idx: number) => mut((c) => { c[key].splice(idx, 1); });
   const addItem = (key: keyof EncomendaCatalog, item: any) => mut((c) => { c[key].push(item); });
   const setStr = (key: keyof EncomendaCatalog, idx: number, val: string) => mut((c) => { c[key][idx] = val; });
+
+  // SKU novo criado a partir de um produto cadastrado: guarda o vínculo (productId)
+  // e um snapshot dos dados — o snapshot é fallback caso o produto seja apagado.
+  const skuFromProduct = (p: LinkedProduct): SkuOption => ({
+    id: genId(),
+    productId: p.id,
+    name: p.name || '',
+    desc: p.description || '',
+    price: typeof p.price === 'number' ? p.price : 0,
+    imageUrl: p.imageUrl || '',
+  });
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -44,7 +68,11 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
     if (!db || !user?.uid) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { catalog: cat } }, { merge: true });
+      // Atualiza o snapshot dos itens vinculados com os dados atuais do cadastro:
+      // é o fallback da página pública caso o produto seja apagado do cardápio.
+      const toSave = applyProductLinks(cat, menuProducts);
+      await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { catalog: toSave } }, { merge: true });
+      setCat(toSave);
       setDirty(false);
       toast({ title: 'Catálogo salvo', description: 'Os produtos já valem no link público.' });
     } catch (err) {
@@ -158,16 +186,16 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
         </div>
         <div className="mt-2"><Col label="Descrição"><Input value={cat.especialInfo.desc} onChange={(e) => mut((c) => { c.especialInfo.desc = e.target.value; })} /></Col></div>
         <p className="mt-3 text-xs text-muted-foreground">O cliente só finaliza levando ao menos 1 item <b>Principal</b>; itens <b>Adicionais</b> acompanham (ex.: molho extra, calda).</p>
-        <div className="mt-2"><SkuEditor items={cat.especialItems} roles minimums onUpd={(i, patch) => updItem('especialItems', i, patch)} onDel={(i) => delItem('especialItems', i)} onAdd={() => addItem('especialItems', { id: genId(), name: '', price: 0, role: 'principal' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} /></div>
+        <div className="mt-2"><SkuEditor items={cat.especialItems} roles minimums products={menuProducts} onAddFromMenu={(p) => addItem('especialItems', { ...skuFromProduct(p), role: 'principal' })} onUpd={(i, patch) => updItem('especialItems', i, patch)} onDel={(i) => delItem('especialItems', i)} onAdd={() => addItem('especialItems', { id: genId(), name: '', price: 0, role: 'principal' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} /></div>
       </Section>
 
       {/* Tortas / Docinhos */}
       <Section title="Tortas" hint='Use o campo "Grupo" para criar seções na página (ex.: Tortas Pequenas (P), Tortas Grandes (G)).'>
-        <SkuEditor items={cat.tortas} groups onUpd={(i, patch) => updItem('tortas', i, patch)} onDel={(i) => delItem('tortas', i)} onAdd={() => addItem('tortas', { id: genId(), name: '', price: 0, group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
+        <SkuEditor items={cat.tortas} groups products={menuProducts} onAddFromMenu={(p) => addItem('tortas', { ...skuFromProduct(p), group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onUpd={(i, patch) => updItem('tortas', i, patch)} onDel={(i) => delItem('tortas', i)} onAdd={() => addItem('tortas', { id: genId(), name: '', price: 0, group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
       </Section>
 
       <Section title="Docinhos" hint='Preço por unidade. "Mín." é o pedido mínimo por sabor (ex.: 50) e "De X em X" o salto do contador. Use "Grupo" para seções (ex.: Doces finos, Adicionais opcionais).'>
-        <SkuEditor items={cat.docinhos} groups minimums onUpd={(i, patch) => updItem('docinhos', i, patch)} onDel={(i) => delItem('docinhos', i)} onAdd={() => addItem('docinhos', { id: genId(), name: '', price: 0, group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
+        <SkuEditor items={cat.docinhos} groups minimums products={menuProducts} onAddFromMenu={(p) => addItem('docinhos', { ...skuFromProduct(p), group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onUpd={(i, patch) => updItem('docinhos', i, patch)} onDel={(i) => delItem('docinhos', i)} onAdd={() => addItem('docinhos', { id: genId(), name: '', price: 0, group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
       </Section>
 
       {/* Horários */}
@@ -228,25 +256,53 @@ function StrList({ items, onChange, onRemove, onAdd, placeholder, grid }: {
   );
 }
 
-function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles }: {
+function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles, products, onAddFromMenu }: {
   items: SkuOption[]; onUpd: (i: number, patch: any) => void; onDel: (i: number) => void; onAdd: () => void; onErr: () => void;
   groups?: boolean;   // campo "Grupo" (cria seções na página, ex.: "Tortas Pequenas (P)")
   minimums?: boolean; // campos "Mín." e "De X em X" (ex.: 50 docinhos por sabor)
   roles?: boolean;    // Especial: item Principal (obrigatório) ou Adicional
+  products?: LinkedProduct[];                 // produtos da aba Produtos, para vincular
+  onAddFromMenu?: (p: LinkedProduct) => void; // adiciona um SKU vinculado ao produto
 }) {
+  const byId = useMemo(() => new Map((products || []).map((p) => [p.id, p])), [products]);
   return (
     <div>
-      {items.map((it, i) => (
+      {items.map((it, i) => {
+        // Item vinculado ao cardápio: nome/preço/foto vêm do cadastro do produto
+        // (só leitura aqui); se o produto sumiu do cardápio, volta a ser editável.
+        const linked = it.productId ? byId.get(it.productId) : undefined;
+        const orphan = !!it.productId && !linked && (products?.length || 0) > 0;
+        return (
         <div key={it.id} className="mb-2 space-y-2 rounded-lg border p-2">
+          {(linked || orphan) && (
+            <div className="flex items-center gap-2 pl-1 text-[11px]">
+              {linked ? (
+                <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary"><Link2 className="h-3 w-3" /> Vinculado ao cardápio</span>
+              ) : (
+                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-600">Produto removido do cardápio — usando os últimos dados salvos</span>
+              )}
+              <button type="button" onClick={() => onUpd(i, { productId: '' })} className="ml-auto flex items-center gap-1 rounded-md px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Desvincular do produto do cardápio">
+                <Unlink className="h-3 w-3" /> Desvincular
+              </button>
+            </div>
+          )}
           <div className="flex items-start gap-2">
-            <MiniPhoto url={it.imageUrl || ''} onChange={(u) => onUpd(i, { imageUrl: u })} onError={onErr} />
+            {linked ? (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/40 text-muted-foreground" title="Foto vem do cadastro do produto">
+                {(linked.imageUrl || it.imageUrl)
+                  ? (/* eslint-disable-next-line @next/next/no-img-element */ <img src={linked.imageUrl || it.imageUrl} alt="" className="h-full w-full object-cover" />)
+                  : <Link2 className="h-4 w-4" />}
+              </div>
+            ) : (
+              <MiniPhoto url={it.imageUrl || ''} onChange={(u) => onUpd(i, { imageUrl: u })} onError={onErr} />
+            )}
             <div className="min-w-0 flex-1 space-y-1">
-              <Input value={it.name} placeholder="Nome do item" onChange={(e) => onUpd(i, { name: e.target.value })} className="font-medium" />
-              <Input value={it.desc || ''} placeholder="Descrição (opcional)" onChange={(e) => onUpd(i, { desc: e.target.value })} className="text-sm" />
+              <Input value={linked?.name ?? it.name} placeholder="Nome do item" disabled={!!linked} onChange={(e) => onUpd(i, { name: e.target.value })} className="font-medium" />
+              <Input value={it.desc || ''} placeholder={linked ? 'Descrição (opcional; vazio usa a do produto)' : 'Descrição (opcional)'} onChange={(e) => onUpd(i, { desc: e.target.value })} className="text-sm" />
             </div>
             <div className="w-24 shrink-0 space-y-1">
               <Label className="text-[11px] text-muted-foreground">Preço</Label>
-              <Input inputMode="decimal" value={it.price} onChange={(e) => onUpd(i, { price: num(e.target.value) })} />
+              <Input inputMode="decimal" value={typeof linked?.price === 'number' ? linked.price : it.price} disabled={!!linked} onChange={(e) => onUpd(i, { price: num(e.target.value) })} />
             </div>
             <button type="button" onClick={() => onDel(i)} className="mt-6 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
@@ -285,8 +341,55 @@ function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles 
               </label>
           </div>
         </div>
-      ))}
-      <AddBtn onClick={onAdd} label="Adicionar item" />
+      );})}
+      <div className="flex flex-wrap items-center gap-2">
+        <AddBtn onClick={onAdd} label="Adicionar item" />
+        {onAddFromMenu && <MenuProductPicker products={products || []} linkedIds={items.map((it) => it.productId).filter(Boolean) as string[]} onPick={onAddFromMenu} />}
+      </div>
+    </div>
+  );
+}
+
+// Picker "Adicionar do cardápio": lista os produtos da aba Produtos com busca;
+// escolher um cria um SKU vinculado (productId) na seção.
+function MenuProductPicker({ products, linkedIds, onPick }: { products: LinkedProduct[]; linkedIds: string[]; onPick: (p: LinkedProduct) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return products.filter((p) => !term || (p.name || '').toLowerCase().includes(term));
+  }, [products, q]);
+  const linked = useMemo(() => new Set(linkedIds), [linkedIds]);
+
+  return (
+    <div className="relative mt-1">
+      <Button type="button" variant="outline" size="sm" onClick={() => { setOpen((v) => !v); setQ(''); }} disabled={products.length === 0}
+        title={products.length === 0 ? 'Nenhum produto cadastrado na aba Produtos' : undefined}>
+        <Link2 className="mr-1.5 h-3.5 w-3.5" /> Adicionar do cardápio
+      </Button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-20 mb-1 w-72 rounded-lg border bg-popover p-2 shadow-lg">
+          <div className="relative mb-2">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input autoFocus value={q} placeholder="Buscar produto..." onChange={(e) => setQ(e.target.value)} className="h-8 pl-7 text-sm" />
+          </div>
+          <div className="max-h-56 space-y-0.5 overflow-y-auto">
+            {filtered.length === 0 && <p className="px-2 py-3 text-center text-xs text-muted-foreground">Nenhum produto encontrado.</p>}
+            {filtered.map((p) => (
+              <button key={p.id} type="button" onClick={() => { onPick(p); setOpen(false); }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40 text-muted-foreground">
+                  {p.imageUrl ? (/* eslint-disable-next-line @next/next/no-img-element */ <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />) : <Link2 className="h-3.5 w-3.5" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{p.name || 'Sem nome'}{linked.has(p.id) && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(já vinculado)</span>}</span>
+                  <span className="block text-xs text-muted-foreground">R$ {(typeof p.price === 'number' ? p.price : 0).toFixed(2).replace('.', ',')}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

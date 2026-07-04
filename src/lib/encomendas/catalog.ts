@@ -69,6 +69,8 @@ export interface SkuOption {
   stepQty?: number;                 // incremento do stepper depois do mínimo (default 1)
   role?: 'principal' | 'adicional'; // Especial: o pedido exige ao menos 1 item "principal"
   enabled?: boolean;                // ocultar sem excluir (default: ativo)
+  productId?: string;               // vínculo com um produto da aba Produtos (menuItems);
+                                    // nome/preço/foto passam a vir do cadastro via applyProductLinks
 }
 
 // Especial da casa — produto sazonal com data fixa (genérico, sem marca).
@@ -132,6 +134,43 @@ export const DEFAULT_CATALOG: EncomendaCatalog = {
   docinhos: DOCINHOS,
   deliveryTimes: DELIVERY_TIMES,
 };
+
+// ---- Ponte cardápio → encomendas ----
+// Produto da coleção menuItems (aba Produtos) já achatado — só o que a ponte usa.
+export interface LinkedProduct {
+  id: string;
+  name?: string;
+  price?: number;
+  description?: string;
+  imageUrl?: string;
+}
+
+// Sobrepõe, nos SKUs vinculados (productId), os dados ATUAIS do cadastro de produtos:
+// mudou o preço na aba Produtos, muda na página de encomendas. Produto apagado do
+// cardápio => mantém o snapshot salvo no catálogo (a página não quebra).
+// A disponibilidade em encomendas é só o `enabled` do SKU — os toggles Delivery/Local
+// do produto são de outros canais e não escondem o item aqui.
+export function applyProductLinks(cat: EncomendaCatalog, products: LinkedProduct[]): EncomendaCatalog {
+  if (!Array.isArray(products) || products.length === 0) return cat;
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const overlay = (items: SkuOption[]) => items.map((it) => {
+    const p = it.productId ? byId.get(it.productId) : undefined;
+    if (!p) return it;
+    return {
+      ...it,
+      name: p.name || it.name,
+      price: typeof p.price === 'number' ? p.price : it.price,
+      imageUrl: p.imageUrl || it.imageUrl,
+      desc: it.desc || p.description || '',
+    };
+  });
+  return {
+    ...cat,
+    especialItems: overlay(cat.especialItems),
+    tortas: overlay(cat.tortas),
+    docinhos: overlay(cat.docinhos),
+  };
+}
 
 // Catálogo por loja (encomendas.catalog) sobre os defaults; campo ausente cai no default.
 export function mergeCatalog(partial: any): EncomendaCatalog {
