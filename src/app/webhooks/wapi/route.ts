@@ -151,6 +151,12 @@ function hasBlockedChatTarget(identifiers: string[]) {
   return identifiers.some((identifier) => {
     const value = identifier.toLowerCase();
     return (
+      // Formato novo da W-API: stories chegam com chat.id = "status" (sem o
+      // sufixo @broadcast) e chats podem vir enderecados so por LID (@lid),
+      // que nao tem telefone utilizavel — responder viraria msg para numero
+      // corrompido (55 + lid).
+      value === 'status' ||
+      value.includes('@lid') ||
       value.includes('@g.us') ||
       value.includes('status@broadcast') ||
       value.includes('@broadcast') ||
@@ -367,7 +373,9 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
   if (!looksLikeMessageEvent && !hasMessageShape) return null;
 
   const phone = normalizePhone(rawPhone);
-  if (phone.length < 10 || phone.length > 15) return null;
+  // So numero BR plausivel: 55 + DDD + 8-9 digitos = 12-13. LIDs numericos
+  // (13-15 digitos) passam de 15 com o prefixo 55 e ficam de fora.
+  if (phone.length < 12 || phone.length > 13) return null;
 
   const timestamp = Number(
     firstString(
@@ -503,53 +511,70 @@ async function maybeSendAutoReply(params: {
   const storeSnap = await params.adminDb.collection('store_profiles').doc(params.empresaId).get();
   const storeProfile = storeSnap.exists ? storeSnap.data() : {};
   const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.phone}`);
-  const contactSnap = await contactRef.get();
-  const contactData = contactSnap.exists ? contactSnap.data() || {} : {};
-  const hasPriorContact = Boolean(
-    contactData.firstInboundAt ||
-    contactData.firstContactSentAt ||
-    contactData.lastClosedReplyAt,
-  );
 
-  await contactRef.set({
-    empresaId: params.empresaId,
-    phone: incoming.phone,
-    ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
-    lastInboundAt: params.now,
-    updatedAt: params.now,
-  }, { merge: true });
+  // Claim atomico ANTES do envio (mesmo padrao do whatsapp_send_claims):
+  // decidir e gravar o carimbo na mesma transacao faz webhooks concorrentes
+  // (rajada de mensagens, retries da W-API) relerem o doc ja carimbado e
+  // desistirem. Se o envio falhar, o claim e devolvido no catch abaixo.
+  const CLAIM_FIELD: Record<string, string> = {
+    first_contact_auto_reply: 'firstContactSentAt',
+    store_closed_auto_reply: 'lastClosedReplyAt',
+  };
 
-  const reply = buildAutoReply({
-    storeProfile,
-    empresaId: params.empresaId,
-    incoming,
-    requestOrigin: params.requestOrigin,
-    contactData,
-    hasPriorContact,
+  const claimed = await params.adminDb.runTransaction(async (txn: any) => {
+    const contactSnap = await txn.get(contactRef);
+    const contactData = contactSnap.exists ? contactSnap.data() || {} : {};
+    const hasPriorContact = Boolean(
+      contactData.firstInboundAt ||
+      contactData.firstContactSentAt ||
+      contactData.lastClosedReplyAt,
+    );
+
+    const reply = buildAutoReply({
+      storeProfile,
+      empresaId: params.empresaId,
+      incoming,
+      requestOrigin: params.requestOrigin,
+      contactData,
+      hasPriorContact,
+    });
+
+    const claimField = reply ? CLAIM_FIELD[reply.type] || '' : '';
+    txn.set(contactRef, {
+      empresaId: params.empresaId,
+      phone: incoming.phone,
+      ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
+      lastInboundAt: params.now,
+      updatedAt: params.now,
+      ...(claimField ? { [claimField]: params.now } : {}),
+    }, { merge: true });
+
+    if (!reply || !claimField) return null;
+    return { reply, claimField, previousClaim: contactData[claimField] ?? null };
   });
-  if (!reply) return false;
+
+  if (!claimed) return false;
+  const { reply, claimField, previousClaim } = claimed;
 
   const token = decryptSecret(integration.wapiTokenEncrypted);
-  const result = reply.imageUrl
-    ? await sendWapiImageMessage(integration.wapiInstanceId, token, {
-        phone: incoming.phone,
-        image: reply.imageUrl,
-        caption: reply.message,
-        delayMessage: 2,
-      })
-    : await sendWapiTextMessage(integration.wapiInstanceId, token, {
-        phone: incoming.phone,
-        message: reply.message,
-        delayMessage: 2,
-      });
-
-  await contactRef.set({
-    empresaId: params.empresaId,
-    phone: incoming.phone,
-    ...(reply.type === 'first_contact_auto_reply' ? { firstContactSentAt: params.now } : {}),
-    ...(reply.type === 'store_closed_auto_reply' ? { lastClosedReplyAt: params.now } : {}),
-    updatedAt: params.now,
-  }, { merge: true });
+  let result: any;
+  try {
+    result = reply.imageUrl
+      ? await sendWapiImageMessage(integration.wapiInstanceId, token, {
+          phone: incoming.phone,
+          image: reply.imageUrl,
+          caption: reply.message,
+          delayMessage: 2,
+        })
+      : await sendWapiTextMessage(integration.wapiInstanceId, token, {
+          phone: incoming.phone,
+          message: reply.message,
+          delayMessage: 2,
+        });
+  } catch (error) {
+    await contactRef.set({ [claimField]: previousClaim, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+    throw error;
+  }
 
   await params.adminDb.collection('whatsapp_auto_replies').add({
     empresaId: params.empresaId,
