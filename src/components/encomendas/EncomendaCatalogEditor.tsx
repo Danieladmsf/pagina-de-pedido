@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImage } from '@/lib/upload';
 import { applyProductLinks, mergeCatalog, type EncomendaCatalog, type LinkedProduct, type SkuOption } from '@/lib/encomendas/catalog';
+import { revalidateStorePages } from '@/lib/revalidate-store';
 import { Loader2, Save, Plus, Trash2, Upload, ExternalLink, Link2, Unlink, Search } from 'lucide-react';
 
 const genId = () => Math.random().toString(36).slice(2, 9);
@@ -72,6 +73,7 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
       // é o fallback da página pública caso o produto seja apagado do cardápio.
       const toSave = applyProductLinks(cat, menuProducts);
       await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { catalog: toSave } }, { merge: true });
+      revalidateStorePages(user.uid);
       setCat(toSave);
       setDirty(false);
       toast({ title: 'Catálogo salvo', description: 'Os produtos já valem no link público.' });

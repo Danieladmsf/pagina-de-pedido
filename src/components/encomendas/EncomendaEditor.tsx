@@ -11,6 +11,7 @@ import { uploadImage } from '@/lib/upload';
 import { buildEncomendaConfig } from '@/lib/encomendas/config';
 import { type EncomendaContent, mergeContent } from '@/lib/encomendas/content';
 import { Landing } from '@/components/encomendas/Landing';
+import { revalidateStorePages } from '@/lib/revalidate-store';
 import { Loader2, ImageIcon, Upload, ExternalLink, Save, Type } from 'lucide-react';
 
 type FieldDef = { key: keyof EncomendaContent; label: string; multiline?: boolean; hint?: string };
@@ -61,6 +62,7 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
     setSaving(true);
     try {
       await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { content } }, { merge: true });
+      revalidateStorePages(user.uid);
       setDirty(false);
       toast({ title: 'Página atualizada', description: 'As mudanças já valem no link público.' });
     } catch (err) {

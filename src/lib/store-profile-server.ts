@@ -35,7 +35,9 @@ const parseDocFields = (doc: any): any => {
 export async function fetchStoreProfile(storeId: string) {
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents/store_profiles/${storeId}`;
-    const res = await fetch(url, { next: { revalidate: 300 } }); // cache 5min
+    // cache 5min; a tag permite invalidar na hora via /api/revalidate-store
+    // (os editores do admin chamam após salvar, senão a página pública demora até 5min)
+    const res = await fetch(url, { next: { revalidate: 300, tags: [`store-${storeId}`] } });
     if (!res.ok) return null;
     const doc = await res.json();
     if (!doc.fields) return null;
@@ -66,7 +68,7 @@ export async function fetchMenuItems(storeId: string) {
       method: 'POST',
       body: JSON.stringify(body),
       headers: { 'Content-Type': 'application/json' },
-      next: { revalidate: 300 }
+      next: { revalidate: 300, tags: [`store-${storeId}`] }
     });
     if (!res.ok) return [];
     const data = await res.json();

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CakeSlice, Copy, Check, Loader2, Link2, ExternalLink, Wand2 } from 'lucide-react';
 import { EncomendaEditor } from '@/components/encomendas/EncomendaEditor';
 import { EncomendaCatalogEditor } from '@/components/encomendas/EncomendaCatalogEditor';
+import { revalidateStorePages } from '@/lib/revalidate-store';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // Aba lateral "Encomendas" = CONFIGURAÇÃO da página pública (a lista de pedidos
@@ -52,6 +53,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
       await setDoc(doc(db, 'store_profiles', user.uid), {
         encomendas: { enabled, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
       }, { merge: true });
+      revalidateStorePages(user.uid);
       toast({ title: 'Configuração salva', description: 'As encomendas usam esses valores a partir de agora.' });
     } catch (err) {
       console.error('[encomendas-admin] erro ao salvar config:', err);
