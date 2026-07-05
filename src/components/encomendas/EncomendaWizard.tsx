@@ -130,6 +130,15 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const DOCINHOS = cat.docinhos.filter((x) => x.enabled !== false);
   const DELIVERY_TIMES = cat.deliveryTimes;
 
+  // Grupos de recheio exibidos: níveis cadastrados que têm recheio + níveis
+  // "órfãos" presentes nos recheios mas apagados da lista de níveis (nada some).
+  const fillingGroups = useMemo(() => {
+    const known = FILLING_TIERS.filter((t) => CAKE_FILLINGS.some((f) => (f.tier || '') === t));
+    const orphans = Array.from(new Set(CAKE_FILLINGS.map((f) => f.tier || '').filter((t) => !FILLING_TIERS.includes(t))));
+    return [...known, ...orphans].map((tier) => ({ tier, options: CAKE_FILLINGS.filter((f) => (f.tier || '') === tier) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CAKE_FILLINGS, FILLING_TIERS]);
+
   // Especial: exige ao menos 1 item "principal" (adicionais não contam sozinhos).
   const especialPrincipais = ESPECIAL_ITEMS.filter((x) => x.role !== 'adicional');
   const especialPrincipalOk = especialPrincipais.some((x) => (especial[x.id] || 0) > 0);
@@ -152,14 +161,21 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
   const steps = useMemo(() => {
     const s: { id: string }[] = [{ id: 'contato' }, { id: 'produtos' }];
-    if (has('bolo')) s.push({ id: 'tamanho' }, { id: 'recheio' }, { id: 'cobertura' }, { id: 'plaquinha' });
+    // O lojista pode apagar TODAS as opções de uma seção no editor (ex.: sem
+    // coberturas). Passo sem nenhuma opção é PULADO — nunca pode travar o fluxo.
+    if (has('bolo')) {
+      if (CAKE_SIZES.length > 0) s.push({ id: 'tamanho' });
+      if (CAKE_DOUGHS.length > 0 || CAKE_FILLINGS.length > 0) s.push({ id: 'recheio' });
+      if (CAKE_COVERS.length > 0) s.push({ id: 'cobertura' });
+      s.push({ id: 'plaquinha' });
+    }
     if (has('especial')) s.push({ id: 'especial' });
     if (has('tortas')) s.push({ id: 'tortas' });
     if (has('docinhos')) s.push({ id: 'docinhos' });
     s.push({ id: 'entrega' }, { id: 'resumo' });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products]);
+  }, [products, CAKE_SIZES.length, CAKE_DOUGHS.length, CAKE_FILLINGS.length, CAKE_COVERS.length]);
 
   const total = steps.length;
   const safeIdx = Math.min(stepIdx, total - 1);
@@ -226,8 +242,9 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       case 'contato': return phone.trim().length >= 8 && name.trim().length > 1;
       case 'produtos': return products.size > 0;
       case 'tamanho': return !!cakeSize;
-      case 'recheio': return !!cakeDough && !!cakeFilling;
-      case 'cobertura': return !!cakeCover;
+      // Só exige escolha do que existe: massa sem opções não bloqueia, idem recheio.
+      case 'recheio': return (CAKE_DOUGHS.length === 0 || !!cakeDough) && (CAKE_FILLINGS.length === 0 || !!cakeFilling);
+      case 'cobertura': return CAKE_COVERS.length === 0 || !!cakeCover;
       case 'especial': return especialPrincipalOk;
       case 'tortas': return Object.values(tortas).some((v) => v > 0);
       case 'docinhos': return Object.values(docinhos).some((v) => v > 0);
@@ -259,7 +276,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     if (has('bolo') && sizeObj) {
       L.push('', '*Bolo personalizado*');
       L.push(`   - Tamanho: ${sizeObj.label} (${sizeObj.sub})`);
-      L.push(`   - Massa: ${cakeDough}`);
+      L.push(`   - Massa: ${cakeDough || '—'}`);
       L.push(`   - Recheio: ${fillObj?.name || '—'}`);
       L.push(`   - Cobertura: ${coverObj?.name || '—'}`);
       if (plateOn) {
@@ -444,21 +461,34 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">P a GG são <b>redondos</b>; XG e XXG são <b>retangulares</b>. O valor final soma o recheio e a cobertura.</p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {(() => {
+                  // Texto derivado do catálogo (os tamanhos são editáveis pelo lojista).
+                  const red = CAKE_SIZES.filter((s) => s.shape === 'redondo').map((s) => s.label);
+                  const ret = CAKE_SIZES.filter((s) => s.shape === 'retangular').map((s) => s.label);
+                  const shapes = red.length && ret.length ? <>{red.join(', ')} {red.length > 1 ? 'são redondos' : 'é redondo'}; {ret.join(', ')} {ret.length > 1 ? 'são retangulares' : 'é retangular'}. </> : null;
+                  const extras = CAKE_FILLINGS.length > 0 || CAKE_COVERS.length > 0 ? 'O valor final soma o recheio e a cobertura.' : '';
+                  return <>{shapes}{extras}</>;
+                })()}
+              </p>
             </Section>
           )}
 
           {step.id === 'recheio' && (
-            <Section title="Massa & recheio">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Massa</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {CAKE_DOUGHS.map((d) => <OptionCard key={d} title={d} selected={cakeDough === d} onClick={() => setCakeDough(d)} />)}
-              </div>
-              {FILLING_TIERS.map((tier) => (
-                <div key={tier} className="space-y-2.5">
-                  <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">Recheios {tier}</p>
+            <Section title={CAKE_FILLINGS.length > 0 ? 'Massa & recheio' : 'Massa'}>
+              {CAKE_DOUGHS.length > 0 && (
+                <>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Massa</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {CAKE_DOUGHS.map((d) => <OptionCard key={d} title={d} selected={cakeDough === d} onClick={() => setCakeDough(d)} />)}
+                  </div>
+                </>
+              )}
+              {fillingGroups.map(({ tier, options }) => (
+                <div key={tier || '_sem_nivel'} className="space-y-2.5">
+                  <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{tier ? `Recheios ${tier}` : 'Recheios'}</p>
                   <div className="grid gap-2.5 sm:grid-cols-2">
-                    {CAKE_FILLINGS.filter((f) => f.tier === tier).map((f) => (
+                    {options.map((f) => (
                       <OptionCard key={f.id} title={f.name} price={f.price} included={f.price === 0}
                         selected={cakeFilling === f.id} onClick={() => setCakeFilling(f.id)} />
                     ))}
