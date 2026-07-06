@@ -125,6 +125,27 @@ export const THEMES: Record<string, ThemePreset> = {
     },
     bgPattern: 'linear-gradient(135deg, #f7fee7 0%, #fefce8 100%)',
   },
+  sorveteria: {
+    id: 'sorveteria',
+    label: 'Sorveteria',
+    icon: '🍦',
+    description: 'Menta e morango em tons pastel, fonte redondinha e divertida. Sorvetes, gelatos, milkshakes e picolés.',
+    colors: {
+      primary: '#0d9488',
+      primaryHsl: '174 84% 32%',
+      accent: '#fb7185',
+      accentHsl: '351 94% 71%',
+      bg: '#f0fdfa',
+      surface: '#ffffff',
+      text: '#0f3d3a',
+      textMuted: '#5f8f8a',
+    },
+    fonts: {
+      heading: "'Fredoka', 'Quicksand', sans-serif",
+      body: "'Inter', system-ui, sans-serif",
+    },
+    bgPattern: 'linear-gradient(135deg, #f0fdfa 0%, #fff1f2 100%)',
+  },
 };
 
 export const THEME_LIST: ThemePreset[] = Object.values(THEMES);
@@ -157,7 +178,7 @@ export function themeToCssVars(theme: ThemePreset): React.CSSProperties {
 }
 
 export const GOOGLE_FONTS_LINK =
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Slab:wght@400;500;700;900&family=Playfair+Display:wght@400;600;700;900&family=Bebas+Neue&family=Quicksand:wght@400;500;600;700&display=swap';
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Slab:wght@400;500;700;900&family=Playfair+Display:wght@400;600;700;900&family=Bebas+Neue&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&display=swap';
 
 export function ensureBrandFontsLoaded() {
   if (typeof document === 'undefined') return;
