@@ -152,11 +152,10 @@ function hasBlockedChatTarget(identifiers: string[]) {
     const value = identifier.toLowerCase();
     return (
       // Formato novo da W-API: stories chegam com chat.id = "status" (sem o
-      // sufixo @broadcast) e chats podem vir enderecados so por LID (@lid),
-      // que nao tem telefone utilizavel — responder viraria msg para numero
-      // corrompido (55 + lid).
+      // sufixo @broadcast). NAO bloquear @lid aqui: DMs reais chegam com
+      // chat.id = "<lid>@lid" e o telefone verdadeiro em sender.id — o guarda
+      // contra LID virar telefone corrompido e a checagem de 12-13 digitos.
       value === 'status' ||
-      value.includes('@lid') ||
       value.includes('@g.us') ||
       value.includes('status@broadcast') ||
       value.includes('@broadcast') ||
