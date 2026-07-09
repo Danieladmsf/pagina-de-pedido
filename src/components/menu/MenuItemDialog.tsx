@@ -282,7 +282,20 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
         </DialogHeader>
 
         <div className="space-y-6 py-4 flex-1 min-h-0 overflow-y-auto pr-2">
-          
+
+          {/* Foto do produto (mesma proporcao 4:3 do card) */}
+          {item.imageUrl && (
+            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
+              <Image
+                src={item.imageUrl}
+                alt={item.name}
+                fill
+                sizes="(max-width: 640px) 100vw, 400px"
+                className="object-cover"
+              />
+            </div>
+          )}
+
           {/* Combo Items */}
           {item.isCombo && item.comboItems && item.comboItems.length > 0 && (
             <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
