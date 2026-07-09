@@ -1173,12 +1173,13 @@ export function MenuPageClient({
                     setSelectedItem(effectiveItem);
                   }}
                 >
-                  <div className="relative h-44 w-full md:h-56">
+                  <div className="relative aspect-[4/3] w-full">
                     <Image
                       src={item.imageUrl || (storeProfile as any)?.general?.defaultProductImageUrl || 'https://picsum.photos/seed/placeholder/600/400'}
                       alt={item.name}
                       fill
-                      className="object-contain group-hover:scale-105 transition-transform duration-700 p-2"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                      className="object-cover group-hover:scale-105 transition-transform duration-700"
                     />
                     {qtyInCart > 0 && (
                       <Badge className={`absolute ${isPromoItem ? 'top-14 md:top-16' : 'top-3 md:top-4'} left-3 md:left-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] md:text-xs px-2 py-0.5 rounded-full z-10 shadow-md`}>
