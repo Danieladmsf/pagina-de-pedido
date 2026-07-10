@@ -453,7 +453,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
             <Button
               ref={addButtonRef}
-              className={`w-full sm:w-auto font-bold px-8 ${canAddToCart && isStoreOpen ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+              className={`w-full sm:w-auto font-bold px-8 transition-all duration-150 ease-out active:scale-95 motion-reduce:transition-none ${canAddToCart && isStoreOpen ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
               onClick={handleAdd}
               disabled={!isStoreOpen || !canAddToCart}
             >

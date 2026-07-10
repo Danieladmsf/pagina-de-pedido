@@ -111,6 +111,14 @@ export function MenuPageClient({
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
+  // "Pop" discreto no carrinho flutuante toda vez que um item é adicionado
+  const [cartBump, setCartBump] = useState(0);
+  const prevTotalItemsRef = useRef(totalItems);
+  useEffect(() => {
+    if (totalItems > prevTotalItemsRef.current) setCartBump((b) => b + 1);
+    prevTotalItemsRef.current = totalItems;
+  }, [totalItems]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
@@ -1062,9 +1070,9 @@ export function MenuPageClient({
                 <Button
                   data-cat-tab="all"
                   variant={activeCategoryId === 'all' ? 'default' : 'outline'}
-                  className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
+                  className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all duration-200 ease-out active:scale-95 motion-reduce:transition-none shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${
                     activeCategoryId === 'all'
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
                     : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
                   }`}
                   onClick={() => scrollToCategory('all')}
@@ -1087,7 +1095,7 @@ export function MenuPageClient({
                     content = <>{comboEmoji} Combos</>;
                   } else {
                     buttonClass = activeCategoryId === group.id
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
                       : 'bg-white border-primary/20 text-primary hover:bg-primary/5';
                   }
 
@@ -1096,7 +1104,7 @@ export function MenuPageClient({
                       key={group.id}
                       data-cat-tab={group.id}
                       variant={activeCategoryId === group.id ? 'default' : 'outline'}
-                      className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${buttonClass}`}
+                      className={`rounded-full px-4 whitespace-nowrap h-10 text-xs font-bold transition-all duration-200 ease-out active:scale-95 motion-reduce:transition-none shadow-sm flex-shrink-0 md:h-11 md:px-6 md:text-sm ${buttonClass}`}
                       onClick={() => scrollToCategory(group.id)}
                     >
                       {content}
@@ -1233,7 +1241,7 @@ export function MenuPageClient({
                         {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
                       </span>
                       {qtyInCart > 0 && !itemNeedsCustomization(item) ? (
-                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border animate-pop motion-reduce:animate-none" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1279,8 +1287,9 @@ export function MenuPageClient({
                         <Button
                           disabled={isOutOfStock}
                           size="sm"
-                          className={`text-white h-9 w-9 p-0 rounded-xl shadow-md transition-colors md:h-10 md:w-10 ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
+                          className={`text-white h-11 w-11 p-0 rounded-xl shadow-md transition-all duration-150 ease-out active:scale-90 motion-reduce:transition-none ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
                           onClick={(event) => handleProductPlusClick(event, item)}
+                          aria-label={`Adicionar ${item.name}`}
                         >
                           <Plus className="h-5 w-5 md:h-6 md:w-6" />
                         </Button>
@@ -1336,10 +1345,18 @@ export function MenuPageClient({
             const cartBtn = document.querySelector('[data-cart-trigger]') as HTMLElement;
             if (cartBtn) cartBtn.click();
           }}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between bg-primary hover:bg-primary/90 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-primary/30 transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in w-[92vw] sm:w-[380px]"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center justify-between gap-4 bg-primary/95 hover:bg-primary text-white pl-4 pr-5 py-3.5 rounded-2xl shadow-lg shadow-primary/25 ring-1 ring-white/15 backdrop-blur-md transition-all duration-200 ease-out active:scale-[0.98] animate-slide-up-fade motion-reduce:animate-none w-[92vw] sm:w-[380px]"
         >
-          <span className="font-bold text-base whitespace-nowrap">Finalizar Pedido</span>
-          <span className="font-black text-base whitespace-nowrap">
+          <span className="flex items-center gap-2.5 min-w-0">
+            <span
+              key={cartBump}
+              className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white/25 px-1.5 text-sm font-black tabular-nums animate-pop motion-reduce:animate-none"
+            >
+              {totalItems}
+            </span>
+            <span className="font-bold text-base whitespace-nowrap">Ver pedido</span>
+          </span>
+          <span className="font-black text-base whitespace-nowrap tabular-nums">
             R$ {totalPrice.toFixed(2)}
           </span>
         </button>
