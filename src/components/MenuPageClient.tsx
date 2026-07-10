@@ -955,15 +955,6 @@ export function MenuPageClient({
         </div>
       )}
       {!showStoreInfo && (<div className="w-full max-w-full">
-      {!isStoreOpenRightNow.isOpen && (
-        <div className="bg-[hsl(var(--closed)/0.96)] backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
-          {isStoreOpenRightNow.reason === 'hours_closed'
-            ? '⚠️ Fechado no momento devido ao horário de funcionamento.'
-            : isStoreOpenRightNow.reason === 'delivery_disabled'
-            ? '⚠️ Fechado no momento. Voltaremos em breve!'
-            : '⚠️ Abriremos em breve! O sistema está sendo preparado.'}
-        </div>
-      )}
       <section className={`relative w-full overflow-hidden ${hasBanner ? 'min-h-[255px] sm:min-h-[330px] md:min-h-[430px]' : 'min-h-[235px] sm:min-h-[280px] md:min-h-[340px]'}`}>
         <div className="absolute inset-0">
           <div className="absolute inset-0" style={{ background: heroThemeBackground }} />
@@ -1041,11 +1032,11 @@ export function MenuPageClient({
           <div className="flex flex-wrap items-center gap-2 animate-slide-up-fade motion-reduce:animate-none">
             {/* Selo aberto/fechado */}
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-md backdrop-blur-sm"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-md backdrop-blur-sm"
               style={{ background: isStoreOpenRightNow.isOpen ? 'hsl(var(--open))' : 'hsl(var(--closed))' }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
-              {isStoreOpenRightNow.isOpen ? 'Aberto agora' : 'Fechado'}
+              {isStoreOpenRightNow.isOpen ? 'Aberto' : 'Fechado'}
             </span>
             {/* Prazo médio de entrega */}
             {(() => {
