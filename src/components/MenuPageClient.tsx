@@ -5,7 +5,6 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
-import { CustomerAccountButton } from '@/components/customer/CustomerAccountButton';
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { Toaster } from '@/components/ui/toaster';
@@ -15,8 +14,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { StoreSplash } from '@/components/StoreSplash';
-import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp } from 'lucide-react';
+import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp, Menu as MenuIcon, ShoppingCart } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
@@ -108,6 +108,7 @@ export function MenuPageClient({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [showStoreInfo, setShowStoreInfo] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
@@ -999,15 +1000,23 @@ export function MenuPageClient({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <CustomerAccountButton storeId={storeId} storeSlug={storeSlug} />
+            {/* Menu unico (☰) que agrupa carrinho, meus pedidos e informacoes */}
             <button
-              onClick={() => setShowStoreInfo(true)}
-              className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur shadow-md border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all"
-              aria-label="Informações da loja"
+              onClick={() => setMenuOpen(true)}
+              className="relative w-11 h-11 rounded-2xl bg-white/90 backdrop-blur shadow-md border border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all active:scale-95 motion-reduce:transition-none"
+              aria-label="Abrir menu"
             >
-              <Info className="h-5 w-5" />
+              <MenuIcon className="h-5 w-5" />
+              {totalItems > 0 && (
+                <Badge className="absolute -top-2 -right-2 bg-accent text-accent-foreground rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center text-[10px] font-bold border-2 border-white">
+                  {totalItems}
+                </Badge>
+              )}
             </button>
 
+            {/* CartDrawer segue montado (oculto): o menu e o botao flutuante
+                abrem o carrinho via [data-cart-trigger]; o painel usa portal. */}
+            <div className="hidden">
             <CartDrawer
               storeOwnerId={storeId}
               deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0}
@@ -1026,6 +1035,7 @@ export function MenuPageClient({
               promoItemsMap={promoItemsMap}
               disableDelivery={storeProfile?.general?.disableDelivery || false}
             />
+            </div>
           </div>
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-3 pb-3 pt-24 sm:pt-32 md:px-8 md:pb-8 md:pt-56">
@@ -1402,6 +1412,95 @@ export function MenuPageClient({
           <ArrowUp className="h-5 w-5" />
         </button>
       )}
+      {/* Menu unico (☰): agrupa carrinho, meus pedidos e informacoes da loja */}
+      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+        <SheetContent className="w-full sm:max-w-sm p-0 flex flex-col" style={themeToCssVars(theme)}>
+          <SheetHeader className="border-b bg-gradient-to-br from-primary/10 to-transparent px-6 py-5 text-left">
+            <div className="flex items-center gap-3">
+              {storeProfile?.general?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={storeProfile.general.logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover ring-2 ring-primary/15 shadow" />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-lg font-black text-primary-foreground">
+                  {(storeProfile?.general?.name || 'L').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <SheetTitle className="truncate text-base font-black text-foreground">
+                  {storeProfile?.general?.name || storeDisplayName || 'Cardápio'}
+                </SheetTitle>
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-bold"
+                  style={{ color: isStoreOpenRightNow.isOpen ? 'hsl(var(--open))' : 'hsl(var(--closed))' }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: isStoreOpenRightNow.isOpen ? 'hsl(var(--open))' : 'hsl(var(--closed))' }} />
+                  {isStoreOpenRightNow.isOpen ? 'Aberto' : 'Fechado'}
+                </span>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <nav className="flex-1 space-y-2.5 overflow-y-auto p-4">
+            {/* Carrinho */}
+            <button
+              onClick={() => { setMenuOpen(false); setTimeout(() => { const b = document.querySelector('[data-cart-trigger]') as HTMLElement | null; b?.click(); }, 80); }}
+              className="group flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99] motion-reduce:transition-none"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <ShoppingCart className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-foreground">Meu carrinho</span>
+                <span className="block text-xs text-muted-foreground">
+                  {totalItems > 0 ? `${totalItems} ${totalItems === 1 ? 'item' : 'itens'} · R$ ${totalPrice.toFixed(2)}` : 'Seu carrinho está vazio'}
+                </span>
+              </span>
+              {totalItems > 0 && (
+                <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-black text-accent-foreground">{totalItems}</span>
+              )}
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+
+            {/* Meus pedidos */}
+            <Link
+              href={(() => {
+                const p = new URLSearchParams();
+                if (storeId) p.set('storeId', storeId);
+                if (storeSlug) p.set('returnTo', '/' + storeSlug);
+                const qs = p.toString();
+                return '/my-orders' + (qs ? '?' + qs : '');
+              })()}
+              onClick={() => setMenuOpen(false)}
+              className="group flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99] motion-reduce:transition-none"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <ShoppingBag className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-foreground">Meus pedidos</span>
+                <span className="block text-xs text-muted-foreground">Acompanhe e veja o histórico</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Link>
+
+            {/* Informacoes da loja */}
+            <button
+              onClick={() => { setMenuOpen(false); setShowStoreInfo(true); }}
+              className="group flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99] motion-reduce:transition-none"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Info className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-foreground">Informações da loja</span>
+                <span className="block text-xs text-muted-foreground">Horários, endereço, contato e entrega</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </nav>
+        </SheetContent>
+      </Sheet>
+
       <Toaster />
     </div>
   );
