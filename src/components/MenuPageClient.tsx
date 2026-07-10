@@ -1048,28 +1048,6 @@ export function MenuPageClient({
               <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
               {isStoreOpenRightNow.isOpen ? 'Aberto' : 'Fechado'}
             </span>
-            {/* Prazo médio de entrega */}
-            {(() => {
-              const t = storeProfile?.fees?.deliveryTime || '';
-              const [h, m] = t.split(':').map(Number);
-              const total = (h || 0) * 60 + (m || 0);
-              if (!total) return null;
-              const label = total < 60 ? `${total} min` : `${Math.floor(total / 60)}h${total % 60 ? String(total % 60).padStart(2, '0') : ''}`;
-              return (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
-                  <ClockIcon className="h-3.5 w-3.5 text-primary" /> {label}
-                </span>
-              );
-            })()}
-            {/* Modalidades */}
-            {!storeProfile?.general?.disableDelivery && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
-                <Truck className="h-3.5 w-3.5 text-primary" /> Entrega
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
-              <ShoppingBag className="h-3.5 w-3.5 text-primary" /> Retirada
-            </span>
           </div>
         </div>
       </section>
