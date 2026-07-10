@@ -956,7 +956,7 @@ export function MenuPageClient({
       )}
       {!showStoreInfo && (<div className="w-full max-w-full">
       {!isStoreOpenRightNow.isOpen && (
-        <div className="bg-red-500/95 backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
+        <div className="bg-[hsl(var(--closed)/0.96)] backdrop-blur text-white text-center py-2.5 px-4 font-bold text-sm z-50 sticky top-0 shadow-md flex items-center justify-center gap-2">
           {isStoreOpenRightNow.reason === 'hours_closed'
             ? '⚠️ Fechado no momento devido ao horário de funcionamento.'
             : isStoreOpenRightNow.reason === 'delivery_disabled'
@@ -980,6 +980,13 @@ export function MenuPageClient({
             </>
           ) : null}
           <div className={hasBanner ? "absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.34),rgba(15,23,42,0.04)_46%,rgba(15,23,42,0.16)),linear-gradient(180deg,rgba(15,23,42,0.18),transparent_36%,rgba(15,23,42,0.38))]" : "absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.76),transparent_34%),linear-gradient(90deg,rgba(255,255,255,0.34),rgba(255,255,255,0.08)_52%,rgba(255,255,255,0.28))]"} />
+          {/* Tint sutil na cor da marca para unificar entre temas */}
+          {hasBanner && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(180deg, hsl(var(--primary) / 0.20), transparent 38%, hsl(var(--primary) / 0.28))' }}
+            />
+          )}
           <div
             className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
             style={{ background: `linear-gradient(to bottom, transparent, ${theme.colors.bg})` }}
@@ -1030,7 +1037,40 @@ export function MenuPageClient({
             />
           </div>
         </div>
-        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-3 pt-24 sm:pt-32 md:px-8 md:pb-8 md:pt-56" />
+        <div className="relative z-10 max-w-7xl mx-auto px-3 pb-3 pt-24 sm:pt-32 md:px-8 md:pb-8 md:pt-56">
+          <div className="flex flex-wrap items-center gap-2 animate-slide-up-fade motion-reduce:animate-none">
+            {/* Selo aberto/fechado */}
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-white shadow-md backdrop-blur-sm"
+              style={{ background: isStoreOpenRightNow.isOpen ? 'hsl(var(--open))' : 'hsl(var(--closed))' }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
+              {isStoreOpenRightNow.isOpen ? 'Aberto agora' : 'Fechado'}
+            </span>
+            {/* Prazo médio de entrega */}
+            {(() => {
+              const t = storeProfile?.fees?.deliveryTime || '';
+              const [h, m] = t.split(':').map(Number);
+              const total = (h || 0) * 60 + (m || 0);
+              if (!total) return null;
+              const label = total < 60 ? `${total} min` : `${Math.floor(total / 60)}h${total % 60 ? String(total % 60).padStart(2, '0') : ''}`;
+              return (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
+                  <ClockIcon className="h-3.5 w-3.5 text-primary" /> {label}
+                </span>
+              );
+            })()}
+            {/* Modalidades */}
+            {!storeProfile?.general?.disableDelivery && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
+                <Truck className="h-3.5 w-3.5 text-primary" /> Entrega
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-md backdrop-blur-sm">
+              <ShoppingBag className="h-3.5 w-3.5 text-primary" /> Retirada
+            </span>
+          </div>
+        </div>
       </section>
 
       <div className="relative z-20 max-w-7xl mx-auto px-3 pt-2 md:px-8 md:pt-3">

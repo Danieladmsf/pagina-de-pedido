@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/providers/CartProvider';
-import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy, QrCode, MessageSquareText } from 'lucide-react';
+import { ShoppingCart, Trash2, Minus, Plus, Loader2, MapPin, Clock, Navigation, Copy, QrCode, MessageSquareText, CheckCircle2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -158,6 +158,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
   const [step, setStep] = useState<Step>('cart');
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
   const [editingNoteCartId, setEditingNoteCartId] = useState<string | null>(null);
@@ -868,12 +869,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         window.dispatchEvent(new CustomEvent('customer_phone_updated', { detail: customerPhone }));
       } catch {}
 
-      clearCart();
+      // Confirmação com check animado antes de fechar o carrinho
       const pushedCount = step === 'cart' ? 1 : (1 + checkoutStep);
-      window.history.go(-pushedCount);
-
-      setDynamicFee(null);
-      setDistanceInfo(null);
+      setOrderSuccess(true);
+      setTimeout(() => {
+        clearCart();
+        window.history.go(-pushedCount);
+        setDynamicFee(null);
+        setDistanceInfo(null);
+        setOrderSuccess(false);
+      }, 1300);
     } catch (error: any) {
       console.error(error);
       toast({
@@ -917,6 +922,15 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         </Button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-md flex flex-col h-full" style={themeToCssVars(cartTheme)}>
+        {orderSuccess && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/95 backdrop-blur-sm text-center px-8 animate-in fade-in duration-200">
+            <CheckCircle2 className="h-20 w-20 text-primary animate-check-pop motion-reduce:animate-none" strokeWidth={2.5} />
+            <div className="space-y-1 animate-slide-up-fade motion-reduce:animate-none">
+              <h3 className="text-xl font-black text-foreground">Pedido enviado!</h3>
+              <p className="text-sm text-muted-foreground">Já recebemos seu pedido. Acompanhe o status pelo seu celular.</p>
+            </div>
+          </div>
+        )}
         <SheetHeader className="pb-2">
           <SheetTitle className="text-base font-bold flex items-center gap-2">
             {headerTitle}
