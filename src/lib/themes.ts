@@ -12,6 +12,11 @@ export interface ThemePreset {
     surface: string;
     text: string;
     textMuted: string;
+    // Tokens semânticos opcionais (HSL "H S% L%"). Se ausentes, usam padrões
+    // universais em themeToCssVars (verde=aberto, vermelho=fechado, âmbar=aviso).
+    successHsl?: string;
+    dangerHsl?: string;
+    warningHsl?: string;
   };
   fonts: {
     heading: string;
@@ -172,6 +177,15 @@ export function themeToCssVars(theme: ThemePreset): React.CSSProperties {
     ['--brand-text-muted' as any]: theme.colors.textMuted,
     ['--brand-font-heading' as any]: theme.fonts.heading,
     ['--brand-font-body' as any]: theme.fonts.body,
+    // Tokens semânticos (HSL) — use via bg-[hsl(var(--closed))] etc.
+    // Status é universal (verde/vermelho/âmbar) para não confundir o cliente.
+    ['--surface' as any]: theme.colors.surface,
+    ['--surface-muted' as any]: theme.bgPattern ? theme.colors.bg : theme.colors.bg,
+    ['--success' as any]: theme.colors.successHsl || '142 70% 40%',
+    ['--open' as any]: theme.colors.successHsl || '142 70% 40%',
+    ['--warning' as any]: theme.colors.warningHsl || '38 92% 50%',
+    ['--danger' as any]: theme.colors.dangerHsl || '0 72% 51%',
+    ['--closed' as any]: theme.colors.dangerHsl || '0 72% 51%',
     background: theme.bgPattern || theme.colors.bg,
     fontFamily: theme.fonts.body,
   } as React.CSSProperties;
