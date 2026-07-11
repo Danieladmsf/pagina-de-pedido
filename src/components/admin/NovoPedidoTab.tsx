@@ -17,12 +17,13 @@ import { useCallback, useMemo } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { findCreditCustomers, normalizeCreditPhone, isCreditEnabled } from '@/lib/customer-credit';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
-import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { fetchDeliveryFee } from '@/lib/delivery-fee';
+import { usePromotions } from '@/hooks/usePromotions';
+import { buildAdminMenuGroups } from '@/lib/menu-groups';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
-import { removeAccents, normalizeSearch, neighborhoodMatchesQuery } from '@/lib/utils';
+import { removeAccents, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
-import { useCollection, useMemoFirebase } from '@/firebase';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
@@ -175,93 +176,12 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const promotionsQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid) return null;
-    return query(collection(db, 'promotions'), where('ownerId', '==', user.uid));
-  }, [db, user?.uid]);
+  const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, user?.uid);
 
-  const { data: promotionsRaw } = useCollection(promotionsQuery);
-
-  const activePromotions = useMemo(() => {
-    if (!promotionsRaw) return [];
-    return promotionsRaw.filter((p: any) => {
-      if (p.active === false) return false;
-      const timeVal = (value: any) => {
-        if (!value) return NaN;
-        const date = value?.toDate?.() ? value.toDate() : new Date(value);
-        return date.getTime();
-      };
-      const start = timeVal(p.startDate) || 0;
-      const end = p.noEndDate || !p.endDate ? Number.POSITIVE_INFINITY : (timeVal(p.endDate) || Number.POSITIVE_INFINITY);
-      const nowTime = Date.now();
-      return nowTime >= start && nowTime <= end;
-    });
-  }, [promotionsRaw]);
-
-  const promoItemsMap = useMemo(() => {
-    const map: Record<string, { promoPrice: number; originalPrice: number; promoName: string }> = {};
-    activePromotions.forEach((p: any) => {
-      p.products?.forEach((pi: any) => {
-        map[pi.menuItemId] = { promoPrice: pi.promoPrice, originalPrice: pi.originalPrice, promoName: p.name };
-      });
-    });
-    return map;
-  }, [activePromotions]);
-
-  const promoOnlyIds = useMemo(() => {
-    const ids = new Set<string>();
-    activePromotions.forEach((p: any) => {
-      p.products?.forEach((pi: any) => {
-        if (pi.promoOnly) ids.add(pi.menuItemId);
-      });
-    });
-    return ids;
-  }, [activePromotions]);
-
-  const hasActivePromos = Object.keys(promoItemsMap).length > 0;
-
-  const filteredItems = items?.filter(item => {
-    if (item.isAvailable === false) return false;
-    if (!isItemVisibleInChannel(item, orderType)) return false;
-    const matchesSearch = normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
-    return matchesSearch;
-  }) || [];
-
-  const groupedItems = useMemo(() => {
-    const groups: { id: string; name: string; items: any[] }[] = [];
-
-    // Promos section
-    if (hasActivePromos) {
-      const promoItems = (filteredItems || []).filter(item => promoItemsMap[item.id]);
-      if (promoItems.length > 0) {
-        groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
-      }
-    }
-
-    // Combos section (mesma secao dedicada do cardapio publico, para o combo
-    // aparecer em todos os canais e nao ficar "escondido" dentro de uma categoria)
-    const comboItems = (filteredItems || []).filter(it => it.isCombo && !promoOnlyIds.has(it.id));
-    if (comboItems.length > 0) {
-      groups.push({ id: '__combos__', name: '🎁 Combos', items: comboItems });
-    }
-
-    // Regular categories (combos ficam na secao Combos acima, nao aqui)
-    (categories || []).forEach((cat: any) => {
-      const catItems = (filteredItems || []).filter(it => it.categoryId === cat.id && !it.isCombo && !promoOnlyIds.has(it.id));
-      if (catItems.length > 0) {
-        groups.push({ id: cat.id, name: cat.name, items: catItems });
-      }
-    });
-
-    const uncategorizedItems = (filteredItems || []).filter(
-      it => !it.isCombo && !categories?.some((c: any) => c.id === it.categoryId) && !promoOnlyIds.has(it.id)
-    );
-    if (uncategorizedItems.length > 0) {
-      groups.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });
-    }
-
-    return groups;
-  }, [filteredItems, categories, hasActivePromos, promoItemsMap, promoOnlyIds]);
+  const groupedItems = useMemo(
+    () => buildAdminMenuGroups(items, categories, orderType, searchTerm, { promoItemsMap, promoOnlyIds, hasActivePromos }),
+    [items, categories, orderType, searchTerm, promoItemsMap, promoOnlyIds, hasActivePromos]
+  );
 
   const { scrollContainerRef, categoryBarRef, setSectionRef, scrollToCategory, activeCategory } =
     useCategoryScrollSpy(groupedItems.map(g => g.id));
@@ -296,19 +216,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
     setCalculatingFee(true);
     try {
-      const res = await fetch('/api/delivery-fee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeAddress,
-          customerAddress: fullAddr,
-          feeRules: deliveryFeeRules,
-          customAddressRules,
-          neighborhoodHint: neighborhoodHint ?? addressObj.neighborhood,
-        }),
+      const { ok, data } = await fetchDeliveryFee({
+        storeAddress,
+        customerAddress: fullAddr,
+        feeRules: deliveryFeeRules,
+        customAddressRules,
+        neighborhoodHint: neighborhoodHint ?? addressObj.neighborhood,
       });
-      const data = await res.json();
-      if (res.ok) {
+      if (ok) {
         if (maxDeliveryRadius > 0 && data.distanceKm > maxDeliveryRadius) {
           setDeliveryBlocked(true);
           setDynamicFee(null);
