@@ -16,6 +16,7 @@ import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { getOrderStatusBadgeColor } from '@/lib/order-status';
+import { buildCustomizedCartItem } from '@/lib/cart';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -180,19 +181,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   };
 
   const handleEditDialogAddToCart = (item: any, quantity: number, options: any) => {
-    const cartItemId = `${item.id}-${Date.now()}`;
-    const unitPrice = item.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
-    setEditItemsCart(prev => [
-      ...prev,
-      {
-        ...item,
-        cartItemId,
-        quantity,
-        addons: options.addons || [],
-        notes: options.notes || '',
-        unitPrice
-      }
-    ]);
+    setEditItemsCart(prev => [...prev, buildCustomizedCartItem(item, quantity, options)]);
   };
 
   const updateEditQuantity = (cartItemId: string, delta: number) => {

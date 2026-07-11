@@ -22,6 +22,7 @@ import { usePromotions } from '@/hooks/usePromotions';
 import { buildAdminMenuGroups } from '@/lib/menu-groups';
 import { useCustomerLookup } from '@/hooks/useCustomerLookup';
 import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
+import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem } from '@/lib/cart';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
@@ -84,59 +85,18 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   // Carrinho
   const [cart, setCart] = useState<any[]>([]);
 
-  const itemNeedsCustomization = (item: any) => {
-    const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
-    const hasAddonGroups = Array.isArray(item.addonGroups) && item.addonGroups.some((group: any) => {
-      return (Array.isArray(group.addonIds) && group.addonIds.length > 0)
-        || group.addonCategoryId
-        || group.addonCategoryName;
-    });
-    return hasNormalAddons || hasAddonGroups;
-  };
-
   const addToCart = (item: any) => {
-    const promo = promoItemsMap[item.id];
-    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+    const effectiveItem = applyPromoPrice(item, promoItemsMap);
     if (itemNeedsCustomization(effectiveItem)) {
       setSelectedItemForDialog(effectiveItem);
     } else {
-      setCart(prev => {
-        const existingIndex = prev.findIndex(i => i.id === effectiveItem.id && (!i.addons || i.addons.length === 0));
-        if (existingIndex > -1) {
-          return prev.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + 1 } : i);
-        } else {
-          return [
-            ...prev,
-            {
-              ...effectiveItem,
-              cartItemId: `${effectiveItem.id}-${Date.now()}`,
-              quantity: 1,
-              addons: [],
-              notes: '',
-              unitPrice: effectiveItem.price
-            }
-          ];
-        }
-      });
+      setCart(prev => addSimpleItemToCart(prev, effectiveItem));
     }
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
-    const promo = promoItemsMap[item.id];
-    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
-    const cartItemId = `${effectiveItem.id}-${Date.now()}`;
-    const unitPrice = effectiveItem.price + (options.addons || []).reduce((acc: number, a: any) => acc + (a.price || 0), 0);
-    setCart(prev => [
-      ...prev,
-      {
-        ...effectiveItem,
-        cartItemId,
-        quantity,
-        addons: options.addons || [],
-        notes: options.notes || '',
-        unitPrice
-      }
-    ]);
+    const effectiveItem = applyPromoPrice(item, promoItemsMap);
+    setCart(prev => [...prev, buildCustomizedCartItem(effectiveItem, quantity, options)]);
   };
 
   const updateQuantity = (cartItemId: string, delta: number) => {

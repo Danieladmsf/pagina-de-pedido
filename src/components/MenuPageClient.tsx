@@ -23,6 +23,7 @@ import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 
 function promoDateToMillis(value: any) {
   if (!value) return NaN;
@@ -335,22 +336,11 @@ export function MenuPageClient({
     return { allowed: true };
   }, []);
 
-  const itemNeedsCustomization = useCallback((item: any) => {
-    const hasNormalAddons = Array.isArray(item.addonIds) && item.addonIds.length > 0;
-    const hasAddonGroups = Array.isArray(item.addonGroups) && item.addonGroups.some((group: any) => {
-      return (Array.isArray(group.addonIds) && group.addonIds.length > 0)
-        || group.addonCategoryId
-        || group.addonCategoryName;
-    });
-    return hasNormalAddons || hasAddonGroups;
-  }, []);
-
   const handleProductPlusClick = useCallback((event: React.MouseEvent, item: any) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const promo = promoItemsMap[item.id];
-    const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
+    const effectiveItem = applyPromoPrice(item, promoItemsMap);
 
     if (itemNeedsCustomization(effectiveItem)) {
       setSelectedItem(effectiveItem);
