@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
-import { validateCustomerCredit } from '@/lib/customer-credit';
+import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -331,37 +331,22 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado, feeOffApplied } = fechamento.buildCheckout();
 
       const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
-      const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
-      let contaCasaCustomerId: string | null = null;
-      if (hasContaCasa) {
-        const phone = paymentModalOrder.customerPhone || '';
-        const contaCasaAmount = splitsToProcess
-          .filter(s => s.methodId === 'conta_casa')
-          .reduce((sum, split) => sum + split.amount, 0);
-
-        if (!phone || phone.replace(/\D/g, '').length < 10) {
-          setIsProcessing(false);
-          setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone: '', address: paymentModalOrder.deliveryAddress || '' });
-          return;
-        }
-
-        const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount);
-        if (!creditCheck.allowed) {
-          if (creditCheck.reason === 'not_found') {
-            setIsProcessing(false);
-            setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone, address: paymentModalOrder.deliveryAddress || '' });
-            return;
-          }
-
-          toast({
-            variant: 'destructive',
-            title: 'Prazo bloqueado',
-            description: creditCheck.message || 'Este pedido passa do limite de prazo do cliente.',
-          });
-          return;
-        }
-        contaCasaCustomerId = creditCheck.customer?.id || null;
+      const contaCasa = await resolveContaCasa(db, {
+        splits: splitsToProcess,
+        ownerId,
+        phone: paymentModalOrder.customerPhone || '',
+        includePending: false,
+      });
+      if (contaCasa.kind === 'register') {
+        setIsProcessing(false);
+        setQuickRegisterModal({ isOpen: true, name: paymentModalOrder.customerName || '', phone: contaCasa.phone, address: paymentModalOrder.deliveryAddress || '' });
+        return;
       }
+      if (contaCasa.kind === 'blocked') {
+        toast({ variant: 'destructive', title: 'Prazo bloqueado', description: contaCasa.message });
+        return;
+      }
+      const contaCasaCustomerId = contaCasa.kind === 'ok' ? contaCasa.customerId : null;
 
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto.
       // Desconto/acréscimo dados agora acumulam sobre os que o pedido já tinha e
@@ -382,41 +367,17 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       
       // 2. Registrar venda no caixa (se caixa estiver aberto) ou Conta da Casa
       if (caixaAberto) {
-        for (const split of splitsToProcess) {
-          if (split.methodId === 'conta_casa') {
-             if (contaCasaCustomerId) {
-                const cId = contaCasaCustomerId;
-                const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
-                await setDoc(newTrans, {
-                   id: newTrans.id,
-                   type: 'debit',
-                   amount: split.amount,
-                   date: new Date().toISOString(),
-                   description: `Delivery #${paymentModalOrder.id.substring(0,5)}`
-                });
-                await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
-                // Registra também no caixa (forma "Prazo") para aparecer na lista e
-                // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
-                if (registrarLancamento) {
-                  await registrarLancamento({
-                    tipo: 'venda',
-                    titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName} (Prazo)`,
-                    valor: split.amount,
-                    formaPagamento: 'conta_casa',
-                  });
-                }
-             } else {
-                toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
-             }
-          } else if (registrarLancamento) {
-            await registrarLancamento({
-              tipo: 'venda',
-              titulo: `Delivery #${paymentModalOrder.id.substring(0, 5)} - ${paymentModalOrder.customerName}`,
-              valor: split.amount,
-              formaPagamento: split.methodId,
-            });
-          }
-        }
+        const shortId = paymentModalOrder.id.substring(0, 5);
+        await registrarPagamentoSplits(db, {
+          splits: splitsToProcess,
+          contaCasaCustomerId,
+          registrarLancamento,
+          caixaAberto,
+          tituloVenda: `Delivery #${shortId} - ${paymentModalOrder.customerName}`,
+          tituloPrazo: `Delivery #${shortId} - ${paymentModalOrder.customerName} (Prazo)`,
+          creditDescription: `Delivery #${shortId}`,
+          onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
+        });
         toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${paymentString}).` });
       } else {
         toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status updated.' });

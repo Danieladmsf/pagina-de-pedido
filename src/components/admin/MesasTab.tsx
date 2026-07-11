@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, setDoc, updateDoc, query, where, getDocs, increment } from 'firebase/firestore';
+import { collection, doc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
-import { getPhoneVariants, normalizeCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner, isCreditEnabled } from '@/lib/customer-credit';
+import { getPhoneVariants, normalizeCreditPhone, isCreditEnabled } from '@/lib/customer-credit';
+import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { normalizeSearch, removeAccents } from '@/lib/utils';
@@ -694,33 +695,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       const ownerId = storeInfo?.id || user?.uid || 'default';
       const linkedName = (customerName || '').trim();
       const phone = customerPhone || quickRegisterModal?.phone || '';
-      const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
-      let contaCasaCustomerId: string | null = null;
-      if (hasContaCasa) {
-          const contaCasaAmount = splitsToProcess
-            .filter(s => s.methodId === 'conta_casa')
-            .reduce((sum, split) => sum + split.amount, 0);
-
-          if (!phone || phone.replace(/\D/g, '').length < 10) {
-             setIsSubmitting(false);
-             setQuickRegisterModal({ isOpen: true, name: linkedName || `Cliente Mesa ${selectedTable}`, phone: '', address: '' });
-             return;
-          }
-
-          // Mesma validação do Balcão: limite + vencimento + pedidos em andamento.
-          const pendingAmount = await sumPendingCreditOrdersForOwner(db, ownerId, phone);
-          const creditCheck = await validateCustomerCredit(db, ownerId, phone, contaCasaAmount, { pendingAmount });
-          if (!creditCheck.allowed) {
-            if (creditCheck.reason === 'not_found') {
-              setIsSubmitting(false);
-              setQuickRegisterModal({ isOpen: true, name: linkedName || `Cliente Mesa ${selectedTable}`, phone, address: '' });
-              return;
-            }
-            toast({ variant: 'destructive', title: 'Prazo bloqueado', description: creditCheck.message || 'Este pedido passa do limite de prazo do cliente.' });
-            return;
-          }
-          contaCasaCustomerId = creditCheck.customer?.id || null;
+      const contaCasa = await resolveContaCasa(db, { splits: splitsToProcess, ownerId, phone });
+      if (contaCasa.kind === 'register') {
+        setIsSubmitting(false);
+        setQuickRegisterModal({ isOpen: true, name: linkedName || `Cliente Mesa ${selectedTable}`, phone: contaCasa.phone, address: '' });
+        return;
       }
+      if (contaCasa.kind === 'blocked') {
+        toast({ variant: 'destructive', title: 'Prazo bloqueado', description: contaCasa.message });
+        return;
+      }
+      const contaCasaCustomerId = contaCasa.kind === 'ok' ? contaCasa.customerId : null;
 
       // Grava status + vínculo do cliente + desconto/acréscimo na mesma escrita
       // (totalAmount passa a ser o valor efetivamente cobrado; cupom já imprime
@@ -737,41 +722,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       if (phone) finalizeData.customerPhone = phone;
       await updateDoc(doc(db, 'orders', activeOrderId), finalizeData);
 
-      for (const split of splitsToProcess) {
-        if (split.methodId === 'conta_casa') {
-             if (contaCasaCustomerId) {
-                const cId = contaCasaCustomerId;
-                const newTrans = doc(collection(db, 'clientes', cId, 'credit_transactions'));
-                await setDoc(newTrans, {
-                   id: newTrans.id,
-                   type: 'debit',
-                   amount: split.amount,
-                   date: new Date().toISOString(),
-                   description: `Mesa ${selectedTable}`
-                });
-                await updateDoc(doc(db, 'clientes', cId), { creditBalance: increment(split.amount) });
-                // Registra também no caixa (forma "Prazo") para aparecer na lista e
-                // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
-                if (caixaAberto) {
-                  await registrarLancamento?.({
-                    tipo: 'venda',
-                    titulo: `Mesa ${selectedTable} - Finalizada (Prazo)`,
-                    valor: split.amount,
-                    formaPagamento: 'conta_casa',
-                  });
-                }
-             } else {
-                toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' });
-             }
-        } else {
-            await registrarLancamento?.({
-              tipo: 'venda',
-              titulo: `Mesa ${selectedTable} - Finalizada`,
-              valor: split.amount,
-              formaPagamento: split.methodId,
-            });
-        }
-      }
+      await registrarPagamentoSplits(db, {
+        splits: splitsToProcess,
+        contaCasaCustomerId,
+        registrarLancamento,
+        caixaAberto,
+        tituloVenda: `Mesa ${selectedTable} - Finalizada`,
+        tituloPrazo: `Mesa ${selectedTable} - Finalizada (Prazo)`,
+        creditDescription: `Mesa ${selectedTable}`,
+        onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
+      });
 
       // Vincula/contabiliza a venda no cadastro do cliente (só com cliente
       // identificado por telefone; venda anônima de mesa é ignorada). Idempotente.
