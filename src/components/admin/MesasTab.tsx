@@ -293,16 +293,23 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       }
     }
 
-    // Regular categories
+    // Combos section (mesma secao dedicada do cardapio publico, para o combo
+    // aparecer em todos os canais e nao ficar "escondido" dentro de uma categoria)
+    const comboItems = (filteredItems || []).filter(it => it.isCombo && !promoOnlyIds.has(it.id));
+    if (comboItems.length > 0) {
+      groups.push({ id: '__combos__', name: '🎁 Combos', items: comboItems });
+    }
+
+    // Regular categories (combos ficam na secao Combos acima, nao aqui)
     (categories || []).forEach((cat: any) => {
-      const catItems = (filteredItems || []).filter(it => it.categoryId === cat.id && !promoOnlyIds.has(it.id));
+      const catItems = (filteredItems || []).filter(it => it.categoryId === cat.id && !it.isCombo && !promoOnlyIds.has(it.id));
       if (catItems.length > 0) {
         groups.push({ id: cat.id, name: cat.name, items: catItems });
       }
     });
 
     const uncategorizedItems = (filteredItems || []).filter(
-      it => !categories?.some((c: any) => c.id === it.categoryId) && !promoOnlyIds.has(it.id)
+      it => !it.isCombo && !categories?.some((c: any) => c.id === it.categoryId) && !promoOnlyIds.has(it.id)
     );
     if (uncategorizedItems.length > 0) {
       groups.push({ id: '__none__', name: 'Outros', items: uncategorizedItems });

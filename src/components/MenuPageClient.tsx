@@ -529,8 +529,9 @@ export function MenuPageClient({
         if (item.endDate && now > new Date(item.endDate)) return false;
       }
       
-      // Allow combos to show if they don't have a category, or if their category is visible
-      const isVisibleCategory = item.categoryId ? visibleCategoryIds.has(item.categoryId) : item.isCombo;
+      // Combos sempre aparecem (tem secao propria "Combos"); os demais itens so
+      // aparecem se a categoria deles estiver visivel.
+      const isVisibleCategory = item.isCombo || (item.categoryId ? visibleCategoryIds.has(item.categoryId) : true);
       if (!isVisibleCategory) return false;
 
       // Hide promo-only items from regular categories
