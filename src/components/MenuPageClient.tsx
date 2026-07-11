@@ -384,7 +384,7 @@ export function MenuPageClient({
     confeitaria: '🍪+🎂',
     pizzaria: '🍕+🥤',
     sucaria: '🥤+🍨',
-    sorveteria: '🍦+🍨',
+    sorveteria: '🍦+🥤',
   };
   const comboEmoji = comboIcons[themeId] || comboIcons.padrao;
   const storeDisplayName = storeProfile?.general?.name || storeInfo?.storeName || '';
