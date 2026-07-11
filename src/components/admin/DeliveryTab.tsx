@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
+import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -149,17 +150,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-500 text-white';
-      case 'received': return 'bg-blue-500 text-white';
-      case 'ready': return 'bg-green-500 text-white';
-      case 'out_for_delivery': return 'bg-purple-500 text-white';
-      case 'delivered': return 'bg-teal-500 text-white';
-      case 'canceled': return 'bg-red-500 text-white';
-      default: return 'bg-gray-500 text-white';
-    }
-  };
 
   const proceedToPayment = (order: any) => {
     if (isReadOnlyHistorico) {
@@ -527,7 +517,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-xs font-black text-green-600">R$ {order.totalAmount?.toFixed(2)}</span>
-                        <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getStatusColor(order.status)}`}>
+                        <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getOrderStatusBadgeColor(order.status)}`}>
                           {getStatusLabel(order.status, order.orderType)}
                         </Badge>
                       </div>

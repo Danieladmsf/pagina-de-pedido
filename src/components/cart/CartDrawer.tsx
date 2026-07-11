@@ -14,6 +14,7 @@ import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { normalizeSearch, neighborhoodMatchesQuery, detectNeighborhood } from '@/lib/utils';
 import { getManagedStock, getStockDemand } from '@/lib/inventory';
+import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -350,19 +351,14 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
     setCalculatingFee(true);
     try {
-      const res = await fetch('/api/delivery-fee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeAddress,
-          customerAddress,
-          feeRules: deliveryFeeRules,
-          customAddressRules,
-          neighborhoodHint: effectiveNeighborhood,
-        }),
+      const { ok, data } = await fetchDeliveryFee({
+        storeAddress,
+        customerAddress,
+        feeRules: deliveryFeeRules,
+        customAddressRules,
+        neighborhoodHint: effectiveNeighborhood,
       });
-      const data = await res.json();
-      if (res.ok) {
+      if (ok) {
         if (maxDeliveryRadius > 0 && data.distanceKm > maxDeliveryRadius) {
           setDeliveryBlocked(true);
           setDynamicFee(null);

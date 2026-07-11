@@ -13,6 +13,7 @@ import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { uploadFileToApp } from '@/lib/upload';
+import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { useToast } from '@/hooks/use-toast';
 import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
 import {
@@ -207,19 +208,14 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     const customerAddress = [street, number, nb, city, 'Brasil'].filter(Boolean).join(', ');
     setCalculatingFee(true);
     try {
-      const res = await fetch('/api/delivery-fee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeAddress: config.storeAddress,
-          customerAddress,
-          feeRules: config.deliveryFeeRules,
-          customAddressRules: config.customAddressRules,
-          neighborhoodHint: nb,
-        }),
+      const { ok, data } = await fetchDeliveryFee({
+        storeAddress: config.storeAddress,
+        customerAddress,
+        feeRules: config.deliveryFeeRules,
+        customAddressRules: config.customAddressRules,
+        neighborhoodHint: nb,
       });
-      const data = await res.json();
-      setDynamicFee(res.ok && typeof data.fee === 'number' ? data.fee : null);
+      setDynamicFee(ok && typeof data.fee === 'number' ? data.fee : null);
     } catch (err) {
       console.error('[encomendas] erro ao calcular taxa:', err);
       setDynamicFee(null);

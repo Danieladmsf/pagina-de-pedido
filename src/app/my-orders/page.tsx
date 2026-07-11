@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { useCart } from '@/components/providers/CartProvider';
+import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 
@@ -370,14 +371,6 @@ export default function MyOrdersPage() {
     );
   }
 
-  const statusClass = (s: string) =>
-    s === 'pending' ? 'bg-yellow-500 text-white' :
-    s === 'received' ? 'bg-blue-500 text-white' :
-    s === 'ready' ? 'bg-green-500 text-white' :
-    s === 'out_for_delivery' ? 'bg-purple-500 text-white' :
-    s === 'canceled' ? 'bg-red-500 text-white' :
-    'bg-gray-500 text-white';
-
 
   return (
     <div className="min-h-screen bg-[#F5F5F0] p-3 md:p-6">
@@ -550,7 +543,7 @@ export default function MyOrdersPage() {
                         <span className="text-xs font-bold text-slate-800">#{order.id?.substring(0,8)}</span>
                         <span className="text-[10px] text-slate-400">{new Date(order.orderDateTime).toLocaleDateString('pt-BR')}</span>
                       </div>
-                      <Badge className={`${statusClass(order.status)} text-[9px] px-1.5 py-0.5`}>
+                      <Badge className={`${getOrderStatusBadgeColor(order.status)} text-[9px] px-1.5 py-0.5`}>
                         {STATUS_LABELS[order.status] || order.status}
                       </Badge>
                     </div>
