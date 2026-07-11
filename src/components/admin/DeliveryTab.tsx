@@ -21,6 +21,9 @@ import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
+import { resolveFormasPagamento } from './fechamento/payment-methods';
+import { useFechamento } from './fechamento/useFechamento';
+import { FechamentoModal } from './fechamento/FechamentoModal';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -38,18 +41,8 @@ interface DeliveryTabProps {
   addonCategories?: any[];
 }
 
-const DEFAULT_FORMAS_PAGAMENTO = [
-  { id: 'dinheiro', label: 'Dinheiro', icon: '💵', active: true },
-  { id: 'pix', label: 'Pix', icon: '📱', active: true },
-  { id: 'debito', label: 'Débito', icon: '💳', active: true },
-  { id: 'credito', label: 'Crédito', icon: '💳', active: true },
-];
-
 export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [] }: DeliveryTabProps) {
-  const FORMAS_PAGAMENTO = (storeProfile?.paymentMethods && storeProfile.paymentMethods.length > 0 ? storeProfile.paymentMethods : DEFAULT_FORMAS_PAGAMENTO).filter((m: any) => m.active);
-  if (!FORMAS_PAGAMENTO.find((m: any) => m.id === 'conta_casa')) {
-    FORMAS_PAGAMENTO.push({ id: 'conta_casa', label: 'Prazo', icon: '📝', active: true });
-  }
+  const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
   // - qualquer pedido de entrega (delivery), de qualquer origem;
   // - pickup do app do cliente (source 'cardapio'), que ainda precisa ser preparado.
@@ -67,13 +60,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
-  const [isSplitMode, setIsSplitMode] = useState(false);
-  const [paymentSplits, setPaymentSplits] = useState<{methodId: string, label: string, amount: number, received?: number}[]>([]);
-  const [selectedPayment, setSelectedPayment] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showMotoboyModal, setShowMotoboyModal] = useState<any>(null);
   const [selectedMotoboyId, setSelectedMotoboyId] = useState<string>('');
-  const [valorRecebido, setValorRecebido] = useState<string>('');
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
 
   // Estados para edição de itens do pedido
@@ -87,8 +76,18 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   // payDeliveryToMotoboy === true no pedido = frete já nasceu fora do total (cardápio).
   const orderFee = Number(paymentModalOrder?.deliveryFee) || 0;
   const feeAlreadyOffTotal = paymentModalOrder?.payDeliveryToMotoboy === true;
-  const prazoInvolved = selectedPayment === 'conta_casa' || paymentSplits.some(s => s.methodId === 'conta_casa');
-  const feeExcludedFromCharge = orderFee > 0 && prazoInvolved && !feeAlreadyOffTotal;
+  // Subtotal dos itens derivado do que o pedido cobra hoje (desconta ajustes
+  // já aplicados na criação): totalAmount − frete quando o frete está no total.
+  const orderSubtotal = Math.max(0, (Number(paymentModalOrder?.totalAmount) || 0) - (feeAlreadyOffTotal ? 0 : orderFee));
+  // Fechamento centralizado (desconto/acréscimo, split, troco) — mesmo
+  // estado/cálculo/modal em Balcão, Mesas e Delivery (components/admin/fechamento).
+  const fechamento = useFechamento({
+    subtotal: orderSubtotal,
+    deliveryFee: orderFee,
+    feeAlreadyOffTotal,
+    feePaidToMotoboyOnPrazo: true,
+    formasPagamento: FORMAS_PAGAMENTO,
+  });
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
   
@@ -175,10 +174,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       return;
     }
     setPaymentModalOrder(order);
-    setSelectedPayment('');
-    setValorRecebido('');
-    setPaymentSplits([]);
-    setIsSplitMode(false);
+    fechamento.reset();
   };
 
   const handleOpenEditItems = () => {
@@ -323,86 +319,16 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Confirmar pagamento + registrar no caixa
   const handleConfirmPayment = async () => {
-    if (isSplitMode && paymentSplits.length === 0 && !selectedPayment) return;
-    if (!isSplitMode && !selectedPayment) return;
+    if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
+    if (!fechamento.isSplitMode && !fechamento.selectedPayment) return;
     if (!paymentModalOrder) return;
-    
+
     setIsProcessing(true);
     try {
-      // Prazo ⇒ frete sai da cobrança (pago direto ao motoboy), sem perguntar.
-      // feeOffApplied marca quando o desconto foi feito AGORA (pedido ainda
-      // tinha o frete dentro do total) para ajustar o totalAmount na finalização.
-      let feeOffApplied = false;
-
-      let paymentString = '';
-      const splitsToProcess = isSplitMode ? [...paymentSplits] : [];
-      
-      if (!isSplitMode) {
-        // Fluxo SIMPLES (1 forma de pagamento)
-        let received = undefined;
-        let change = 0;
-        if (selectedPayment === 'dinheiro' && valorRecebido) {
-           const valRec = Number(valorRecebido);
-           if (valRec > paymentModalOrder.totalAmount) {
-             change = valRec - paymentModalOrder.totalAmount;
-           }
-        }
-        let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
-        if (selectedPayment === 'conta_casa') label = 'Prazo';
-        
-        let amount = paymentModalOrder.totalAmount;
-        if (selectedPayment === 'conta_casa' && orderFee > 0) {
-          if (!feeAlreadyOffTotal) {
-            amount = paymentModalOrder.totalAmount - orderFee;
-            feeOffApplied = true;
-          }
-          paymentString = `${label} (Taxa de entrega paga direto ao motoboy)`;
-        } else {
-          paymentString = selectedPayment === 'dinheiro' && change > 0 
-             ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})` 
-             : label;
-        }
-        splitsToProcess.push({ methodId: selectedPayment, label, amount });
-      } else {
-        // Fluxo MÚLTIPLO (Split)
-        if (selectedPayment) {
-          const chargeBasis = paymentModalOrder.totalAmount - (feeExcludedFromCharge ? orderFee : 0);
-          const remaining = Math.max(0, chargeBasis - splitsToProcess.reduce((sum, s) => sum + s.amount, 0));
-          let amount = remaining;
-          let received: number | undefined = undefined;
-          const valRec = valorRecebido ? Number(valorRecebido) : 0;
-          if (selectedPayment === 'dinheiro') {
-            if (valRec > 0) {
-              if (valRec >= remaining) {
-                amount = remaining;
-                received = valRec;
-              } else {
-                amount = valRec;
-                received = valRec;
-              }
-            }
-          } else if (valRec > 0) {
-            amount = Math.min(valRec, remaining);
-          }
-          if (amount > 0) {
-             let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
-             if (selectedPayment === 'conta_casa') label = 'Prazo';
-             splitsToProcess.push({ methodId: selectedPayment, label, amount, received });
-          }
-        }
-
-        paymentString = splitsToProcess.map(s => `${s.label}: R$ ${s.amount.toFixed(2)}`).join(' | ');
-        const splitsTemPrazo = splitsToProcess.some(s => s.methodId === 'conta_casa');
-        if (splitsTemPrazo && orderFee > 0) {
-          paymentString += ' (Taxa de entrega paga direto ao motoboy)';
-          if (!feeAlreadyOffTotal) feeOffApplied = true;
-        }
-        const cobrado = paymentModalOrder.totalAmount - (feeOffApplied ? orderFee : 0);
-        const totalReceived = splitsToProcess.reduce((acc, s) => acc + (s.received || s.amount), 0);
-        if (totalReceived > cobrado) {
-           paymentString += ` (Troco para R$ ${totalReceived.toFixed(2)})`;
-        }
-      }
+      // Splits + paymentString + desconto/acréscimo + regra do Prazo (frete
+      // pago direto ao motoboy) vêm do fechamento centralizado
+      // (components/admin/fechamento) — igual em todos os canais.
+      const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado, feeOffApplied } = fechamento.buildCheckout();
 
       const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
       const hasContaCasa = splitsToProcess.some(s => s.methodId === 'conta_casa');
@@ -437,11 +363,19 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         contaCasaCustomerId = creditCheck.customer?.id || null;
       }
 
-      // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto
+      // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto.
+      // Desconto/acréscimo dados agora acumulam sobre os que o pedido já tinha e
+      // totalAmount passa a ser o valor efetivamente cobrado (cupom já imprime).
       const updates: any = { status: 'delivered', paymentMethod: paymentString };
+      if (discount > 0 || surcharge > 0) {
+        updates.discount = (Number(paymentModalOrder.discount) || 0) + discount;
+        updates.surcharge = (Number(paymentModalOrder.surcharge) || 0) + surcharge;
+      }
       if (feeOffApplied) {
-        updates.totalAmount = paymentModalOrder.totalAmount - orderFee;
         updates.payDeliveryToMotoboy = true;
+      }
+      if (feeOffApplied || discount > 0 || surcharge > 0) {
+        updates.totalAmount = totalCobrado;
       }
       const statusUpdated = await updateOrderStatus(paymentModalOrder.id, updates);
       if (statusUpdated === false) return;
@@ -483,7 +417,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             });
           }
         }
-        toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada in ${splitsToProcess.length} partes.` : `Venda registrada (${selectedPayment}).` });
+        toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${paymentString}).` });
       } else {
         toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status updated.' });
       }
@@ -494,40 +428,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       setIsProcessing(false);
     }
   };
-
-  const handleAddSplit = async () => {
-    if (!selectedPayment || !paymentModalOrder) return;
-
-    const currentTotalOrder = paymentModalOrder.totalAmount - (feeExcludedFromCharge ? orderFee : 0);
-    const remaining = Math.max(0, currentTotalOrder - paymentSplits.reduce((sum, s) => sum + s.amount, 0));
-    
-    let amount = remaining;
-    let received: number | undefined = undefined;
-    const valRec = valorRecebido ? Number(valorRecebido) : 0;
-
-    if (selectedPayment === 'dinheiro') {
-      if (valRec > 0) {
-        if (valRec >= remaining) {
-          amount = remaining;
-          received = valRec;
-        } else {
-          amount = valRec;
-          received = valRec;
-        }
-      }
-    } else if (valRec > 0) {
-      amount = Math.min(valRec, remaining);
-    }
-
-    if (amount <= 0) return;
-
-    let label = FORMAS_PAGAMENTO.find((f: any) => f.id === selectedPayment)?.label || selectedPayment;
-    if (selectedPayment === 'conta_casa') label = 'Prazo';
-    setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label, amount, received }]);
-    setSelectedPayment('');
-    setValorRecebido('');
-  };
-
 
   const triggerPrint = (order: any) => {
     // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
@@ -833,198 +733,19 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       </div>
     </div>
 
-    {/* Modal: Forma de Pagamento para Concluir Pedido */}
-    <Dialog open={!!paymentModalOrder} onOpenChange={(open) => { if (!open) setPaymentModalOrder(null); }}>
-      <DialogContent className="sm:max-w-[380px] p-4">
-        {(() => {
-          const totalOrder = (paymentModalOrder?.totalAmount || 0) - (feeExcludedFromCharge ? orderFee : 0);
-          const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
-          const remaining = Math.max(0, totalOrder - totalPaid);
-          const isFullyPaid = remaining <= 0;
-
-          return (
-            <>
-              <DialogHeader className="pb-1 border-b">
-                <DialogTitle className="text-sm flex items-center justify-between">
-                  <span>💰 Pagamento #{paymentModalOrder?.id?.substring(0, 5)}</span>
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs text-muted-foreground font-normal">Total: R$ {totalOrder.toFixed(2)}</span>
-                    <span className={`text-lg font-black ${remaining > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                      {remaining > 0 ? `Falta R$ ${remaining.toFixed(2)}` : 'Pago ✅'}
-                    </span>
-                  </div>
-                </DialogTitle>
-                <DialogDescription className="text-xs">
-                  {!caixaAberto && <span className="text-red-500 block mb-1">⚠️ Caixa fechado — venda não será registrada nele.</span>}
-                  {orderFee > 0 && prazoInvolved && (
-                    <span className="text-blue-600 block mb-1">🛵 Prazo: a taxa de entrega (R$ {orderFee.toFixed(2)}) fica de fora da cobrança — o cliente paga direto ao motoboy.</span>
-                  )}
-                </DialogDescription>
-              </DialogHeader>
-
-              {!isSplitMode ? (
-                <>
-                  <div className="grid grid-cols-4 gap-2 py-2">
-                    {FORMAS_PAGAMENTO.map((fp: any) => (
-                        <button
-                          key={fp.id}
-                          type="button"
-                          onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
-                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
-                            selectedPayment === fp.id 
-                              ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
-                              : 'border-muted text-muted-foreground hover:border-slate-300'
-                          }`}
-                        >
-                          <span className="text-lg">{fp.icon}</span>
-                          {fp.label}
-                        </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => { setIsSplitMode(true); setSelectedPayment(''); setValorRecebido(''); }}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all border-muted text-muted-foreground hover:border-slate-300`}
-                    >
-                      <span className="text-lg">🔀</span>
-                      Múltiplos
-                    </button>
-                  </div>
-
-                  {selectedPayment === 'dinheiro' && (
-                    <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 space-y-1.5">
-                      <label className="text-xs font-medium text-amber-800">💵 Valor recebido (R$)</label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="R$ 0,00"
-                        value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
-                        onChange={(e) => {
-                          let val = e.target.value.replace(/\D/g, '');
-                          if (!val) setValorRecebido('');
-                          else setValorRecebido((Number(val) / 100).toFixed(2));
-                        }}
-                        className="text-sm font-bold text-center bg-white h-9"
-                        autoFocus
-                      />
-                      {Number(valorRecebido) > 0 && (
-                        <div className={`text-center p-1.5 rounded font-bold text-sm ${Number(valorRecebido) >= totalOrder ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                          {Number(valorRecebido) >= totalOrder 
-                            ? `Troco: R$ ${(Number(valorRecebido) - totalOrder).toFixed(2)}`
-                            : `Falta: R$ ${(totalOrder - Number(valorRecebido)).toFixed(2)}`
-                          }
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <DialogFooter className="pt-2 gap-2 border-t mt-2">
-                    <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
-                    <Button 
-                      size="sm"
-                      disabled={!selectedPayment || isProcessing} 
-                      onClick={handleConfirmPayment}
-                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white"
-                    >
-                      {isProcessing ? '...' : '✅ Confirmar Pedido'}
-                    </Button>
-                  </DialogFooter>
-                </>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => setIsSplitMode(false)}
-                    className="text-xs text-blue-600 hover:underline mb-2 flex items-center gap-1"
-                  >
-                    ← Voltar ao Pagamento Simples
-                  </button>
-
-                  {paymentSplits.length > 0 && (
-                    <div className="py-2 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Pagamentos Adicionados:</span>
-                      {paymentSplits.map((split, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-slate-50 border p-1.5 rounded text-xs">
-                          <span className="font-medium text-slate-700 flex items-center gap-1">
-                            {split.label}
-                            {split.received && split.received > split.amount && <span className="text-[9px] text-muted-foreground">(Recebeu R$ {split.received.toFixed(2)})</span>}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-green-600">R$ {split.amount.toFixed(2)}</span>
-                            <button onClick={() => setPaymentSplits(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">✕</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {!isFullyPaid && (
-                    <>
-                      <div className="grid grid-cols-4 gap-2 py-2">
-                        {FORMAS_PAGAMENTO.map((fp: any) => (
-                            <button
-                              key={fp.id}
-                              type="button"
-                              onClick={() => { setSelectedPayment(fp.id); setValorRecebido(''); }}
-                              className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 font-bold text-xs transition-all ${
-                                selectedPayment === fp.id 
-                                  ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30' 
-                                  : 'border-muted text-muted-foreground hover:border-slate-300'
-                              }`}
-                            >
-                              <span className="text-lg">{fp.icon}</span>
-                              {fp.label}
-                            </button>
-                        ))}
-                      </div>
-
-                      {selectedPayment && (
-                        <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 space-y-1.5">
-                          <label className="text-xs font-medium text-blue-800">Valor a ser pago em {selectedPayment === 'conta_casa' ? 'Prazo' : FORMAS_PAGAMENTO.find((f: any)=>f.id===selectedPayment)?.label || selectedPayment} (R$)</label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder={`R$ ${remaining.toFixed(2).replace('.', ',')}`}
-                              value={valorRecebido ? `R$ ${valorRecebido.replace('.', ',')}` : ''}
-                              onChange={(e) => {
-                                let val = e.target.value.replace(/\D/g, '');
-                                if (!val) setValorRecebido('');
-                                else setValorRecebido((Number(val) / 100).toFixed(2));
-                              }}
-                              className="text-sm font-bold text-center bg-white h-9"
-                              autoFocus
-                            />
-                            <Button onClick={handleAddSplit} className="h-9 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white" size="sm">
-                              Adicionar
-                            </Button>
-                          </div>
-                          {selectedPayment === 'dinheiro' && Number(valorRecebido) > remaining && (
-                            <div className="text-center p-1 font-bold text-xs bg-amber-100 text-amber-700 rounded">
-                              Troco: R$ {(Number(valorRecebido) - remaining).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <DialogFooter className="pt-2 gap-2 border-t mt-2">
-                    <Button variant="outline" size="sm" onClick={() => setPaymentModalOrder(null)}>Cancelar</Button>
-                    <Button 
-                      size="sm"
-                      disabled={(paymentSplits.length === 0 && !selectedPayment) || isProcessing || (!isFullyPaid && !selectedPayment)} 
-                      onClick={handleConfirmPayment}
-                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white"
-                    >
-                      {isProcessing ? '...' : '✅ Confirmar Pedido'}
-                    </Button>
-                  </DialogFooter>
-                </>
-              )}
-            </>
-          );
-        })()}
-      </DialogContent>
-    </Dialog>
+    {/* Modal: Forma de Pagamento para Concluir Pedido — fechamento centralizado
+        (desconto/acréscimo, split, troco, Prazo/frete ao motoboy) */}
+    <FechamentoModal
+      open={!!paymentModalOrder}
+      onOpenChange={(open) => { if (!open) { setPaymentModalOrder(null); fechamento.reset(); } }}
+      fechamento={fechamento}
+      title={`Pagamento #${paymentModalOrder?.id?.substring(0, 5) || ''}`}
+      subtitle={paymentModalOrder?.customerName ? `${paymentModalOrder.orderType === 'pickup' ? 'Retirada' : 'Delivery'} · ${paymentModalOrder.customerName}` : undefined}
+      items={paymentModalOrder?.items || []}
+      caixaAberto={caixaAberto}
+      isSubmitting={isProcessing}
+      onConfirm={handleConfirmPayment}
+    />
 
       {/* Modal Vincular Entregador */}
       <Dialog open={!!showMotoboyModal} onOpenChange={(open) => !open && setShowMotoboyModal(null)}>
