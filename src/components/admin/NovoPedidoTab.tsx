@@ -8,7 +8,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
@@ -20,8 +20,10 @@ import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { usePromotions } from '@/hooks/usePromotions';
 import { buildAdminMenuGroups } from '@/lib/menu-groups';
+import { useCustomerLookup } from '@/hooks/useCustomerLookup';
+import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
-import { removeAccents, neighborhoodMatchesQuery } from '@/lib/utils';
+import { neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
@@ -173,8 +175,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
-  const [allCustomers, setAllCustomers] = useState<any[]>([]);
-  const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, user?.uid);
 
@@ -375,36 +375,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     calculateDeliveryFee(fullAddr);
   };
 
-  // Carrega a lista de clientes (uma vez) para o autocomplete por nome/telefone
-  React.useEffect(() => {
-    const ownerId = storeProfile?.id || user?.uid;
-    if (!db || !ownerId) return;
-    let ignore = false;
-    (async () => {
-      try {
-        const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
-        if (!ignore) setAllCustomers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error('Erro ao carregar clientes para autocomplete:', e);
-      }
-    })();
-    return () => { ignore = true; };
-  }, [db, storeProfile?.id, user?.uid]);
-
-  // Sugestões de cliente conforme o campo ativo (nome ou telefone)
-  const customerMatches = React.useMemo(() => {
-    if (!activeLookupField || allCustomers.length === 0) return [] as any[];
-    if (activeLookupField === 'phone') {
-      const term = normalizeCreditPhone(customerPhone);
-      if (term.length < 3) return [];
-      return allCustomers.filter(c => normalizeCreditPhone(String(c.celular || '')).includes(term)).slice(0, 6);
-    }
-    const term = removeAccents(customerName.toLowerCase()).trim();
-    if (term.length < 2) return [];
-    return allCustomers
-      .filter(c => removeAccents(String(c.nome || c.name || '').toLowerCase()).includes(term))
-      .slice(0, 6);
-  }, [activeLookupField, customerName, customerPhone, allCustomers]);
+  // Autocomplete de cliente (carga da lista + matches) centralizado no hook.
+  const { activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
+    useCustomerLookup(db, storeProfile?.id || user?.uid, customerName, customerPhone);
 
   const applyCustomer = (c: any) => {
     setSelectedCustomer(c);
@@ -605,25 +578,16 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     );
   }
 
-  const suggestionsDropdown = customerMatches.length > 0 ? (
-    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
-      {customerMatches.map((c: any) => {
+  const suggestionsDropdown = (
+    <CustomerSuggestions
+      matches={customerMatches}
+      onSelect={applyCustomer}
+      getAddressLine={(c) => {
         const addr = getCustomerAddress(c);
-        const addrLine = [addr.street, addr.neighborhood].filter(Boolean).join(', ');
-        return (
-          <button
-            type="button"
-            key={c.id}
-            onMouseDown={(e) => { e.preventDefault(); applyCustomer(c); }}
-            className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 border-b last:border-b-0"
-          >
-            <div className="text-xs font-semibold text-slate-800">{getCustomerDisplayName(c) || 'Sem nome'}</div>
-            <div className="text-[10px] text-slate-500">{c.celular || 'sem telefone'}{addrLine ? ` · ${addrLine}` : ''}</div>
-          </button>
-        );
-      })}
-    </div>
-  ) : null;
+        return [addr.street, addr.neighborhood].filter(Boolean).join(', ');
+      }}
+    />
+  );
 
   const renderItemCard = (item: any) => {
     const needsCust = itemNeedsCustomization(item);

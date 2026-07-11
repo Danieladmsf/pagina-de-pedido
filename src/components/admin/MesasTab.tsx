@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -18,7 +18,8 @@ import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { usePromotions } from '@/hooks/usePromotions';
 import { buildAdminMenuGroups } from '@/lib/menu-groups';
-import { removeAccents } from '@/lib/utils';
+import { useCustomerLookup } from '@/hooks/useCustomerLookup';
+import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
@@ -73,8 +74,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // cadastro e habilita o pagamento no Prazo, igual ao Balcao.
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [allCustomers, setAllCustomers] = useState<any[]>([]);
-  const [activeLookupField, setActiveLookupField] = useState<null | 'name' | 'phone'>(null);
   const [customerDirty, setCustomerDirty] = useState(false);
   // Seletor de mesa: usado tanto para "Trocar de mesa" (currentTable preenchido)
   // quanto para "Atribuir mesa" a um pedido online sem mesa (currentTable null).
@@ -162,35 +161,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   }, [selectedTable, orders]); // depends on orders to sync in real-time
 
   // ── Autocomplete de cliente (nome/celular) na comanda da mesa ──
-  // Carrega a lista de clientes uma vez (mesma fonte do Balcao).
-  useEffect(() => {
-    const ownerId = storeInfo?.id || user?.uid;
-    if (!db || !ownerId) return;
-    let ignore = false;
-    (async () => {
-      try {
-        const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
-        if (!ignore) setAllCustomers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error('Erro ao carregar clientes (mesas):', e);
-      }
-    })();
-    return () => { ignore = true; };
-  }, [db, storeInfo?.id, user?.uid]);
-
-  const customerMatches = useMemo(() => {
-    if (!activeLookupField || allCustomers.length === 0) return [] as any[];
-    if (activeLookupField === 'phone') {
-      const term = normalizeCreditPhone(customerPhone);
-      if (term.length < 3) return [];
-      return allCustomers.filter(c => normalizeCreditPhone(String(c.celular || '')).includes(term)).slice(0, 6);
-    }
-    const term = removeAccents(customerName.toLowerCase()).trim();
-    if (term.length < 2) return [];
-    return allCustomers
-      .filter(c => removeAccents(String(c.nome || c.name || '').toLowerCase()).includes(term))
-      .slice(0, 6);
-  }, [activeLookupField, customerName, customerPhone, allCustomers]);
+  // Carga da lista + matches centralizados no hook (mesma fonte do Balcao).
+  const { allCustomers, activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
+    useCustomerLookup(db, storeInfo?.id || user?.uid, customerName, customerPhone);
 
   // Cliente do cadastro que casa com o telefone atual — usado para indicar que o
   // Prazo está ativo (ao escolher na lista ou ao reabrir uma comanda vinculada).
@@ -745,21 +718,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     );
   };
 
-  const suggestionsDropdown = customerMatches.length > 0 ? (
-    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto custom-scrollbar">
-      {customerMatches.map((c: any) => (
-        <button
-          type="button"
-          key={c.id}
-          onMouseDown={(e) => { e.preventDefault(); applyCustomer(c); }}
-          className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 border-b last:border-b-0"
-        >
-          <div className="text-xs font-semibold text-slate-800">{String(c.nome || c.name || '').trim() || 'Sem nome'}</div>
-          <div className="text-[10px] text-slate-500">{c.celular || 'sem telefone'}</div>
-        </button>
-      ))}
-    </div>
-  ) : null;
+  const suggestionsDropdown = (
+    <CustomerSuggestions matches={customerMatches} onSelect={applyCustomer} />
+  );
 
   return (
     <div className="flex gap-4 flex-1 overflow-hidden">
