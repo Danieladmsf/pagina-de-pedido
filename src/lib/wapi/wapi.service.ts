@@ -353,6 +353,10 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
       lite,
       rejectCalls: true,
       callMessage: 'Nao estamos disponiveis para chamadas. Envie uma mensagem por texto.',
+      // Nunca marcar mensagens recebidas como lidas sozinho: o W-API trata os
+      // status/stories dos contatos como "mensagem recebida", entao a leitura
+      // automatica faz a conta "visualizar" o status de todos os contatos.
+      automaticReading: false,
     }),
   }).then(async (response) => {
     const data = await parseWapiResponse(response);
@@ -392,6 +396,21 @@ export function restartWapiInstance(instanceId: string, token: string) {
     token,
     query: { instanceId },
     context: 'restart',
+  });
+}
+
+/**
+ * Liga/desliga a "Leitura automatica" da instancia (update-auto-read-message).
+ * Quando ligada, o W-API marca TODA mensagem recebida como lida — inclusive os
+ * status/stories dos contatos, o que faz a conta "visualizar" o status de todo
+ * mundo sozinha. Chamamos sempre com `false` para nunca ver status de ninguem.
+ */
+export function setWapiAutoRead(instanceId: string, token: string, enabled: boolean) {
+  return requestWapi<{ error?: boolean; message?: string }>('/instance/update-auto-read-message', {
+    method: 'PUT',
+    token,
+    query: { instanceId },
+    body: { value: enabled },
   });
 }
 

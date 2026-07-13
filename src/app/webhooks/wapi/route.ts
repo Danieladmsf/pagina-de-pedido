@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
-import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage } from '@/lib/wapi/wapi.service';
+import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage, setWapiAutoRead } from '@/lib/wapi/wapi.service';
 import {
   buildStoreLink,
   formatWorkingHours,
@@ -699,6 +699,17 @@ export async function POST(request: Request) {
         error,
       });
     }
+  }
+
+  // A cada conexao, reforca o desligamento da "Leitura automatica" do W-API.
+  // Sem isso a instancia marca status/stories como lidos e a conta passa a
+  // "visualizar" o status de todos os contatos sozinha. O `wt` do webhook ja
+  // carrega o token da instancia, entao corrige lojas existentes no proximo
+  // reconnect sem acao manual. Best-effort: nao afeta o restante do webhook.
+  if (connected && instanceId && webhookAuth.token) {
+    setWapiAutoRead(instanceId, webhookAuth.token, false).catch((error) => {
+      console.warn('[W-API webhook] Falha ao desligar leitura automatica no connect:', { instanceId, empresaId, error });
+    });
   }
 
   let autoReplySent = false;

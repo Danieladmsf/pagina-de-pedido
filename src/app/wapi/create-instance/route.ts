@@ -9,6 +9,7 @@ import {
   getWapiQrCode,
   getWapiStatus,
   isWapiConnectedStatus,
+  setWapiAutoRead,
 } from '@/lib/wapi/wapi.service';
 import {
   encryptWapiToken,
@@ -106,6 +107,13 @@ export async function POST(request: Request) {
 
       const webhookUrl = getWebhookUrl(request, empresaId, created.token);
       await configureWapiWebhooks(created.instanceId, created.token, webhookUrl);
+
+      // Garante que a instancia nunca marque mensagens (nem status/stories) como
+      // lidas sozinha — senao a conta "visualiza" o status de todos os contatos.
+      // Best-effort: nao bloqueia a criacao se a W-API recusar.
+      await setWapiAutoRead(created.instanceId, created.token, false).catch((error) => {
+        console.warn('[W-API] Falha ao desligar leitura automatica na criacao:', error);
+      });
 
       const { qrCode, connected, status, numeroWhatsapp } = await getInitialWapiState(created.instanceId, created.token);
 
