@@ -289,6 +289,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
             fallback={item.imageUrl}
             alt={item.name}
             className="rounded-xl"
+            enableZoom
           />
 
           {/* Combo Items */}
