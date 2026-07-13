@@ -1150,6 +1150,14 @@ export function MenuPageClient({
           {/* Category section header */}
           <div className="flex items-center gap-3 mb-4 md:mb-6">
             <h2 className="text-lg font-black text-primary md:text-xl">{group.name}</h2>
+            {(group.id === '__combos__' || group.id === '__promo__') && (
+              <Link
+                href={`/${storeSlug ?? ''}/${group.id === '__combos__' ? 'combos' : 'promocoes'}${urlParam ? `?s=${urlParam}` : ''}`}
+                className="whitespace-nowrap text-xs font-bold text-accent hover:underline"
+              >
+                Ver tudo →
+              </Link>
+            )}
             <div className="flex-1 h-px bg-gradient-to-r from-primary/20 to-transparent" />
             <span className="text-xs text-muted-foreground font-medium">{group.items.length} {group.items.length === 1 ? 'item' : 'itens'}</span>
           </div>
