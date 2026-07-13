@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Plus, Trash2, GripVertical, Upload, Loader2, ArrowLeft, X, Check, Power
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
+import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 
 interface ProductModalProps {
   db: any;
@@ -33,6 +34,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [removeImage, setRemoveImage] = useState(false);
+  const galleryRef = useRef<GalleryUploaderHandle>(null);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
@@ -115,6 +117,11 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         imageUrl = '';
       }
 
+      // Galeria: capa (imageUrl) + fotos extras, em ordem. Só grava quando há
+      // extras — itens com uma foto só ficam com images = [] e usam imageUrl.
+      const extraImages = galleryRef.current ? await galleryRef.current.getUrls() : [];
+      const images = extraImages.length > 0 ? [imageUrl, ...extraImages].filter(Boolean) : [];
+
       const fixedItems = fixedItemsText.split(',').map((s: string) => s.trim()).filter((s: string) => s);
       const description = isMarmita 
         ? (fixedItems.length > 0 ? `Itens fixos: ${fixedItems.join(', ')}` : '')
@@ -133,7 +140,8 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         fixedItems: isMarmita ? fixedItems : [],
         addonGroups,
         addonIds: [],
-        imageUrl
+        imageUrl,
+        images
       };
 
       if (editingProduct?.id) {
@@ -334,6 +342,12 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                 </div>
               </div>
             </div>
+
+            <GalleryUploader
+              ref={galleryRef}
+              resetKey={editingProduct?.id || 'new'}
+              initialUrls={(editingProduct?.images || []).filter((u: string) => u && u !== editingProduct?.imageUrl)}
+            />
 
             {isMarmita ? (
               <div className="space-y-1.5">

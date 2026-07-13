@@ -50,6 +50,10 @@ export interface MenuItem {
   categoryId?: string;
   imageUrl: string;
   imageHint?: string;
+  // Galeria de fotos (capa + extras, em ordem). Quando presente, o carrossel
+  // usa este array; senão, faz fallback para [imageUrl]. imageUrl segue sendo a
+  // capa exibida no card do cardápio.
+  images?: string[];
   addonIds?: string[];
   // Combo fields
   isCombo?: boolean;

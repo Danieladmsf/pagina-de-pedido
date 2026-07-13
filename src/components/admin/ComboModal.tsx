@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,9 @@ import { MenuItem, ComboItem } from '@/lib/types';
 import { normalizeSearch } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload, X } from 'lucide-react';
+import { uploadImage } from '@/lib/upload';
+import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 
 interface ComboModalProps {
   db: any;
@@ -28,7 +31,27 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
   const [startDate, setStartDate] = useState(editingCombo?.startDate || '');
   const [endDate, setEndDate] = useState(editingCombo?.endDate || '');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
+  // Foto de capa do combo (antes o combo não tinha imagem nenhuma).
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>(editingCombo?.imageUrl || '');
+  const [removeImage, setRemoveImage] = useState(false);
+  const galleryRef = useRef<GalleryUploaderHandle>(null);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveImage(false);
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    setRemoveImage(true);
+  };
+
   const handleToggleItem = (item: MenuItem) => {
     if (selectedItems.find(i => i.itemId === item.id)) {
       setSelectedItems(selectedItems.filter(i => i.itemId !== item.id));
@@ -49,24 +72,37 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
     const price = parseFloat(priceStr) || 0;
 
     const manualDescription = formData.get('description') as string;
-    
-    const data = {
-      name,
-      price,
-      categoryId,
-      description: manualDescription.trim() ? manualDescription : `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
-      ownerId: user.uid,
-      isAvailable: true,
-      isCombo: true,
-      comboItems: selectedItems,
-      originalPrice,
-      addonIds: [],
-      imageUrl: '',
-      startDate: hasExpiration ? startDate : null,
-      endDate: hasExpiration ? endDate : null,
-    };
 
     try {
+      // Capa
+      let imageUrl = editingCombo?.imageUrl || '';
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+      } else if (removeImage) {
+        imageUrl = '';
+      }
+
+      // Galeria (capa + extras, em ordem)
+      const extraImages = galleryRef.current ? await galleryRef.current.getUrls() : [];
+      const images = extraImages.length > 0 ? [imageUrl, ...extraImages].filter(Boolean) : [];
+
+      const data = {
+        name,
+        price,
+        categoryId,
+        description: manualDescription.trim() ? manualDescription : `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
+        ownerId: user.uid,
+        isAvailable: true,
+        isCombo: true,
+        comboItems: selectedItems,
+        originalPrice,
+        addonIds: [],
+        imageUrl,
+        images,
+        startDate: hasExpiration ? startDate : null,
+        endDate: hasExpiration ? endDate : null,
+      };
+
       if (editingCombo?.id) {
         await updateDoc(doc(db, 'menuItems', editingCombo.id), data);
         toast({ title: 'Combo atualizado com sucesso!' });
@@ -121,9 +157,45 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
               </div>
 
               <div className="space-y-2 col-span-1 md:col-span-2">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Foto de capa</Label>
+                <div className="flex items-center gap-2">
+                  {imagePreview ? (
+                    <div className="relative flex-shrink-0">
+                      <div className="relative h-16 w-16 overflow-hidden rounded-lg border">
+                        <Image src={imagePreview} alt="preview" fill className="object-cover" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        title="Remover foto"
+                        aria-label="Remover foto"
+                        className="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-white bg-red-500 text-white shadow hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex h-16 items-center justify-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10 px-2 transition-colors hover:border-primary">
+                      <Upload className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {imageFile ? imageFile.name : 'Escolher foto de capa'}
+                      </span>
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </label>
+                </div>
+                <GalleryUploader
+                  ref={galleryRef}
+                  resetKey={editingCombo?.id || 'new'}
+                  initialUrls={(editingCombo?.images || []).filter((u: string) => u && u !== editingCombo?.imageUrl)}
+                />
+              </div>
+
+              <div className="space-y-2 col-span-1 md:col-span-2">
                 <div className="flex items-center gap-2 mb-2">
-                  <Checkbox 
-                    id="has-expiration" 
+                  <Checkbox
+                    id="has-expiration"
                     checked={hasExpiration} 
                     onCheckedChange={(c) => setHasExpiration(!!c)} 
                   />

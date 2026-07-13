@@ -7,7 +7,7 @@ import { MenuItem, Addon, SelectedAddon, AddonGroup, AddonCategory } from '@/lib
 import { useCart } from '@/components/providers/CartProvider';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import Image from 'next/image';
+import { ProductGallery } from '@/components/menu/ProductGallery';
 import { Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -283,18 +283,13 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
 
         <div className="space-y-6 py-4 flex-1 min-h-0 overflow-y-auto pr-2">
 
-          {/* Foto do produto (mesma proporcao 4:3 do card) */}
-          {item.imageUrl && (
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
-              <Image
-                src={item.imageUrl}
-                alt={item.name}
-                fill
-                sizes="(max-width: 640px) 100vw, 400px"
-                className="object-cover"
-              />
-            </div>
-          )}
+          {/* Foto(s) do produto — carrossel quando há galeria (mesma proporcao 4:3 do card) */}
+          <ProductGallery
+            images={item.images}
+            fallback={item.imageUrl}
+            alt={item.name}
+            className="rounded-xl"
+          />
 
           {/* Combo Items */}
           {item.isCombo && item.comboItems && item.comboItems.length > 0 && (
