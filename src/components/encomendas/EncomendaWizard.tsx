@@ -131,6 +131,14 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const DOCINHOS = cat.docinhos.filter((x) => x.enabled !== false);
   const DELIVERY_TIMES = cat.deliveryTimes;
 
+  // Rótulos das seções de tortas/docinhos vêm do card do produto (products[].title/
+  // description). Assim o passo combina com o que o cliente escolheu — ex.: um lojista
+  // que renomeou "tortas" para "Brigadeiros" vê "Brigadeiros" no passo, não "Tortas geladas".
+  const prodCard = (k: ProductKind) => cat.products.find((p) => p.kind === k);
+  const tortasLabel = prodCard('tortas')?.title || 'Tortas geladas';
+  const tortasSubtitle = prodCard('tortas')?.description || 'Escolha as tortas e a quantidade de cada.';
+  const docinhosLabel = prodCard('docinhos')?.title || 'Docinhos finos';
+
   // Grupos de recheio exibidos: níveis cadastrados que têm recheio + níveis
   // "órfãos" presentes nos recheios mas apagados da lista de níveis (nada some).
   const fillingGroups = useMemo(() => {
@@ -284,8 +292,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       L.push(`   Subtotal bolo: ${money(boloTotal)}`);
     }
     if (has('especial')) { L.push('', '*Especial da casa*'); L.push(...lines(especial, ESPECIAL_ITEMS)); }
-    if (has('tortas')) { L.push('', '*Tortas*'); L.push(...lines(tortas, TORTAS)); }
-    if (has('docinhos')) { L.push('', '*Docinhos*'); L.push(...lines(docinhos, DOCINHOS)); }
+    if (has('tortas')) { L.push('', `*${tortasLabel}*`); L.push(...lines(tortas, TORTAS)); }
+    if (has('docinhos')) { L.push('', `*${docinhosLabel}*`); L.push(...lines(docinhos, DOCINHOS)); }
 
     L.push('', '*Entrega*');
     L.push(`   - Data: ${formatDateBR(delDate)} ${delTime || ''}`.trim());
@@ -565,7 +573,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
           )}
 
           {step.id === 'tortas' && (
-            <Section title="Tortas geladas" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Escolha as tortas e a quantidade de cada.">
+            <Section title={tortasLabel} kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle={tortasSubtitle}>
               {groupSkus(TORTAS).map(({ group, items }) => (
                 <div key={group || '_'} className="space-y-2.5">
                   {group && <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{group}</p>}
@@ -576,13 +584,13 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   ))}
                 </div>
               ))}
-              <SelectedList title="Tortas" map={tortas} list={TORTAS}
+              <SelectedList title={tortasLabel} map={tortas} list={TORTAS}
                 onRemove={(id) => setTortas({ ...tortas, [id]: 0 })} />
             </Section>
           )}
 
           {step.id === 'docinhos' && (
-            <Section title="Docinhos finos" kicker={`Passo ${safeIdx + 1} de ${total}`}
+            <Section title={docinhosLabel} kicker={`Passo ${safeIdx + 1} de ${total}`}
               subtitle={DOCINHOS.some((d) => (d.minQty || 0) > 1) ? 'A quantidade mínima por sabor está indicada em cada item.' : 'Escolha os sabores e a quantidade de cada.'}>
               {groupSkus(DOCINHOS).map(({ group, items }) => (
                 <div key={group || '_'} className="space-y-2.5">
@@ -594,7 +602,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   ))}
                 </div>
               ))}
-              <SelectedList title="Docinhos" map={docinhos} list={DOCINHOS}
+              <SelectedList title={docinhosLabel} map={docinhos} list={DOCINHOS}
                 onRemove={(id) => setDocinhos({ ...docinhos, [id]: 0 })} />
             </Section>
           )}
@@ -834,6 +842,8 @@ function ResumoStep(props: any) {
     boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes,
     compUrl, compName, compUploading, onComprovante, onClearComp } = props;
   const cat = config.catalog;
+  const tortasLabel = cat.products.find((p: any) => p.kind === 'tortas')?.title || 'Tortas';
+  const docinhosLabel = cat.products.find((p: any) => p.kind === 'docinhos')?.title || 'Docinhos';
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(config.pixKey); setCopied(true); setTimeout(() => setCopied(false), 1500); };
   const lines = (map: Qmap, list: any[]) => list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ name: x.name, qty: map[x.id], total: map[x.id] * x.price }));
@@ -860,10 +870,10 @@ function ResumoStep(props: any) {
           </Block>
         )}
         {products.has('tortas') && (
-          <Block title="Tortas">{lines(tortas, cat.tortas).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title={tortasLabel}>{lines(tortas, cat.tortas).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
         )}
         {products.has('docinhos') && (
-          <Block title="Docinhos">{lines(docinhos, cat.docinhos).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title={docinhosLabel}>{lines(docinhos, cat.docinhos).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
         )}
         <Block icon={<MapPin className="h-4 w-4" />} title="Entrega">
           <Row label="Data" value={`${formatDateBR(delDate)} ${delTime || ''}`} />
