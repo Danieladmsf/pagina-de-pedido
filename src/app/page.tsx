@@ -223,6 +223,15 @@ export default function AdminPage() {
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
 
+  // Encomendas ficam em coleção própria (não em `orders`), então o alerta de
+  // novo pedido de delivery não as cobre. Assinamos aqui — só na confeitaria —
+  // para o alerta de "nova encomenda" tocar em qualquer aba aberta.
+  const encomendasAlertQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser || storeProfile?.theme !== 'confeitaria') return null;
+    return query(collection(db, 'encomendas'), where('ownerId', '==', user!.uid));
+  }, [db, isRealUser, storeProfile?.theme]);
+  const { data: encomendasRaw } = useCollection(encomendasAlertQuery);
+
   const ordersRawSorted = React.useMemo(() => {
     if (!ordersRaw) return [];
     return [...ordersRaw].sort((a: any, b: any) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
@@ -502,6 +511,34 @@ export default function AdminPage() {
 
     seenOrderIdsRef.current = currentIds;
   }, [ordersRaw, playNewOrderBeep, playOrderSound6s, toast, db, user, storeProfile]);
+
+  // ── Alerta de NOVA ENCOMENDA (confeitaria) ──
+  // Espelha o alerta de delivery, mas sobre a coleção `encomendas`: toca o som,
+  // mostra toast e dispara a notificação do navegador quando um doc NOVO entra.
+  // Detecção por id não-visto → trocar o status (mesmo id) NÃO re-alerta. Sem
+  // impressão automática (encomenda é sob medida; o lojista imprime pelo card).
+  const seenEncomendaIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!encomendasRaw || !db || !user) return;
+    const currentIds = new Set((encomendasRaw as any[]).map((e) => e.id));
+    if (seenEncomendaIdsRef.current === null) {
+      seenEncomendaIdsRef.current = currentIds; // primeira carga: não apita as já existentes
+      return;
+    }
+    const newOnes = (encomendasRaw as any[]).filter((e) => !seenEncomendaIdsRef.current!.has(e.id));
+    if (newOnes.length > 0) {
+      // Diferente do delivery, aqui NUNCA fica mudo: não há impressão como alternativa.
+      const printMode = storeProfile?.general?.printMode || (storeProfile as any)?.printMode || 'auto_silent';
+      if (printMode === 'auto_sound') playOrderSound6s(); else playNewOrderBeep();
+      toast({ title: 'Nova encomenda recebida!', description: `${newOnes.length} encomenda(s) aguardando confirmação.` });
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Nova encomenda!', { body: `${newOnes.length} encomenda(s) aguardando confirmação.` });
+        }
+      } catch {}
+    }
+    seenEncomendaIdsRef.current = currentIds;
+  }, [encomendasRaw, playNewOrderBeep, playOrderSound6s, toast, db, user, storeProfile]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -1349,9 +1386,20 @@ export default function AdminPage() {
           {storeProfile?.theme === 'confeitaria' && (
             <button
               onClick={() => handleTabChange('encomendas_pedidos')}
-              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'encomendas_pedidos' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
+              className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'encomendas_pedidos' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
             >
               Encomendas
+              {(() => {
+                const novasEncomendas = (encomendasRaw as any[] | null || []).filter(
+                  (e) => (e.status || 'orcamento') === 'orcamento'
+                ).length;
+                if (novasEncomendas === 0) return null;
+                return (
+                  <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
+                    {novasEncomendas}
+                  </span>
+                );
+              })()}
             </button>
           )}
         </div>
