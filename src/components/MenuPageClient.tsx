@@ -1375,11 +1375,22 @@ export function MenuPageClient({
       {(hasCombos || hasActivePromos) && !showStoreInfo && (
         <Link
           href={`/${storeSlug ?? ''}/ofertas${urlParam ? `?s=${urlParam}` : ''}`}
-          className="fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-pink-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
+          className="fixed bottom-36 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-pink-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
           aria-label="Ver combos e promoções"
         >
           <Flame className="h-4 w-4" />
           Ofertas
+        </Link>
+      )}
+      {/* Botão flutuante "Combos" → página dedicada de Combos */}
+      {hasCombos && !showStoreInfo && (
+        <Link
+          href={`/${storeSlug ?? ''}/combos${urlParam ? `?s=${urlParam}` : ''}`}
+          className="fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-purple-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
+          aria-label="Ver combos"
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Combos
         </Link>
       )}
       {/* Botão Voltar ao Topo */}
