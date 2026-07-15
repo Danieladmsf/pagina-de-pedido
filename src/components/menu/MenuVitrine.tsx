@@ -46,11 +46,14 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
     const promos = pool.filter((it) => !it.isCombo && promoItemsMap[it.id]);
     const normals = pool.filter((it) => !it.isCombo && !promoItemsMap[it.id]);
 
-    // Garante combos e promoções, completa com produtos normais aleatórios,
-    // e embaralha tudo pra dar cara de vitrine rotativa.
-    const fillCount = Math.max(3, 10 - combos.length - promos.length);
-    const featured = [...combos, ...promos, ...shuffle(normals).slice(0, fillCount)];
-    return shuffle(featured).slice(0, 12);
+    // Foco em ofertas: combos + promoções vêm PRIMEIRO (embaralhados entre si).
+    // Só completa com produtos normais se as ofertas forem poucas, pra a vitrine
+    // ter itens suficientes pra girar.
+    const MIN_SLIDES = 6;
+    const offers = shuffle([...combos, ...promos]);
+    const needed = Math.max(0, MIN_SLIDES - offers.length);
+    const fillers = needed > 0 ? shuffle(normals).slice(0, needed) : [];
+    return [...offers, ...fillers].slice(0, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, promoItemsMap]);
 
