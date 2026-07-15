@@ -7,6 +7,7 @@ import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/fires
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+import { MenuVitrine } from '@/components/menu/MenuVitrine';
 import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -542,31 +543,12 @@ export function MenuPageClient({
     return (items || []).filter(isVisibleForCustomerMenu);
   }, [items, isVisibleForCustomerMenu]);
 
-  // Group items by category for section-based display
+  // Group items by category for section-based display.
+  // Combos e Promoções NÃO têm mais faixa própria na home: viraram a Vitrine
+  // do topo + a página dedicada /ofertas (botão flutuante). Por isso as seções
+  // __promo__ e __combos__ foram removidas daqui (some tab + faixa juntos).
   const groupedItems = useMemo(() => {
     const groups: { id: string; name: string; items: any[] }[] = [];
-
-    // Promos section
-    if (hasActivePromos) {
-      const promoItems = (items || []).filter(item => {
-        const cleanSearchQuery = removeAccents(searchQuery.toLowerCase());
-        const cleanItemName = removeAccents(item.name.toLowerCase());
-        const cleanItemDesc = removeAccents(item.description.toLowerCase());
-        return item.isAvailable !== false && isVisibleForCustomerMenu(item) && promoItemsMap[item.id] &&
-        (!searchQuery || cleanItemName.includes(cleanSearchQuery) || cleanItemDesc.includes(cleanSearchQuery))
-      });
-      if (promoItems.length > 0) {
-        groups.push({ id: '__promo__', name: '🔥 Promoções', items: promoItems });
-      }
-    }
-
-    // Combos section
-    if (hasCombos) {
-      const comboItems = filteredItems.filter(item => item.isCombo);
-      if (comboItems.length > 0) {
-        groups.push({ id: '__combos__', name: `${comboEmoji} Combos`, items: comboItems });
-      }
-    }
 
     // Regular categories
     visibleCategories.forEach(cat => {
@@ -577,7 +559,7 @@ export function MenuPageClient({
     });
 
     return groups;
-  }, [filteredItems, visibleCategories, hasActivePromos, hasCombos, items, promoItemsMap, searchQuery, isVisibleForCustomerMenu]);
+  }, [filteredItems, visibleCategories]);
 
   // Scroll to category section when clicking a tab
   const scrollToCategory = useCallback((categoryId: string) => {
@@ -1140,6 +1122,15 @@ export function MenuPageClient({
         </div>
       <ActiveOrdersBanner storeId={storeId} storeSlug={storeSlug} />
       <div className="max-w-7xl mx-auto w-full overflow-x-hidden px-3 pt-5 md:px-8 md:pt-6">
+      {!searchQuery && (
+        <MenuVitrine
+          items={items}
+          promoItemsMap={promoItemsMap}
+          comboEmoji={comboEmoji}
+          isVisible={isVisibleForCustomerMenu}
+          onSelectItem={(item) => setSelectedItem(applyPromoPrice(item, promoItemsMap))}
+        />
+      )}
       {groupedItems.map((group) => (
         <div
           key={group.id}
@@ -1379,6 +1370,17 @@ export function MenuPageClient({
             R$ {totalPrice.toFixed(2)}
           </span>
         </button>
+      )}
+      {/* Botão flutuante "Ofertas" → página dedicada de Combos + Promoções */}
+      {(hasCombos || hasActivePromos) && !showStoreInfo && (
+        <Link
+          href={`/${storeSlug ?? ''}/ofertas${urlParam ? `?s=${urlParam}` : ''}`}
+          className="fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-pink-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
+          aria-label="Ver combos e promoções"
+        >
+          <Flame className="h-4 w-4" />
+          Ofertas
+        </Link>
       )}
       {/* Botão Voltar ao Topo */}
       {showBackToTop && !showStoreInfo && (

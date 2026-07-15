@@ -16,7 +16,7 @@ import { useStoreMenuData } from '@/hooks/useStoreMenuData';
 import { themeToCssVars } from '@/lib/themes';
 import { applyPromoPrice, itemNeedsCustomization } from '@/lib/cart';
 
-type ShowcaseMode = 'combos' | 'promocoes';
+type ShowcaseMode = 'combos' | 'promocoes' | 'ofertas';
 
 function Countdown({ endDate, noEndDate }: { endDate?: Date; noEndDate?: boolean }) {
   const [timeLeft, setTimeLeft] = useState('');
@@ -79,6 +79,7 @@ export function ShowcasePageClient({
   } = data;
 
   const isCombos = mode === 'combos';
+  const isOfertas = mode === 'ofertas';
   const homeHref = `/${storeSlug ?? ''}${urlParam ? `?s=${urlParam}` : ''}`;
 
   const showcaseItems = useMemo(() => {
@@ -88,9 +89,10 @@ export function ShowcasePageClient({
       if (!isVisibleForCustomerMenu(item)) return false;
       if (item.startDate && now < new Date(item.startDate)) return false;
       if (item.endDate && now > new Date(item.endDate)) return false;
+      if (isOfertas) return !!item.isCombo || !!promoItemsMap[item.id];
       return isCombos ? !!item.isCombo : !!promoItemsMap[item.id];
     });
-  }, [items, isVisibleForCustomerMenu, now, isCombos, promoItemsMap]);
+  }, [items, isVisibleForCustomerMenu, now, isCombos, isOfertas, promoItemsMap]);
 
   const handleAddClick = useCallback((e: React.MouseEvent, item: any) => {
     e.preventDefault();
@@ -112,13 +114,18 @@ export function ShowcasePageClient({
     return <StoreSplash logoUrl={splashLogoUrl} storeName={splashStoreName} bgColor={splashBg} />;
   }
 
-  const heroGradient = isCombos
-    ? 'from-purple-600 via-fuchsia-600 to-pink-600'
-    : 'from-orange-500 via-red-500 to-rose-600';
-  const title = isCombos ? 'Combos' : 'Promoções';
-  const subtitle = isCombos
-    ? 'Monte seu pedido pagando menos — combos exclusivos da casa.'
-    : 'Ofertas por tempo limitado. Aproveite enquanto duram!';
+  const heroGradient = isOfertas
+    ? 'from-orange-500 via-pink-600 to-purple-600'
+    : isCombos
+      ? 'from-purple-600 via-fuchsia-600 to-pink-600'
+      : 'from-orange-500 via-red-500 to-rose-600';
+  const title = isOfertas ? 'Ofertas' : isCombos ? 'Combos' : 'Promoções';
+  const heroIcon = isOfertas ? '🔥' : isCombos ? comboEmoji : '🔥';
+  const subtitle = isOfertas
+    ? 'Combos e promoções da casa reunidos num só lugar. Aproveite!'
+    : isCombos
+      ? 'Monte seu pedido pagando menos — combos exclusivos da casa.'
+      : 'Ofertas por tempo limitado. Aproveite enquanto duram!';
 
   return (
     <div className="min-h-screen w-full max-w-full pb-24" style={themeToCssVars(theme)}>
@@ -146,7 +153,7 @@ export function ShowcasePageClient({
       <section className={`bg-gradient-to-br ${heroGradient} px-4 py-8 text-white md:py-12`}>
         <div className="mx-auto max-w-5xl">
           <div className="mb-2 flex items-center gap-2 text-2xl md:text-3xl">
-            <span>{isCombos ? comboEmoji : '🔥'}</span>
+            <span>{heroIcon}</span>
             <h1 className="font-black">{title}</h1>
           </div>
           <p className="max-w-xl text-sm text-white/90 md:text-base">{subtitle}</p>
@@ -159,7 +166,11 @@ export function ShowcasePageClient({
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <span className="text-4xl">{isCombos ? '🎁' : '🔥'}</span>
             <p className="text-lg font-bold text-slate-700">
-              {isCombos ? 'Nenhum combo disponível agora' : 'Nenhuma promoção ativa no momento'}
+              {isOfertas
+                ? 'Nenhuma oferta disponível agora'
+                : isCombos
+                  ? 'Nenhum combo disponível agora'
+                  : 'Nenhuma promoção ativa no momento'}
             </p>
             <Link href={homeHref} className="mt-2 rounded-full bg-primary px-5 py-2 text-sm font-bold text-white">
               Ver cardápio completo
