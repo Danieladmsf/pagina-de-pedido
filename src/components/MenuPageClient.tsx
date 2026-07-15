@@ -1375,10 +1375,11 @@ export function MenuPageClient({
       {(hasCombos || hasActivePromos) && !showStoreInfo && (
         <Link
           href={`/${storeSlug ?? ''}/ofertas${urlParam ? `?s=${urlParam}` : ''}`}
-          className="fixed bottom-36 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-pink-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
+          className="fixed bottom-36 left-4 z-50 flex items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-orange-500 to-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-pink-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-110 active:scale-95"
           aria-label="Ver combos e promoções"
         >
-          <Flame className="h-4 w-4" />
+          <span className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+          <Flame className="h-4 w-4 animate-pulse" />
           Ofertas
         </Link>
       )}
@@ -1386,10 +1387,11 @@ export function MenuPageClient({
       {hasCombos && !showStoreInfo && (
         <Link
           href={`/${storeSlug ?? ''}/combos${urlParam ? `?s=${urlParam}` : ''}`}
-          className="fixed bottom-24 left-4 z-50 flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-purple-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-105 active:scale-95"
+          className="fixed bottom-24 left-4 z-50 flex items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 px-4 py-2.5 text-sm font-black text-white shadow-2xl shadow-purple-500/30 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in hover:scale-110 active:scale-95"
           aria-label="Ver combos"
         >
-          <ShoppingBag className="h-4 w-4" />
+          <span className="pointer-events-none absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+          <ShoppingBag className="h-4 w-4 animate-pulse" />
           Combos
         </Link>
       )}
