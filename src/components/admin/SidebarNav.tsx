@@ -41,11 +41,11 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'categorias', label: 'Categorias', icon: Tag },
     { id: 'addons', label: 'Adicionais', icon: PlusCircle },
     { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'promocoes', label: 'Ofertas', icon: Tag, highlight: true },
+    { id: 'promocoes', label: 'Ofertas', icon: Tag },
     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
-    { id: 'campanhas', label: 'Campanhas', icon: Megaphone, highlight: true },
+    { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
     // Exclusivo da modalidade confeitaria (agendamento de encomendas).
-    ...(theme === 'confeitaria' ? [{ id: 'encomendas', label: 'Encomendas', icon: CakeSlice, highlight: true }] : []),
+    ...(theme === 'confeitaria' ? [{ id: 'encomendas', label: 'Encomendas', icon: CakeSlice }] : []),
     { id: 'freelance', label: 'Freelance', icon: Bike },
   ];
 
@@ -98,14 +98,14 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`flex items-center w-full rounded-lg transition-colors overflow-hidden shrink-0 ${
-                isActive ? 'bg-emerald-500/20 text-emerald-400' : (item as any).highlight ? 'hover:bg-orange-500/10 text-orange-400' : 'hover:bg-white/5 text-slate-300'
+                isActive ? 'bg-violet-500/20' : 'hover:bg-violet-400/10'
               }`}
               style={{ height: '44px' }}
             >
               <div className="w-12 h-full flex items-center justify-center shrink-0">
-                <Icon className={`w-5 h-5 ${(item as any).highlight && !isActive ? 'text-orange-400' : ''}`} />
+                <Icon className="w-5 h-5 text-white" />
               </div>
-              <span className={`font-medium text-purple-400 whitespace-nowrap transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
+              <span className={`font-medium text-[#b99cff] whitespace-nowrap transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
                 {item.label}
               </span>
             </button>
