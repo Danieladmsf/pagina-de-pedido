@@ -62,6 +62,12 @@ export interface LancamentoCaixa {
   usuario: string;
   destinatarioId?: string;
   destinatarioTipo?: 'motoboy' | 'freelancer';
+  /** Cancelamento lógico: a venda fica na lista (apontada como cancelada),
+   *  mas sai de TODOS os somatórios (totalizadores, gaveta e fechamento). */
+  canceled?: boolean;
+  canceledAt?: any;
+  canceledBy?: string;
+  canceledReason?: string;
 }
 
 interface UseCaixaOptions {
@@ -250,6 +256,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     const saldoIni = caixaAberto.saldoInicial || 0;
 
     lancs.forEach(l => {
+      if (l.canceled) return; // venda cancelada não entra no fechamento
       if (l.tipo === 'venda') {
         totalVendas += l.valor;
         if (l.formaPagamento.toLowerCase().includes('dinheiro')) {
@@ -416,6 +423,29 @@ export function useCaixa(options?: UseCaixaOptions) {
     });
   }, [db, isRealUser, user, caixaAberto]);
 
+  // Cancelamento lógico de venda: marca/desmarca canceled no lançamento.
+  // Só vendas do caixa ABERTO — mexer em caixa fechado dessincronizaria o
+  // totalFechamento já gravado no cash_register.
+  const setVendaCancelada = useCallback(async (lancamentoId: string, cancelar: boolean, motivo?: string) => {
+    if (!db || !isRealUser) throw new Error('Usuário não autenticado');
+    if (!caixaAberto?.id) throw new Error('Só é possível alterar vendas com o caixa aberto.');
+    const lanc = lancamentos.find(l => l.id === lancamentoId);
+    if (!lanc) throw new Error('Lançamento não encontrado.');
+    if (lanc.tipo !== 'venda') throw new Error('Apenas vendas podem ser canceladas.');
+    if (lanc.caixaId !== caixaAberto.id) throw new Error('Esta venda pertence a um caixa já fechado.');
+
+    if (cancelar) {
+      await updateDoc(doc(db, 'cash_transactions', lancamentoId), {
+        canceled: true,
+        canceledAt: serverTimestamp(),
+        canceledBy: user?.displayName || user?.email || 'Principal',
+        ...(motivo?.trim() ? { canceledReason: motivo.trim() } : {}),
+      });
+    } else {
+      await updateDoc(doc(db, 'cash_transactions', lancamentoId), { canceled: false });
+    }
+  }, [db, isRealUser, user, caixaAberto, lancamentos]);
+
   return {
     caixaAberto,
     caixaAtual,
@@ -426,6 +456,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     abrirCaixa,
     fecharCaixa,
     registrarLancamento,
+    setVendaCancelada,
     caixaSelecionadoId,
     setCaixaSelecionadoId,
     proximaSessao,

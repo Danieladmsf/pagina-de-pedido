@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
 import { printHtmlOrFallback, type PrinterSize } from '@/lib/qz-print';
-import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft } from 'lucide-react';
+import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -66,6 +66,7 @@ export function CaixaTab({
     abrirCaixa,
     fecharCaixa,
     registrarLancamento,
+    setVendaCancelada,
     caixaSelecionadoId,
     setCaixaSelecionadoId,
     proximaSessao,
@@ -144,6 +145,11 @@ export function CaixaTab({
   // Venda expansível: id do lançamento de venda atualmente aberto (mostra os itens).
   const [expandedVendaId, setExpandedVendaId] = useState<string | null>(null);
 
+  // Cancelamento de venda: alvo do modal de confirmação + motivo opcional.
+  const [cancelVendaTarget, setCancelVendaTarget] = useState<LancamentoCaixa | null>(null);
+  const [cancelVendaMotivo, setCancelVendaMotivo] = useState('');
+  const [isCancelingVenda, setIsCancelingVenda] = useState(false);
+
   // ---- Totalizadores ----
   const totais = useMemo(() => {
     let saldoInicial = 0;
@@ -158,6 +164,7 @@ export function CaixaTab({
     let totalPrazo = 0;
 
     lancamentos.forEach(lanc => {
+      if (lanc.canceled) return; // cancelada: fica na lista, mas não soma
       const v = lanc.valor || 0;
       const fp = (lanc.formaPagamento || '').toLowerCase();
 
@@ -185,9 +192,18 @@ export function CaixaTab({
 
   const sangriasDinheiro = useMemo(() => {
     return lancamentos.filter(lanc =>
-      lanc.tipo === 'sangria' && isFormaPagamentoDinheiro(lanc.formaPagamento)
+      lanc.tipo === 'sangria' && !lanc.canceled && isFormaPagamentoDinheiro(lanc.formaPagamento)
     );
   }, [lancamentos]);
+
+  // Vendas canceladas da sessão — só para APONTAR (card/cupom); não somam em nada.
+  const vendasCanceladas = useMemo(() => {
+    return lancamentos.filter(lanc => lanc.tipo === 'venda' && lanc.canceled);
+  }, [lancamentos]);
+  const totalVendasCanceladas = useMemo(
+    () => vendasCanceladas.reduce((s, l) => s + Math.abs(l.valor || 0), 0),
+    [vendasCanceladas]
+  );
 
   // ---- Filtered + Paginated Lancamentos ----
   const filteredLancamentos = useMemo(() => {
@@ -206,7 +222,9 @@ export function CaixaTab({
       result = result.filter(l => l.formaPagamento.toLowerCase() === filterFormaPagamento);
     }
 
-    if (filterTipoOperacao !== 'todos') {
+    if (filterTipoOperacao === 'cancelada') {
+      result = result.filter(l => l.tipo === 'venda' && l.canceled);
+    } else if (filterTipoOperacao !== 'todos') {
       result = result.filter(l => l.tipo === filterTipoOperacao);
     }
 
@@ -482,6 +500,31 @@ export function CaixaTab({
       setErrorMsg(err.message || 'Ocorreu um erro.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // ── Cancelar / reativar venda (cancelamento lógico) ──
+  const confirmarCancelamentoVenda = async () => {
+    if (!cancelVendaTarget) return;
+    setIsCancelingVenda(true);
+    try {
+      await setVendaCancelada(cancelVendaTarget.id, true, cancelVendaMotivo);
+      toast({ title: 'Venda cancelada no caixa', description: `"${cancelVendaTarget.titulo}" não soma mais no fechamento.` });
+      setCancelVendaTarget(null);
+      setCancelVendaMotivo('');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao cancelar venda', description: err.message });
+    } finally {
+      setIsCancelingVenda(false);
+    }
+  };
+
+  const reativarVenda = async (lanc: LancamentoCaixa) => {
+    try {
+      await setVendaCancelada(lanc.id, false);
+      toast({ title: 'Venda reativada', description: `"${lanc.titulo}" voltou a somar no caixa.` });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao reativar venda', description: err.message });
     }
   };
 
@@ -991,6 +1034,7 @@ export function CaixaTab({
         <div class="row"><span>Débito</span><span>R$ ${totais.totalDebito.toFixed(2)}</span></div>
         <div class="row"><span>Crédito</span><span>R$ ${totais.totalCredito.toFixed(2)}</span></div>
         <div class="row"><span>Prazo</span><span>R$ ${totais.totalPrazo.toFixed(2)}</span></div>
+        ${vendasCanceladas.length > 0 ? `<div class="row"><span>Vendas canceladas (${vendasCanceladas.length}) — não somam</span><span>R$ ${totalVendasCanceladas.toFixed(2)}</span></div>` : ''}
       </div>
 
       <p class="sep">${sep}</p>
@@ -1174,6 +1218,7 @@ export function CaixaTab({
                 <SelectItem value="abertura">Abertura</SelectItem>
                 <SelectItem value="fechamento">Fechamento</SelectItem>
                 <SelectItem value="retirada_fechamento">Retirada no Fechamento</SelectItem>
+                <SelectItem value="cancelada">Vendas Canceladas</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1201,13 +1246,14 @@ export function CaixaTab({
                     <TableHead>Título</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Forma de Pagamento</TableHead>
-                    <TableHead className="pr-6">Tipo</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="pr-6 w-10 text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedLancamentos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
+                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
                     </TableRow>
                   ) : (
                     paginatedLancamentos.map((lanc) => {
@@ -1236,12 +1282,16 @@ export function CaixaTab({
                       const vendaOrder = getVendaOrder(lanc);
                       const isExpandable = !!vendaOrder;
                       const isOpen = expandedVendaId === lanc.id;
+                      const isCanceled = !!lanc.canceled;
+                      // Só vendas do caixa ABERTO podem ser canceladas/reativadas
+                      // (caixa fechado já tem totalFechamento gravado).
+                      const podeCancelar = lanc.tipo === 'venda' && caixaAtual?.status === 'aberto' && caixaAtual?.id === caixaAberto?.id;
 
                       return (
                         <React.Fragment key={lanc.id}>
                           <TableRow
                             onClick={isExpandable ? () => setExpandedVendaId(isOpen ? null : lanc.id) : undefined}
-                            className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''}`}
+                            className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''} ${isCanceled ? 'opacity-70 bg-rose-50/40' : ''}`}
                           >
                             <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">
                               <div className="flex items-center gap-2">
@@ -1253,19 +1303,50 @@ export function CaixaTab({
                                 {date}
                               </div>
                             </TableCell>
-                            <TableCell className="font-semibold text-slate-700">{lanc.titulo}</TableCell>
-                            <TableCell className={`font-bold whitespace-nowrap ${isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
+                            <TableCell className={`font-semibold ${isCanceled ? 'text-slate-400 line-through' : 'text-slate-700'}`} title={isCanceled && lanc.canceledReason ? `Motivo: ${lanc.canceledReason}` : undefined}>
+                              {lanc.titulo}
+                            </TableCell>
+                            <TableCell className={`font-bold whitespace-nowrap ${isCanceled ? 'text-slate-400 line-through' : isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
                               {isNeg ? '-R$ ' : 'R$ '}{Math.abs(lanc.valor).toFixed(2)}
                             </TableCell>
-                            <TableCell className="uppercase text-xs font-bold text-muted-foreground">{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
-                            <TableCell className="pr-6">
-                              <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
+                            <TableCell className={`uppercase text-xs font-bold text-muted-foreground ${isCanceled ? 'line-through' : ''}`}>{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
+                            <TableCell>
+                              {isCanceled ? (
+                                <Badge className="bg-rose-100 text-rose-700 border-rose-300 border text-[10px] uppercase font-bold">Cancelada</Badge>
+                              ) : (
+                                <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="pr-6 text-right">
+                              {podeCancelar && (
+                                isCanceled ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                                    title="Reativar venda (volta a somar no caixa)"
+                                    onClick={(e) => { e.stopPropagation(); reativarVenda(lanc); }}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                    title="Cancelar venda (não soma no fechamento)"
+                                    onClick={(e) => { e.stopPropagation(); setCancelVendaMotivo(''); setCancelVendaTarget(lanc); }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )
+                              )}
                             </TableCell>
                           </TableRow>
 
                           {isExpandable && isOpen && (
                             <TableRow className="hover:bg-transparent border-b-0">
-                              <TableCell colSpan={5} className="p-0 pl-6 pr-6 pb-2">
+                              <TableCell colSpan={6} className="p-0 pl-6 pr-6 pb-2">
                                 <VendaDetalhe order={vendaOrder} lanc={lanc} />
                               </TableCell>
                             </TableRow>
@@ -1371,6 +1452,42 @@ export function CaixaTab({
           </Card>
         </div>
       )}
+
+      {/* ─── Modal: Confirmar Cancelamento de Venda ─── */}
+      <Dialog open={!!cancelVendaTarget} onOpenChange={(open) => { if (!open) { setCancelVendaTarget(null); setCancelVendaMotivo(''); } }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-rose-600">Cancelar venda no caixa</DialogTitle>
+            <DialogDescription>
+              A venda continua na lista, marcada como cancelada, mas <strong>deixa de somar</strong> nos totalizadores e no fechamento do caixa. Isso não cancela o pedido no Delivery/PDV — só o lançamento financeiro.
+            </DialogDescription>
+          </DialogHeader>
+          {cancelVendaTarget && (
+            <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+              <p className="font-semibold text-slate-700">{cancelVendaTarget.titulo}</p>
+              <p className="text-muted-foreground">
+                R$ {Math.abs(cancelVendaTarget.valor || 0).toFixed(2)} · {(cancelVendaTarget.formaPagamento === 'conta_casa' ? 'Prazo' : cancelVendaTarget.formaPagamento || '').toUpperCase()}
+              </p>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Motivo (opcional)</Label>
+            <Input
+              value={cancelVendaMotivo}
+              onChange={(e) => setCancelVendaMotivo(e.target.value)}
+              placeholder="Ex.: lançado em duplicidade, valor errado..."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCancelVendaTarget(null); setCancelVendaMotivo(''); }} disabled={isCancelingVenda}>
+              Voltar
+            </Button>
+            <Button className="bg-rose-600 hover:bg-rose-700" onClick={confirmarCancelamentoVenda} disabled={isCancelingVenda}>
+              {isCancelingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancelar Venda'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Modal Genérico ─── */}
       <Dialog open={modalOpen !== null} onOpenChange={(open) => { if (!open) { setModalOpen(null); resetForm(); } }}>
