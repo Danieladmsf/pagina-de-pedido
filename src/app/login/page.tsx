@@ -49,7 +49,7 @@ export default function LoginPage() {
   const alreadyLoggedIn = !!(user && !user.isAnonymous);
   useEffect(() => {
     if (!isUserLoading && alreadyLoggedIn) {
-      router.replace('/pdv');
+      router.replace('/');
     }
   }, [isUserLoading, alreadyLoggedIn, router]);
 
@@ -62,7 +62,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push('/pdv');
+      router.push('/');
       toast({ title: 'Bem-vindo!', description: 'Login realizado com sucesso.' });
     } catch (error: any) {
       let msg = 'E-mail ou senha inválidos.';
@@ -105,7 +105,7 @@ export default function LoginPage() {
       }
 
       toast({ title: 'Conta criada!', description: 'Bem-vindo ao seu painel administrativo.' });
-      router.push('/pdv');
+      router.push('/');
     } catch (error: any) {
       let msg = 'Não foi possível criar a conta.';
       if (error?.code === 'auth/email-already-in-use') msg = 'Este e-mail já está cadastrado. Faça login.';

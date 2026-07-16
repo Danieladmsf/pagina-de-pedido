@@ -38,7 +38,7 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
   const [current, setCurrent] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
 
-  const slides = React.useMemo(() => {
+  const slideCandidates = React.useMemo(() => {
     const pool = (items || []).filter(
       (it) => it.isAvailable !== false && isVisible(it) && (it.imageUrl || (it.images && it.images.length))
     );
@@ -50,12 +50,20 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
     // Só completa com produtos normais se as ofertas forem poucas, pra a vitrine
     // ter itens suficientes pra girar.
     const MIN_SLIDES = 6;
-    const offers = shuffle([...combos, ...promos]);
+    const offers = [...combos, ...promos];
     const needed = Math.max(0, MIN_SLIDES - offers.length);
-    const fillers = needed > 0 ? shuffle(normals).slice(0, needed) : [];
+    const fillers = needed > 0 ? normals.slice(0, needed) : [];
     return [...offers, ...fillers].slice(0, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, promoItemsMap]);
+
+  // A primeira renderizacao precisa ser deterministica para que o HTML do
+  // servidor seja igual ao do navegador. O embaralhamento acontece somente
+  // depois da montagem, evitando falhas de hidratacao no cardapio publico.
+  const [slides, setSlides] = React.useState(slideCandidates);
+  React.useEffect(() => {
+    setSlides(shuffle(slideCandidates));
+  }, [slideCandidates]);
 
   React.useEffect(() => {
     if (!api) return;

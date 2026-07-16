@@ -119,8 +119,8 @@ export default function AjudaAdicionaisPage() {
               <p className="text-[11px] text-slate-400">Lista Matriz, caixinhas e o pedido do cliente — sem complicação</p>
             </div>
           </div>
-          <Link href="/gestao" className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-300 hover:text-emerald-700">
-            <ArrowLeft className="h-3.5 w-3.5" /> Voltar à Gestão
+          <Link href="/" className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-300 hover:text-emerald-700">
+            <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao PDV
           </Link>
         </div>
       </header>
