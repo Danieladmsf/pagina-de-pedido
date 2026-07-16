@@ -47,6 +47,7 @@ export function CaixaTab({
   onModalOpened,
   selectedCaixaId,
   onSelectedCaixaIdChange,
+  updateOrderStatus,
 }: {
   storeProfile?: any;
   orders?: any[];
@@ -55,6 +56,8 @@ export function CaixaTab({
   onModalOpened?: () => void;
   selectedCaixaId?: string | null;
   onSelectedCaixaIdChange?: (id: string | null) => void;
+  /** Fluxo completo de cancelamento do pedido (page.tsx): devolve estoque e avisa o cliente. */
+  updateOrderStatus?: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
 }) {
   const {
     caixaAberto,
@@ -503,13 +506,35 @@ export function CaixaTab({
     }
   };
 
-  // ── Cancelar / reativar venda (cancelamento lógico) ──
+  // ── Cancelar / reativar venda ──
+  // Cancela a venda POR COMPLETO: o lançamento sai dos somatórios do caixa e o
+  // pedido vinculado (se houver) é cancelado pelo fluxo padrão do painel
+  // (devolve estoque + WhatsApp ao cliente). Ordem proposital: primeiro o
+  // lançamento (efeito financeiro), depois o pedido — se o pedido falhar, o
+  // dinheiro já não soma e o operador é avisado para cancelar pelo Delivery.
   const confirmarCancelamentoVenda = async () => {
     if (!cancelVendaTarget) return;
     setIsCancelingVenda(true);
     try {
       await setVendaCancelada(cancelVendaTarget.id, true, cancelVendaMotivo);
-      toast({ title: 'Venda cancelada no caixa', description: `"${cancelVendaTarget.titulo}" não soma mais no fechamento.` });
+
+      const vendaOrder = getVendaOrder(cancelVendaTarget);
+      if (vendaOrder && vendaOrder.status !== 'canceled' && updateOrderStatus) {
+        const ok = await updateOrderStatus(vendaOrder.id, 'canceled');
+        if (ok === false) {
+          toast({
+            variant: 'destructive',
+            title: 'Venda cancelada, mas o pedido não',
+            description: 'O lançamento saiu do caixa, porém o pedido vinculado não pôde ser cancelado. Cancele-o pela aba Delivery.',
+            duration: 8000,
+          });
+        } else {
+          toast({ title: 'Venda cancelada por completo', description: `"${cancelVendaTarget.titulo}" saiu do caixa e o pedido foi cancelado (estoque devolvido).` });
+        }
+      } else {
+        toast({ title: 'Venda cancelada no caixa', description: `"${cancelVendaTarget.titulo}" não soma mais no fechamento.` });
+      }
+
       setCancelVendaTarget(null);
       setCancelVendaMotivo('');
     } catch (err: any) {
@@ -522,6 +547,22 @@ export function CaixaTab({
   const reativarVenda = async (lanc: LancamentoCaixa) => {
     try {
       await setVendaCancelada(lanc.id, false);
+
+      // Espelho do cancelamento: volta o pedido para finalizado (re-abate estoque;
+      // contagem de cliente é idempotente; 'delivered' não dispara WhatsApp).
+      const vendaOrder = getVendaOrder(lanc);
+      if (vendaOrder && vendaOrder.status === 'canceled' && updateOrderStatus) {
+        const ok = await updateOrderStatus(vendaOrder.id, 'delivered');
+        if (ok === false) {
+          toast({
+            variant: 'destructive',
+            title: 'Venda reativada, mas o pedido não',
+            description: 'A venda voltou a somar no caixa, porém o pedido continua cancelado (possível falta de estoque). Verifique na aba Delivery.',
+            duration: 8000,
+          });
+          return;
+        }
+      }
       toast({ title: 'Venda reativada', description: `"${lanc.titulo}" voltou a somar no caixa.` });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao reativar venda', description: err.message });
@@ -1457,9 +1498,19 @@ export function CaixaTab({
       <Dialog open={!!cancelVendaTarget} onOpenChange={(open) => { if (!open) { setCancelVendaTarget(null); setCancelVendaMotivo(''); } }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-rose-600">Cancelar venda no caixa</DialogTitle>
+            <DialogTitle className="text-rose-600">Cancelar venda</DialogTitle>
             <DialogDescription>
-              A venda continua na lista, marcada como cancelada, mas <strong>deixa de somar</strong> nos totalizadores e no fechamento do caixa. Isso não cancela o pedido no Delivery/PDV — só o lançamento financeiro.
+              {(() => {
+                const linkedOrder = cancelVendaTarget ? getVendaOrder(cancelVendaTarget) : null;
+                if (linkedOrder && linkedOrder.status !== 'canceled') {
+                  return (
+                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. O pedido <strong>#{String(linkedOrder.id).substring(0, 5)}</strong> também será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>
+                  );
+                }
+                return (
+                  <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> nos totalizadores e no fechamento. Nenhum pedido vinculado foi encontrado (venda manual ou de mesa) — só o lançamento é cancelado.</>
+                );
+              })()}
             </DialogDescription>
           </DialogHeader>
           {cancelVendaTarget && (

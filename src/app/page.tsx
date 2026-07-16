@@ -1475,6 +1475,7 @@ export default function AdminPage() {
               onModalOpened={() => setAutoOpenAbrirCaixa(false)}
               selectedCaixaId={caixaSelecionadoId}
               onSelectedCaixaIdChange={setCaixaSelecionadoId}
+              updateOrderStatus={updateOrderStatus}
             />
           </div>
         )}
