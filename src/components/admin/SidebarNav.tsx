@@ -105,7 +105,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               <div className="w-12 h-full flex items-center justify-center shrink-0">
                 <Icon className={`w-5 h-5 ${(item as any).highlight && !isActive ? 'text-orange-400' : ''}`} />
               </div>
-              <span className={`font-medium whitespace-nowrap transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
+              <span className={`font-medium text-purple-400 whitespace-nowrap transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
                 {item.label}
               </span>
             </button>
