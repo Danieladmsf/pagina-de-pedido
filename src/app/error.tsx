@@ -15,6 +15,23 @@ export default function Error({
   useEffect(() => {
     // Log do erro para monitoramento
     console.error('App Error:', error);
+
+    // Um deploy troca o hash de todos os arquivos JS. Uma aba que ficou aberta
+    // com o build antigo (o PDV fica visível o dia todo e o auto-reload do PWA
+    // só age com a aba escondida) falha ao carregar um chunk que não existe
+    // mais no servidor e cai aqui. Nesse caso o reload resolve sozinho: busca o
+    // build novo. Throttle de 1 min via sessionStorage para nunca entrar em
+    // loop de reload se o erro persistir (ex.: sem rede de verdade).
+    const texto = `${error?.name ?? ''} ${error?.message ?? ''}`;
+    const pareceBuildVelho = /ChunkLoadError|Loading chunk|chunk \d+ failed|dynamically imported module|Importing a module script failed/i.test(texto);
+    if (pareceBuildVelho) {
+      const KEY = 'stale-build-reload-at';
+      const ultimo = Number(sessionStorage.getItem(KEY) || 0);
+      if (Date.now() - ultimo > 60_000) {
+        sessionStorage.setItem(KEY, String(Date.now()));
+        window.location.reload();
+      }
+    }
   }, [error]);
 
   return (
