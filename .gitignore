@@ -44,3 +44,6 @@ next-env.d.ts
 
 # Debug logs
 pglite-debug.log
+
+# Arquivos pessoais da loja (fotos, PDFs, notas, scripts avulsos) - fora do git e das buscas
+/arquivos
