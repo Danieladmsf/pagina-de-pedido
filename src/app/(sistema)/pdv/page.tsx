@@ -953,10 +953,10 @@ export default function PdvPage() {
           <button
             onClick={() => router.push('/gestao')}
             className="flex items-center gap-1.5 text-sm font-medium hover:text-white transition-colors"
-            title="Abrir a Gestão (produtos, relatórios, perfil da loja)"
+            title="Abrir a Retaguarda (produtos, relatórios, perfil da loja)"
           >
             <Settings className="h-4 w-4" />
-            Gestão
+            Retaguarda
           </button>
           <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
           <div className="flex items-center gap-2">

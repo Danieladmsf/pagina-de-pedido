@@ -84,7 +84,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
             )}
             <div className="min-w-0 overflow-hidden">
               <p className="text-sm font-bold text-white truncate leading-tight">{displayName}</p>
-              <p className="text-[11px] text-emerald-400/80 font-medium truncate">Painel Administrativo</p>
+              <p className="text-[11px] text-emerald-400/80 font-medium truncate">Retaguarda</p>
             </div>
           </div>
         </div>

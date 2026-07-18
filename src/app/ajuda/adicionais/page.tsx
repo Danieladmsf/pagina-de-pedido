@@ -120,7 +120,7 @@ export default function AjudaAdicionaisPage() {
             </div>
           </div>
           <Link href="/gestao" className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-emerald-300 hover:text-emerald-700">
-            <ArrowLeft className="h-3.5 w-3.5" /> Voltar à Gestão
+            <ArrowLeft className="h-3.5 w-3.5" /> Voltar à Retaguarda
           </Link>
         </div>
       </header>
