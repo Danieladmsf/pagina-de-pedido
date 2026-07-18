@@ -274,28 +274,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     proceedToPayment(order);
   };
 
-  if (!caixaAberto && !isCaixaHistorico) {
-    return (
-      <CaixaFechadoCard
-        description={
-          <>
-            <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
-            <p>O caixa precisa estar aberto para registrar vendas de delivery.</p>
-            <p className="font-semibold text-slate-600">Abra o caixa antes de finalizar pedidos.</p>
-          </>
-        }
-      >
-        <Button
-          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
-          size="sm"
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-        >
-          Abrir Caixa
-        </Button>
-      </CaixaFechadoCard>
-    );
-  }
-
   // Confirmar pagamento + registrar no caixa
   const handleConfirmPayment = async () => {
     if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
@@ -466,6 +444,32 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       </button>
     );
   };
+
+  // IMPORTANTE: este return condicional precisa ficar DEPOIS de todos os hooks
+  // acima. Quando ficava no meio do componente, a abertura do caixa fazia a
+  // renderização passar a executar hooks a mais (React #310) e derrubava a
+  // página inteira no error boundary.
+  if (!caixaAberto && !isCaixaHistorico) {
+    return (
+      <CaixaFechadoCard
+        description={
+          <>
+            <p>A operação de caixa de um pedido é lançada apenas quando ele é finalizado.</p>
+            <p>O caixa precisa estar aberto para registrar vendas de delivery.</p>
+            <p className="font-semibold text-slate-600">Abra o caixa antes de finalizar pedidos.</p>
+          </>
+        }
+      >
+        <Button
+          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
+          size="sm"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+        >
+          Abrir Caixa
+        </Button>
+      </CaixaFechadoCard>
+    );
+  }
 
   return (
     <>
