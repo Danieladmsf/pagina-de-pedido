@@ -1,7 +1,7 @@
-# Plano — Permissões do PDV configuradas na Retaguarda (v2)
+# Plano — Permissões do PDV configuradas na Retaguarda (v3)
 
 > **Status:** planejamento revisado (nada implementado além da Fase 0).
-> **Criado em:** 18/07/2026 · **Revisado em:** 19/07/2026 após `docs/ANALISE_PLANO_PERMISSOES_PDV.md` — as correções procedentes da análise foram incorporadas; as sobredimensionadas foram ajustadas à realidade do projeto (ver §11).
+> **Criado em:** 18/07/2026 · **v2 em** 19/07/2026 após `docs/ANALISE_PLANO_PERMISSOES_PDV.md` · **v3 em** 19/07/2026 incorporando a decisão do dono: **senha para abrir a Retaguarda + "Modo Dono" no PDV** (ver §5.7 e §5.8; exemplos do dia a dia em `docs/EXEMPLOS_PERMISSOES_PDV.md`).
 > **Pré-requisitos concluídos:** divisão `/pdv` + `/gestao` ativa e verificada; rename "Gestão" → "Retaguarda" (Fase 0, commit `53db195`).
 
 ---
@@ -12,9 +12,11 @@ Dar ao administrador, dentro da **Retaguarda**, uma tela de **Permissões do PDV
 
 1. **Quais abas do menu do PDV aparecem** (Caixa, Delivery, Balcão, Mesa, Encomendas);
 2. **O que pode ser feito dentro de cada aba** (ações granulares);
-3. **Quais controles globais ficam disponíveis** (botão Retaguarda, toggle de Delivery).
+3. **Quais controles globais ficam disponíveis** (botão Retaguarda, toggle de Delivery);
+4. **Senha do administrador**: abrir a Retaguarda passa a pedir uma senha (§5.7);
+5. **"Modo Dono" no PDV**: um cadeado no PDV que, com a mesma senha, mostra tudo temporariamente — o dono não precisa de uma segunda tela de PDV nem de reconfigurar permissões para fazer uma sangria (§5.8).
 
-**Natureza desta entrega (honestidade sobre o alcance):** Fases 1–3 são **controle de interface e prevenção de acidentes** para o login único atual. Não são segurança contra má-fé — o mesmo usuário Firebase continua podendo abrir `/gestao` pela URL e escrever no Firestore. A segurança real por identidade é a trilha de **operadores** (§8).
+**Natureza desta entrega (honestidade sobre o alcance):** é **controle de interface + fricção por senha** — resolve o caso real (funcionário não mexe onde não deve, nem por acidente nem por curiosidade). Não é segurança contra má-fé com conhecimento técnico: o computador inteiro usa o login da loja, então quem souber usar ferramentas de desenvolvedor contorna. A segurança à prova de má-fé é a trilha de **operadores** (§8).
 
 ---
 
@@ -116,6 +118,7 @@ Campo novo em `store_profiles/{uid}`:
 **Componente `src/components/admin/PermissoesPdvTab.tsx`:**
 - Um card por aba do PDV com switch mestre "Aba visível" + sub-switches de ações (acinzentados quando a aba está oculta, valores preservados).
 - Card "Controles gerais" (botão Retaguarda, toggle Delivery) e switch mestre **"Aplicar permissões no PDV"** (`enabled`) no topo — desligado, o PDV ignora tudo (kill switch e rollback instantâneo).
+- Card **"Senha do administrador"**: definir/alterar/remover a senha da Retaguarda (§5.7). Alterar ou remover exige digitar a senha atual. Sem senha definida, nada pede senha (retrocompatível).
 - Botão **"Restaurar padrão"** (marca tudo `true`).
 - Seção Encomendas só aparece para tema `confeitaria`.
 
@@ -174,6 +177,23 @@ useFechamento({ ..., allowAdjustments, allowPrazo })
 ### 5.6 Regra anti-#310 (mantida da v1)
 Checagens de permissão condicionam **JSX e handlers**. Nunca criam `return` antecipado antes de hooks nem hooks condicionais — a lição do crash que derrubou a primeira divisão `/pdv`+`/gestao`.
 
+### 5.7 Senha da Retaguarda
+Fluxo do dia a dia: o funcionário clica em "Retaguarda" (ou digita `/gestao` na URL) → aparece um diálogo pedindo a senha → sem a senha certa, não entra.
+
+- **Onde a senha fica:** hash (SHA-256 + salt aleatório) em uma coleção nova **`admin_secrets/{uid}`** — NUNCA no `store_profiles`, que tem leitura pública (qualquer pessoa na internet poderia baixar o hash e quebrá-lo offline; foi o motivo de a v2 ter descartado o PIN). `admin_secrets` exige a única mudança de rules desta entrega: `read/write` apenas para o usuário autenticado dono do documento. É uma adição isolada — não toca no trabalho não commitado de operadores.
+- **Onde é exigida:** (a) no clique do botão "Retaguarda" do PDV; (b) num gate client-side do próprio `/gestao` (cobre o acesso direto pela URL). O gate vive na página da Gestão, não no layout compartilhado — o `/pdv` nunca pede senha para operar.
+- **Sessão de desbloqueio:** válida na aba do navegador (sessionStorage) por **30 minutos** ou até fechar a aba, o que vier primeiro. Dentro da validade, navegar Retaguarda ↔ Frente de Caixa não repete a senha.
+- **Sem senha definida → comportamento atual** (nada pede senha). Loja alguma muda até o dono criar a senha na tela de Permissões.
+- **Esqueci a senha:** não há recuperação automática nesta fase; remove-se o documento `admin_secrets` via suporte (Admin SDK). Documentado na tela ("guarde bem esta senha").
+
+### 5.8 "Modo Dono" no PDV
+Fluxo do dia a dia: o dono está no PDV restrito e precisa fazer uma sangria bloqueada → clica no **cadeado** no top bar → digita a senha da Retaguarda → o PDV mostra **tudo** (todas as abas e ações), com um selo visível **"Modo Dono ativo"** e botão para sair do modo.
+
+- Tecnicamente: um estado `ownerMode` que faz `getPdvPermissions()` retornar tudo liberado. Um único ponto de decisão no helper — os componentes não sabem que o modo existe.
+- Expira sozinho: **10 minutos** sem interação, ao clicar em "Sair do Modo Dono", ou ao recarregar a página. Volta ao PDV restrito sem reload.
+- O cadeado só aparece quando há senha definida E `enabled: true` (sem restrições ativas, não há o que destravar).
+- Elimina a necessidade de "um segundo PDV completo do adm": é o mesmo PDV, destravado temporariamente.
+
 ---
 
 ## 6. Mapeamento técnico (arquivo → mudança)
@@ -191,8 +211,11 @@ Checagens de permissão condicionam **JSX e handlers**. Nunca criam `return` ant
 | 9 | `src/components/admin/MesasTab.tsx` | Gates: gerenciarMesa/lancarItens/fecharComanda/aceitarPedidoOnline |
 | 10 | `src/components/admin/EncomendasPedidosTab.tsx` | Gates: mudarStatus (card E diálogo Editar), editar, lancarSinal, reimprimir |
 | 11 | `src/components/admin/fechamento/*` | Capacidades `allowAdjustments`/`allowPrazo` + reset de estado proibido |
+| 12 | `src/lib/admin-password.ts` **(novo)** | Hash+salt, verificar senha, sessão de desbloqueio (sessionStorage), estado do Modo Dono |
+| 13 | `src/components/admin/AdminPasswordDialog.tsx` **(novo)** | Diálogo de senha (usado pelo botão Retaguarda, pelo gate do `/gestao` e pelo cadeado do Modo Dono) |
+| 14 | `firestore.rules` | **Única mudança de rules:** bloco isolado `admin_secrets/{uid}` (read/write só do dono autenticado) |
 
-Sem mudanças em: regras do Firestore, coleções, APIs, webhooks, impressão automática.
+Sem mudanças em: coleções existentes, APIs, webhooks, impressão automática, trabalho não commitado de operadores.
 
 ---
 
@@ -205,8 +228,9 @@ Sem mudanças em: regras do Firestore, coleções, APIs, webhooks, impressão au
 | **2** | PDV consome permissões (abas, navegação, loading, fallback, globais) | inócuo em produção: sem a tela, nenhum perfil tem `enabled: true` |
 | **3** | Fechamento compartilhado + ações por aba (um commit por aba: Caixa → Delivery → Balcão → Mesa → Encomendas) | handlers re-checam `can()` |
 | **4** | Tela na Retaguarda (a escrita entra por último) | só libera controles que o PDV já consome |
-| **5** | Canário: ativar `enabled: true` só na Gostinho de Céu; validar com duas máquinas (Retaguarda salvando + PDV aberto) usando o checklist do §9 | depois liberar para as demais lojas |
-| **6 (separada)** | Trilha de operadores (retomar as rules já iniciadas + API Admin SDK + guard + tela de usuários) | plano próprio; `pdvPermissions` vira o perfil do papel operador |
+| **5** | Senha da Retaguarda + Modo Dono (`admin_secrets` + rules isoladas + diálogo + cadeado) | sem senha definida, nada muda; ordem código→rules do padrão da casa |
+| **6** | Canário: ativar `enabled: true` + definir senha só na Gostinho de Céu; validar com duas máquinas (Retaguarda salvando + PDV aberto) usando o checklist do §9 | depois liberar para as demais lojas |
+| **7 (separada)** | Trilha de operadores (retomar as rules já iniciadas + API Admin SDK + guard + tela de usuários) | plano próprio; `pdvPermissions` vira o perfil do papel operador |
 
 **Rollback:** desligar o switch `enabled` na tela (ou direto no Firestore) — o PDV volta ao comportamento integral sem deploy e sem apagar a configuração. Rollback de código é `git revert` dos commits da fase (cada fase é independente).
 
@@ -214,8 +238,9 @@ Sem mudanças em: regras do Firestore, coleções, APIs, webhooks, impressão au
 
 ## 8. Segurança — enquadramento
 
-- **Fases 1–5 = prevenção de acidentes.** Documentado na tela ("estas opções organizam o PDV; não impedem quem conhece o sistema").
-- **PIN client-side foi descartado** (análise §6.2 procede: `store_profiles` tem leitura pública — um hash de PIN de 4–6 dígitos ali é quebrável offline; seria fricção disfarçada de segurança). A proteção real é a trilha de operadores (Fase 6), que já tem as rules iniciadas com o modelo certo (`roles_operador` + `isStaffOf`), identidade separada e negação de escrita por regra — não por interface.
+- **Fases 1–6 = prevenção de acidentes + fricção por senha.** Documentado na tela ("estas opções organizam o PDV; não impedem quem conhece o sistema").
+- **A senha (§5.7) corrige o problema que derrubou o PIN da v1/v2:** o hash sai do `store_profiles` (leitura pública — quebrável offline por qualquer um) e vai para `admin_secrets` (legível só pela sessão autenticada da loja). Limite honesto que permanece: o PDV usa o MESMO login do dono, então um funcionário com conhecimento técnico e acesso à máquina ainda conseguiria ler o hash ou chamar o Firestore direto. Para o cenário real (funcionário comum, clique acidental), a senha resolve; contra má-fé técnica, não.
+- **Proteção à prova de má-fé** é a trilha de operadores (Fase 7), que já tem as rules iniciadas com o modelo certo (`roles_operador` + `isStaffOf`), identidade separada e negação de escrita por regra — não por interface.
 
 ---
 
@@ -234,14 +259,18 @@ Sem mudanças em: regras do Firestore, coleções, APIs, webhooks, impressão au
 8. Encomendas: `mudarStatus: false` bloqueia também o status dentro do Editar; confirmar não lança sinal sem `lancarSinal`.
 9. Duas sessões da Retaguarda salvando campos diferentes → nenhuma sobrescreve a outra (dot-paths).
 10. Todas as abas desmarcadas à força no Firestore → tela de recuperação.
+11. Sem senha definida → botão Retaguarda entra direto, cadeado não aparece (comportamento atual intacto).
+12. Com senha: botão Retaguarda e URL `/gestao` pedem senha; senha errada não entra; certa entra e não repete por 30 min na mesma aba.
+13. Modo Dono: cadeado + senha mostra tudo com selo visível; expira em 10 min sem interação e ao recarregar; "Sair do Modo Dono" volta ao restrito sem reload.
+14. Alterar/remover senha exige a senha atual.
 
 ---
 
 ## 10. Decisões em aberto (respostas necessárias antes da Fase 1)
 
-1. **Operadores:** confirmar a decisão do §2 (esta entrega = visual/por loja; operadores em plano separado). As rules não commitadas de `roles_operador` ficam paradas até lá — ou você quer que eu as commite/deploye já?
-2. **Matriz de ações (§3):** os agrupamentos estão bons? (ex.: `cancelarVenda` cobrindo reativação; `gerenciarMesa` cobrindo cancelar/trocar/reabrir; `imprimirCupom` só manual.)
-3. **Rascunho de mesa na revogação:** preservado em memória mas sem submit (proposta) — ok?
+1. ~~**Operadores agora ou depois?**~~ **RESOLVIDA (19/07/2026):** o dono confirmou o desenho "PDV restrito para funcionários + Retaguarda completa protegida por senha + Modo Dono no PDV" — que é esta entrega, por loja, com o login atual. Operadores ficam para plano separado (Fase 7). Pendência menor: o que fazer com as rules não commitadas de `roles_operador` (seguram como estão até a Fase 7, salvo ordem em contrário).
+2. **Matriz de ações (§3):** os agrupamentos estão bons? (ex.: `cancelarVenda` cobrindo reativação; `gerenciarMesa` cobrindo cancelar/trocar/reabrir; `imprimirCupom` só manual.) Exemplos práticos em `docs/EXEMPLOS_PERMISSOES_PDV.md`.
+3. **Rascunho de mesa na revogação:** preservado em memória mas sem submit (proposta) — ok? Exemplos práticos no mesmo arquivo.
 
 ---
 
