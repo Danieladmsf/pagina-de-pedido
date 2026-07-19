@@ -5,14 +5,14 @@ import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth 
 import { collection, doc, updateDoc, query, where, getDoc, runTransaction } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { Settings } from 'lucide-react';
+import { LockKeyhole, Settings, ShieldAlert, UnlockKeyhole } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { useToast } from '@/hooks/use-toast';
 import confetti from 'canvas-confetti';
 import { Badge } from '@/components/ui/badge';
 import { DeliveryTab } from '@/components/admin/DeliveryTab';
 import { NovoPedidoTab } from '@/components/admin/NovoPedidoTab';
-import { MesasTab } from '@/components/admin/MesasTab';
+import { discardMesasDraft, MesasTab } from '@/components/admin/MesasTab';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { EncomendasPedidosTab } from '@/components/admin/EncomendasPedidosTab';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -22,10 +22,25 @@ import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '
 import { warmupQz, type PrinterSize } from '@/lib/qz-print';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
+import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
+import { isAdminSessionUnlocked, OWNER_MODE_IDLE_MS, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
+import {
+  arePermissionsResolved,
+  can,
+  getEligibleTabs,
+  getPdvFallbackTab,
+  getPdvPermissions,
+  PDV_TAB_IDS,
+  type PdvTabId,
+} from '@/lib/pdv-permissions';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
 // estourar o limite de taxa da w-api numa rajada de pedidos.
 const whatsappQueue = createConcurrencyQueue(3);
+
+function isPdvTabId(value: unknown): value is PdvTabId {
+  return typeof value === 'string' && PDV_TAB_IDS.includes(value as PdvTabId);
+}
 
 export default function PdvPage() {
   const db = useFirestore();
@@ -33,8 +48,11 @@ export default function PdvPage() {
   const router = useRouter();
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
-  const [activeTab, setActiveTab] = useState<string>('delivery');
+  const [activeTab, setActiveTab] = useState<PdvTabId>('delivery');
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
+  const [ownerMode, setOwnerMode] = useState(false);
+  const ownerModeSecretRef = useRef<string | null>(null);
+  const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'gestao' | 'recovery' | 'owner' | null>(null);
 
   // Esquenta a conexão com o QZ Tray (impressão silenciosa) uma vez por sessão.
   // Se o QZ não estiver no PC, isto não faz nada — a impressão segue por window.print().
@@ -77,43 +95,31 @@ export default function PdvPage() {
     return () => clearInterval(id);
   }, [db, user]);
 
-  // Synchronize history state with activeTab
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state && event.state.type === 'pdv-tab') {
-        setActiveTab(event.state.tab);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    
-    // Replace initial state with current tab if no state exists
-    if (!window.history.state) {
-      window.history.replaceState({ type: 'pdv-tab', tab: activeTab }, '');
-    }
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [activeTab]);
-
-  const handleTabChange = (newTab: string) => {
-    if (hasUnsavedMesaChanges) {
-      if (!confirm('Você tem alterações não salvas na Mesa. Se sair, essas alterações serão perdidas. Deseja sair?')) {
-        return;
-      }
-      setHasUnsavedMesaChanges(false);
-    }
-    setActiveTab(newTab);
-    const currentState = window.history.state;
-    if (!currentState || currentState.type !== 'pdv-tab' || currentState.tab !== newTab) {
-      window.history.pushState({ type: 'pdv-tab', tab: newTab }, '');
-    }
-  };
   const [autoOpenAbrirCaixa, setAutoOpenAbrirCaixa] = useState(false);
   const [caixaSelecionadoId, setCaixaSelecionadoId] = useState<string | null>(null);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   const [isCelebrating, setIsCelebrating] = useState(false);
   const newClientToastIdRef = useRef<string | null>(null);
+
+  const previousUserIdRef = useRef<string | null>(user?.uid ?? null);
+  useEffect(() => {
+    const nextUserId = user?.uid ?? null;
+    const previousUserId = previousUserIdRef.current;
+    if (previousUserId !== nextUserId) {
+      if (previousUserId) discardMesasDraft(previousUserId);
+      setActiveTab('delivery');
+      setHasUnsavedMesaChanges(false);
+      ownerModeSecretRef.current = null;
+      setOwnerMode(false);
+      setPasswordDialogPurpose(null);
+      setAutoOpenAbrirCaixa(false);
+      setCaixaSelecionadoId(null);
+      setWizardDismissed(false);
+      setIsCelebrating(false);
+      newClientToastIdRef.current = null;
+    }
+    previousUserIdRef.current = nextUserId;
+  }, [user?.uid]);
   
   
   // Hook do Caixa compartilhado entre módulos
@@ -129,34 +135,203 @@ export default function PdvPage() {
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'categories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const itemsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'menuItems'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const addonsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const addonCategoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'addonCategories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const storeProfileRef = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return doc(db, 'store_profiles', user!.uid);
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
-  const { data: storeProfile, isLoading: storeProfileLoading } = useDoc(storeProfileRef);
+  const { data: storeProfile, isLoading: storeProfileLoading, error: storeProfileError } = useDoc(storeProfileRef);
+
+  const adminSecretRef = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return doc(db, 'admin_secrets', user!.uid);
+  }, [db, isRealUser, user?.uid]);
+  const { data: adminSecret, isLoading: adminSecretLoading, error: adminSecretError } = useDoc<AdminSecret>(adminSecretRef);
+  const adminSecretResolved = !!adminSecretRef && !adminSecretLoading && !adminSecretError;
+  const adminSecretIdentity = adminSecret
+    ? `${adminSecret.version ?? 1}:${adminSecret.salt}:${adminSecret.passwordHash}`
+    : null;
+  const effectiveOwnerMode = ownerMode
+    && !!adminSecret
+    && ownerModeSecretRef.current === adminSecretIdentity
+    && storeProfile?.pdvPermissions?.enabled === true;
+
+  const resolvedStoreProfile = (storeProfileLoading || storeProfileError) ? undefined : storeProfile;
+  const permissionsResolved = arePermissionsResolved(resolvedStoreProfile);
+  const permissions = React.useMemo(
+    () => getPdvPermissions(resolvedStoreProfile, effectiveOwnerMode),
+    [effectiveOwnerMode, resolvedStoreProfile],
+  );
+  const eligibleTabs = React.useMemo(
+    () => permissionsResolved ? getEligibleTabs(permissions, storeProfile?.theme) : [],
+    [permissions, permissionsResolved, storeProfile?.theme],
+  );
+  const visibleActiveTab = permissionsResolved
+    ? (eligibleTabs.includes(activeTab) ? activeTab : getPdvFallbackTab(eligibleTabs, activeTab))
+    : null;
+
+  const selectPdvTab = React.useCallback((
+    requested: PdvTabId,
+    options: { history?: 'push' | 'none'; bypassUnsaved?: boolean } = {},
+  ) => {
+    if (!permissionsResolved) return;
+    const target = eligibleTabs.includes(requested)
+      ? requested
+      : getPdvFallbackTab(eligibleTabs, activeTab);
+    if (!target) return;
+
+    if (!options.bypassUnsaved && target !== activeTab && hasUnsavedMesaChanges) {
+      if (!window.confirm('Você tem alterações não salvas na Mesa. Se sair, essas alterações serão perdidas. Deseja sair?')) {
+        return;
+      }
+      if (user?.uid) discardMesasDraft(user.uid);
+      setHasUnsavedMesaChanges(false);
+    }
+
+    setActiveTab(target);
+    if (target !== requested) {
+      window.history.replaceState({ type: 'pdv-tab', tab: target }, '');
+    } else if (options.history !== 'none') {
+      const currentState = window.history.state;
+      if (!currentState || currentState.type !== 'pdv-tab' || currentState.tab !== target) {
+        window.history.pushState({ type: 'pdv-tab', tab: target }, '');
+      }
+    }
+  }, [activeTab, eligibleTabs, hasUnsavedMesaChanges, permissionsResolved, user?.uid]);
+
+  const handleTabChange = React.useCallback((newTab: PdvTabId) => {
+    selectPdvTab(newTab, { history: 'push' });
+  }, [selectPdvTab]);
+
+  // Toda navegação (inclusive Back/Forward) passa pela lista canônica elegível.
+  useEffect(() => {
+    if (!permissionsResolved) return;
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.type !== 'pdv-tab') return;
+      if (isPdvTabId(event.state.tab)) {
+        selectPdvTab(event.state.tab, { history: 'none' });
+        return;
+      }
+      const fallback = getPdvFallbackTab(eligibleTabs, activeTab);
+      if (fallback) {
+        setActiveTab(fallback);
+        window.history.replaceState({ type: 'pdv-tab', tab: fallback }, '');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    if (!window.history.state || window.history.state.type !== 'pdv-tab') {
+      const initial = eligibleTabs.includes(activeTab)
+        ? activeTab
+        : getPdvFallbackTab(eligibleTabs, activeTab);
+      if (initial) window.history.replaceState({ type: 'pdv-tab', tab: initial }, '');
+    }
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab, eligibleTabs, permissionsResolved, selectPdvTab]);
+
+  // Revogação e mudança de tema prevalecem sobre o aviso de rascunho da Mesa.
+  useEffect(() => {
+    if (!permissionsResolved || eligibleTabs.includes(activeTab)) return;
+    const fallback = getPdvFallbackTab(eligibleTabs, activeTab);
+    if (!fallback) return;
+    setActiveTab(fallback);
+    window.history.replaceState({ type: 'pdv-tab', tab: fallback }, '');
+  }, [activeTab, eligibleTabs, permissionsResolved]);
+
+  useEffect(() => {
+    if (caixaSelecionadoId && (
+      !can(permissions, 'actions.caixa.verCaixasAnteriores')
+      || !eligibleTabs.includes('caixa')
+    )) {
+      setCaixaSelecionadoId(null);
+    }
+  }, [caixaSelecionadoId, eligibleTabs, permissions]);
+
+  // O Modo Dono existe apenas em memória e expira após dez minutos sem interação.
+  useEffect(() => {
+    if (!ownerMode) return;
+    let timeoutId: number | undefined;
+    let expiresAt = Date.now() + OWNER_MODE_IDLE_MS;
+    const validateAndSchedule = () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        setOwnerMode(false);
+        return;
+      }
+      timeoutId = window.setTimeout(validateAndSchedule, remaining + 50);
+    };
+    const recordActivity = () => {
+      expiresAt = Date.now() + OWNER_MODE_IDLE_MS;
+      validateAndSchedule();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') validateAndSchedule();
+    };
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((eventName) => window.addEventListener(eventName, recordActivity, { passive: true }));
+    window.addEventListener('focus', validateAndSchedule);
+    document.addEventListener('visibilitychange', handleVisibility);
+    validateAndSchedule();
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      events.forEach((eventName) => window.removeEventListener(eventName, recordActivity));
+      window.removeEventListener('focus', validateAndSchedule);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [ownerMode]);
+
+  useEffect(() => {
+    if (ownerMode && (
+      !adminSecret
+      || ownerModeSecretRef.current !== adminSecretIdentity
+      || storeProfile?.pdvPermissions?.enabled !== true
+    )) {
+      setOwnerMode(false);
+    }
+  }, [adminSecret, adminSecretIdentity, ownerMode, storeProfile?.pdvPermissions?.enabled]);
+
+  useEffect(() => {
+    if (!permissionsResolved) return;
+    if (passwordDialogPurpose === 'gestao' && !can(permissions, 'global.botaoRetaguarda')) {
+      setPasswordDialogPurpose(null);
+    }
+    if (passwordDialogPurpose === 'recovery' && eligibleTabs.length > 0) {
+      setPasswordDialogPurpose(null);
+    }
+  }, [eligibleTabs.length, passwordDialogPurpose, permissions, permissionsResolved]);
+
+  const handleOpenCaixa = React.useCallback(() => {
+    if (!eligibleTabs.includes('caixa') || !can(permissions, 'actions.caixa.abrirCaixa')) {
+      setAutoOpenAbrirCaixa(false);
+      selectPdvTab('caixa', { history: 'push' });
+      return;
+    }
+    setAutoOpenAbrirCaixa(true);
+    selectPdvTab('caixa', { history: 'push' });
+  }, [eligibleTabs, permissions, selectPdvTab]);
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
@@ -169,7 +344,7 @@ export default function PdvPage() {
   const encomendasAlertQuery = useMemoFirebase(() => {
     if (!db || !isRealUser || storeProfile?.theme !== 'confeitaria') return null;
     return query(collection(db, 'encomendas'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, storeProfile?.theme]);
+  }, [db, isRealUser, storeProfile?.theme, user?.uid]);
   const { data: encomendasRaw } = useCollection(encomendasAlertQuery);
 
   const ordersRawSorted = React.useMemo(() => {
@@ -459,14 +634,14 @@ export default function PdvPage() {
 
   // Efeito do confete contínuo e limpeza da notificação
   useEffect(() => {
-    if (activeTab === 'delivery' && newClientToastIdRef.current) {
+    if (visibleActiveTab === 'delivery' && newClientToastIdRef.current) {
       dismiss(newClientToastIdRef.current);
       newClientToastIdRef.current = null;
     }
 
     if (!isCelebrating) return;
 
-    let duration = activeTab === 'delivery' ? 4000 : 9999999;
+    let duration = visibleActiveTab === 'delivery' ? 4000 : 9999999;
     let animationEnd = Date.now() + duration;
 
     const interval = setInterval(() => {
@@ -487,7 +662,7 @@ export default function PdvPage() {
     }, 300);
 
     return () => clearInterval(interval);
-  }, [isCelebrating, activeTab]);
+  }, [isCelebrating, visibleActiveTab]);
 
 
   // Som constante enquanto houver pedidos pendentes
@@ -530,8 +705,32 @@ export default function PdvPage() {
 
   const handleLogout = async () => {
     if (!auth) return;
+    if (user?.uid) discardMesasDraft(user.uid);
     await signOut(auth);
     router.push('/login');
+  };
+
+  const handleOpenRetaguarda = () => {
+    if (!can(permissions, 'global.botaoRetaguarda') || !adminSecretResolved) return;
+    if (adminSecret && !isAdminSessionUnlocked(user?.uid || '', adminSecret)) {
+      setPasswordDialogPurpose('gestao');
+      return;
+    }
+    router.push('/gestao');
+  };
+
+  const handleRecoveryRetaguarda = () => {
+    if (!adminSecretResolved) return;
+    if (adminSecret && !isAdminSessionUnlocked(user?.uid || '', adminSecret)) {
+      setPasswordDialogPurpose('recovery');
+      return;
+    }
+    router.push('/gestao');
+  };
+
+  const handleOpenOwnerMode = () => {
+    if (!adminSecret || storeProfile?.pdvPermissions?.enabled !== true) return;
+    setPasswordDialogPurpose('owner');
   };
 
 
@@ -539,6 +738,10 @@ export default function PdvPage() {
 
   const handleToggleDelivery = async () => {
     if (!db || !user || !storeProfileRef) return;
+    if (!can(permissions, 'global.toggleDelivery')) {
+      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+      return;
+    }
     try {
       const newStatus = !isDeliveryDisabled;
       await updateDoc(storeProfileRef, { 'general.disableDelivery': newStatus });
@@ -886,6 +1089,19 @@ export default function PdvPage() {
   // antigo gate da página única fazia (db: Firestore | null → Firestore).
   if (!db || !user) return null;
 
+  if (storeProfileError || adminSecretError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-6 text-center">
+        <ShieldAlert className="h-10 w-10 text-amber-500" />
+        <p className="font-semibold text-slate-800">Não foi possível carregar as permissões do PDV.</p>
+        <p className="max-w-md text-sm text-slate-500">Confira a conexão e tente novamente. O PDV permanece bloqueado até a verificação terminar.</p>
+        <button className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700" onClick={() => window.location.reload()}>
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
@@ -893,101 +1109,141 @@ export default function PdvPage() {
         {/* Dark Top Navigation Bar */}
         <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-2 shrink-0 shadow-sm z-10">
           <div className="flex h-full items-center">
-            <button
-              onClick={() => handleTabChange('caixa')}
-              className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-            >
-            Caixa
-          </button>
-          <button 
-            onClick={() => handleTabChange('delivery')}
-            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'delivery' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-          >
-            Delivery
-          </button>
-          <button 
-            onClick={() => handleTabChange('novo_pedido')}
-            className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-          >
-            Balcão
-          </button>
-          <button
-            onClick={() => handleTabChange('mesas')}
-            className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-          >
-            Mesa
-            {(() => {
-              const novosOnlineMesa = (orders as any[]).filter(
-                (o) => o.orderType === 'dine_in' && o.source === 'cardapio' && o.status === 'pending' && !o.accepted
-              ).length;
-              if (novosOnlineMesa === 0) return null;
-              return (
-                <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
-                  {novosOnlineMesa}
-                </span>
-              );
-            })()}
-          </button>
-          {storeProfile?.theme === 'confeitaria' && (
-            <button
-              onClick={() => handleTabChange('encomendas_pedidos')}
-              className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${activeTab === 'encomendas_pedidos' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}
-            >
-              Encomendas
-              {(() => {
-                const novasEncomendas = (encomendasRaw as any[] | null || []).filter(
-                  (e) => (e.status || 'orcamento') === 'orcamento'
-                ).length;
-                if (novasEncomendas === 0) return null;
-                return (
-                  <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
-                    {novasEncomendas}
-                  </span>
-                );
-              })()}
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4 h-full">
-          <button
-            onClick={() => router.push('/gestao')}
-            className="flex items-center gap-1.5 text-sm font-medium hover:text-white transition-colors"
-            title="Abrir a Retaguarda (produtos, relatórios, perfil da loja)"
-          >
-            <Settings className="h-4 w-4" />
-            Retaguarda
-          </button>
-          <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
-          <div className="flex items-center gap-2">
-            <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
-              {caixaAberto ? 'Aberto' : 'Fechado'}
-            </Badge>
-            <button
-              onClick={handleToggleDelivery}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
-                isDeliveryDisabled
-                  ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-              }`}
-              title={isDeliveryDisabled ? "Ligar Delivery" : "Desligar Delivery"}
-            >
-              <span>🛵</span>
-              <span>Delivery: {isDeliveryDisabled ? 'DESLIGADO' : 'LIGADO'}</span>
-            </button>
+            {!permissionsResolved ? (
+              <div className="flex items-center gap-3 px-3" aria-label="Carregando permissões do PDV">
+                <div className="h-7 w-20 animate-pulse rounded bg-white/10" />
+                <div className="h-7 w-24 animate-pulse rounded bg-white/10" />
+                <div className="h-7 w-20 animate-pulse rounded bg-white/10" />
+              </div>
+            ) : (
+              <>
+                {eligibleTabs.includes('caixa') && (
+                  <button onClick={() => handleTabChange('caixa')} className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${visibleActiveTab === 'caixa' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}>
+                    Caixa
+                  </button>
+                )}
+                {eligibleTabs.includes('delivery') && (
+                  <button onClick={() => handleTabChange('delivery')} className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${visibleActiveTab === 'delivery' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}>
+                    Delivery
+                  </button>
+                )}
+                {eligibleTabs.includes('novo_pedido') && (
+                  <button onClick={() => handleTabChange('novo_pedido')} className={`px-6 h-full flex items-center text-sm font-medium transition-colors ${visibleActiveTab === 'novo_pedido' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}>
+                    Balcão
+                  </button>
+                )}
+                {eligibleTabs.includes('mesas') && (
+                  <button onClick={() => handleTabChange('mesas')} className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${visibleActiveTab === 'mesas' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}>
+                    Mesa
+                    {(() => {
+                      const novosOnlineMesa = (orders as any[]).filter(
+                        (order) => order.orderType === 'dine_in' && order.source === 'cardapio' && order.status === 'pending' && !order.accepted,
+                      ).length;
+                      return novosOnlineMesa > 0 ? (
+                        <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
+                          {novosOnlineMesa}
+                        </span>
+                      ) : null;
+                    })()}
+                  </button>
+                )}
+                {eligibleTabs.includes('encomendas_pedidos') && (
+                  <button onClick={() => handleTabChange('encomendas_pedidos')} className={`relative px-6 h-full flex items-center text-sm font-medium transition-colors ${visibleActiveTab === 'encomendas_pedidos' ? 'bg-slate-100 text-slate-800' : 'hover:bg-white/10'}`}>
+                    Encomendas
+                    {(() => {
+                      const novasEncomendas = (encomendasRaw as any[] | null || []).filter(
+                        (encomenda) => (encomenda.status || 'orcamento') === 'orcamento',
+                      ).length;
+                      return novasEncomendas > 0 ? (
+                        <span className="absolute top-2 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse shadow">
+                          {novasEncomendas}
+                        </span>
+                      ) : null;
+                    })()}
+                  </button>
+                )}
+              </>
+            )}
           </div>
-          <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
-          <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
-             Sair
-          </button>
-        </div>
+
+          <div className="flex items-center gap-3 h-full">
+            {!permissionsResolved ? (
+              <div className="h-7 w-52 animate-pulse rounded bg-white/10" aria-label="Carregando controles" />
+            ) : (
+              <>
+                {effectiveOwnerMode ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="border border-amber-300/30 bg-amber-400/15 text-amber-300 hover:bg-amber-400/20">
+                      <UnlockKeyhole className="mr-1 h-3.5 w-3.5" /> Modo Dono ativo
+                    </Badge>
+                    <button onClick={() => {
+                      ownerModeSecretRef.current = null;
+                      setOwnerMode(false);
+                    }} className="text-xs font-semibold text-amber-200 hover:text-white">
+                      Sair do modo
+                    </button>
+                  </div>
+                ) : adminSecret && storeProfile?.pdvPermissions?.enabled === true ? (
+                  <button onClick={handleOpenOwnerMode} className="flex items-center gap-1.5 text-sm font-medium text-amber-300 transition-colors hover:text-white" title="Desbloquear temporariamente todas as funções">
+                    <LockKeyhole className="h-4 w-4" /> Modo Dono
+                  </button>
+                ) : null}
+
+                {adminSecretResolved && can(permissions, 'global.botaoRetaguarda') && (
+                  <button onClick={handleOpenRetaguarda} className="flex items-center gap-1.5 text-sm font-medium hover:text-white transition-colors" title="Abrir a Retaguarda (produtos, relatórios, perfil da loja)">
+                    <Settings className="h-4 w-4" /> Retaguarda
+                  </button>
+                )}
+
+                <div className="h-6 w-px bg-white/10" />
+                <div className="flex items-center gap-2">
+                  <Badge className={`border-0 rounded-sm px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider ${caixaAberto ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'}`}>
+                    {caixaAberto ? 'Aberto' : 'Fechado'}
+                  </Badge>
+                  {can(permissions, 'global.toggleDelivery') && (
+                    <button
+                      onClick={handleToggleDelivery}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                        isDeliveryDisabled
+                          ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                      }`}
+                      title={isDeliveryDisabled ? 'Ligar Delivery' : 'Desligar Delivery'}
+                    >
+                      <span>🛵</span>
+                      <span>Delivery: {isDeliveryDisabled ? 'DESLIGADO' : 'LIGADO'}</span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="h-6 w-px bg-white/10" />
+            <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">Sair</button>
+          </div>
       </div>
 
       {/* Content Area */}
       <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
-        
+        {!permissionsResolved && (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="h-32 w-full max-w-xl animate-pulse rounded-xl bg-slate-200" />
+          </div>
+        )}
 
-        {activeTab === 'delivery' && (
+        {permissionsResolved && eligibleTabs.length === 0 && (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+              <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
+              <h1 className="mt-4 text-xl font-bold text-slate-800">Nenhuma aba liberada</h1>
+              <p className="mt-2 text-sm text-slate-600">Ajuste as Permissões do PDV na Retaguarda para voltar a operar.</p>
+              <button onClick={handleRecoveryRetaguarda} className="mt-5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                Abrir Retaguarda
+              </button>
+            </div>
+          </div>
+        )}
+
+        {visibleActiveTab === 'delivery' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <DeliveryTab 
               db={db}
@@ -997,17 +1253,18 @@ export default function PdvPage() {
               registrarLancamento={registrarLancamento}
               caixaAberto={!!caixaAberto}
               isCaixaHistorico={!!caixaSelecionadoId}
-              onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
+              onOpenCaixa={handleOpenCaixa}
               storeProfile={storeProfile}
               items={items || []}
               categories={categories || []}
               addons={addons || []}
               addonCategories={addonCategories || []}
+              permissions={permissions}
             />
           </div>
         )}
 
-        {activeTab === 'caixa' && (
+        {visibleActiveTab === 'caixa' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <CaixaTab
               storeProfile={storeProfile}
@@ -1018,11 +1275,12 @@ export default function PdvPage() {
               selectedCaixaId={caixaSelecionadoId}
               onSelectedCaixaIdChange={setCaixaSelecionadoId}
               updateOrderStatus={updateOrderStatus}
+              permissions={permissions}
             />
           </div>
         )}
 
-        {activeTab === 'novo_pedido' && (
+        {visibleActiveTab === 'novo_pedido' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <NovoPedidoTab 
             categories={sortedProductCategories || []} 
@@ -1034,12 +1292,13 @@ export default function PdvPage() {
             storeProfile={storeProfile}
             addons={addons || []}
             addonCategories={addonCategories || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
+            onOpenCaixa={handleOpenCaixa}
+            permissions={permissions}
           />
           </div>
         )}
 
-        {activeTab === 'mesas' && (
+        {visibleActiveTab === 'mesas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <MesasTab
             orders={orders || []}
@@ -1052,17 +1311,18 @@ export default function PdvPage() {
             storeInfo={storeProfile}
             addons={addons || []}
             addonCategories={addonCategories || []}
-            onOpenCaixa={() => { setAutoOpenAbrirCaixa(true); handleTabChange('caixa'); }}
+            onOpenCaixa={handleOpenCaixa}
             onUnsavedChangesChange={setHasUnsavedMesaChanges}
+            permissions={permissions}
           />
           </div>
         )}
 
 
-        {activeTab === 'encomendas_pedidos' && (
+        {visibleActiveTab === 'encomendas_pedidos' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile}
-              registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
+              registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} permissions={permissions} />
           </div>
         )}
 
@@ -1072,7 +1332,40 @@ export default function PdvPage() {
       </div>
     </div>
 
-    {db && isRealUser && !storeProfileLoading && !wizardDismissed && !storeProfile?.onboardingCompleted && (
+    {adminSecret && (
+      <AdminPasswordDialog
+        open={passwordDialogPurpose !== null}
+        onOpenChange={(open) => {
+          if (!open) setPasswordDialogPurpose(null);
+        }}
+        secret={adminSecret}
+        title={passwordDialogPurpose === 'owner' ? 'Ativar Modo Dono' : 'Abrir Retaguarda'}
+        description={passwordDialogPurpose === 'owner'
+          ? 'Digite a senha do administrador para liberar temporariamente todas as funções do PDV.'
+          : 'Digite a senha do administrador para acessar configurações e relatórios.'}
+        onSuccess={() => {
+          const purpose = passwordDialogPurpose;
+          setPasswordDialogPurpose(null);
+          if (purpose === 'owner') {
+            if (!adminSecretResolved || storeProfile?.pdvPermissions?.enabled !== true) return;
+            ownerModeSecretRef.current = adminSecretIdentity;
+            setOwnerMode(true);
+          } else if (purpose === 'gestao' || purpose === 'recovery') {
+            const canOpen = purpose === 'recovery'
+              ? permissionsResolved && eligibleTabs.length === 0
+              : permissionsResolved && can(permissions, 'global.botaoRetaguarda');
+            if (!canOpen) {
+              toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+              return;
+            }
+            unlockAdminSession(user.uid, adminSecret);
+            router.push('/gestao');
+          }
+        }}
+      />
+    )}
+
+    {db && isRealUser && !storeProfileLoading && !storeProfileError && !wizardDismissed && !storeProfile?.onboardingCompleted && (
       <WelcomeWizard
         db={db}
         userId={user!.uid}

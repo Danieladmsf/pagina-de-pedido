@@ -1,6 +1,6 @@
 # Plano — Permissões do PDV configuradas na Retaguarda (v3)
 
-> **Status:** planejamento revisado (nada implementado além da Fase 0).
+> **Status:** Fases 1–5 implementadas e validadas localmente em 19/07/2026; Fase 6 (publicação das rules + canário em duas máquinas) pendente.
 > **Criado em:** 18/07/2026 · **v2 em** 19/07/2026 após `docs/ANALISE_PLANO_PERMISSOES_PDV.md` · **v3 em** 19/07/2026 incorporando a decisão do dono: **senha para abrir a Retaguarda + "Modo Dono" no PDV** (ver §5.7 e §5.8; exemplos do dia a dia em `docs/EXEMPLOS_PERMISSOES_PDV.md`).
 > **Pré-requisitos concluídos:** divisão `/pdv` + `/gestao` ativa e verificada; rename "Gestão" → "Retaguarda" (Fase 0, commit `53db195`).
 
@@ -224,12 +224,12 @@ Sem mudanças em: coleções existentes, APIs, webhooks, impressão automática,
 | Fase | Entrega | Observação |
 |---|---|---|
 | **0 ✅** | Rename Retaguarda | feita (53db195) |
-| **1** | `lib/pdv-permissions.ts` + testes unitários do helper | puro/tipado; primeiro código com teste automatizado do projeto (vitest mínimo, só para esta lib) |
-| **2** | PDV consome permissões (abas, navegação, loading, fallback, globais) | inócuo em produção: sem a tela, nenhum perfil tem `enabled: true` |
-| **3** | Fechamento compartilhado + ações por aba (um commit por aba: Caixa → Delivery → Balcão → Mesa → Encomendas) | handlers re-checam `can()` |
-| **4** | Tela na Retaguarda (a escrita entra por último) | só libera controles que o PDV já consome |
-| **5** | Senha da Retaguarda + Modo Dono (`admin_secrets` + rules isoladas + diálogo + cadeado) | sem senha definida, nada muda; ordem código→rules do padrão da casa |
-| **6** | Canário: ativar `enabled: true` + definir senha só na Gostinho de Céu; validar com duas máquinas (Retaguarda salvando + PDV aberto) usando o checklist do §9 | depois liberar para as demais lojas |
+| **1 ✅** | `lib/pdv-permissions.ts` + testes unitários do helper | puro/tipado; primeiro código com teste automatizado do projeto (vitest mínimo, só para esta lib) |
+| **2 ✅** | PDV consome permissões (abas, navegação, loading, fallback, globais) | inócuo em produção: sem a tela, nenhum perfil tem `enabled: true` |
+| **3 ✅** | Fechamento compartilhado + ações por aba (um commit por aba: Caixa → Delivery → Balcão → Mesa → Encomendas) | handlers re-checam `can()` |
+| **4 ✅** | Tela na Retaguarda (a escrita entra por último) | só libera controles que o PDV já consome |
+| **5 ✅** | Senha da Retaguarda + Modo Dono (`admin_secrets` + rules isoladas + diálogo + cadeado) | sem senha definida, nada muda; publicar as rules antes do cliente |
+| **6 — pendente** | Canário: ativar `enabled: true` + definir senha só na Gostinho de Céu; validar com duas máquinas (Retaguarda salvando + PDV aberto) usando o checklist do §9 | depois liberar para as demais lojas |
 | **7 (separada)** | Trilha de operadores (retomar as rules já iniciadas + API Admin SDK + guard + tela de usuários) | plano próprio; `pdvPermissions` vira o perfil do papel operador |
 
 **Rollback:** desligar o switch `enabled` na tela (ou direto no Firestore) — o PDV volta ao comportamento integral sem deploy e sem apagar a configuração. Rollback de código é `git revert` dos commits da fase (cada fase é independente).

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type SetStateAction } from 'react';
 import type { FormaPagamento } from './payment-methods';
 
 export type PaymentSplit = { methodId: string; label: string; amount: number; received?: number };
@@ -15,6 +15,10 @@ export interface FechamentoParams {
   /** Regra do delivery: pagamento a Prazo ⇒ frete sai da cobrança (pago direto ao motoboy). */
   feePaidToMotoboyOnPrazo?: boolean;
   formasPagamento: FormaPagamento[];
+  /** Permite informar desconto ou acréscimo no fechamento. */
+  allowAdjustments?: boolean;
+  /** Permite usar Conta da Casa (Prazo), inclusive em pagamentos múltiplos. */
+  allowPrazo?: boolean;
 }
 
 export interface CheckoutResult {
@@ -38,6 +42,8 @@ export function useFechamento({
   feeAlreadyOffTotal = false,
   feePaidToMotoboyOnPrazo = false,
   formasPagamento,
+  allowAdjustments = true,
+  allowPrazo = true,
 }: FechamentoParams) {
   const [selectedPayment, setSelectedPayment] = useState('');
   const [valorRecebido, setValorRecebido] = useState<string>('');
@@ -50,14 +56,75 @@ export function useFechamento({
   const [ajusteUnidade, setAjusteUnidade] = useState<'reais' | 'percent'>('reais');
   const [ajusteRaw, setAjusteRaw] = useState('');
 
+  // Capacidades podem mudar com o modal aberto. Mantemos o estado interno
+  // imediatamente coerente e, abaixo, também usamos valores sanitizados nos
+  // cálculos/buildCheckout para não depender do timing deste efeito.
+  useEffect(() => {
+    if (allowPrazo) return;
+    setSelectedPayment(prev => prev === 'conta_casa' ? '' : prev);
+    setPaymentSplits(prev => prev.filter(split => split.methodId !== 'conta_casa'));
+  }, [allowPrazo]);
+
+  useEffect(() => {
+    if (!allowAdjustments) {
+      // Splits may have been calculated from a discounted/surcharged total.
+      // Clear the payment composition too, otherwise revocation could zero the
+      // adjustment but still persist the old (now excessive) split amounts.
+      setAjusteRaw('');
+      setSelectedPayment('');
+      setValorRecebido('');
+      setPaymentSplits([]);
+    }
+  }, [allowAdjustments]);
+
+  const allowedFormasPagamento = allowPrazo
+    ? formasPagamento
+    : formasPagamento.filter(forma => forma.id !== 'conta_casa');
+  const adjustmentRevokedWithPendingValue = !allowAdjustments && ajusteRaw !== '';
+  const permissionFilteredSelectedPayment = !allowPrazo && selectedPayment === 'conta_casa' ? '' : selectedPayment;
+  const prazoFilteredPaymentSplits = allowPrazo
+    ? paymentSplits
+    : paymentSplits.filter(split => split.methodId !== 'conta_casa');
+
+  const selectPayment = (methodId: string) => {
+    setSelectedPayment(!allowPrazo && methodId === 'conta_casa' ? '' : methodId);
+  };
+
+  const updatePaymentSplits = (updater: SetStateAction<PaymentSplit[]>) => {
+    setPaymentSplits(prev => {
+      const allowedPrev = allowPrazo ? prev : prev.filter(split => split.methodId !== 'conta_casa');
+      const next = typeof updater === 'function' ? updater(allowedPrev) : updater;
+      return allowPrazo ? next : next.filter(split => split.methodId !== 'conta_casa');
+    });
+  };
+
   const ajusteValor = Number((ajusteRaw || '').replace(',', '.')) || 0;
   const ajusteBruto = ajusteUnidade === 'percent' ? (subtotal * ajusteValor) / 100 : ajusteValor;
-  const descontoAplicado = ajusteTipo === 'desconto' ? Math.min(Math.max(0, ajusteBruto), subtotal) : 0;
-  const acrescimoAplicado = ajusteTipo === 'acrescimo' ? Math.max(0, ajusteBruto) : 0;
+  const descontoAplicado = allowAdjustments && ajusteTipo === 'desconto' ? Math.min(Math.max(0, ajusteBruto), subtotal) : 0;
+  const acrescimoAplicado = allowAdjustments && ajusteTipo === 'acrescimo' ? Math.max(0, ajusteBruto) : 0;
 
   // Frete dentro da cobrança (se já nasceu fora do total, não soma de novo).
   const feeInCharge = feeAlreadyOffTotal ? 0 : deliveryFee;
-  const prazoInvolved = selectedPayment === 'conta_casa' || paymentSplits.some(s => s.methodId === 'conta_casa');
+  // Splits are amounts, not percentages. If subtotal/fee/adjustment changes,
+  // they no longer represent the current charge and must be recomposed.
+  const paymentBasis = Math.max(0, subtotal + feeInCharge - descontoAplicado + acrescimoAplicado);
+  const paymentBasisRef = useRef(paymentBasis);
+  const paymentBasisChangedWithSplits = Math.abs(paymentBasisRef.current - paymentBasis) > 0.001
+    && prazoFilteredPaymentSplits.length > 0;
+
+  useEffect(() => {
+    const changed = Math.abs(paymentBasisRef.current - paymentBasis) > 0.001;
+    paymentBasisRef.current = paymentBasis;
+    if (!changed || paymentSplits.length === 0) return;
+    setPaymentSplits([]);
+    setSelectedPayment('');
+    setValorRecebido('');
+  }, [paymentBasis]);
+
+  const resetPaymentComposition = adjustmentRevokedWithPendingValue || paymentBasisChangedWithSplits;
+  const effectiveSelectedPayment = resetPaymentComposition ? '' : permissionFilteredSelectedPayment;
+  const effectivePaymentSplits = resetPaymentComposition ? [] : prazoFilteredPaymentSplits;
+  const prazoInvolved = effectiveSelectedPayment === 'conta_casa' || effectivePaymentSplits.some(s => s.methodId === 'conta_casa');
   const feeOffApplied = feePaidToMotoboyOnPrazo && prazoInvolved && deliveryFee > 0 && !feeAlreadyOffTotal;
   // Aviso "taxa paga direto ao motoboy" (vale também quando o frete já nasceu fora).
   const prazoFeeNote = feePaidToMotoboyOnPrazo && prazoInvolved && deliveryFee > 0;
@@ -66,27 +133,27 @@ export function useFechamento({
   // pedido e valor lançado no caixa.
   const finalTotal = Math.max(0, subtotal + feeInCharge - descontoAplicado + acrescimoAplicado - (feeOffApplied ? deliveryFee : 0));
 
-  const totalPaid = paymentSplits.reduce((sum, s) => sum + s.amount, 0);
+  const totalPaid = effectivePaymentSplits.reduce((sum, s) => sum + s.amount, 0);
   const remaining = Math.max(0, finalTotal - totalPaid);
   const isFullyPaid = remaining <= 0;
   const recebidoNum = Number(valorRecebido) || 0;
-  const troco = !isSplitMode && selectedPayment === 'dinheiro' && recebidoNum > finalTotal ? recebidoNum - finalTotal : 0;
-  const falta = isSplitMode ? remaining : (selectedPayment === 'dinheiro' ? Math.max(0, finalTotal - recebidoNum) : (selectedPayment ? 0 : finalTotal));
-  const quitado = falta <= 0.001 && (isSplitMode ? paymentSplits.length > 0 : !!selectedPayment);
+  const troco = !isSplitMode && effectiveSelectedPayment === 'dinheiro' && recebidoNum > finalTotal ? recebidoNum - finalTotal : 0;
+  const falta = isSplitMode ? remaining : (effectiveSelectedPayment === 'dinheiro' ? Math.max(0, finalTotal - recebidoNum) : (effectiveSelectedPayment ? 0 : finalTotal));
+  const quitado = falta <= 0.001 && (isSplitMode ? effectivePaymentSplits.length > 0 : !!effectiveSelectedPayment);
 
   const labelFor = (methodId: string) => {
     if (methodId === 'conta_casa') return 'Prazo';
-    return formasPagamento.find(f => f.id === methodId)?.label || methodId;
+    return allowedFormasPagamento.find(f => f.id === methodId)?.label || methodId;
   };
 
   // Adiciona a forma selecionada como uma parte do pagamento múltiplo.
   const addSplit = () => {
-    if (!selectedPayment) return;
+    if (!effectiveSelectedPayment) return;
     let amount = remaining;
     let received: number | undefined = undefined;
     const valRec = valorRecebido ? Number(valorRecebido) : 0;
 
-    if (selectedPayment === 'dinheiro') {
+    if (effectiveSelectedPayment === 'dinheiro') {
       if (valRec > 0) {
         if (valRec >= remaining) {
           received = valRec;
@@ -102,7 +169,7 @@ export function useFechamento({
 
     if (amount <= 0) return;
 
-    setPaymentSplits(prev => [...prev, { methodId: selectedPayment, label: labelFor(selectedPayment), amount, received }]);
+    setPaymentSplits(prev => [...prev, { methodId: effectiveSelectedPayment, label: labelFor(effectiveSelectedPayment), amount, received }]);
     setSelectedPayment('');
     setValorRecebido('');
   };
@@ -110,32 +177,34 @@ export function useFechamento({
   // Monta os splits finais + paymentString + valores a persistir. Não altera
   // estado — o chamador decide o que fazer (criar pedido, encerrar mesa etc.).
   const buildCheckout = (): CheckoutResult => {
-    const splitsToProcess: PaymentSplit[] = isSplitMode ? [...paymentSplits] : [];
+    const splitsToProcess: PaymentSplit[] = isSplitMode ? [...effectivePaymentSplits] : [];
     let paymentString = '';
 
     if (!isSplitMode) {
       // Fluxo SIMPLES (1 forma)
-      const label = labelFor(selectedPayment);
+      const label = labelFor(effectiveSelectedPayment);
       let change = 0;
-      if (selectedPayment === 'dinheiro' && valorRecebido) {
+      if (effectiveSelectedPayment === 'dinheiro' && valorRecebido) {
         const valRec = Number(valorRecebido);
         if (valRec > finalTotal) change = valRec - finalTotal;
       }
-      if (prazoFeeNote && selectedPayment === 'conta_casa') {
+      if (prazoFeeNote && effectiveSelectedPayment === 'conta_casa') {
         paymentString = `${label} (Taxa de entrega paga direto ao motoboy)`;
       } else {
-        paymentString = selectedPayment === 'dinheiro' && change > 0
+        paymentString = effectiveSelectedPayment === 'dinheiro' && change > 0
           ? `${label} (Troco para R$ ${Number(valorRecebido).toFixed(2)})`
           : label;
       }
-      splitsToProcess.push({ methodId: selectedPayment, label, amount: finalTotal });
+      if (effectiveSelectedPayment) {
+        splitsToProcess.push({ methodId: effectiveSelectedPayment, label, amount: finalTotal });
+      }
     } else {
       // Fluxo MÚLTIPLO (split): incorpora a forma pendente selecionada, se houver.
-      if (selectedPayment) {
+      if (effectiveSelectedPayment) {
         let amount = remaining;
         let received: number | undefined = undefined;
         const valRec = valorRecebido ? Number(valorRecebido) : 0;
-        if (selectedPayment === 'dinheiro') {
+        if (effectiveSelectedPayment === 'dinheiro') {
           if (valRec > 0) {
             if (valRec >= remaining) {
               received = valRec;
@@ -149,7 +218,7 @@ export function useFechamento({
           amount = Math.min(valRec, remaining);
         }
         if (amount > 0) {
-          splitsToProcess.push({ methodId: selectedPayment, label: labelFor(selectedPayment), amount, received });
+          splitsToProcess.push({ methodId: effectiveSelectedPayment, label: labelFor(effectiveSelectedPayment), amount, received });
         }
       }
 
@@ -192,12 +261,13 @@ export function useFechamento({
 
   return {
     // parâmetros ecoados (o modal renderiza os totais a partir daqui)
-    subtotal, deliveryFee, feeInCharge, formasPagamento,
+    subtotal, deliveryFee, feeInCharge, formasPagamento: allowedFormasPagamento,
+    allowAdjustments, allowPrazo,
     // estado
-    selectedPayment, setSelectedPayment,
+    selectedPayment: effectiveSelectedPayment, setSelectedPayment: selectPayment,
     valorRecebido, setValorRecebido,
     isSplitMode, setIsSplitMode,
-    paymentSplits, setPaymentSplits,
+    paymentSplits: effectivePaymentSplits, setPaymentSplits: updatePaymentSplits,
     ajusteTipo, setAjusteTipo,
     ajusteUnidade, setAjusteUnidade,
     ajusteRaw, setAjusteRaw,

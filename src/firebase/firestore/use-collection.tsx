@@ -62,6 +62,10 @@ export function useCollection<T = any>(
   // em que isLoading=false e data=null antes do efeito rodar (falso "lista vazia").
   const [isLoading, setIsLoading] = useState<boolean>(!!memoizedTargetRefOrQuery);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Associate data with the query/reference that produced it. This makes a
+  // target change fail closed instead of briefly rendering the old owner's
+  // collection while the replacement listener is starting.
+  const [resolvedTarget, setResolvedTarget] = useState<CollectionReference<DocumentData> | Query<DocumentData> | null>(null);
   // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
   // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava
   // isLoading=true e fazia gates/listas piscarem (stale-while-revalidate).
@@ -70,6 +74,7 @@ export function useCollection<T = any>(
   useEffect(() => {
     if (!memoizedTargetRefOrQuery) {
       hasLoadedRef.current = false;
+      setResolvedTarget(null);
       setData(null);
       setIsLoading(false);
       setError(null);
@@ -92,6 +97,7 @@ export function useCollection<T = any>(
           results.push({ ...(doc.data() as T), id: doc.id });
         }
         setData(results);
+        setResolvedTarget(memoizedTargetRefOrQuery);
         hasLoadedRef.current = true;
         setError(null);
         setIsLoading(false);
@@ -109,6 +115,7 @@ export function useCollection<T = any>(
         })
 
         hasLoadedRef.current = false; // permite re-exibir loading numa nova tentativa
+        setResolvedTarget(memoizedTargetRefOrQuery)
         setError(contextualError)
         setData(null)
         setIsLoading(false)
@@ -123,5 +130,14 @@ export function useCollection<T = any>(
   if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');
   }
-  return { data, isLoading, error };
+  if (!memoizedTargetRefOrQuery) {
+    return { data: null, isLoading: false, error: null };
+  }
+
+  const isResolvedForCurrentTarget = resolvedTarget === memoizedTargetRefOrQuery;
+  return {
+    data: isResolvedForCurrentTarget ? data : null,
+    isLoading: !isResolvedForCurrentTarget || isLoading,
+    error: isResolvedForCurrentTarget ? error : null,
+  };
 }

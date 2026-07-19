@@ -17,10 +17,13 @@ interface QuickRegisterClientModalProps {
   initialName?: string;
   initialPhone?: string;
   initialAddress?: string; // used to prefill if possible
+  canSubmit?: () => boolean;
+  onSubmitBlocked?: () => void;
 }
 
 export function QuickRegisterClientModal({
-  isOpen, onClose, onSuccess, db, ownerId, initialName = '', initialPhone = '', initialAddress = ''
+  isOpen, onClose, onSuccess, db, ownerId, initialName = '', initialPhone = '', initialAddress = '',
+  canSubmit, onSubmitBlocked,
 }: QuickRegisterClientModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,6 +85,12 @@ export function QuickRegisterClientModal({
       const phoneNormalized = normalizeCreditPhone(phoneRaw);
       const docId = phoneNormalized ? `${ownerId}_${phoneNormalized}` : doc(collection(db, 'clientes')).id;
       const newRef = doc(db, 'clientes', docId);
+      // This modal performs its own write before handing control back to the
+      // checkout handler, so the live permission must be checked here too.
+      if (canSubmit && !canSubmit()) {
+        onSubmitBlocked?.();
+        return;
+      }
       await setDoc(newRef, {
         id: docId,
         ownerId,

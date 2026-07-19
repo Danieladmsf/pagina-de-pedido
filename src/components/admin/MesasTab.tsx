@@ -28,6 +28,7 @@ import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
+import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -44,38 +45,85 @@ interface MesasTabProps {
   addons?: any[];
   addonCategories?: any[];
   onUnsavedChangesChange?: (hasChanges: boolean) => void;
+  permissions: PdvPermissions;
 }
 
-export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange }: MesasTabProps) {
+interface MesasDraftMemory {
+  selectedTable: number | null;
+  cart: any[];
+  originalCart: any[];
+  activeOrderId: string | null;
+  receiptPrinted: boolean;
+  customerName: string;
+  customerPhone: string;
+  customerDirty: boolean;
+}
+
+const mesasDraftMemory = new Map<string, MesasDraftMemory>();
+const discardDraftOnUnmount = new Set<string>();
+const mountedDraftKeys = new Set<string>();
+
+export function discardMesasDraft(userId: string): void {
+  mesasDraftMemory.delete(userId);
+  // Only leave an unmount marker when that owner's Mesa UI is actually
+  // mounted. Otherwise the marker could survive logout and erase a future
+  // draft when the same account signs in again in this SPA session.
+  if (mountedDraftKeys.has(userId)) {
+    discardDraftOnUnmount.add(userId);
+  } else {
+    discardDraftOnUnmount.delete(userId);
+  }
+}
+
+export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange, permissions }: MesasTabProps) {
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeInfo);
   const { toast } = useToast();
+  const canGerenciarMesa = can(permissions, 'actions.mesas.gerenciarMesa');
+  const canLancarItens = can(permissions, 'actions.mesas.lancarItens');
+  const canFecharComanda = can(permissions, 'actions.mesas.fecharComanda');
+  const canAceitarPedidoOnline = can(permissions, 'actions.mesas.aceitarPedidoOnline');
+  const notifyPermissionRemoved = () => toast({
+    variant: 'destructive',
+    title: 'Permissão removida pelo administrador',
+  });
+  const draftKey = user?.uid || storeInfo?.id || 'default';
+  const initialDraftRef = React.useRef<MesasDraftMemory | null>(mesasDraftMemory.get(draftKey) || null);
+  const initialDraft = initialDraftRef.current;
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
   const [searchTable, setSearchTable] = useState('');
-  const [selectedTable, setSelectedTable] = useState<number | null>(null);
+  const [selectedTable, setSelectedTable] = useState<number | null>(initialDraft?.selectedTable ?? null);
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
 
   // PDV States
   const [searchTerm, setSearchTerm] = useState('');
-  const [cart, setCart] = useState<any[]>([]);
-  const [originalCart, setOriginalCart] = useState<any[]>([]);
-  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [cart, setCart] = useState<any[]>(initialDraft?.cart ?? []);
+  const [originalCart, setOriginalCart] = useState<any[]>(initialDraft?.originalCart ?? []);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(initialDraft?.activeOrderId ?? null);
   
   // Impressão e Pagamento
 
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   const [pendingItemToAdd, setPendingItemToAdd] = useState<any>(null);
-  const [receiptPrinted, setReceiptPrinted] = useState(false);
+  const [pendingTableMutation, setPendingTableMutation] = useState<(() => void) | null>(null);
+  const [receiptPrinted, setReceiptPrinted] = useState(initialDraft?.receiptPrinted ?? false);
 
   const activeOrders = orders?.filter(o => o.orderType === 'dine_in' && o.status !== 'delivered' && o.status !== 'canceled') || [];
+  const selectedActiveOrder = activeOrders.find(order => order.tableNumber === selectedTable);
+  const tableNeedsReopen = selectedActiveOrder?.status === 'awaiting_payment' && receiptPrinted;
+  const canEditTableItems = canLancarItens && (!tableNeedsReopen || canGerenciarMesa);
+
+  useEffect(() => {
+    if (selectedActiveOrder?.status === 'awaiting_payment') setReceiptPrinted(true);
+  }, [selectedActiveOrder?.id, selectedActiveOrder?.status]);
   
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Cliente da comanda (autocomplete por nome/celular) — vincula a venda ao
   // cadastro e habilita o pagamento no Prazo, igual ao Balcao.
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerDirty, setCustomerDirty] = useState(false);
+  const [customerName, setCustomerName] = useState(initialDraft?.customerName ?? '');
+  const [customerPhone, setCustomerPhone] = useState(initialDraft?.customerPhone ?? '');
+  const [customerDirty, setCustomerDirty] = useState(initialDraft?.customerDirty ?? false);
   // Seletor de mesa: usado tanto para "Trocar de mesa" (currentTable preenchido)
   // quanto para "Atribuir mesa" a um pedido online sem mesa (currentTable null).
   const [tablePickerFor, setTablePickerFor] = useState<{ orderId: string; currentTable: number | null } | null>(null);
@@ -98,12 +146,47 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     printOrderReceipt({ order, storeInfo, isKitchen });
   };
 
-  const lastSelectedTableRef = React.useRef<number | null>(null);
+  const lastSelectedTableRef = React.useRef<number | null>(initialDraft?.selectedTable ?? null);
   const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart) || customerDirty;
+  const draftSnapshotRef = React.useRef<MesasDraftMemory>({
+    selectedTable,
+    cart,
+    originalCart,
+    activeOrderId,
+    receiptPrinted,
+    customerName,
+    customerPhone,
+    customerDirty,
+  });
+  draftSnapshotRef.current = {
+    selectedTable,
+    cart,
+    originalCart,
+    activeOrderId,
+    receiptPrinted,
+    customerName,
+    customerPhone,
+    customerDirty,
+  };
 
   useEffect(() => {
     onUnsavedChangesChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onUnsavedChangesChange]);
+
+  useEffect(() => {
+    mountedDraftKeys.add(draftKey);
+    return () => {
+      mountedDraftKeys.delete(draftKey);
+      const draft = draftSnapshotRef.current;
+      const isDirty = JSON.stringify(draft.cart) !== JSON.stringify(draft.originalCart) || draft.customerDirty;
+      if (discardDraftOnUnmount.delete(draftKey) || !isDirty) {
+        mesasDraftMemory.delete(draftKey);
+      } else {
+        mesasDraftMemory.set(draftKey, draft);
+      }
+      onUnsavedChangesChange?.(false);
+    };
+  }, [draftKey, onUnsavedChangesChange]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -175,6 +258,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   }, [customerPhone, allCustomers]);
 
   const applyCustomer = (c: any) => {
+    if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
     const name = String(c.nome || c.name || '').trim();
     const phone = String(c.celular || '');
     if (name) setCustomerName(name);
@@ -184,6 +271,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const clearCustomerFields = () => {
+    if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
     setCustomerName('');
     setCustomerPhone('');
     setActiveLookupField(null);
@@ -194,7 +285,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   // Fechamento centralizado (desconto/acréscimo, split, troco) — mesmo
   // estado/cálculo/modal em Balcão, Mesas e Delivery (components/admin/fechamento).
-  const fechamento = useFechamento({ subtotal: cartTotal, formasPagamento: FORMAS_PAGAMENTO });
+  const fechamento = useFechamento({
+    subtotal: cartTotal,
+    formasPagamento: FORMAS_PAGAMENTO,
+    allowAdjustments: can(permissions, 'actions.mesas.descontoAcrescimo'),
+    allowPrazo: can(permissions, 'actions.mesas.vendaPrazo'),
+  });
 
   const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, user?.uid);
 
@@ -216,12 +312,20 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     selectedCat === 'all' || isSearching ? groupedItems : groupedItems.filter(g => g.id === selectedCat);
 
   const addToCart = (item: any) => {
+    if (!can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
     const effectiveItem = applyPromoPrice(item, promoItemsMap);
 
     if (activeOrderId) {
-      const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
-      if (activeOrder && activeOrder.status === 'awaiting_payment') {
+      if (tableNeedsReopen) {
+        if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+          notifyPermissionRemoved();
+          return;
+        }
         setPendingItemToAdd(effectiveItem);
+        setPendingTableMutation(null);
         setReopenModalOpen(true);
         return;
       }
@@ -235,12 +339,31 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
+    if (!can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
     const effectiveItem = applyPromoPrice(item, promoItemsMap);
-    setCart(prev => [...prev, buildCustomizedCartItem(effectiveItem, quantity, options)]);
+    const customizedItem = buildCustomizedCartItem(effectiveItem, quantity, options);
+    if (tableNeedsReopen) {
+      if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+        notifyPermissionRemoved();
+        return;
+      }
+      setPendingItemToAdd(null);
+      setPendingTableMutation(() => () => setCart(prev => [...prev, customizedItem]));
+      setReopenModalOpen(true);
+      return;
+    }
+    setCart(prev => [...prev, customizedItem]);
   };
 
   const updateQuantity = (cartItemId: string, delta: number) => {
-    setCart(prev => {
+    if (!can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    const mutation = () => setCart(prev => {
       return prev.map(i => {
         const key = i.cartItemId || i.id;
         if (key === cartItemId) {
@@ -250,10 +373,45 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         return i;
       });
     });
+    if (tableNeedsReopen) {
+      if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+        notifyPermissionRemoved();
+        return;
+      }
+      setPendingItemToAdd(null);
+      setPendingTableMutation(() => mutation);
+      setReopenModalOpen(true);
+      return;
+    }
+    mutation();
   };
 
   const removeFromCart = (cartItemId: string) => {
-    setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
+    if (!can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    const mutation = () => setCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
+    if (tableNeedsReopen) {
+      if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+        notifyPermissionRemoved();
+        return;
+      }
+      setPendingItemToAdd(null);
+      setPendingTableMutation(() => mutation);
+      setReopenModalOpen(true);
+      return;
+    }
+    mutation();
+  };
+
+  const handleOpenTable = (tableNumber: number) => {
+    const isExistingTable = activeOrders.some(order => order.tableNumber === tableNumber);
+    if (!isExistingTable && !can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    setSelectedTable(tableNumber);
   };
 
   const handleBackToGrid = () => {
@@ -267,6 +425,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handleCancelTable = async () => {
+    if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (!db || !selectedTable) return;
     if (!confirm(`Cancelar a Mesa ${selectedTable}? Todos os itens serão removidos e a comanda será fechada.`)) return;
     
@@ -300,6 +462,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // Aceita um pedido online (comer no local): imprime o ticket de produção e
   // marca como aceito — o que para o alarme (gate em page.tsx) e tira o piscar.
   const handleAcceptOnlineOrder = async (order: any) => {
+    if (!can(permissions, 'actions.mesas.aceitarPedidoOnline')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (!db || !order?.id) return;
     try {
       // No modo automático o ticket já foi impresso na chegada — não reimprime.
@@ -326,6 +492,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // cancelamento de mesa: devolve o estoque reservado e marca como canceled,
   // o que o tira da fila (activeOrders exclui status 'canceled').
   const handleRejectOnlineOrder = async (order: any) => {
+    if (!can(permissions, 'actions.mesas.aceitarPedidoOnline')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (!db || !order?.id) return;
     if (!confirm(`Excluir o pedido online de ${order.customerName || 'Cliente'}? O pedido será cancelado e os itens devolvidos ao estoque.`)) return;
     try {
@@ -346,6 +516,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handlePickTable = async (orderId: string, targetTable: number) => {
+    if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    if (tablePickerFor?.currentTable === null && !can(permissions, 'actions.mesas.aceitarPedidoOnline')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (!db || !orderId) return;
     try {
       setIsSubmitting(true);
@@ -367,6 +545,30 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handleSaveOrder = async () => {
+    const itemsChanged = JSON.stringify(cart) !== JSON.stringify(originalCart);
+    if (!activeOrderId && !can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    if (itemsChanged && !can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    if (customerDirty && !can(permissions, 'actions.mesas.gerenciarMesa')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    if ((itemsChanged || customerDirty) && tableNeedsReopen) {
+      if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
+        notifyPermissionRemoved();
+        return;
+      }
+      setPendingItemToAdd(null);
+      setPendingTableMutation(null);
+      setReopenModalOpen(true);
+      toast({ title: 'Reabra a mesa', description: 'Confirme a reabertura antes de salvar alterações nesta comanda.' });
+      return;
+    }
     if (!db || !user || !selectedTable || cart.length === 0) return;
     setIsSubmitting(true);
     
@@ -397,18 +599,22 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         comboItems: i.comboItems || null
       }));
 
-      // Vínculo do cliente: só grava campos preenchidos, para nunca sobrescrever
-      // um cadastro existente (ou o rótulo "Mesa N") com vazio.
+      // Vínculo do cliente: quando houve edição, grava também vazio para o
+      // botão "Limpar" efetivamente remover o vínculo da comanda.
       const clientPatch: any = {};
-      if (customerName) clientPatch.customerName = customerName;
-      if (customerPhone) clientPatch.customerPhone = customerPhone;
+      if (customerDirty) {
+        clientPatch.customerName = customerName;
+        clientPatch.customerPhone = customerPhone;
+      }
 
       let finalOrderId = activeOrderId;
       const orderSpec = activeOrderId
         ? {
             ref: doc(db, 'orders', activeOrderId),
             mode: 'update' as const,
-            data: { items: sanitizedItems, totalAmount: cartTotal, subtotal: cartTotal, ...clientPatch },
+            data: itemsChanged
+              ? { items: sanitizedItems, totalAmount: cartTotal, subtotal: cartTotal, ...clientPatch }
+              : clientPatch,
           }
         : (() => {
             finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -437,14 +643,20 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             };
           })();
 
-      // Grava o pedido e abate o estoque (delta vs o que já estava reservado),
-      // de forma atômica. Lança InsufficientStockError se faltar.
-      await reconcileOrderStock(db, {
-        enableInventory: !!storeInfo?.general?.enableInventory,
-        targetItems: sanitizedItems,
-        alreadyDeducted: activeOrder?.stockDeductedItems,
-        order: orderSpec,
-      });
+      if (activeOrderId && !itemsChanged) {
+        // Alteração somente do cliente: não regrava itens nem reconcilia
+        // estoque, o que preserva o gate separado de lançamento de itens.
+        await updateDoc(doc(db, 'orders', activeOrderId), clientPatch);
+      } else {
+        // Grava o pedido e abate o estoque (delta vs o que já estava reservado),
+        // de forma atômica. Lança InsufficientStockError se faltar.
+        await reconcileOrderStock(db, {
+          enableInventory: !!storeInfo?.general?.enableInventory,
+          targetItems: sanitizedItems,
+          alreadyDeducted: activeOrder?.stockDeductedItems,
+          order: orderSpec,
+        });
+      }
 
       // Atualiza o estado local imediatamente, sem depender do "eco" do onSnapshot.
       // Sem isso, ao criar uma mesa nova o activeOrderId continuava null até o
@@ -479,6 +691,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handlePrintReceipt = async () => {
+    if (!can(permissions, 'actions.mesas.fecharComanda')) {
+      notifyPermissionRemoved();
+      return;
+    }
     const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
     if (!activeOrder) return;
 
@@ -500,6 +716,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const confirmReopenTable = async () => {
+    if (!can(permissions, 'actions.mesas.gerenciarMesa') || ((pendingItemToAdd || pendingTableMutation) && !can(permissions, 'actions.mesas.lancarItens'))) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (!db || !activeOrderId) return;
     try {
       setIsSubmitting(true);
@@ -515,6 +735,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         });
         setPendingItemToAdd(null);
       }
+      pendingTableMutation?.();
+      setPendingTableMutation(null);
       toast({ title: 'Mesa Reaberta', description: 'Pode adicionar novos itens à mesa.' });
     } catch (e) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao reabrir a mesa.' });
@@ -524,11 +746,29 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   };
 
   const handleOpenPayment = () => {
+    if (!can(permissions, 'actions.mesas.fecharComanda')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    const itemsChanged = JSON.stringify(cart) !== JSON.stringify(originalCart);
+    if ((itemsChanged && !can(permissions, 'actions.mesas.lancarItens')) || (customerDirty && !can(permissions, 'actions.mesas.gerenciarMesa'))) {
+      notifyPermissionRemoved();
+      return;
+    }
     fechamento.reset();
     setPaymentModalOpen(true);
   };
 
   const handleConfirmCheckout = async () => {
+    if (!can(permissions, 'actions.mesas.fecharComanda')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    const itemsChanged = JSON.stringify(cart) !== JSON.stringify(originalCart);
+    if ((itemsChanged && !can(permissions, 'actions.mesas.lancarItens')) || (customerDirty && !can(permissions, 'actions.mesas.gerenciarMesa'))) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
     if (!fechamento.isSplitMode && !fechamento.selectedPayment) return;
     if (!db || !activeOrderId) return;
@@ -624,12 +864,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           </>
         }
       >
-        <Button
-          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })}
-          size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-        >
-          Abrir Caixa
-        </Button>
+        {can(permissions, 'tabs.caixa') && can(permissions, 'actions.caixa.abrirCaixa') && (
+          <Button
+            onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })}
+            size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+          >
+            Abrir Caixa
+          </Button>
+        )}
       </CaixaFechadoCard>
     );
   }
@@ -640,9 +882,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     return (
       <button
         key={item.id}
-        onClick={outOfStock ? undefined : () => addToCart(item)}
-        disabled={outOfStock}
-        className={`text-left border p-3 rounded-lg transition-colors group flex items-center gap-3 min-h-[88px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
+        onClick={outOfStock || !canEditTableItems ? undefined : () => addToCart(item)}
+        disabled={outOfStock || !canEditTableItems}
+        className={`text-left border p-3 rounded-lg transition-colors group flex items-center gap-3 min-h-[88px] relative ${outOfStock || !canEditTableItems ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
       >
         {outOfStock && (
           <Badge className="absolute top-2 left-2 bg-slate-700 text-white font-bold text-[10px] px-1.5 py-0.5 rounded z-10">
@@ -710,10 +952,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   return (
                     <button
                       key={num}
-                      onClick={() => setSelectedTable(num)}
+                      onClick={() => handleOpenTable(num)}
+                      disabled={!isOpen && !canGerenciarMesa}
                       className={`
                         relative h-20 md:h-24 rounded-xl flex flex-col items-center justify-center transition-all border-2
-                        ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : 'hover:scale-105 hover:shadow-md'}
+                        ${selectedTable === num ? 'ring-2 ring-primary ring-offset-2 scale-95' : isOpen || canGerenciarMesa ? 'hover:scale-105 hover:shadow-md' : 'cursor-not-allowed opacity-65'}
                         ${isOpen ? (isAwaitingPayment ? 'bg-amber-500 border-amber-600 text-white shadow-md' : 'bg-teal-500 border-teal-600 text-white shadow-md') : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'}
                       `}
                     >
@@ -778,14 +1021,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           {needsAttention
                             ? <span className="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">NOVO</span>
                             : <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">ACEITO</span>}
-                          <button
+                          {canAceitarPedidoOnline && <button
                             type="button"
                             onClick={() => handleRejectOnlineOrder(o)}
                             title="Excluir pedido"
                             className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:text-red-600 hover:bg-red-100 transition-colors"
                           >
                             <X className="h-4 w-4" />
-                          </button>
+                          </button>}
                         </div>
                       </div>
 
@@ -812,7 +1055,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           <span className="font-black text-green-600">R$ {(o.totalAmount || 0).toFixed(2)}</span>
                         </div>
                         <div className="flex gap-2">
-                          {needsAttention && (
+                          {needsAttention && canAceitarPedidoOnline && (
                             <Button
                               size="sm"
                               className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
@@ -822,14 +1065,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                               {isManualPrint ? <><Printer className="h-3.5 w-3.5 mr-1" /> Aceitar</> : 'Aceitar'}
                             </Button>
                           )}
-                          <Button
+                          {canAceitarPedidoOnline && canGerenciarMesa && <Button
                             size="sm"
                             variant="outline"
                             className="flex-1 h-8 text-xs border-amber-400 text-amber-700 hover:bg-amber-100"
                             onClick={() => setTablePickerFor({ orderId: o.id, currentTable: null })}
                           >
                             Pôr na mesa
-                          </Button>
+                          </Button>}
                         </div>
                       </div>
                     </div>
@@ -856,12 +1099,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {activeOrderId && (
+              {activeOrderId && canGerenciarMesa && (
                 <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/20 text-xs gap-1" onClick={() => setTablePickerFor({ orderId: activeOrderId, currentTable: selectedTable })}>
                   <ArrowLeftRight className="h-3.5 w-3.5" /> Trocar Mesa
                 </Button>
               )}
-              {activeOrderId && (
+              {activeOrderId && canGerenciarMesa && (
                 <Button variant="ghost" size="sm" className="text-red-300 hover:text-red-100 hover:bg-red-500/30 text-xs gap-1" onClick={handleCancelTable}>
                   <X className="h-3.5 w-3.5" /> Cancelar Mesa
                 </Button>
@@ -877,7 +1120,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             {/* Lista do Carrinho */}
             <div className="w-full md:w-1/2 flex flex-col border-r overflow-hidden">
               {/* Cliente da comanda: vincula a venda ao cadastro e habilita o Prazo */}
-              <div className="p-2 border-b bg-white shrink-0">
+              {canGerenciarMesa && <div className="p-2 border-b bg-white shrink-0">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">👤 Cliente <span className="font-normal normal-case text-slate-400">(opcional)</span></span>
                   {(customerName || customerPhone) && (
@@ -916,7 +1159,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                     );
                   })()}
                 </div>
-              </div>
+              </div>}
               <div className="flex-1 overflow-y-auto p-3 bg-slate-50 custom-scrollbar">
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -937,14 +1180,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           )}
                           {item.notes && <div className="text-xs text-orange-500 mt-0.5">Obs: {item.notes}</div>}
                         </div>
-                        <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
-                          <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
-                          <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
-                        </div>
-                        <button onClick={() => removeFromCart(item.cartItemId || item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
-                          <X className="h-5 w-5" />
-                        </button>
+                        {canEditTableItems ? <>
+                          <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
+                            <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
+                            <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
+                          </div>
+                          <button onClick={() => removeFromCart(item.cartItemId || item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
+                            <X className="h-5 w-5" />
+                          </button>
+                        </> : <span className="rounded-md bg-slate-100 px-2 py-1 text-sm font-bold text-slate-600">{item.quantity}×</span>}
                       </div>
                     ))}
                   </div>
@@ -960,7 +1205,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 <div className="flex gap-2">
                   {(() => {
                     const hasUnsavedChanges = JSON.stringify(cart) !== JSON.stringify(originalCart) || customerDirty;
-                    return (
+                    return (canLancarItens || canGerenciarMesa) && (
                       <Button 
                         variant={hasUnsavedChanges ? "outline" : "secondary"} 
                         className={`flex-1 h-12 font-bold text-lg ${hasUnsavedChanges ? 'border-primary text-primary hover:bg-primary/5' : 'bg-slate-100 text-slate-400 pointer-events-none'}`}
@@ -971,17 +1216,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       </Button>
                     );
                   })()}
-                  {activeOrderId && (
+                  {activeOrderId && canFecharComanda && (
                     <div className="flex-[1.5] flex gap-2">
                       <Button 
                         variant="outline" 
                         className="px-3 border-slate-300 text-slate-600 hover:bg-slate-100"
-                        onClick={() => {
-                          const activeOrder = activeOrders.find(o => o.tableNumber === selectedTable);
-                          if (activeOrder) {
-                            printReceiptNow(activeOrder, false);
-                          }
-                        }}
+                        onClick={handlePrintReceipt}
                         title="Imprimir Parcial"
                         disabled={isSubmitting}
                       >
@@ -1074,7 +1314,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       />
 
       {/* Modal Reabrir Mesa */}
-      <Dialog open={reopenModalOpen} onOpenChange={setReopenModalOpen}>
+      <Dialog open={reopenModalOpen} onOpenChange={(open) => {
+        setReopenModalOpen(open);
+        if (!open) {
+          setPendingItemToAdd(null);
+          setPendingTableMutation(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Reabrir Mesa {selectedTable}?</DialogTitle>
@@ -1083,12 +1329,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 justify-end mt-4">
-            <Button variant="outline" onClick={() => { setReopenModalOpen(false); setPendingItemToAdd(null); }}>
+            <Button variant="outline" onClick={() => { setReopenModalOpen(false); setPendingItemToAdd(null); setPendingTableMutation(null); }}>
               Cancelar
             </Button>
-            <Button onClick={confirmReopenTable} disabled={isSubmitting}>
-              Sim, Reabrir Mesa
-            </Button>
+            {canGerenciarMesa && (!(pendingItemToAdd || pendingTableMutation) || canLancarItens) && (
+              <Button onClick={confirmReopenTable} disabled={isSubmitting}>
+                Sim, Reabrir Mesa
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1106,7 +1354,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             {tables.map(num => {
               const ocupada = activeTableNumbers.includes(num);
               const isCurrent = tablePickerFor?.currentTable === num;
-              const disabled = ocupada || isCurrent || isSubmitting;
+              const assigningOnlineOrder = tablePickerFor?.currentTable === null;
+              const permissionDenied = !canGerenciarMesa || (assigningOnlineOrder && !canAceitarPedidoOnline);
+              const disabled = ocupada || isCurrent || isSubmitting || permissionDenied;
               return (
                 <button
                   key={num}
@@ -1144,6 +1394,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             setQuickRegisterModal(null);
             handleConfirmCheckout();
           }}
+          canSubmit={() => can(permissions, 'actions.mesas.fecharComanda')
+            && can(permissions, 'actions.mesas.vendaPrazo')
+            && (JSON.stringify(cart) === JSON.stringify(originalCart) || can(permissions, 'actions.mesas.lancarItens'))
+            && (!customerDirty || can(permissions, 'actions.mesas.gerenciarMesa'))}
+          onSubmitBlocked={notifyPermissionRemoved}
           db={db}
           ownerId={storeInfo?.id || user?.uid || 'default'}
           initialName={quickRegisterModal.name}

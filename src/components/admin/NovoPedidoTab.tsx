@@ -30,6 +30,7 @@ import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
+import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -42,6 +43,7 @@ interface NovoPedidoTabProps {
   onOpenCaixa?: () => void;
   addons?: any[];
   addonCategories?: any[];
+  permissions: PdvPermissions;
 }
 
 type CustomerLookupStatus = 'idle' | 'searching' | 'found' | 'not_found' | 'error';
@@ -74,10 +76,16 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   storeProfile,
   onOpenCaixa,
   addons = [],
-  addonCategories = []
+  addonCategories = [],
+  permissions,
 }: NovoPedidoTabProps) {
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   const { toast } = useToast();
+  const canFinalizarVenda = can(permissions, 'actions.novo_pedido.finalizarVenda');
+  const notifyPermissionRemoved = () => toast({
+    variant: 'destructive',
+    title: 'Permissão removida pelo administrador',
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [quickRegisterModal, setQuickRegisterModal] = useState<{isOpen: boolean, name: string, phone: string, address: string} | null>(null);
@@ -129,7 +137,13 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   // Fechamento centralizado (desconto/acréscimo, split, troco) — mesmo
   // estado/cálculo/modal em Balcão, Mesas e Delivery (components/admin/fechamento).
   const deliveryFee = orderType === 'delivery' ? (Number(deliveryFeeInput) || 0) : 0;
-  const fechamento = useFechamento({ subtotal: cartTotal, deliveryFee, formasPagamento: FORMAS_PAGAMENTO });
+  const fechamento = useFechamento({
+    subtotal: cartTotal,
+    deliveryFee,
+    formasPagamento: FORMAS_PAGAMENTO,
+    allowAdjustments: can(permissions, 'actions.novo_pedido.descontoAcrescimo'),
+    allowPrazo: can(permissions, 'actions.novo_pedido.vendaPrazo'),
+  });
   const finalTotal = fechamento.finalTotal;
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -380,12 +394,20 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   };
 
   const handleCheckout = () => {
+    if (!can(permissions, 'actions.novo_pedido.finalizarVenda')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (cart.length === 0) return;
     fechamento.reset();
     setPaymentModalOpen(true);
   };
 
   const handleConfirmCheckout = async () => {
+    if (!can(permissions, 'actions.novo_pedido.finalizarVenda')) {
+      notifyPermissionRemoved();
+      return;
+    }
     if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
     if (!fechamento.isSplitMode && !fechamento.selectedPayment) return;
     if (!db || !user || cart.length === 0) return;
@@ -528,12 +550,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           </>
         }
       >
-        <Button
-          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })}
-          size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-        >
-          Abrir Caixa
-        </Button>
+        {can(permissions, 'tabs.caixa') && can(permissions, 'actions.caixa.abrirCaixa') && (
+          <Button
+            onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Clique no botão "Caixa / Admin" no canto superior direito da tela.' })}
+            size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+          >
+            Abrir Caixa
+          </Button>
+        )}
       </CaixaFechadoCard>
     );
   }
@@ -961,9 +985,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
               <span className="font-semibold text-slate-600">Total</span>
               <span className="font-black text-red-500">R$ {finalTotal.toFixed(2)}</span>
             </div>
-            <Button className="w-full h-8 bg-green-500 hover:bg-green-600 text-sm font-bold" onClick={handleCheckout}>
-              Finalizar
-            </Button>
+            {canFinalizarVenda && (
+              <Button className="w-full h-8 bg-green-500 hover:bg-green-600 text-sm font-bold" onClick={handleCheckout}>
+                Finalizar
+              </Button>
+            )}
             {!caixaAberto && <p className="text-[10px] text-red-400 text-center mt-1">⚠️ Abra o caixa para vender</p>}
           </div>
         )}
@@ -1000,6 +1026,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             setQuickRegisterModal(null);
             handleConfirmCheckout();
           }}
+          canSubmit={() => can(permissions, 'actions.novo_pedido.finalizarVenda')
+            && can(permissions, 'actions.novo_pedido.vendaPrazo')}
+          onSubmitBlocked={notifyPermissionRemoved}
           db={db}
           ownerId={storeProfile?.id || user?.uid || 'default'}
           initialName={quickRegisterModal.name}

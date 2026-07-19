@@ -36,6 +36,9 @@ import { Switch } from '@/components/ui/switch';
 import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
+import { PermissoesPdvTab } from '@/components/admin/PermissoesPdvTab';
+import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
+import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 
 export default function GestaoPage() {
   const db = useFirestore();
@@ -116,34 +119,96 @@ export default function GestaoPage() {
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'categories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const itemsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'menuItems'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const ordersQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const addonsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const addonCategoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'addonCategories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
   const storeProfileRef = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return doc(db, 'store_profiles', user!.uid);
-  }, [db, isRealUser]);
+  }, [db, isRealUser, user?.uid]);
 
-  const { data: storeProfile, isLoading: storeProfileLoading } = useDoc(storeProfileRef);
+  const { data: storeProfile, isLoading: storeProfileLoading, error: storeProfileError } = useDoc(storeProfileRef);
+
+  const adminSecretRef = useMemoFirebase(() => {
+    if (!db || !isRealUser) return null;
+    return doc(db, 'admin_secrets', user!.uid);
+  }, [db, isRealUser, user?.uid]);
+  const { data: adminSecret, isLoading: adminSecretLoading, error: adminSecretError } = useDoc<AdminSecret>(adminSecretRef);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [isAdminGateResolved, setIsAdminGateResolved] = useState(false);
+  const adminSecretResolved = !!adminSecretRef && !adminSecretLoading && !adminSecretError;
+
+  const previousUserIdRef = React.useRef<string | null>(user?.uid ?? null);
+  useEffect(() => {
+    const nextUserId = user?.uid ?? null;
+    if (previousUserIdRef.current !== nextUserId) {
+      setIsAdminUnlocked(false);
+      setIsAdminGateResolved(false);
+      setActiveTab('dashboard');
+      setWizardDismissed(false);
+    }
+    previousUserIdRef.current = nextUserId;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!adminSecretRef || adminSecretLoading || adminSecretError) {
+      setIsAdminGateResolved(false);
+      return;
+    }
+    setIsAdminUnlocked(!adminSecret || isAdminSessionUnlocked(user!.uid, adminSecret));
+    setIsAdminGateResolved(true);
+  }, [adminSecret, adminSecretError, adminSecretLoading, adminSecretRef, user]);
+
+  useEffect(() => {
+    if (!adminSecret || !isAdminUnlocked || !user) return;
+    let timeoutId: number | undefined;
+    const validateAndSchedule = () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      const remaining = getAdminSessionRemainingMs(user.uid, adminSecret);
+      if (remaining <= 0) {
+        setIsAdminUnlocked(false);
+        return;
+      }
+      timeoutId = window.setTimeout(validateAndSchedule, remaining + 50);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') validateAndSchedule();
+    };
+    validateAndSchedule();
+    window.addEventListener('focus', validateAndSchedule);
+    window.addEventListener(ADMIN_SESSION_UPDATED_EVENT, validateAndSchedule);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      window.removeEventListener('focus', validateAndSchedule);
+      window.removeEventListener(ADMIN_SESSION_UPDATED_EVENT, validateAndSchedule);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [adminSecret, isAdminUnlocked, user]);
+
+  const effectiveAdminUnlocked = adminSecretResolved && (
+    !adminSecret
+    || (!!user && isAdminUnlocked && isAdminSessionUnlocked(user.uid, adminSecret))
+  );
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
@@ -437,6 +502,57 @@ export default function GestaoPage() {
   // antigo gate da página única fazia (db: Firestore | null → Firestore).
   if (!db || !user) return null;
 
+  if (adminSecretError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-6 text-center">
+        <p className="font-semibold text-slate-800">Não foi possível verificar a senha da Retaguarda.</p>
+        <p className="max-w-md text-sm text-slate-500">Confira a conexão e tente novamente. O acesso permanece bloqueado até a verificação terminar.</p>
+        <Button onClick={() => window.location.reload()}>Tentar novamente</Button>
+      </div>
+    );
+  }
+
+  if (storeProfileError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-6 text-center">
+        <p className="font-semibold text-slate-800">Não foi possível carregar o perfil da loja.</p>
+        <p className="max-w-md text-sm text-slate-500">Confira a conexão e tente novamente. As configurações permanecem bloqueadas enquanto o perfil não puder ser verificado.</p>
+        <Button onClick={() => window.location.reload()}>Tentar novamente</Button>
+      </div>
+    );
+  }
+
+  if (!isAdminGateResolved || !adminSecretResolved) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100 text-sm font-medium text-slate-500">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando acesso à Retaguarda…
+      </div>
+    );
+  }
+
+  if (adminSecret && !effectiveAdminUnlocked) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-100">
+        <div className="rounded-xl border bg-white px-8 py-6 text-center shadow-sm">
+          <p className="font-semibold text-slate-800">Retaguarda protegida</p>
+          <p className="mt-1 text-sm text-slate-500">Informe a senha do administrador para continuar.</p>
+        </div>
+        <AdminPasswordDialog
+          open
+          onOpenChange={() => {}}
+          secret={adminSecret}
+          title="Abrir Retaguarda"
+          description="Digite a senha do administrador para acessar configurações e relatórios."
+          canCancel={false}
+          onSuccess={() => {
+            unlockAdminSession(user.uid, adminSecret);
+            setIsAdminUnlocked(true);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
@@ -518,7 +634,7 @@ export default function GestaoPage() {
         <div className={
           ['produtos', 'addons', 'categorias', 'clientes'].includes(activeTab)
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : ['freelance'].includes(activeTab) || activeTab.startsWith('perfil_')
+            : ['freelance', 'permissoes_pdv'].includes(activeTab) || activeTab.startsWith('perfil_')
               ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
@@ -2095,6 +2211,18 @@ export default function GestaoPage() {
 
           {activeTab === 'perfil_aparencia' && (
             <AppearanceTab db={db} user={user} storeProfile={storeProfile} />
+          )}
+
+          {activeTab === 'permissoes_pdv' && (
+            <PermissoesPdvTab
+              key={user.uid}
+              db={db}
+              user={user}
+              storeProfile={storeProfile}
+              isProfileLoading={storeProfileLoading || !!storeProfileError}
+              adminSecret={adminSecret}
+              isAdminSecretLoading={adminSecretLoading}
+            />
           )}
           {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && (
             <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />

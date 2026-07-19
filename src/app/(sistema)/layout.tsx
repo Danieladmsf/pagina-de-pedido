@@ -20,7 +20,7 @@ export default function SistemaLayout({ children }: { children: React.ReactNode 
 
   const isRealUser = !!(user && !user.isAnonymous);
 
-  const adminRoleRef = useMemoFirebase(() => (db && isRealUser) ? doc(db, 'roles_admin', user!.uid) : null, [db, isRealUser]);
+  const adminRoleRef = useMemoFirebase(() => (db && isRealUser) ? doc(db, 'roles_admin', user!.uid) : null, [db, isRealUser, user?.uid]);
   const { data: adminRole, isLoading: loadingRole } = useDoc(adminRoleRef);
 
   // Redireciona para o login só quando há CERTEZA de que não há sessão.
@@ -100,5 +100,7 @@ export default function SistemaLayout({ children }: { children: React.ReactNode 
     );
   }
 
-  return <>{children}</>;
+  // A troca direta entre duas contas precisa remontar toda a área interna;
+  // assim nenhum estado local de formulário/modal da conta anterior sobrevive.
+  return <React.Fragment key={user!.uid}>{children}</React.Fragment>;
 }

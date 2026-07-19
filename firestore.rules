@@ -11,6 +11,31 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
+    // ── Operadores (frente de caixa) ──
+    // roles_operador/{uid} mapeia um login de operador para a loja (ownerId).
+    // Operador ATIVO tem acesso de "staff" apenas ao operacional (pedidos,
+    // caixa, clientes, estoque); cadastros e perfil continuam só do dono.
+    function isOperator() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_operador/$(request.auth.uid));
+    }
+
+    function operatorData() {
+      return get(/databases/$(database)/documents/roles_operador/$(request.auth.uid)).data;
+    }
+
+    function isActiveOperator() {
+      return isOperator() && operatorData().active == true;
+    }
+
+    function isOperatorOf(ownerId) {
+      return isActiveOperator() && operatorData().ownerId == ownerId;
+    }
+
+    // Dono da loja OU operador ativo da loja.
+    function isStaffOf(ownerId) {
+      return (isAdmin() && request.auth.uid == ownerId) || isOperatorOf(ownerId);
+    }
+
     // Regras para a coleção roles_admin
     match /roles_admin/{userId} {
       // Cadastro de loja cria o próprio registro de admin. Login anônimo
@@ -19,6 +44,27 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow get, list, update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if false; // Por segurança, não permite deletar admin via app
+    }
+
+    match /roles_operador/{operatorUid} {
+      // O próprio operador lê seu papel (é assim que o app resolve qual loja
+      // ele opera); o dono lê/lista/edita os operadores da SUA loja.
+      allow get: if isSignedIn() && (
+        request.auth.uid == operatorUid ||
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+      );
+      allow list: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update: if isAdmin() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active', 'name']);
+      // Criar/excluir só pela API com Admin SDK (cria/remove também o usuário
+      // do Firebase Auth) — nunca direto do cliente.
+      allow create, delete: if false;
+    }
+
+    // Segredo da senha da Retaguarda. Nunca fica no perfil público da loja:
+    // somente a sessão autenticada do próprio dono pode ler ou alterar.
+    match /admin_secrets/{userId} {
+      allow read, write: if isAdmin() && request.auth.uid == userId;
     }
 
     // Regras para Categorias e Itens
@@ -39,7 +85,11 @@ service cloud.firestore {
       );
       // Cliente (anônimo) só pode BAIXAR o estoque ao fazer pedido — nunca
       // aumentar nem deixar negativo. Reposição/estorno é só do dono (admin).
+      // Operador ativo pode mexer APENAS no estoque (baixa na venda e estorno
+      // no cancelamento via lib/inventory) — nunca em preço/nome/etc.
       allow update: if (isAdmin() && resource.data.ownerId == request.auth.uid) ||
+        (isOperatorOf(resource.data.ownerId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
         (isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])
           && request.resource.data.stockQuantity is number
@@ -71,53 +121,52 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       // Cliente lê os próprios pedidos via customerUid (uid anônimo gravado
-      // na criação); dono lê os pedidos da loja. A query do cliente PRECISA
-      // filtrar por customerUid == uid (my-orders/banner já fazem isso).
+      // na criação); a equipe da loja (dono ou operador) lê os pedidos dela.
+      // A query do cliente PRECISA filtrar por customerUid == uid.
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
-        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        isStaffOf(resource.data.ownerId)
       );
-      allow update: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update: if isStaffOf(resource.data.ownerId);
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
-        (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        isStaffOf(request.resource.data.ownerId)
       );
       allow delete: if false;
     }
 
     // Encomendas (modalidade confeitaria): mesmo modelo de orders, em coleção
     // PRÓPRIA (não filtrada pela janela do caixa — registra com caixa fechado).
-    // Cliente (anônimo) cria a própria encomenda (customerUid == uid); o dono
-    // lê/atualiza as encomendas da loja (ownerId == uid).
+    // Cliente (anônimo) cria a própria encomenda (customerUid == uid); a
+    // equipe da loja lê/atualiza as encomendas dela.
     match /encomendas/{encomendaId} {
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
-        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        isStaffOf(resource.data.ownerId)
       );
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
-        (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        isStaffOf(request.resource.data.ownerId)
       );
-      allow update: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update: if isStaffOf(resource.data.ownerId);
       allow delete: if false;
     }
 
     match /cash_registers/{registerId} {
-      // Movimento financeiro é só do dono. O cardápio do cliente usa
-      // store_profiles.isCaixaAberto para saber se o caixa está aberto.
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create, update, delete: if isAdmin() && (
-        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
-        (resource.data.ownerId == request.auth.uid)
-      );
+      // Movimento financeiro é da equipe da loja (dono ou operador ativo — o
+      // operador é justamente quem abre/fecha caixa). O cardápio do cliente
+      // usa store_profiles.isCaixaAberto para saber se o caixa está aberto.
+      allow get, list: if isStaffOf(resource.data.ownerId);
+      allow create, update, delete: if
+        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
+        (request.method != 'create' && isStaffOf(resource.data.ownerId));
     }
 
     match /cash_transactions/{transactionId} {
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create, update, delete: if isAdmin() && (
-        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
-        (resource.data.ownerId == request.auth.uid)
-      );
+      allow get, list: if isStaffOf(resource.data.ownerId);
+      allow create, update, delete: if
+        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
+        (request.method != 'create' && isStaffOf(resource.data.ownerId));
     }
 
     match /clientes/{clienteId} {
@@ -125,23 +174,36 @@ service cloud.firestore {
       // o cliente por telefone para a Conta da Casa. Fechar mais que isso
       // exige mover essas consultas para API routes com Admin SDK.
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin() && (
-        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
-        (resource.data.ownerId == request.auth.uid)
-      );
+      // Cadastro/atualização pela equipe (sincronia automática de cliente ao
+      // receber/finalizar pedido também roda no PDV do operador). Excluir
+      // cadastro continua só do dono.
+      allow create, update: if
+        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
+        (request.method != 'create' && isStaffOf(resource.data.ownerId));
+      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
 
       match /credit_transactions/{transactionId} {
         // Extrato visível para usuário logado (cliente vê o próprio fiado no
-        // my-orders); lançamentos só pelo dono da loja do cliente.
+        // my-orders); lançamentos pela equipe da loja do cliente (o Prazo é
+        // fechado no PDV, inclusive pelo operador).
         allow get, list: if isSignedIn();
-        allow create, update, delete: if isAdmin()
-          && get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId == request.auth.uid;
+        allow create, update, delete: if
+          isStaffOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
       }
     }
 
     match /store_profiles/{profileId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin() && request.auth.uid == profileId;
+      // Operador ativo só toca em dois pontos operacionais do perfil:
+      // isCaixaAberto (abrir/fechar caixa) e general.disableDelivery (botão
+      // liga/desliga delivery do PDV). Todo o resto é só do dono.
+      allow update: if (isAdmin() && request.auth.uid == profileId) ||
+        (isOperatorOf(profileId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCaixaAberto'])) ||
+        (isOperatorOf(profileId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['general'])
+          && request.resource.data.general.diff(resource.data.general).affectedKeys().hasOnly(['disableDelivery']));
+      allow create, delete: if isAdmin() && request.auth.uid == profileId;
     }
 
     match /active_sessions/{sessionId} {
@@ -149,7 +211,7 @@ service cloud.firestore {
       // então a escrita é aberta mas restrita ao formato do ping.
       allow create, update: if request.resource.data.keys().hasOnly(['storeId', 'lastActive']);
       allow delete: if true;
-      allow get, list: if isAdmin();
+      allow get, list: if isAdmin() || isActiveOperator();
     }
 
     match /promotions/{promoId} {

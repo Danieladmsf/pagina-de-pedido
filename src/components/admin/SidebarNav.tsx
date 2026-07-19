@@ -19,7 +19,8 @@ import {
   Flame,
   Printer,
   Megaphone,
-  CakeSlice
+  CakeSlice,
+  ShieldCheck
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -114,6 +115,21 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
 
         {/* Perfil expansível */}
         <div className="mt-4 pt-4 border-t border-white/10">
+          <button
+            onClick={() => setActiveTab('permissoes_pdv')}
+            className={`mb-1 flex w-full items-center overflow-hidden rounded-lg transition-colors ${
+              activeTab === 'permissoes_pdv' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-300 hover:bg-white/5'
+            }`}
+            style={{ height: '44px' }}
+          >
+            <div className="flex h-full w-12 shrink-0 items-center justify-center">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <span className={`whitespace-nowrap font-medium transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
+              Permissões do PDV
+            </span>
+          </button>
+
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className={`flex items-center w-full rounded-lg transition-colors overflow-hidden shrink-0 ${

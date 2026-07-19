@@ -8,6 +8,7 @@
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "NODE_ENV=production next build",
     "start": "next start",
+    "test": "vitest run",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "claude:auto": "bash claude-auto.txt"
@@ -72,6 +73,7 @@
     "genkit-cli": "^1.28.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

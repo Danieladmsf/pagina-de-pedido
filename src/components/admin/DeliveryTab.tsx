@@ -26,6 +26,7 @@ import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
+import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -41,9 +42,10 @@ interface DeliveryTabProps {
   categories?: any[];
   addons?: any[];
   addonCategories?: any[];
+  permissions: PdvPermissions;
 }
 
-export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [] }: DeliveryTabProps) {
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [], permissions }: DeliveryTabProps) {
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
   // - qualquer pedido de entrega (delivery), de qualquer origem;
@@ -89,9 +91,14 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     feeAlreadyOffTotal,
     feePaidToMotoboyOnPrazo: true,
     formasPagamento: FORMAS_PAGAMENTO,
+    allowAdjustments: can(permissions, 'actions.delivery.descontoAcrescimo'),
   });
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
+
+  const showPermissionRevokedToast = () => {
+    toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+  };
   
   // Clientes Online
   const [onlineCount, setOnlineCount] = useState(0);
@@ -151,8 +158,47 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
   };
 
+  const openMotoboyModal = (config: any) => {
+    if (!can(permissions, 'actions.delivery.mudarStatus')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setShowMotoboyModal(config);
+  };
+
+  const handleStatusChange = (order: any, status: string) => {
+    if (!can(permissions, 'actions.delivery.mudarStatus')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    updateOrderStatus(order.id, status);
+  };
+
+  const handleReceived = (order: any) => {
+    if (!can(permissions, 'actions.delivery.mudarStatus')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    updateOrderStatus(order.id, 'received');
+    // Impressao vinculada ao fluxo/status continua sendo automatica e nao usa
+    // a permissao de impressao manual.
+    if (storeProfile?.general?.manualPrint || storeProfile?.manualPrint) triggerPrint(order);
+  };
+
+  const handleCancelOrder = (order: any) => {
+    if (!can(permissions, 'actions.delivery.cancelarPedido')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    updateOrderStatus(order.id, 'canceled');
+  };
+
 
   const proceedToPayment = (order: any) => {
+    if (!can(permissions, 'actions.delivery.finalizarPedido')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (isReadOnlyHistorico) {
       toast({ title: 'Sessão histórica', description: 'Abra o caixa atual para alterar ou finalizar pedidos.' });
       return;
@@ -169,6 +215,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   };
 
   const handleOpenEditItems = () => {
+    if (!can(permissions, 'actions.delivery.editarItens')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (!selectedOrder) return;
     setEditItemsCart(
       (selectedOrder.items || []).map((i: any) => ({
@@ -201,6 +251,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   };
 
   const handleSaveEditedItems = async () => {
+    if (!can(permissions, 'actions.delivery.editarItens')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (!db || !selectedOrder) return;
     setIsSavingItems(true);
 
@@ -251,6 +305,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Ao clicar "Marcar Entregue", abre o modal de pagamento
   const handleMarkDelivered = (order: any) => {
+    if (!can(permissions, 'actions.delivery.finalizarPedido')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (isReadOnlyHistorico) {
       toast({ title: 'Sessão histórica', description: 'Pedidos de caixas anteriores ficam apenas para consulta.' });
       return;
@@ -262,8 +320,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     }
     
     // Se pular direto para Entregue sem informar motoboy, força a escolha do motoboy primeiro
-    if (order.orderType === 'delivery' && !order.motoboyId) {
-      setShowMotoboyModal({ 
+    if (
+      order.orderType === 'delivery'
+      && !order.motoboyId
+      && can(permissions, 'actions.delivery.mudarStatus')
+    ) {
+      openMotoboyModal({
         order, 
         dispatch: false, 
         onConfirm: () => proceedToPayment(order) 
@@ -276,6 +338,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Confirmar pagamento + registrar no caixa
   const handleConfirmPayment = async () => {
+    if (!can(permissions, 'actions.delivery.finalizarPedido')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
     if (!fechamento.isSplitMode && !fechamento.selectedPayment) return;
     if (!paymentModalOrder) return;
@@ -353,7 +419,19 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     printOrderReceipt({ order, storeInfo: storeProfile });
   };
 
+  const handleManualPrint = (order: any) => {
+    if (!can(permissions, 'actions.delivery.imprimirCupom')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    triggerPrint(order);
+  };
+
   const assignMotoboy = () => {
+    if (!can(permissions, 'actions.delivery.mudarStatus')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (!showMotoboyModal || !selectedMotoboyId) return;
     
     const updates: any = {};
@@ -460,13 +538,15 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
           </>
         }
       >
-        <Button
-          onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
-          size="sm"
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
-        >
-          Abrir Caixa
-        </Button>
+        {can(permissions, 'tabs.caixa') && can(permissions, 'actions.caixa.abrirCaixa') && (
+          <Button
+            onClick={() => onOpenCaixa ? onOpenCaixa() : toast({ title: 'Como abrir o caixa:', description: 'Acesse a aba Caixa para abrir o caixa.' })}
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold"
+          >
+            Abrir Caixa
+          </Button>
+        )}
       </CaixaFechadoCard>
     );
   }
@@ -562,12 +642,16 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px]">{new Date(selectedOrder.orderDateTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</Badge>
-                <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => setShowMotoboyModal({ order: selectedOrder, dispatch: false })} disabled={isReadOnlyHistorico}>
-                  <Bike className="h-4 w-4" />
-                </Button>
-                <Button size="icon" className="bg-blue-500 hover:bg-blue-600 text-white h-8 w-8" onClick={() => triggerPrint(selectedOrder)}>
-                  <Printer className="h-4 w-4" />
-                </Button>
+                {can(permissions, 'actions.delivery.mudarStatus') && (
+                  <Button size="icon" className="bg-amber-500 hover:bg-amber-600 text-white h-8 w-8" onClick={() => openMotoboyModal({ order: selectedOrder, dispatch: false })} disabled={isReadOnlyHistorico}>
+                    <Bike className="h-4 w-4" />
+                  </Button>
+                )}
+                {can(permissions, 'actions.delivery.imprimirCupom') && (
+                  <Button size="icon" className="bg-blue-500 hover:bg-blue-600 text-white h-8 w-8" onClick={() => handleManualPrint(selectedOrder)}>
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -575,20 +659,17 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             <div className="flex items-center gap-1 mb-2 px-1 py-1.5 bg-slate-50 rounded-lg">
               <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-200 -z-10"></div>
               {[
-                { key: 'received', label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => { 
-                  updateOrderStatus(selectedOrder.id, 'received'); 
-                  if (storeProfile?.general?.manualPrint || storeProfile?.manualPrint) triggerPrint(selectedOrder); 
-                } },
-                { key: 'ready', label: 'Pronto', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => updateOrderStatus(selectedOrder.id, 'ready') },
-                { key: 'out', label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
+                { key: 'received', permission: 'actions.delivery.mudarStatus' as const, label: 'Recebido', active: ['received','ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => handleReceived(selectedOrder) },
+                { key: 'ready', permission: 'actions.delivery.mudarStatus' as const, label: 'Pronto', active: ['ready','out_for_delivery','delivered'].includes(selectedOrder.status), action: () => handleStatusChange(selectedOrder, 'ready') },
+                { key: 'out', permission: 'actions.delivery.mudarStatus' as const, label: selectedOrder.orderType === 'pickup' ? 'Retirada' : selectedOrder.orderType === 'dine_in' ? 'Disponível' : 'Saiu entrega', active: ['out_for_delivery','delivered'].includes(selectedOrder.status), action: () => {
                   if (selectedOrder.orderType === 'delivery' && !selectedOrder.motoboyId) {
-                    setShowMotoboyModal({ order: selectedOrder, dispatch: true });
+                    openMotoboyModal({ order: selectedOrder, dispatch: true });
                   } else {
-                    updateOrderStatus(selectedOrder.id, 'out_for_delivery');
+                    handleStatusChange(selectedOrder, 'out_for_delivery');
                   }
                 } },
-                { key: 'delivered', label: 'Entregue', active: selectedOrder.status === 'delivered', action: () => handleMarkDelivered(selectedOrder) },
-              ].map(step => (
+                { key: 'delivered', permission: 'actions.delivery.finalizarPedido' as const, label: 'Entregue', active: selectedOrder.status === 'delivered', action: () => handleMarkDelivered(selectedOrder) },
+              ].filter(step => can(permissions, step.permission)).map(step => (
                 <button 
                   key={step.key} 
                   onClick={step.action} 
@@ -599,13 +680,15 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   {step.label}
                 </button>
               ))}
-              <button 
-                onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')} 
-                disabled={isReadOnlyHistorico || selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
-                className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
-              >
-                ✕
-              </button>
+              {can(permissions, 'actions.delivery.cancelarPedido') && (
+                <button
+                  onClick={() => handleCancelOrder(selectedOrder)}
+                  disabled={isReadOnlyHistorico || selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                  className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Endereço + Resumo Financeiro - Linha compacta */}
@@ -630,7 +713,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
             <div className="flex justify-between items-center mb-1.5 shrink-0">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Itens do Pedido</span>
-              {!isReadOnlyHistorico && selectedOrder.status !== 'delivered' && selectedOrder.status !== 'canceled' && (
+              {!isReadOnlyHistorico && selectedOrder.status !== 'delivered' && selectedOrder.status !== 'canceled' && can(permissions, 'actions.delivery.editarItens') && (
                 <Button 
                   size="sm" 
                   variant="outline" 
@@ -733,6 +816,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             setQuickRegisterModal(null);
             handleConfirmPayment();
           }}
+          canSubmit={() => can(permissions, 'actions.delivery.finalizarPedido')}
+          onSubmitBlocked={showPermissionRevokedToast}
           db={db}
           ownerId={storeProfile?.id || (user as any)?.uid || 'default'}
           initialName={quickRegisterModal.name}

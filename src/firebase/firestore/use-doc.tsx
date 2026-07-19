@@ -48,6 +48,11 @@ export function useDoc<T = any>(
   // em que isLoading=false e data=null antes do efeito rodar (falso "sem dados").
   const [isLoading, setIsLoading] = useState<boolean>(!!memoizedDocRef);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
+  // Keep the result tied to the exact reference that produced it. When the
+  // authenticated user changes, React renders once before the new listener
+  // returns; masking the previous result prevents data from user A being
+  // exposed while user B is loading.
+  const [resolvedDocRef, setResolvedDocRef] = useState<DocumentReference<DocumentData> | null>(null);
   // Marca se já recebemos ao menos um snapshot. Distingue "primeira carga" de
   // "revalidando" (re-subscrição). Sem isso, toda re-subscrição setava
   // isLoading=true e fazia gates/modais piscarem (stale-while-revalidate).
@@ -56,6 +61,7 @@ export function useDoc<T = any>(
   useEffect(() => {
     if (!memoizedDocRef) {
       hasLoadedRef.current = false;
+      setResolvedDocRef(null);
       setData(null);
       setIsLoading(false);
       setError(null);
@@ -78,6 +84,7 @@ export function useDoc<T = any>(
           // Document does not exist
           setData(null);
         }
+        setResolvedDocRef(memoizedDocRef);
         hasLoadedRef.current = true;
         setError(null); // Clear any previous error on successful snapshot (even if doc doesn't exist)
         setIsLoading(false);
@@ -89,6 +96,7 @@ export function useDoc<T = any>(
         })
 
         hasLoadedRef.current = false; // permite re-exibir loading numa nova tentativa
+        setResolvedDocRef(memoizedDocRef)
         setError(contextualError)
         setData(null)
         setIsLoading(false)
@@ -101,5 +109,14 @@ export function useDoc<T = any>(
     return () => unsubscribe();
   }, [memoizedDocRef]); // Re-run if the memoizedDocRef changes.
 
-  return { data, isLoading, error };
+  if (!memoizedDocRef) {
+    return { data: null, isLoading: false, error: null };
+  }
+
+  const isResolvedForCurrentRef = resolvedDocRef === memoizedDocRef;
+  return {
+    data: isResolvedForCurrentRef ? data : null,
+    isLoading: !isResolvedForCurrentRef || isLoading,
+    error: isResolvedForCurrentRef ? error : null,
+  };
 }

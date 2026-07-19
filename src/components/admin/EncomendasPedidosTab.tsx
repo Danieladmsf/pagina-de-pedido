@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote } from 'lucide-react';
+import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 
 const money = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatDateBR = (iso?: string) => {
@@ -41,12 +42,23 @@ function itemsSummary(enc: Encomenda): string[] {
   return out;
 }
 
-export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false }: {
+export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false, permissions }: {
   db: any; user: any; storeProfile: any;
   registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
   caixaAberto?: boolean;
+  permissions: PdvPermissions;
 }) {
   const { toast } = useToast();
+  const permissionsRef = React.useRef(permissions);
+  permissionsRef.current = permissions;
+  const allowStatus = can(permissions, 'actions.encomendas_pedidos.mudarStatus');
+  const allowEdit = can(permissions, 'actions.encomendas_pedidos.editarEncomenda');
+  const allowSignal = can(permissions, 'actions.encomendas_pedidos.lancarSinal');
+  const allowReprint = can(permissions, 'actions.encomendas_pedidos.reimprimir');
+  const notifyPermissionRemoved = () => toast({
+    variant: 'destructive',
+    title: 'Permissão removida pelo administrador',
+  });
   const [filter, setFilter] = useState<'todas' | EncomendaStatus>('todas');
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
   const [lancandoId, setLancandoId] = useState<string | null>(null);
@@ -67,6 +79,10 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   // o card de venda do caixa casa "#XXXXX" com a coleção orders (prefixo de 5
   // chars), e o id da encomenda não está lá; sem # não há falso vínculo.
   async function lancarSinal(enc: Encomenda & { id: string }): Promise<boolean> {
+    if (!can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
+      notifyPermissionRemoved();
+      return false;
+    }
     if (!registrarLancamento || enc.sinalLancado || !(enc.sinal > 0)) return false;
     if (!caixaAberto) {
       toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa e use "Lançar sinal no caixa" no card da encomenda.' });
@@ -93,14 +109,36 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   }
 
   async function changeStatus(enc: Encomenda & { id: string }, status: EncomendaStatus) {
+    if (!can(permissionsRef.current, 'actions.encomendas_pedidos.mudarStatus')) {
+      notifyPermissionRemoved();
+      return;
+    }
     try {
       await updateDoc(doc(db, 'encomendas', enc.id), { status });
       // Confirmar = sinal pago → registra no caixa (se ainda não registrado).
-      if (status === 'confirmada') await lancarSinal(enc);
+      if (status === 'confirmada' && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
+        await lancarSinal(enc);
+      }
     } catch (err) {
       console.error('[encomendas] erro ao atualizar status:', err);
       toast({ variant: 'destructive', title: 'Erro ao atualizar status' });
     }
+  }
+
+  function openEdit(enc: Encomenda & { id: string }) {
+    if (!can(permissionsRef.current, 'actions.encomendas_pedidos.editarEncomenda')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    setEditing(enc);
+  }
+
+  function reprint(enc: Encomenda & { id: string }) {
+    if (!can(permissionsRef.current, 'actions.encomendas_pedidos.reimprimir')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    printEncomendaReceipt({ enc, storeInfo: storeProfile });
   }
 
   return (
@@ -137,9 +175,12 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
                 key={e.id}
                 enc={e}
                 onStatus={(s) => changeStatus(e, s)}
-                onEdit={() => setEditing(e)}
-                onPrint={() => printEncomendaReceipt({ enc: e, storeInfo: storeProfile })}
-                canLancarSinal={!!registrarLancamento}
+                onEdit={() => openEdit(e)}
+                onPrint={() => reprint(e)}
+                allowStatus={allowStatus}
+                allowEdit={allowEdit}
+                canLancarSinal={allowSignal && !!registrarLancamento}
+                allowReprint={allowReprint}
                 lancando={lancandoId === e.id}
                 onLancarSinal={() => lancarSinal(e)}
               />
@@ -152,20 +193,30 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         <EditEncomendaDialog
           db={db}
           enc={editing}
+          permissions={permissions}
           onClose={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
+          onSaved={(status) => {
+            const edited = editing;
+            setEditing(null);
+            if (status === 'confirmada' && (edited.status || 'orcamento') !== 'confirmada' && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
+              void lancarSinal(edited);
+            }
+          }}
         />
       )}
     </div>
   );
 }
 
-function PedidoCard({ enc, onStatus, onEdit, onPrint, canLancarSinal, lancando, onLancarSinal }: {
+function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, canLancarSinal, allowReprint, lancando, onLancarSinal }: {
   enc: Encomenda & { id: string };
   onStatus: (s: EncomendaStatus) => void;
   onEdit: () => void;
   onPrint: () => void;
+  allowStatus: boolean;
+  allowEdit: boolean;
   canLancarSinal: boolean;
+  allowReprint: boolean;
   lancando: boolean;
   onLancarSinal: () => void;
 }) {
@@ -208,22 +259,24 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, canLancarSinal, lancando, 
           </span>
         </span>
         <div className="flex items-center gap-2">
-          <select
-            value={status}
-            onChange={(ev) => onStatus(ev.target.value as EncomendaStatus)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            title="Status"
-          >
-            {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
-          </select>
+          {allowStatus && (
+            <select
+              value={status}
+              onChange={(ev) => onStatus(ev.target.value as EncomendaStatus)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              title="Status"
+            >
+              {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
+            </select>
+          )}
           {sinalPendente && (
             <Button size="sm" onClick={onLancarSinal} disabled={lancando} className="bg-emerald-600 text-white hover:bg-emerald-700">
               {lancando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Banknote className="mr-1 h-3.5 w-3.5" />}
               Lançar sinal no caixa
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" /> Editar</Button>
-          <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-3.5 w-3.5" /> Reimprimir</Button>
+          {allowEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" /> Editar</Button>}
+          {allowReprint && <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-3.5 w-3.5" /> Reimprimir</Button>}
         </div>
       </div>
 
@@ -256,10 +309,12 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, canLancarSinal, lancando, 
 
 // Edição LEVE: status, entrega (data/hora/forma), observação e contato.
 // Itens e valores permanecem como o cliente enviou.
-function EditEncomendaDialog({ db, enc, onClose, onSaved }: {
-  db: any; enc: Encomenda & { id: string }; onClose: () => void; onSaved: () => void;
+function EditEncomendaDialog({ db, enc, permissions, onClose, onSaved }: {
+  db: any; enc: Encomenda & { id: string }; permissions: PdvPermissions; onClose: () => void; onSaved: (status: EncomendaStatus) => void;
 }) {
   const { toast } = useToast();
+  const allowEdit = can(permissions, 'actions.encomendas_pedidos.editarEncomenda');
+  const allowStatus = can(permissions, 'actions.encomendas_pedidos.mudarStatus');
   const [status, setStatus] = useState<EncomendaStatus>((enc.status || 'orcamento') as EncomendaStatus);
   const [date, setDate] = useState(enc.delivery?.date || '');
   const [time, setTime] = useState(enc.delivery?.time || '');
@@ -270,19 +325,29 @@ function EditEncomendaDialog({ db, enc, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   async function save() {
+    if (!can(permissions, 'actions.encomendas_pedidos.editarEncomenda')) {
+      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+      return;
+    }
+    const statusChanged = status !== (enc.status || 'orcamento');
+    if (statusChanged && !can(permissions, 'actions.encomendas_pedidos.mudarStatus')) {
+      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+      return;
+    }
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'encomendas', enc.id), {
-        status,
+      const patch: any = {
         // Espalha o delivery existente para não clobberar endereço/bairro/taxa
         // gravados pelo wizard (street/neighborhood/feeStatus...).
         delivery: { ...(enc.delivery || {}), date, time, type },
         orderNotes: notes,
         customerName: name,
         customerPhone: phone.replace(/\D/g, ''),
-      });
+      };
+      if (statusChanged) patch.status = status;
+      await updateDoc(doc(db, 'encomendas', enc.id), patch);
       toast({ title: 'Encomenda atualizada' });
-      onSaved();
+      onSaved(status);
     } catch (err) {
       console.error('[encomendas] erro ao editar:', err);
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Tente novamente.' });
@@ -299,39 +364,39 @@ function EditEncomendaDialog({ db, enc, onClose, onSaved }: {
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+            {allowStatus && <div className="space-y-1.5">
               <Label className="text-sm">Status</Label>
-              <select value={status} onChange={(e) => setStatus(e.target.value as EncomendaStatus)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <select disabled={!allowEdit} value={status} onChange={(e) => setStatus(e.target.value as EncomendaStatus)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                 {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
               </select>
-            </div>
+            </div>}
             <div className="space-y-1.5">
               <Label className="text-sm">Forma</Label>
-              <select value={type} onChange={(e) => setType(e.target.value as any)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <select disabled={!allowEdit} value={type} onChange={(e) => setType(e.target.value as any)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                 <option value="retirada">Retirada no local</option>
                 <option value="delivery">Entrega</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Data de entrega</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input disabled={!allowEdit} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Horário</Label>
-              <Input value={time} onChange={(e) => setTime(e.target.value)} placeholder="14:00" />
+              <Input disabled={!allowEdit} value={time} onChange={(e) => setTime(e.target.value)} placeholder="14:00" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">Cliente</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Input disabled={!allowEdit} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm">WhatsApp</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input disabled={!allowEdit} value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
           <div className="space-y-1.5">
             <Label className="text-sm">Observação</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+            <Textarea disabled={!allowEdit} value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
           <p className="text-xs text-muted-foreground">Itens e valores não são alterados aqui — apenas dados do pedido/entrega.</p>
         </div>

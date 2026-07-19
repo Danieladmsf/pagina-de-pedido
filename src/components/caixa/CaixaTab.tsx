@@ -18,6 +18,7 @@ import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, L
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
+import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -48,6 +49,7 @@ export function CaixaTab({
   selectedCaixaId,
   onSelectedCaixaIdChange,
   updateOrderStatus,
+  permissions,
 }: {
   storeProfile?: any;
   orders?: any[];
@@ -58,6 +60,7 @@ export function CaixaTab({
   onSelectedCaixaIdChange?: (id: string | null) => void;
   /** Fluxo completo de cancelamento do pedido (page.tsx): devolve estoque e avisa o cliente. */
   updateOrderStatus?: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
+  permissions: PdvPermissions;
 }) {
   const {
     caixaAberto,
@@ -79,6 +82,10 @@ export function CaixaTab({
   });
   const { toast } = useToast();
 
+  const showPermissionRevokedToast = () => {
+    toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+  };
+
   // Modal state
   const [modalOpen, setModalOpen] = useState<'abrir' | 'sangria' | 'suprimento' | 'venda' | null>(null);
   const [valorInput, setValorInput] = useState<number>(0);
@@ -89,6 +96,10 @@ export function CaixaTab({
   const [ultimoSaldoRef, setUltimoSaldoRef] = useState<number | null>(null);
 
   const openAbrirCaixaModal = () => {
+    if (!can(permissions, 'actions.caixa.abrirCaixa')) {
+      showPermissionRevokedToast();
+      return;
+    }
     valorTouchedRef.current = false; // nova abertura: pode re-inicializar o valor
     setModalOpen('abrir');
   };
@@ -116,11 +127,11 @@ export function CaixaTab({
   }, [modalOpen, caixasOrdenados]);
 
   useEffect(() => {
-    if (autoOpenAbrirCaixa && !caixaAberto && !loading) {
+    if (autoOpenAbrirCaixa && !caixaAberto && !loading && can(permissions, 'actions.caixa.abrirCaixa')) {
       openAbrirCaixaModal();
       if (onModalOpened) onModalOpened();
     }
-  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, loading]);
+  }, [autoOpenAbrirCaixa, caixaAberto, onModalOpened, loading, permissions]);
   const [formaPagamentoInput, setFormaPagamentoInput] = useState('dinheiro');
   const [justificativaInput, setJustificativaInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -152,6 +163,19 @@ export function CaixaTab({
   const [cancelVendaTarget, setCancelVendaTarget] = useState<LancamentoCaixa | null>(null);
   const [cancelVendaMotivo, setCancelVendaMotivo] = useState('');
   const [isCancelingVenda, setIsCancelingVenda] = useState(false);
+  const isCaixaHistoricoSelecionado = !!caixaSelecionadoId
+    && caixasOrdenados.some(caixa => caixa.id === caixaSelecionadoId && caixa.status === 'fechado');
+
+  // Revogacao do historico prevalece inclusive sobre uma sessao ja aberta.
+  useEffect(() => {
+    if (can(permissions, 'actions.caixa.verCaixasAnteriores')) return;
+    if (view === 'anteriores' || isCaixaHistoricoSelecionado) {
+      setView('caixa');
+      setCaixaSelecionadoId(null);
+      setPrintRequested(false);
+      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
+    }
+  }, [permissions, view, isCaixaHistoricoSelecionado, setCaixaSelecionadoId, toast]);
 
   // ---- Totalizadores ----
   const totais = useMemo(() => {
@@ -444,8 +468,54 @@ export function CaixaTab({
   };
 
   // ---- Handlers ----
+  const openMovimentacaoModal = (tipo: 'sangria' | 'suprimento') => {
+    const permitido = tipo === 'sangria'
+      ? can(permissions, 'actions.caixa.sangria')
+      : can(permissions, 'actions.caixa.suprimento');
+    if (!permitido) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setModalOpen(tipo);
+  };
+
+  const openCaixasAnteriores = () => {
+    if (!can(permissions, 'actions.caixa.verCaixasAnteriores')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setView('anteriores');
+  };
+
+  const openCaixaAnterior = (id: string, printAfterOpen = false) => {
+    if (!can(permissions, 'actions.caixa.verCaixasAnteriores')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setCaixaSelecionadoId(id);
+    setView('caixa');
+    if (printAfterOpen) setPrintRequested(true);
+  };
+
+  const openCancelarVendaModal = (lanc: LancamentoCaixa) => {
+    if (!can(permissions, 'actions.caixa.cancelarVenda')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setCancelVendaMotivo('');
+    setCancelVendaTarget(lanc);
+  };
+
   const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      (modalOpen === 'abrir' && !can(permissions, 'actions.caixa.abrirCaixa'))
+      || (modalOpen === 'sangria' && !can(permissions, 'actions.caixa.sangria'))
+      || (modalOpen === 'suprimento' && !can(permissions, 'actions.caixa.suprimento'))
+    ) {
+      showPermissionRevokedToast();
+      return;
+    }
     setErrorMsg('');
     if (valorInput <= 0) {
       setErrorMsg('Informe um valor maior que zero.');
@@ -513,6 +583,10 @@ export function CaixaTab({
   // lançamento (efeito financeiro), depois o pedido — se o pedido falhar, o
   // dinheiro já não soma e o operador é avisado para cancelar pelo Delivery.
   const confirmarCancelamentoVenda = async () => {
+    if (!can(permissions, 'actions.caixa.cancelarVenda')) {
+      showPermissionRevokedToast();
+      return;
+    }
     if (!cancelVendaTarget) return;
     setIsCancelingVenda(true);
     try {
@@ -545,6 +619,10 @@ export function CaixaTab({
   };
 
   const reativarVenda = async (lanc: LancamentoCaixa) => {
+    if (!can(permissions, 'actions.caixa.cancelarVenda')) {
+      showPermissionRevokedToast();
+      return;
+    }
     try {
       await setVendaCancelada(lanc.id, false);
 
@@ -838,6 +916,10 @@ export function CaixaTab({
   };
 
   const handleFecharCaixa = () => {
+    if (!can(permissions, 'actions.caixa.fecharCaixa')) {
+      showPermissionRevokedToast();
+      return;
+    }
     // ─── Segurança: bloquear se houver pedidos abertos ───
     const pedidosAbertos = (orders || []).filter((o: any) => {
       if (['delivered', 'canceled'].includes(o.status)) return false;
@@ -897,6 +979,12 @@ export function CaixaTab({
   };
 
   const confirmarFechamento = async () => {
+    if (!can(permissions, 'actions.caixa.fecharCaixa')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    // Deduções/sobras geradas pelo próprio fechamento pertencem à capacidade
+    // fecharCaixa. sangria/suprimento controlam apenas os lançamentos manuais.
     setIsSubmitting(true);
     try {
       const detalhesMotoboys = motoboysFechamento.map(m => ({
@@ -957,6 +1045,10 @@ export function CaixaTab({
   };
 
   const handlePrint = () => {
+    if (isCaixaHistoricoSelecionado && !can(permissions, 'actions.caixa.verCaixasAnteriores')) {
+      showPermissionRevokedToast();
+      return;
+    }
     const isFechado = caixaAtual?.status === 'fechado';
     const motoboyRows = isFechado
       ? caixaAtual?.fechamentoDetalhes?.motoboys || []
@@ -1135,6 +1227,14 @@ export function CaixaTab({
     `);
   };
 
+  const handlePrintPreview = () => {
+    if (!can(permissions, 'actions.caixa.fecharCaixa')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    handlePrint();
+  };
+
   const resetForm = () => {
     valorTouchedRef.current = false;
     setValorInput(0);
@@ -1152,13 +1252,18 @@ export function CaixaTab({
 
   // Safe print trigger
   useEffect(() => {
+    if (printRequested && isCaixaHistoricoSelecionado && !can(permissions, 'actions.caixa.verCaixasAnteriores')) {
+      setPrintRequested(false);
+      return;
+    }
     if (printRequested && !loading && caixaAtual) {
-      setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
         handlePrint();
         setPrintRequested(false);
       }, 300);
+      return () => window.clearTimeout(timeoutId);
     }
-  }, [printRequested, loading, caixaAtual]);
+  }, [printRequested, loading, caixaAtual, isCaixaHistoricoSelecionado, permissions]);
 
   if (loading) {
     return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -1168,7 +1273,7 @@ export function CaixaTab({
     <div className="flex flex-col h-full gap-2 min-h-0">
 
 
-      {view === 'caixa' && (caixaAberto || caixaSelecionadoId) && caixaAtual && (
+      {view === 'caixa' && (isCaixaHistoricoSelecionado ? can(permissions, 'actions.caixa.verCaixasAnteriores') : !!caixaAberto) && caixaAtual && (
         <>
           {/* ─── Header: Sessão + Ações ─── */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-sm border shrink-0">
@@ -1194,29 +1299,35 @@ export function CaixaTab({
 
             {/* Ações */}
             <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
-              {!caixaAberto && !caixaSelecionadoId && (
+              {!caixaAberto && !caixaSelecionadoId && can(permissions, 'actions.caixa.abrirCaixa') && (
                 <Button onClick={openAbrirCaixaModal} className="bg-orange-500 hover:bg-orange-600 text-white">
                   Abrir Caixa
                 </Button>
               )}
 
-              {caixaAberto || caixaSelecionadoId ? (
-                <Button onClick={() => setView('anteriores')} variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
+              {(caixaAberto || caixaSelecionadoId) && can(permissions, 'actions.caixa.verCaixasAnteriores') ? (
+                <Button onClick={openCaixasAnteriores} variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
                   <ArrowLeft className="h-4 w-4 mr-1" /> Caixas Anteriores
                 </Button>
               ) : null}
 
               {isAberto && (
                 <>
-                  <Button onClick={() => setModalOpen('suprimento')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                    <Plus className="h-4 w-4 mr-1" /> Suprimento
-                  </Button>
-                  <Button onClick={() => setModalOpen('sangria')} className="bg-rose-500 hover:bg-rose-600 text-white">
-                    <Minus className="h-4 w-4 mr-1" /> Sangria
-                  </Button>
-                  <Button onClick={handleFecharCaixa} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" disabled={isSubmitting}>
-                    <Lock className="h-4 w-4 mr-1" /> Fechar Caixa
-                  </Button>
+                  {can(permissions, 'actions.caixa.suprimento') && (
+                    <Button onClick={() => openMovimentacaoModal('suprimento')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                      <Plus className="h-4 w-4 mr-1" /> Suprimento
+                    </Button>
+                  )}
+                  {can(permissions, 'actions.caixa.sangria') && (
+                    <Button onClick={() => openMovimentacaoModal('sangria')} className="bg-rose-500 hover:bg-rose-600 text-white">
+                      <Minus className="h-4 w-4 mr-1" /> Sangria
+                    </Button>
+                  )}
+                  {can(permissions, 'actions.caixa.fecharCaixa') && (
+                    <Button onClick={handleFecharCaixa} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" disabled={isSubmitting}>
+                      <Lock className="h-4 w-4 mr-1" /> Fechar Caixa
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -1359,7 +1470,7 @@ export function CaixaTab({
                               )}
                             </TableCell>
                             <TableCell className="pr-6 text-right">
-                              {podeCancelar && (
+                              {podeCancelar && can(permissions, 'actions.caixa.cancelarVenda') && (
                                 isCanceled ? (
                                   <Button
                                     variant="ghost"
@@ -1376,7 +1487,7 @@ export function CaixaTab({
                                     size="icon"
                                     className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                                     title="Cancelar venda (não soma no fechamento)"
-                                    onClick={(e) => { e.stopPropagation(); setCancelVendaMotivo(''); setCancelVendaTarget(lanc); }}
+                                    onClick={(e) => { e.stopPropagation(); openCancelarVendaModal(lanc); }}
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
@@ -1429,13 +1540,17 @@ export function CaixaTab({
             </>
           }
         >
-          <Button onClick={() => setView('anteriores')} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
-          <Button onClick={openAbrirCaixaModal} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
+          {can(permissions, 'actions.caixa.verCaixasAnteriores') && (
+            <Button onClick={openCaixasAnteriores} variant="outline" size="sm" className="border-slate-300 text-slate-700 font-bold">Caixas Anteriores</Button>
+          )}
+          {can(permissions, 'actions.caixa.abrirCaixa') && (
+            <Button onClick={openAbrirCaixaModal} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 font-bold">Abrir Caixa</Button>
+          )}
         </CaixaFechadoCard>
       )}
 
       {/* Tela: Caixas Anteriores */}
-      {view === 'anteriores' && (
+      {view === 'anteriores' && can(permissions, 'actions.caixa.verCaixasAnteriores') && (
         <div className="flex flex-col h-full min-h-0 gap-4">
           <div className="flex justify-between items-center shrink-0">
             <div>
@@ -1475,10 +1590,10 @@ export function CaixaTab({
                         <TableCell className="text-muted-foreground">{c.usuarioAbertura || 'Principal'}</TableCell>
                         <TableCell className="pr-4 text-right">
                           <div className="flex gap-1 justify-end">
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => { setCaixaSelecionadoId(c.id); setView('caixa'); }}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" onClick={() => openCaixaAnterior(c.id)}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-600" onClick={() => { setCaixaSelecionadoId(c.id); setView('caixa'); setPrintRequested(true); }}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-600" onClick={() => openCaixaAnterior(c.id, true)}>
                               <Printer className="h-4 w-4" />
                             </Button>
                           </div>
@@ -2413,9 +2528,11 @@ export function CaixaTab({
             <div className="flex gap-2 w-full sm:w-auto sm:justify-end">
               {fechamentoStep === fechamentoSteps.length - 1 ? (
                 <>
-                  <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrint}>
-                    <Printer className="h-4 w-4 mr-1" /> Imprimir prévia
-                  </Button>
+                  {can(permissions, 'actions.caixa.fecharCaixa') && (
+                    <Button variant="outline" className="border-blue-300 text-blue-600" onClick={handlePrintPreview}>
+                      <Printer className="h-4 w-4 mr-1" /> Imprimir prévia
+                    </Button>
+                  )}
                   <Button
                     className="bg-red-600 hover:bg-red-700 text-white font-bold"
                     onClick={confirmarFechamento}
