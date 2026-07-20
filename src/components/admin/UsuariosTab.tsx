@@ -116,7 +116,7 @@ const PDV_TAB_OPTIONS: PdvTabOption[] = [
       {
         path: 'actions.caixa.verCaixasAnteriores',
         label: 'Ver caixas anteriores',
-        description: 'Histórico financeiro agregado é exclusivo do master.',
+        description: 'Só você vê o histórico e os totais de caixas anteriores.',
         ownerOnly: true,
       },
     ],
@@ -144,7 +144,7 @@ const PDV_TAB_OPTIONS: PdvTabOption[] = [
       {
         path: 'actions.novo_pedido.vendaPrazo',
         label: 'Vender a prazo',
-        description: 'Conta da Casa permanece exclusiva do master até a base de clientes ser separada.',
+        description: 'A venda no fiado (Conta da Casa) fica só com você por enquanto.',
         ownerOnly: true,
       },
     ],
@@ -162,7 +162,7 @@ const PDV_TAB_OPTIONS: PdvTabOption[] = [
       {
         path: 'actions.mesas.vendaPrazo',
         label: 'Vender a prazo',
-        description: 'Conta da Casa permanece exclusiva do master até a base de clientes ser separada.',
+        description: 'A venda no fiado (Conta da Casa) fica só com você por enquanto.',
         ownerOnly: true,
       },
     ],
@@ -268,6 +268,24 @@ function formatCreatedAt(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
+/** Resumo legível das abas do PDV que o funcionário enxerga. */
+function getPdvAccessLabels(permissions: OperatorPermissions): string[] {
+  return PDV_TAB_OPTIONS.filter((tab) => permissions.pdv.tabs[tab.id] === true).map((tab) => tab.label);
+}
+
+/** Módulos do menu lateral (consulta) que o funcionário enxerga. */
+function getRetaguardaAccessLabels(permissions: OperatorPermissions): string[] {
+  return RETAGUARDA_PERMISSION_KEYS
+    .filter((key) => !OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key) && permissions.retaguarda[key] === true)
+    .map((key) => RETAGUARDA_LABELS[key].label);
 }
 
 export function UsuariosTab({ user }: UsuariosTabProps) {
@@ -484,8 +502,8 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
         toast({
           title: updatedUser.active ? 'Usuário ativado' : 'Usuário desativado',
           description: updatedUser.active
-            ? 'O login voltou a ter acesso ao perfil configurado.'
-            : 'Sessões abertas deixam de acessar os dados da loja pelas regras do servidor.',
+            ? 'O funcionário voltou a ter o acesso que você configurou.'
+            : 'O funcionário perde o acesso na mesma hora, mesmo se estiver com o sistema aberto.',
         });
       }
     } catch (error) {
@@ -518,9 +536,9 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
 
       <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950">
         <ShieldCheck className="h-4 w-4" />
-        <AlertTitle>Identidade e dados sensíveis protegidos no servidor</AlertTitle>
+        <AlertTitle>Cada funcionário vê só o que você liberar</AlertTitle>
         <AlertDescription>
-          Desativar corta todo o acesso pelas regras do Firebase, e os módulos sensíveis continuam exclusivos do master. Os controles de ações do PDV também limitam o que aparece e pode ser acionado no aplicativo.
+          Relatórios, faturamento e configurações da loja continuam só com você. Desativar um funcionário bloqueia o acesso na hora, sem apagar o histórico.
         </AlertDescription>
       </Alert>
 
@@ -571,18 +589,48 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
                   <Card key={usuario.uid} className={usuario.active ? '' : 'bg-slate-50 opacity-80'}>
                     <CardHeader className="space-y-3">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <CardTitle className="truncate text-lg">{usuario.name || 'Sem nome'}</CardTitle>
-                          <CardDescription className="truncate">{usuario.email || 'Login do Auth não encontrado'}</CardDescription>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${usuario.active ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : 'bg-slate-400'}`}>
+                            {getInitials(usuario.name || '?')}
+                          </div>
+                          <div className="min-w-0">
+                            <CardTitle className="truncate text-lg">{usuario.name || 'Sem nome'}</CardTitle>
+                            <CardDescription className="truncate">{usuario.email || 'Login não encontrado'}</CardDescription>
+                          </div>
                         </div>
                         <Badge variant={usuario.active ? 'default' : 'secondary'} className={usuario.active ? 'bg-emerald-600' : ''}>
                           {usuario.active ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {usuario.authMissing && <Badge variant="destructive">Auth ausente</Badge>}
-                        {usuario.authDisabled && <Badge variant="destructive">Auth bloqueado</Badge>}
-                        {usuario.emailVerified && <Badge variant="outline">E-mail confirmado</Badge>}
+
+                      {(() => {
+                        const pdvLabels = getPdvAccessLabels(usuario.permissions);
+                        const retLabels = getRetaguardaAccessLabels(usuario.permissions);
+                        return (
+                          <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-medium text-slate-500">Frente de caixa:</span>
+                              {pdvLabels.length > 0
+                                ? pdvLabels.map((label) => (
+                                    <Badge key={label} variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{label}</Badge>
+                                  ))
+                                : <span className="text-xs text-slate-400">nenhuma aba liberada</span>}
+                            </div>
+                            {retLabels.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs font-medium text-slate-500">Também consulta:</span>
+                                {retLabels.map((label) => (
+                                  <Badge key={label} variant="outline">{label}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {usuario.authMissing && <Badge variant="destructive">Login não encontrado</Badge>}
+                        {usuario.authDisabled && <Badge variant="destructive">Login bloqueado</Badge>}
                         {createdAt && <span className="text-xs text-slate-400">Criado em {createdAt}</span>}
                       </div>
                     </CardHeader>
@@ -635,8 +683,8 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
             <DialogTitle>{form.uid ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
             <DialogDescription>
               {form.uid
-                ? 'Altere o nome e o perfil de acesso. O e-mail e o vínculo com a loja não podem ser trocados.'
-                : 'O funcionário receberá um e-mail do Firebase para definir a própria senha.'}
+                ? 'Altere o nome e o que ele pode acessar. O e-mail de login não pode ser trocado.'
+                : 'O funcionário vai receber um e-mail para criar a própria senha e já poder entrar.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -747,7 +795,7 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
             <div>
               <h3 className="text-lg font-bold text-slate-800">Retaguarda</h3>
               <p className="text-sm text-slate-500">
-                Nesta fase, operadores recebem somente consulta de cadastros. Módulos com dados sensíveis continuam exclusivos do master.
+                Por enquanto, o funcionário apenas consulta os cadastros liberados (não edita). Relatórios, faturamento e configurações ficam só com você.
               </p>
             </div>
 
@@ -763,7 +811,7 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
                           {ownerOnly && <LockKeyhole className="h-3.5 w-3.5 text-amber-600" />}
                           <span>{item.label}</span>
                           <Badge variant="outline" className={ownerOnly ? 'border-amber-300 text-amber-700' : 'border-sky-300 text-sky-700'}>
-                            {ownerOnly ? 'Só master' : 'Somente leitura'}
+                            {ownerOnly ? 'Só o dono' : 'Somente leitura'}
                           </Badge>
                         </div>
                         <p className={`mt-1 text-xs ${ownerOnly ? 'text-amber-700' : 'text-slate-500'}`}>{item.description}</p>
@@ -813,10 +861,10 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmation?.kind === 'remove'
-                ? 'O login será apagado do Firebase Auth e não poderá ser recuperado. Pedidos e históricos da loja serão preservados.'
+                ? 'O login será apagado e não poderá ser recuperado. Os pedidos e o histórico da loja continuam salvos.'
                 : confirmation?.usuario.active
-                  ? 'O usuário perderá imediatamente o acesso aos dados da loja, inclusive em sessões que já estejam abertas.'
-                  : 'O usuário voltará a acessar somente as abas e módulos configurados no perfil atual.'}
+                  ? 'O funcionário perde o acesso na hora, mesmo se estiver com o sistema aberto.'
+                  : 'O funcionário volta a ver só as abas e módulos que você deixou marcados.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
