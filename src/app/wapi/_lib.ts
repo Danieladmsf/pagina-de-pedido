@@ -3,6 +3,18 @@ import { ApiError, AuthenticatedFirebaseUser, jsonError, requireFirebaseUser } f
 import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, getWhatsAppIntegrationAdmin, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
 import { encryptSecret } from '@/lib/wapi/crypto';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
+import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import type { OperatorPermissions } from '@/lib/user-permissions';
+import {
+  canOperatorFetchProfilePicture,
+  canOperatorSendOperationalMessage,
+  normalizeWapiPhone,
+  sanitizeOperatorDelegation,
+  sanitizeOperationalMessageType,
+  sanitizeOperationalOrderType,
+  sanitizeWapiDocumentId,
+  type OperationalWapiMessageType,
+} from '@/lib/wapi/operator-access';
 
 export async function withAuth(
   request: Request,
@@ -22,6 +34,121 @@ export function requireEmpresa(user: AuthenticatedFirebaseUser, empresaId?: stri
   } catch (error) {
     throw new ApiError(403, error instanceof Error ? error.message : 'Empresa invalida.');
   }
+}
+
+export interface WapiOperationalAccess {
+  empresaId: string;
+  role: 'owner' | 'operator';
+  permissions: OperatorPermissions | null;
+}
+
+/**
+ * Resolve delegação sem afrouxar requireEmpresa(), que continua sendo usado por
+ * todos os endpoints de gestão da integração. Só rotas operacionais devem usar
+ * este helper.
+ */
+export async function requireOperationalEmpresa(
+  user: AuthenticatedFirebaseUser,
+  rawEmpresaId: unknown,
+): Promise<WapiOperationalAccess> {
+  const empresaId = sanitizeWapiDocumentId(rawEmpresaId ?? user.uid);
+  if (!empresaId) throw new ApiError(400, 'Empresa invalida.');
+
+  if (empresaId === user.uid) {
+    return { empresaId, role: 'owner', permissions: null };
+  }
+
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb) {
+    throw new ApiError(503, 'Autorizacao de operador indisponivel no momento.');
+  }
+
+  const roleSnapshot = await adminDb.collection('roles_operador').doc(user.uid).get();
+  const permissions = sanitizeOperatorDelegation(
+    roleSnapshot.exists ? roleSnapshot.data() : null,
+    empresaId,
+  );
+
+  if (!permissions) {
+    throw new ApiError(403, 'Voce nao tem permissao para operar o WhatsApp desta empresa.');
+  }
+
+  return {
+    empresaId,
+    role: 'operator',
+    permissions,
+  };
+}
+
+export function requireOperationalProfilePictureAccess(access: WapiOperationalAccess): void {
+  if (access.role === 'operator' && (
+    !access.permissions || !canOperatorFetchProfilePicture(access.permissions)
+  )) {
+    throw new ApiError(403, 'Sem permissao para consultar contatos desta operacao.');
+  }
+}
+
+export interface AuthorizedOperationalMessage {
+  messageType: OperationalWapiMessageType;
+  orderId: string;
+}
+
+/**
+ * Operador só envia notificações vinculadas a um pedido real da própria loja.
+ * Tipo, telefone, tenant e capacidade são todos revalidados no servidor.
+ */
+export async function requireOperationalMessageAccess(
+  access: WapiOperationalAccess,
+  input: {
+    type: unknown;
+    orderId: unknown;
+    phone: unknown;
+    hasDocument?: boolean;
+    hasImage?: boolean;
+  },
+): Promise<AuthorizedOperationalMessage | null> {
+  if (access.role === 'owner') return null;
+
+  const messageType = sanitizeOperationalMessageType(input.type);
+  const orderId = sanitizeWapiDocumentId(input.orderId, 256);
+  const requestedPhone = normalizeWapiPhone(input.phone);
+  if (!messageType || !orderId || !requestedPhone || input.hasDocument || input.hasImage) {
+    throw new ApiError(403, 'Esta conta só pode enviar notificações operacionais de pedidos.');
+  }
+
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb) {
+    throw new ApiError(503, 'Autorizacao de operador indisponivel no momento.');
+  }
+
+  const orderSnapshot = await adminDb.collection('orders').doc(orderId).get();
+  const order = orderSnapshot.exists ? orderSnapshot.data() : null;
+  const orderType = sanitizeOperationalOrderType(order?.orderType);
+  const orderOwnerId = sanitizeWapiDocumentId(order?.ownerId);
+  const orderPhone = normalizeWapiPhone(order?.customerPhone);
+
+  if (
+    !order
+    || orderOwnerId !== access.empresaId
+    || !orderType
+    || !orderPhone
+    || orderPhone !== requestedPhone
+    || !access.permissions
+    || !canOperatorSendOperationalMessage(access.permissions, messageType, orderType)
+  ) {
+    throw new ApiError(403, 'Sem permissao para enviar esta notificacao de pedido.');
+  }
+
+  return { messageType, orderId };
+}
+
+export async function requireOperationalIntegration(
+  access: WapiOperationalAccess,
+  user: AuthenticatedFirebaseUser,
+): Promise<{ integration: WhatsAppIntegration; token: string }> {
+  return access.role === 'owner'
+    ? requireIntegration(access.empresaId, user.idToken)
+    : requireIntegrationService(access.empresaId);
 }
 
 function resolveIntegration(integration: WhatsAppIntegration | null): { integration: WhatsAppIntegration; token: string } {

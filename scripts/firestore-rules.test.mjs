@@ -1,0 +1,324 @@
+/**
+ * Teste de integração das Security Rules (sem dependência npm adicional).
+ * Requer Java 21+ no PATH e o Firebase CLI:
+ *
+ * npx firebase-tools@13.35.1 emulators:exec --only firestore \
+ *   --project demo-cardapio-rules "node scripts/firestore-rules.test.mjs"
+ */
+import assert from 'node:assert/strict';
+import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { initializeApp as initializeClientApp, deleteApp as deleteClientApp } from 'firebase/app';
+import {
+  collection,
+  connectFirestoreEmulator,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+
+const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+assert.ok(
+  emulatorHost,
+  'Execute via Firebase Emulator: firebase emulators:exec --only firestore "node scripts/firestore-rules.test.mjs"',
+);
+
+const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'demo-cardapio-rules';
+const apps = [];
+
+function client(name, auth) {
+  const app = initializeClientApp({ projectId, apiKey: 'demo-key', appId: `demo-${name}` }, name);
+  apps.push(app);
+  const db = getFirestore(app);
+  // `mockUserToken` só é reconhecido por connectFirestoreEmulator — passá-lo
+  // dentro de initializeFirestore(settings) é silenciosamente ignorado e
+  // deixa o client sem auth nenhuma (request.auth == null para todo mundo).
+  const [host, port] = emulatorHost.split(':');
+  connectFirestoreEmulator(db, host, Number(port), auth
+    ? {
+        mockUserToken: {
+          sub: auth.uid,
+          user_id: auth.uid,
+          email: `${auth.uid}@example.test`,
+          firebase: { sign_in_provider: auth.provider || 'password' },
+        },
+      }
+    : undefined);
+  return db;
+}
+
+async function allowed(label, operation) {
+  try {
+    await operation;
+  } catch (error) {
+    throw new Error(`${label}: deveria ser permitido, mas falhou (${error?.code || error})`, {
+      cause: error,
+    });
+  }
+}
+
+async function denied(label, operation) {
+  try {
+    await operation;
+  } catch (error) {
+    assert.equal(error?.code, 'permission-denied', `${label}: falhou por motivo inesperado`);
+    return;
+  }
+  throw new Error(`${label}: deveria ser recusado pelas rules`);
+}
+
+function operatorRole(ownerId, overrides = {}) {
+  return {
+    ownerId,
+    active: true,
+    name: 'Operador',
+    permissions: {
+      pdv: {
+        enabled: true,
+        tabs: {
+          caixa: false,
+          delivery: false,
+          novo_pedido: false,
+          mesas: false,
+          encomendas_pedidos: false,
+          ...overrides.tabs,
+        },
+        actions: {
+          caixa: {},
+          delivery: {},
+          novo_pedido: {},
+          mesas: {},
+          encomendas_pedidos: {},
+          ...overrides.actions,
+        },
+        global: { botaoRetaguarda: false, toggleDelivery: false, ...overrides.global },
+      },
+      retaguarda: {},
+    },
+  };
+}
+
+const adminApp = initializeAdminApp({ projectId }, 'rules-seed');
+const admin = getAdminFirestore(adminApp);
+
+await Promise.all([
+  admin.doc('roles_admin/owner-a').set({ storeName: 'Loja A' }),
+  admin.doc('roles_admin/owner-b').set({ storeName: 'Loja B' }),
+  admin.doc('roles_operador/op-status').set(operatorRole('owner-a', {
+    tabs: { delivery: true },
+    actions: { delivery: { mudarStatus: true } },
+  })),
+  admin.doc('roles_operador/op-finalize').set(operatorRole('owner-a', {
+    tabs: { delivery: true },
+    actions: { delivery: { finalizarPedido: true, descontoAcrescimo: false } },
+  })),
+  admin.doc('roles_operador/op-caixa').set(operatorRole('owner-a', {
+    tabs: { caixa: true },
+    actions: { caixa: { abrirCaixa: true, fecharCaixa: true, cancelarVenda: false } },
+  })),
+  admin.doc('roles_operador/op-mesa').set(operatorRole('owner-a', {
+    tabs: { mesas: true },
+    actions: { mesas: { fecharComanda: true, descontoAcrescimo: false, vendaPrazo: true } },
+  })),
+  admin.doc('roles_operador/op-balcao').set(operatorRole('owner-a', {
+    tabs: { novo_pedido: true },
+    actions: { novo_pedido: { finalizarVenda: true, descontoAcrescimo: false, vendaPrazo: true } },
+  })),
+  admin.doc('roles_operador/op-legacy').set({ ownerId: 'owner-a', active: true, name: 'Legado' }),
+  admin.doc('roles_operador/op-inactive').set({
+    ...operatorRole('owner-a', {
+      tabs: { delivery: true },
+      actions: { delivery: { mudarStatus: true } },
+    }),
+    active: false,
+  }),
+  admin.doc('admin_secrets/owner-a').set({ hash: 'segredo' }),
+  admin.doc('campaigns/campaign-a').set({ ownerId: 'owner-a', name: 'Campanha' }),
+  admin.doc('categories/category-a').set({ ownerId: 'owner-a', name: 'Categoria' }),
+  admin.doc('menuItems/item-a').set({ ownerId: 'owner-a', name: 'Produto', price: 10, stockQuantity: 10 }),
+  admin.doc('store_profiles/owner-a').set({ general: { name: 'Loja A', disableDelivery: false }, isCaixaAberto: true }),
+  admin.doc('store_profiles/owner-b').set({ general: { name: 'Loja B' }, isCaixaAberto: true }),
+  admin.doc('orders/order-a').set({
+    ownerId: 'owner-a', customerUid: 'anon-a', orderType: 'delivery', status: 'pending',
+    items: [], subtotal: 10, totalAmount: 10,
+  }),
+  admin.doc('orders/order-b').set({
+    ownerId: 'owner-b', customerUid: 'anon-b', orderType: 'delivery', status: 'pending',
+    items: [], subtotal: 20, totalAmount: 20,
+  }),
+  admin.doc('orders/order-credit').set({
+    ownerId: 'owner-a', customerUid: 'anon-credit', orderType: 'delivery', status: 'pending',
+    items: [], subtotal: 20, totalAmount: 20, paymentMethod: 'conta_casa',
+  }),
+  admin.doc('orders/table-a').set({
+    ownerId: 'owner-a', orderType: 'dine_in', status: 'pending',
+    items: [], subtotal: 30, totalAmount: 30,
+  }),
+  admin.doc('clientes/client-a').set({ ownerId: 'owner-a', nome: 'Cliente', celular: '11999999999' }),
+  admin.doc('clientes/client-a/credit_transactions/credit-a').set({ type: 'debit', amount: 10 }),
+  admin.doc('cash_registers/register-a').set({
+    ownerId: 'owner-a', status: 'aberto', sessao: 1, saldoInicial: 0,
+  }),
+  admin.doc('cash_transactions/sale-a').set({
+    ownerId: 'owner-a', caixaId: 'register-a', tipo: 'venda', valor: 10,
+  }),
+  admin.doc('active_sessions/session-a').set({ storeId: 'owner-a', lastActive: Date.now() }),
+  admin.doc('active_sessions/session-b').set({ storeId: 'owner-b', lastActive: Date.now() }),
+  // Dados da loja B + operador da loja B, para os testes cross-tenant.
+  admin.doc('cash_registers/register-b').set({
+    ownerId: 'owner-b', status: 'aberto', sessao: 1, saldoInicial: 0,
+  }),
+  admin.doc('cash_transactions/sale-b').set({
+    ownerId: 'owner-b', caixaId: 'register-b', tipo: 'venda', valor: 20,
+  }),
+  admin.doc('roles_operador/op-b').set(operatorRole('owner-b', {
+    tabs: { caixa: true, delivery: true },
+    actions: { caixa: { abrirCaixa: true, fecharCaixa: true }, delivery: { finalizarPedido: true } },
+  })),
+]);
+
+const owner = client('owner', { uid: 'owner-a' });
+const otherOwner = client('other-owner', { uid: 'owner-b' });
+const statusOperator = client('operator-status', { uid: 'op-status' });
+const finalizeOperator = client('operator-finalize', { uid: 'op-finalize' });
+const caixaOperator = client('operator-caixa', { uid: 'op-caixa' });
+const mesaOperator = client('operator-mesa', { uid: 'op-mesa' });
+const balcaoOperator = client('operator-balcao', { uid: 'op-balcao' });
+const legacyOperator = client('operator-legacy', { uid: 'op-legacy' });
+const inactiveOperator = client('operator-inactive', { uid: 'op-inactive' });
+const anonymous = client('anonymous', { uid: 'anon-a', provider: 'anonymous' });
+const stranger = client('stranger', { uid: 'signed-stranger' });
+const operatorB = client('operator-b', { uid: 'op-b' });
+
+await allowed('owner lê o próprio segredo', getDoc(doc(owner, 'admin_secrets/owner-a')));
+await denied('outro owner não lê segredo alheio', getDoc(doc(otherOwner, 'admin_secrets/owner-a')));
+await allowed('owner altera o próprio cadastro', updateDoc(doc(owner, 'menuItems/item-a'), { price: 11 }));
+
+await allowed('operador lê o próprio papel', getDoc(doc(statusOperator, 'roles_operador/op-status')));
+await denied('operador não edita o próprio papel', updateDoc(doc(statusOperator, 'roles_operador/op-status'), { active: false }));
+await denied('owner não edita operador pelo cliente', updateDoc(doc(owner, 'roles_operador/op-status'), { active: false }));
+await denied('operador não se autopromove a master', setDoc(doc(statusOperator, 'roles_admin/op-status'), { storeName: 'Ataque' }));
+await denied('operador não lê segredo administrativo', getDoc(doc(statusOperator, 'admin_secrets/owner-a')));
+await denied('operador não lê campanhas', getDoc(doc(statusOperator, 'campaigns/campaign-a')));
+await denied('operador não altera configuração da loja', updateDoc(doc(statusOperator, 'store_profiles/owner-a'), {
+  general: { name: 'Loja adulterada', disableDelivery: false },
+}));
+
+await allowed('operador autorizado lê pedidos da própria loja', getDoc(doc(statusOperator, 'orders/order-a')));
+await denied('operador não lê pedido de outra loja', getDoc(doc(statusOperator, 'orders/order-b')));
+await allowed('mudarStatus permite status operacional', updateDoc(doc(statusOperator, 'orders/order-a'), { status: 'received' }));
+await denied('mudarStatus não permite editar itens', updateDoc(doc(statusOperator, 'orders/order-a'), {
+  items: [{ id: 'x', quantity: 1 }], subtotal: 1, totalAmount: 1,
+}));
+await denied('mudarStatus não permite finalizar venda', updateDoc(doc(statusOperator, 'orders/order-a'), {
+  status: 'delivered', paymentMethod: 'pix',
+}));
+await denied('operador sem capacidade comercial não lê base de clientes', getDoc(doc(statusOperator, 'clientes/client-a')));
+
+await denied('base de clientes é owner-only para operador', getDoc(doc(finalizeOperator, 'clientes/client-a')));
+await denied('operador não sincroniza cadastro de cliente', updateDoc(doc(finalizeOperator, 'clientes/client-a'), {
+  nome: 'Alterado',
+}));
+await denied('extrato da Conta da Casa é owner-only para operador', getDoc(doc(finalizeOperator, 'clientes/client-a/credit_transactions/credit-a')));
+await allowed('owner mantém gestão da base de clientes', updateDoc(doc(owner, 'clientes/client-a'), {
+  nome: 'Cliente Owner',
+}));
+await allowed('finalizador descobre o caixa mesmo sem exibir a aba Caixa', getDoc(doc(finalizeOperator, 'cash_registers/register-a')));
+await allowed('finalizarPedido permite concluir sem ajuste', updateDoc(doc(finalizeOperator, 'orders/order-a'), {
+  status: 'delivered', paymentMethod: 'pix',
+}));
+await admin.doc('orders/order-a').update({ status: 'received' });
+await denied('ajuste financeiro exige descontoAcrescimo', updateDoc(doc(finalizeOperator, 'orders/order-a'), {
+  status: 'delivered', paymentMethod: 'pix', discount: 2, totalAmount: 8,
+}));
+await denied('operador nunca atualiza pedido da Conta da Casa', updateDoc(doc(finalizeOperator, 'orders/order-credit'), {
+  status: 'delivered',
+}));
+await denied('operador nunca lança Conta da Casa no caixa', setDoc(doc(finalizeOperator, 'cash_transactions/credit-forbidden'), {
+  ownerId: 'owner-a', caixaId: 'register-a', tipo: 'venda', titulo: 'Prazo',
+  valor: 20, formaPagamento: 'conta_casa',
+}));
+
+await allowed('mesa fecha sem ajuste mesmo gravando zeros explícitos', updateDoc(doc(mesaOperator, 'orders/table-a'), {
+  status: 'delivered', paymentMethod: 'pix', subtotal: 30,
+  discount: 0, surcharge: 0, totalAmount: 30,
+}));
+await admin.doc('orders/table-a').update({ status: 'pending' });
+await denied('mesa sem descontoAcrescimo não altera valor', updateDoc(doc(mesaOperator, 'orders/table-a'), {
+  status: 'delivered', paymentMethod: 'pix', subtotal: 30,
+  discount: 2, surcharge: 0, totalAmount: 28,
+}));
+await denied('mesa não usa Conta da Casa mesmo com flag armazenada', updateDoc(doc(mesaOperator, 'orders/table-a'), {
+  status: 'delivered', paymentMethod: 'conta_casa', subtotal: 30,
+  discount: 0, surcharge: 0, totalAmount: 30,
+}));
+
+await allowed('balcão cria venda comum', setDoc(doc(balcaoOperator, 'orders/balcao-ok'), {
+  ownerId: 'owner-a', orderType: 'pickup', source: 'pdv', status: 'delivered',
+  items: [], subtotal: 10, discount: 0, surcharge: 0, totalAmount: 10, paymentMethod: 'pix',
+}));
+await denied('balcão sem descontoAcrescimo não cria venda ajustada', setDoc(doc(balcaoOperator, 'orders/balcao-ajuste'), {
+  ownerId: 'owner-a', orderType: 'pickup', source: 'pdv', status: 'delivered',
+  items: [], subtotal: 10, discount: 2, surcharge: 0, totalAmount: 8, paymentMethod: 'pix',
+}));
+await denied('balcão não cria venda a prazo mesmo com flag armazenada', setDoc(doc(balcaoOperator, 'orders/balcao-prazo'), {
+  ownerId: 'owner-a', orderType: 'pickup', source: 'pdv', status: 'delivered',
+  items: [], subtotal: 10, discount: 0, surcharge: 0, totalAmount: 10, paymentMethod: 'conta_casa',
+}));
+
+await allowed('catálogo continua público para cardápio anônimo', getDoc(doc(anonymous, 'menuItems/item-a')));
+await allowed('cliente anônimo preserva baixa de estoque', updateDoc(doc(anonymous, 'menuItems/item-a'), { stockQuantity: 9 }));
+await denied('cliente anônimo nunca aumenta estoque', updateDoc(doc(anonymous, 'menuItems/item-a'), { stockQuantity: 10 }));
+await denied('operador não altera preço/cadastro', updateDoc(doc(statusOperator, 'menuItems/item-a'), { price: 999 }));
+await denied('operador legado sem permissions é fail-closed', getDoc(doc(legacyOperator, 'orders/order-a')));
+await denied('operador inativo é recusado', getDoc(doc(inactiveOperator, 'orders/order-a')));
+
+await allowed('cliente anônimo cria o próprio pedido', setDoc(doc(anonymous, 'orders/order-anon'), {
+  ownerId: 'owner-a', customerUid: 'anon-a', orderType: 'delivery', status: 'pending', items: [], totalAmount: 5,
+}));
+await allowed('cliente anônimo lê o próprio pedido', getDoc(doc(anonymous, 'orders/order-anon')));
+await denied('cliente anônimo não altera pedido', updateDoc(doc(anonymous, 'orders/order-anon'), { status: 'delivered' }));
+await allowed('Conta da Casa anônima preserva leitura legada', getDoc(doc(anonymous, 'clientes/client-a')));
+await denied('conta password aleatória não enumera clientes', getDoc(doc(stranger, 'clientes/client-a')));
+
+await allowed('operador de caixa lê caixa operacional', getDoc(doc(caixaOperator, 'cash_registers/register-a')));
+await denied('operador sem cancelarVenda não cancela lançamento', updateDoc(doc(caixaOperator, 'cash_transactions/sale-a'), {
+  canceled: true,
+}));
+
+await allowed('sessões são consultáveis com filtro da própria loja', getDocs(query(
+  collection(statusOperator, 'active_sessions'),
+  where('storeId', '==', 'owner-a'),
+)));
+await denied('sessões de outra loja são negadas', getDoc(doc(statusOperator, 'active_sessions/session-b')));
+
+// ── Cenários de ataque adicionais: escalação de privilégio e cross-tenant ──
+await denied('operador não rouba pedido mudando o ownerId', updateDoc(doc(statusOperator, 'orders/order-a'), { ownerId: 'owner-b' }));
+await denied('operador não cria pedido para outra loja', setDoc(doc(balcaoOperator, 'orders/atk-cross-order'), {
+  ownerId: 'owner-b', orderType: 'pickup', source: 'pdv', status: 'delivered',
+  items: [], subtotal: 10, discount: 0, surcharge: 0, totalAmount: 10, paymentMethod: 'pix',
+}));
+await denied('operador não lê o papel de outro operador', getDoc(doc(statusOperator, 'roles_operador/op-caixa')));
+await denied('operador não se autoconcede permissões no próprio papel', updateDoc(doc(statusOperator, 'roles_operador/op-status'), {
+  permissions: { pdv: { enabled: true, tabs: { caixa: true }, actions: { caixa: { fecharCaixa: true } } } },
+}));
+await denied('operador não atualiza pedido de outra loja', updateDoc(doc(statusOperator, 'orders/order-b'), { status: 'received' }));
+await denied('operador de caixa não lê caixa de outra loja', getDoc(doc(caixaOperator, 'cash_registers/register-b')));
+await denied('operador de caixa não lê lançamento de outra loja', getDoc(doc(caixaOperator, 'cash_transactions/sale-b')));
+await denied('operador não abre caixa em outra loja', setDoc(doc(caixaOperator, 'cash_registers/atk-reg'), {
+  ownerId: 'owner-b', status: 'aberto', sessao: 9, saldoInicial: 0,
+  dataAbertura: new Date().toISOString(), usuarioAbertura: 'op-caixa',
+}));
+await denied('operador não lê o admin_secret da própria loja', getDoc(doc(caixaOperator, 'admin_secrets/owner-a')));
+await denied('operador B não lê pedidos da loja A', getDoc(doc(operatorB, 'orders/order-a')));
+await allowed('operador B lê o caixa da própria loja', getDoc(doc(operatorB, 'cash_registers/register-b')));
+
+console.log('Firestore Rules: todos os cenários passaram.');
+
+await Promise.all(apps.map((app) => deleteClientApp(app)));
+await deleteAdminApp(adminApp);

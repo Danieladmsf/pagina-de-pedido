@@ -31,6 +31,7 @@ import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -79,6 +80,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   addonCategories = [],
   permissions,
 }: NovoPedidoTabProps) {
+  const { ownerId, role } = usePdvAccess();
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   const { toast } = useToast();
   const canFinalizarVenda = can(permissions, 'actions.novo_pedido.finalizarVenda');
@@ -150,7 +152,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, user?.uid);
+  const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, ownerId);
 
   const groupedItems = useMemo(
     () => buildAdminMenuGroups(items, categories, orderType, searchTerm, { promoItemsMap, promoOnlyIds, hasActivePromos }),
@@ -228,9 +230,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   React.useEffect(() => {
     const normalizedPhone = normalizeCreditPhone(customerPhone);
-    const ownerId = storeProfile?.id || user?.uid || 'default';
-
-    if (orderType !== 'delivery' || !db || !ownerId || normalizedPhone.length < 10) {
+    if (role !== 'owner' || orderType !== 'delivery' || !db || !ownerId || normalizedPhone.length < 10) {
       setCustomerLookupStatus('idle');
       setMatchedCustomerName('');
       return;
@@ -288,7 +288,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       ignore = true;
       window.clearTimeout(lookupTimeout);
     };
-  }, [customerPhone, orderType, db, storeProfile?.id, user?.uid, calculateDeliveryFee]);
+  }, [calculateDeliveryFee, customerPhone, db, orderType, ownerId, role]);
 
   // Efeito para calcular taxa automaticamente quando o preenchimento automático (autofill) dispara
   React.useEffect(() => {
@@ -351,7 +351,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   // Autocomplete de cliente (carga da lista + matches) centralizado no hook.
   const { activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
-    useCustomerLookup(db, storeProfile?.id || user?.uid, customerName, customerPhone);
+    useCustomerLookup(db, role === 'owner' ? ownerId : undefined, customerName, customerPhone);
 
   const applyCustomer = (c: any) => {
     setSelectedCustomer(c);
@@ -427,7 +427,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       // centralizado (components/admin/fechamento) — igual em todos os canais.
       const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
 
-      const ownerId = storeProfile?.id || user?.uid || 'default';
       const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
 
       const contaCasa = await resolveContaCasa(db, { splits: splitsToProcess, ownerId, phone: customerPhone || '' });
@@ -446,7 +445,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
       const orderData = {
         id: newOrderRef.id,
-        ownerId: user?.uid || 'default',
+        ownerId,
         customerName: customerName || 'Cliente Balcão',
         customerPhone: customerPhone || '',
         deliveryAddress: fullDeliveryAddress || '',
@@ -490,7 +489,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       // Sincroniza/contabiliza o cliente (balcão com cliente identificado).
       // Vendas anônimas ("Cliente Balcão" sem telefone) são ignoradas pela função.
       try {
-        await syncCustomerFromOrder(db, { ...orderData }, { ownerId: user?.uid || 'default', countOrder: true });
+        if (role === 'owner') {
+          await syncCustomerFromOrder(db, { ...orderData }, { ownerId, countOrder: true });
+        }
       } catch (err) {
         console.error('Erro ao sincronizar cliente (balcão):', err);
       }
@@ -1030,7 +1031,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             && can(permissions, 'actions.novo_pedido.vendaPrazo')}
           onSubmitBlocked={notifyPermissionRemoved}
           db={db}
-          ownerId={storeProfile?.id || user?.uid || 'default'}
+          ownerId={ownerId}
           initialName={quickRegisterModal.name}
           initialPhone={quickRegisterModal.phone}
           initialAddress={quickRegisterModal.address}

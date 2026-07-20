@@ -39,6 +39,30 @@ import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggle
 import { PermissoesPdvTab } from '@/components/admin/PermissoesPdvTab';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import {
+  canAccessRetaguarda,
+  EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+  getRetaguardaPermissionForTab,
+} from '@/lib/user-permissions';
+import { OperatorCatalogReadOnly } from '@/components/admin/OperatorCatalogReadOnly';
+import { UsuariosTab } from '@/components/admin/UsuariosTab';
+
+const GESTAO_TAB_ORDER = [
+  'dashboard',
+  'produtos',
+  'categorias',
+  'addons',
+  'clientes',
+  'promocoes',
+  'whatsapp',
+  'campanhas',
+  'encomendas',
+  'freelance',
+  'permissoes_pdv',
+  'usuarios',
+  'perfil_geral',
+] as const;
 
 export default function GestaoPage() {
   const db = useFirestore();
@@ -46,7 +70,21 @@ export default function GestaoPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const { role, ownerId, operatorName, operatorPermissions } = usePdvAccess();
+  const retaguardaPermissions = operatorPermissions?.retaguarda
+    ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
+  const isTabAllowed = React.useCallback((tabId: string) => {
+    const permission = getRetaguardaPermissionForTab(tabId);
+    return permission !== null && canAccessRetaguarda(role, retaguardaPermissions, permission);
+  }, [retaguardaPermissions, role]);
+  const allowedTabs = React.useMemo(
+    () => GESTAO_TAB_ORDER.filter((tabId) => isTabAllowed(tabId)),
+    [isTabAllowed],
+  );
+  const [storedActiveTab, setActiveTab] = useState<string>('dashboard');
+  const activeTab = isTabAllowed(storedActiveTab)
+    ? storedActiveTab
+    : allowedTabs[0] ?? '';
 
 
 
@@ -54,7 +92,9 @@ export default function GestaoPage() {
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (event.state && event.state.type === 'gestao-tab') {
-        setActiveTab(event.state.tab);
+        const requested = typeof event.state.tab === 'string' ? event.state.tab : '';
+        const target = isTabAllowed(requested) ? requested : allowedTabs[0];
+        if (target) setActiveTab(target);
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -67,9 +107,26 @@ export default function GestaoPage() {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [activeTab]);
+  }, [activeTab, allowedTabs, isTabAllowed]);
+
+  useEffect(() => {
+    if (activeTab && storedActiveTab !== activeTab) {
+      setActiveTab(activeTab);
+      window.history.replaceState({ type: 'gestao-tab', tab: activeTab }, '');
+    }
+  }, [activeTab, storedActiveTab]);
+
+  useEffect(() => {
+    if (role === 'operator' && allowedTabs.length === 0) {
+      router.replace('/pdv');
+    }
+  }, [allowedTabs.length, role, router]);
 
   const handleTabChange = (newTab: string) => {
+    if (!isTabAllowed(newTab)) {
+      toast({ variant: 'destructive', title: 'Você não tem acesso a este módulo.' });
+      return;
+    }
     setActiveTab(newTab);
     const currentState = window.history.state;
     if (!currentState || currentState.type !== 'gestao-tab' || currentState.tab !== newTab) {
@@ -110,52 +167,61 @@ export default function GestaoPage() {
   
   // Hook do Caixa: a Gestão só precisa dele para o acerto de crédito na aba
   // Clientes (registrarLancamento/caixaAberto); sessão/histórico ficam no PDV.
-  const { caixaAberto, registrarLancamento } = useCaixa();
+  const { caixaAberto, registrarLancamento } = useCaixa({
+    ownerId,
+    enabled: role === 'owner',
+  });
   
   const isRealUser = !!(user && !user.isAnonymous);
 
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
   const categoriesQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'categories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('produtos') || isTabAllowed('categorias'))) return null;
+    return query(collection(db, 'categories'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const itemsQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'menuItems'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('produtos') || isTabAllowed('promocoes'))) return null;
+    return query(collection(db, 'menuItems'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || role !== 'owner') return null;
+    return query(collection(db, 'orders'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, ownerId, role]);
 
   const addonsQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('produtos') || isTabAllowed('addons'))) return null;
+    return query(collection(db, 'addons'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const addonCategoriesQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'addonCategories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('produtos') || isTabAllowed('addons'))) return null;
+    return query(collection(db, 'addonCategories'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
+
+  const promotionsQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('promocoes'))) return null;
+    return query(collection(db, 'promotions'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const storeProfileRef = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return doc(db, 'store_profiles', user!.uid);
-  }, [db, isRealUser, user?.uid]);
+    return doc(db, 'store_profiles', ownerId);
+  }, [db, isRealUser, ownerId]);
 
   const { data: storeProfile, isLoading: storeProfileLoading, error: storeProfileError } = useDoc(storeProfileRef);
 
   const adminSecretRef = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return doc(db, 'admin_secrets', user!.uid);
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || role !== 'owner') return null;
+    return doc(db, 'admin_secrets', ownerId);
+  }, [db, isRealUser, ownerId, role]);
   const { data: adminSecret, isLoading: adminSecretLoading, error: adminSecretError } = useDoc<AdminSecret>(adminSecretRef);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [isAdminGateResolved, setIsAdminGateResolved] = useState(false);
-  const adminSecretResolved = !!adminSecretRef && !adminSecretLoading && !adminSecretError;
+  const adminSecretResolved = role === 'operator'
+    || (!!adminSecretRef && !adminSecretLoading && !adminSecretError);
 
   const previousUserIdRef = React.useRef<string | null>(user?.uid ?? null);
   useEffect(() => {
@@ -163,20 +229,25 @@ export default function GestaoPage() {
     if (previousUserIdRef.current !== nextUserId) {
       setIsAdminUnlocked(false);
       setIsAdminGateResolved(false);
-      setActiveTab('dashboard');
+      setActiveTab(role === 'owner' ? 'dashboard' : allowedTabs[0] ?? '');
       setWizardDismissed(false);
     }
     previousUserIdRef.current = nextUserId;
-  }, [user?.uid]);
+  }, [allowedTabs, role, user?.uid]);
 
   useEffect(() => {
+    if (role === 'operator') {
+      setIsAdminUnlocked(true);
+      setIsAdminGateResolved(true);
+      return;
+    }
     if (!adminSecretRef || adminSecretLoading || adminSecretError) {
       setIsAdminGateResolved(false);
       return;
     }
     setIsAdminUnlocked(!adminSecret || isAdminSessionUnlocked(user!.uid, adminSecret));
     setIsAdminGateResolved(true);
-  }, [adminSecret, adminSecretError, adminSecretLoading, adminSecretRef, user]);
+  }, [adminSecret, adminSecretError, adminSecretLoading, adminSecretRef, role, user]);
 
   useEffect(() => {
     if (!adminSecret || !isAdminUnlocked || !user) return;
@@ -205,15 +276,16 @@ export default function GestaoPage() {
     };
   }, [adminSecret, isAdminUnlocked, user]);
 
-  const effectiveAdminUnlocked = adminSecretResolved && (
+  const effectiveAdminUnlocked = role === 'operator' || (adminSecretResolved && (
     !adminSecret
     || (!!user && isAdminUnlocked && isAdminSessionUnlocked(user.uid, adminSecret))
-  );
+  ));
 
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
+  const { data: promotions, isLoading: loadingPromotions } = useCollection(promotionsQuery);
 
 
   const sortedProductCategories = React.useMemo(() => {
@@ -289,7 +361,7 @@ export default function GestaoPage() {
     }
   };
 
-  const { data: addons } = useCollection(addonsQuery);
+  const { data: addons, isLoading: loadingAddons } = useCollection(addonsQuery);
 
   // Higiene: containers podem acumular IDs de adicionais que foram excluídos
   // da Lista Matriz (vínculo fica órfão no addonIds). Limpa uma vez por
@@ -298,11 +370,11 @@ export default function GestaoPage() {
   const danglingCleanupDoneRef = React.useRef(false);
   useEffect(() => {
     if (danglingCleanupDoneRef.current) return;
-    if (!db || !isRealUser || !addons || !addonCategories) return;
+    if (role !== 'owner' || !db || !isRealUser || !addons || !addonCategories) return;
     danglingCleanupDoneRef.current = true;
     const validIds = new Set((addons as any[]).map((a: any) => a.id));
     const dirty = (addonCategories as any[]).filter((c: any) =>
-      c.ownerId === user!.uid &&
+      c.ownerId === ownerId &&
       Array.isArray(c.addonIds) &&
       c.addonIds.some((id: string) => !validIds.has(id))
     );
@@ -318,7 +390,7 @@ export default function GestaoPage() {
         console.warn('[higiene] falha ao limpar containers:', e);
       }
     })();
-  }, [db, isRealUser, user, addons, addonCategories]);
+  }, [addonCategories, addons, db, isRealUser, ownerId, role]);
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editingCombo, setEditingCombo] = useState<any>(null);
@@ -553,6 +625,60 @@ export default function GestaoPage() {
     );
   }
 
+  if (role === 'operator') {
+    if (!['produtos', 'categorias', 'addons', 'promocoes'].includes(activeTab)) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-slate-100 text-sm font-medium text-slate-500">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Redirecionando para o PDV…
+        </div>
+      );
+    }
+
+    return (
+      <div className="admin-scale flex h-screen overflow-hidden bg-slate-100">
+        <SidebarNav
+          activeTab={activeTab}
+          setActiveTab={handleTabChange}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+          storeName={storeProfile?.general?.name}
+          storeLogo={storeProfile?.general?.logoUrl}
+          theme={storeProfile?.theme}
+        />
+        <div className="relative z-0 flex min-w-0 flex-1 flex-col">
+          <div className="flex h-14 shrink-0 items-center justify-between bg-[#2a3042] pl-14 pr-4 text-slate-300 shadow-sm">
+            <button
+              onClick={() => router.push('/pdv')}
+              className="flex h-full items-center gap-2 px-6 text-sm font-medium transition-colors hover:bg-white/10"
+            >
+              <Wallet className="h-4 w-4" /> Frente de Caixa
+            </button>
+            <div className="flex items-center gap-4">
+              <span className="hidden text-xs text-slate-400 sm:inline">{operatorName || user.email}</span>
+              <button onClick={handleLogout} className="text-sm font-medium transition-colors hover:text-white">Sair</button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <OperatorCatalogReadOnly
+              activeTab={activeTab as 'produtos' | 'categorias' | 'addons' | 'promocoes'}
+              items={(items || []) as any[]}
+              categories={(categories || []) as any[]}
+              addons={(addons || []) as any[]}
+              promotions={(promotions || []) as any[]}
+              isLoading={activeTab === 'produtos'
+                ? loadingItems
+                : activeTab === 'categorias'
+                  ? loadingCats
+                  : activeTab === 'addons'
+                    ? loadingAddons
+                    : loadingPromotions}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
@@ -634,7 +760,7 @@ export default function GestaoPage() {
         <div className={
           ['produtos', 'addons', 'categorias', 'clientes'].includes(activeTab)
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : ['freelance', 'permissoes_pdv'].includes(activeTab) || activeTab.startsWith('perfil_')
+            : ['freelance', 'permissoes_pdv', 'usuarios'].includes(activeTab) || activeTab.startsWith('perfil_')
               ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
@@ -1013,7 +1139,7 @@ export default function GestaoPage() {
                             return setDoc(newDoc, { 
                               id: newDoc.id, 
                               name, 
-                              ownerId: user.uid, 
+                              ownerId,
                               displayOrder: 0, 
                               description: "",
                               isAvailable: true
@@ -1249,7 +1375,7 @@ export default function GestaoPage() {
               const data = {
                 id: newDoc.id,
                 name,
-                ownerId: user!.uid,
+                ownerId,
                 addonIds: Array.from(new Set(seedIds)),
                 usePrice: true,
                 min: 0,
@@ -1394,7 +1520,7 @@ export default function GestaoPage() {
                 description,
                 price,
                 group: editingAddon?.group || '',
-                ownerId: user.uid,
+                ownerId,
               };
               // Em modo de criacao, nomes separados por , ou ; criam varios adicionais de uma vez
               // (todos com o mesmo preco/descricao/containers). Na edicao, mantem nome unico.
@@ -1675,7 +1801,7 @@ export default function GestaoPage() {
                                 } else {
                                   // It was an implicit category, let's create it explicitly with the new name
                                   const newDoc = doc(collection(db, 'addonCategories'));
-                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId: user.uid, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true, min: 0, max: 0 });
+                                  batch.set(newDoc, { id: newDoc.id, name: newName, ownerId, addonIds: getLegacyAddonIdsForGroup(oldName), usePrice: true, min: 0, max: 0 });
                                 }
                                 (addons || [])
                                   .filter((addon: any) => getAddonLegacyGroup(addon) === oldName)
@@ -1810,7 +1936,7 @@ export default function GestaoPage() {
                           if (!db || !user || !newAddonCategoryName.trim()) return;
                           try {
                             const newDoc = doc(collection(db, 'addonCategories'));
-                            await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId: user.uid, addonIds: [], usePrice: true, min: 0, max: 0 });
+                            await setDoc(newDoc, { id: newDoc.id, name: newAddonCategoryName.trim(), ownerId, addonIds: [], usePrice: true, min: 0, max: 0 });
                             toast({ title: 'Container criado com sucesso!' });
                             setIsAddonCategoryModalOpen(false);
                             setNewAddonCategoryName('');
@@ -2224,6 +2350,10 @@ export default function GestaoPage() {
               isAdminSecretLoading={adminSecretLoading}
             />
           )}
+
+          {activeTab === 'usuarios' && (
+            <UsuariosTab user={user} />
+          )}
           {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && (
             <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
           )}
@@ -2247,7 +2377,7 @@ export default function GestaoPage() {
     {db && isRealUser && !storeProfileLoading && !wizardDismissed && !storeProfile?.onboardingCompleted && (
       <WelcomeWizard
         db={db}
-        userId={user!.uid}
+        userId={ownerId}
         storeName={storeProfile?.general?.name}
         onComplete={() => setWizardDismissed(true)}
       />

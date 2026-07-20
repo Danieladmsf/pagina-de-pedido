@@ -11,10 +11,19 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
+    function isAnonymous() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function isOwnerOf(ownerId) {
+      return isAdmin() && request.auth.uid == ownerId;
+    }
+
     // ── Operadores (frente de caixa) ──
     // roles_operador/{uid} mapeia um login de operador para a loja (ownerId).
     // Operador ATIVO tem acesso de "staff" apenas ao operacional (pedidos,
-    // caixa, clientes, estoque); cadastros e perfil continuam só do dono.
+    // caixa e estoque); clientes, cadastros e perfil continuam só do dono.
     function isOperator() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_operador/$(request.auth.uid));
     }
@@ -31,9 +40,223 @@ service cloud.firestore {
       return isActiveOperator() && operatorData().ownerId == ownerId;
     }
 
-    // Dono da loja OU operador ativo da loja.
-    function isStaffOf(ownerId) {
-      return (isAdmin() && request.auth.uid == ownerId) || isOperatorOf(ownerId);
+    // Permissões de operador são sempre fail-closed nas rules. Diferente do
+    // perfil legado do dono, campo ausente/inválido NUNCA concede acesso.
+    function operatorPdvPermissions() {
+      return operatorData().get('permissions', {}).get('pdv', {});
+    }
+
+    function operatorCanPdvTab(ownerId, tab) {
+      return isOperatorOf(ownerId)
+        && operatorPdvPermissions().get('enabled', false) == true
+        && operatorPdvPermissions().get('tabs', {}).get(tab, false) == true;
+    }
+
+    function operatorCanPdvAction(ownerId, group, action) {
+      return isOperatorOf(ownerId)
+        && operatorPdvPermissions().get('enabled', false) == true
+        && operatorPdvPermissions().get('tabs', {}).get(group, false) == true
+        && operatorPdvPermissions().get('actions', {}).get(group, {}).get(action, false) == true;
+    }
+
+    function operatorCanPdvGlobal(ownerId, control) {
+      return isOperatorOf(ownerId)
+        && operatorPdvPermissions().get('enabled', false) == true
+        && operatorPdvPermissions().get('global', {}).get(control, false) == true;
+    }
+
+    function valueUsesContaCasa(value) {
+      return value is string && value.matches('.*conta_casa.*');
+    }
+
+    function usesContaCasa(data) {
+      return valueUsesContaCasa(data.get('paymentMethod', ''));
+    }
+
+    function operatorCanReadOrders(ownerId) {
+      return operatorCanPdvTab(ownerId, 'delivery')
+        || operatorCanPdvTab(ownerId, 'novo_pedido')
+        || operatorCanPdvTab(ownerId, 'mesas');
+    }
+
+    function operatorCanCreateOrder(ownerId, data) {
+      return !usesContaCasa(data) && (
+        (data.get('orderType', '') == 'dine_in'
+          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+          && operatorCanPdvAction(ownerId, 'mesas', 'lancarItens'))
+        || (data.get('source', '') == 'pdv'
+          && data.get('orderType', '') != 'dine_in'
+          && operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda')
+          && ((data.get('discount', 0) == 0 && data.get('surcharge', 0) == 0)
+            || operatorCanPdvAction(ownerId, 'novo_pedido', 'descontoAcrescimo'))
+          && !usesContaCasa(data))
+      );
+    }
+
+    function operatorCanAdjustInventory(ownerId) {
+      return operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+        || operatorCanPdvAction(ownerId, 'delivery', 'editarItens')
+        || operatorCanPdvAction(ownerId, 'delivery', 'cancelarPedido')
+        || operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda')
+        || operatorCanPdvAction(ownerId, 'mesas', 'lancarItens')
+        || operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
+        || operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+        || operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline');
+    }
+
+    function operatorCanOperateCash(ownerId) {
+      // useCaixa é compartilhado pelas vendas: mesmo sem exibir a aba Caixa,
+      // essas ações precisam descobrir o caixa aberto e lançar o pagamento.
+      return operatorCanPdvTab(ownerId, 'caixa')
+        || operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+        || operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda')
+        || operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
+        || operatorCanPdvAction(ownerId, 'encomendas_pedidos', 'lancarSinal');
+    }
+
+    function operatorCanUpdateDeliveryOrder(ownerId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let nextStatus = request.resource.data.get('status', resource.data.get('status', ''));
+      return resource.data.get('orderType', '') in ['delivery', 'pickup'] && (
+        (nextStatus == 'canceled'
+          && changed.hasOnly(['status', 'stockDeducted', 'stockDeductedItems'])
+          && operatorCanPdvAction(ownerId, 'delivery', 'cancelarPedido'))
+        || (nextStatus == 'delivered'
+          && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
+            'payDeliveryToMotoboy', 'totalAmount', 'stockDeducted', 'stockDeductedItems'])
+          && operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+          && ((request.resource.data.get('discount', 0)
+                == resource.data.get('discount', 0)
+              && request.resource.data.get('surcharge', 0)
+                == resource.data.get('surcharge', 0))
+            || operatorCanPdvAction(ownerId, 'delivery', 'descontoAcrescimo')))
+        || (changed.hasOnly(['items', 'subtotal', 'totalAmount',
+              'stockDeducted', 'stockDeductedItems'])
+          && changed.hasAny(['items', 'subtotal', 'totalAmount'])
+          && operatorCanPdvAction(ownerId, 'delivery', 'editarItens'))
+        || (nextStatus != 'delivered' && nextStatus != 'canceled'
+          && changed.hasOnly(['status', 'motoboyId', 'orderType'])
+          && operatorCanPdvAction(ownerId, 'delivery', 'mudarStatus'))
+        || (changed.hasOnly(['stockDeducted', 'stockDeductedItems'])
+          && operatorCanAdjustInventory(ownerId))
+        || (changed.hasOnly(['customerCounted'])
+          && request.resource.data.customerCounted == true
+          && (operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+            || (resource.data.get('source', '') == 'pdv'
+              && operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda'))))
+        || (changed.hasOnly(['receivedMessageSent', 'pixProofMessageSent',
+              'outForDeliveryMessageSent', 'canceledMessageSent'])
+          && operatorCanPdvTab(ownerId, 'delivery'))
+      );
+    }
+
+    function operatorCanUpdateTableOrder(ownerId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let nextStatus = request.resource.data.get('status', resource.data.get('status', ''));
+      return resource.data.get('orderType', '') == 'dine_in' && (
+        (nextStatus == 'canceled'
+          && changed.hasOnly(['status', 'items', 'subtotal', 'totalAmount',
+            'stockDeducted', 'stockDeductedItems'])
+          && (operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+            || (resource.data.get('source', '') != 'pdv'
+              && resource.data.get('accepted', false) != true
+              && operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline'))))
+        || (nextStatus == 'delivered'
+          && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
+            'subtotal', 'totalAmount', 'customerName', 'customerPhone',
+            'stockDeducted', 'stockDeductedItems'])
+          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
+          && ((request.resource.data.get('discount', 0)
+                == resource.data.get('discount', 0)
+              && request.resource.data.get('surcharge', 0)
+                == resource.data.get('surcharge', 0))
+            || operatorCanPdvAction(ownerId, 'mesas', 'descontoAcrescimo'))
+          && (!usesContaCasa(request.resource.data)
+            || operatorCanPdvAction(ownerId, 'mesas', 'vendaPrazo')))
+        || (changed.hasOnly(['items', 'subtotal', 'totalAmount',
+              'customerName', 'customerPhone', 'stockDeducted', 'stockDeductedItems'])
+          && changed.hasAny(['items', 'subtotal', 'totalAmount'])
+          && operatorCanPdvAction(ownerId, 'mesas', 'lancarItens')
+          && (!changed.hasAny(['customerName', 'customerPhone'])
+            || operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')))
+        || (changed.hasOnly(['customerName', 'customerPhone'])
+          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa'))
+        || (changed.hasOnly(['tableNumber', 'accepted'])
+          && changed.hasAny(['tableNumber'])
+          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+          && ((resource.data.get('source', '') == 'pdv'
+                || resource.data.get('accepted', false) == true)
+            || operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline')))
+        || (changed.hasOnly(['accepted'])
+          && request.resource.data.accepted == true
+          && operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline'))
+        || (changed.hasOnly(['status'])
+          && nextStatus == 'awaiting_payment'
+          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda'))
+        || (changed.hasOnly(['status'])
+          && nextStatus == 'pending'
+          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa'))
+        || (changed.hasOnly(['stockDeducted', 'stockDeductedItems'])
+          && operatorCanAdjustInventory(ownerId))
+        || (changed.hasOnly(['customerCounted'])
+          && request.resource.data.customerCounted == true
+          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda'))
+        || (changed.hasOnly(['receivedMessageSent', 'pixProofMessageSent',
+              'outForDeliveryMessageSent', 'canceledMessageSent'])
+          && operatorCanPdvTab(ownerId, 'mesas'))
+      );
+    }
+
+    function operatorCanUpdateOrder(ownerId) {
+      return isOperatorOf(ownerId)
+        && !usesContaCasa(resource.data)
+        && !usesContaCasa(request.resource.data)
+        && (operatorCanUpdateDeliveryOrder(ownerId)
+          || operatorCanUpdateTableOrder(ownerId));
+    }
+
+    function cashRegisterOwner(registerId) {
+      return get(/databases/$(database)/documents/cash_registers/$(registerId)).data.ownerId;
+    }
+
+    function cashRegisterIsOpen(registerId, ownerId) {
+      let register = get(
+        /databases/$(database)/documents/cash_registers/$(registerId)).data;
+      return register.ownerId == ownerId && register.status == 'aberto';
+    }
+
+    function cashRegisterWillBeClosed(registerId, ownerId) {
+      let registerAfter = getAfter(
+        /databases/$(database)/documents/cash_registers/$(registerId)).data;
+      return registerAfter.ownerId == ownerId
+        && registerAfter.status == 'fechado';
+    }
+
+    function operatorCanCreateCashTransaction(ownerId, data) {
+      let type = data.get('tipo', '');
+      return cashRegisterOwner(data.caixaId) == ownerId && (
+        // No batch de fechamento, suprimentos/sangrias automáticos pertencem
+        // à capacidade fecharCaixa (não aos botões manuais homônimos).
+        (type in ['sangria', 'suprimento', 'fechamento', 'retirada_fechamento']
+          && cashRegisterIsOpen(data.caixaId, ownerId)
+          && cashRegisterWillBeClosed(data.caixaId, ownerId)
+          && operatorCanPdvAction(ownerId, 'caixa', 'fecharCaixa'))
+        || (cashRegisterIsOpen(data.caixaId, ownerId) && (
+          (type == 'abertura'
+            && operatorCanPdvAction(ownerId, 'caixa', 'abrirCaixa'))
+          || (type == 'sangria'
+            && operatorCanPdvAction(ownerId, 'caixa', 'sangria'))
+          || (type == 'suprimento'
+            && operatorCanPdvAction(ownerId, 'caixa', 'suprimento'))
+          || (type == 'venda' && (
+            !valueUsesContaCasa(data.get('formaPagamento', ''))
+            && (operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+              || operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda')
+              || operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
+              || operatorCanPdvAction(ownerId, 'encomendas_pedidos', 'lancarSinal'))
+          ))
+        ))
+      );
     }
 
     // Regras para a coleção roles_admin
@@ -41,7 +264,10 @@ service cloud.firestore {
       // Cadastro de loja cria o próprio registro de admin. Login anônimo
       // (clientes do cardápio) não pode se autopromover a admin.
       allow create: if isSignedIn() && request.auth.uid == userId
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        // Um operador já provisionado jamais pode virar master criando o
+        // próprio roles_admin. Novas lojas legítimas ainda usam este fluxo.
+        && !exists(/databases/$(database)/documents/roles_operador/$(request.auth.uid));
       allow get, list, update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if false; // Por segurança, não permite deletar admin via app
     }
@@ -54,11 +280,9 @@ service cloud.firestore {
         (isAdmin() && resource.data.ownerId == request.auth.uid)
       );
       allow list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin() && resource.data.ownerId == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active', 'name']);
-      // Criar/excluir só pela API com Admin SDK (cria/remove também o usuário
-      // do Firebase Auth) — nunca direto do cliente.
-      allow create, delete: if false;
+      // Todo write passa pela API/Admin SDK: além de criar/remover o usuário do
+      // Auth, ela valida ownerId e impede promoção/edição das próprias flags.
+      allow create, update, delete: if false;
     }
 
     // Segredo da senha da Retaguarda. Nunca fica no perfil público da loja:
@@ -87,10 +311,10 @@ service cloud.firestore {
       // aumentar nem deixar negativo. Reposição/estorno é só do dono (admin).
       // Operador ativo pode mexer APENAS no estoque (baixa na venda e estorno
       // no cancelamento via lib/inventory) — nunca em preço/nome/etc.
-      allow update: if (isAdmin() && resource.data.ownerId == request.auth.uid) ||
-        (isOperatorOf(resource.data.ownerId)
+      allow update: if isOwnerOf(resource.data.ownerId) ||
+        (operatorCanAdjustInventory(resource.data.ownerId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
-        (isSignedIn()
+        (isAnonymous()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])
           && request.resource.data.stockQuantity is number
           && request.resource.data.stockQuantity >= 0
@@ -125,12 +349,15 @@ service cloud.firestore {
       // A query do cliente PRECISA filtrar por customerUid == uid.
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
-        isStaffOf(resource.data.ownerId)
+        isOwnerOf(resource.data.ownerId) ||
+        operatorCanReadOrders(resource.data.ownerId)
       );
-      allow update: if isStaffOf(resource.data.ownerId);
+      allow update: if isOwnerOf(resource.data.ownerId)
+        || operatorCanUpdateOrder(resource.data.ownerId);
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
-        isStaffOf(request.resource.data.ownerId)
+        isOwnerOf(request.resource.data.ownerId) ||
+        operatorCanCreateOrder(request.resource.data.ownerId, request.resource.data)
       );
       allow delete: if false;
     }
@@ -142,13 +369,35 @@ service cloud.firestore {
     match /encomendas/{encomendaId} {
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
-        isStaffOf(resource.data.ownerId)
+        isOwnerOf(resource.data.ownerId) ||
+        operatorCanPdvTab(resource.data.ownerId, 'encomendas_pedidos')
       );
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
-        isStaffOf(request.resource.data.ownerId)
+        isOwnerOf(request.resource.data.ownerId)
       );
-      allow update: if isStaffOf(resource.data.ownerId);
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        isOperatorOf(resource.data.ownerId)
+        && !usesContaCasa(resource.data)
+        && !usesContaCasa(request.resource.data) && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && operatorCanPdvAction(resource.data.ownerId,
+              'encomendas_pedidos', 'mudarStatus'))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sinalLancado'])
+            && request.resource.data.sinalLancado == true
+            && operatorCanPdvAction(resource.data.ownerId,
+              'encomendas_pedidos', 'lancarSinal'))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'delivery', 'orderNotes', 'customerName', 'customerPhone', 'status'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                'delivery', 'orderNotes', 'customerName', 'customerPhone'])
+            && operatorCanPdvAction(resource.data.ownerId,
+              'encomendas_pedidos', 'editarEncomenda')
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+              || operatorCanPdvAction(resource.data.ownerId,
+                'encomendas_pedidos', 'mudarStatus')))
+        )
+      );
       allow delete: if false;
     }
 
@@ -156,39 +405,66 @@ service cloud.firestore {
       // Movimento financeiro é da equipe da loja (dono ou operador ativo — o
       // operador é justamente quem abre/fecha caixa). O cardápio do cliente
       // usa store_profiles.isCaixaAberto para saber se o caixa está aberto.
-      allow get, list: if isStaffOf(resource.data.ownerId);
-      allow create, update, delete: if
-        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
-        (request.method != 'create' && isStaffOf(resource.data.ownerId));
+      // O hook de caixa ainda precisa de sessões anteriores para calcular o
+      // próximo número e saldos acumulados. A aba/histórico fica escondida na
+      // UI, mas a leitura bruta não é separável sem uma projeção server-side.
+      allow get, list: if isOwnerOf(resource.data.ownerId)
+        || operatorCanOperateCash(resource.data.ownerId);
+      allow create: if isOwnerOf(request.resource.data.ownerId) || (
+        request.resource.data.status == 'aberto'
+        && request.resource.data.keys().hasOnly(['ownerId', 'status', 'sessao',
+          'saldoInicial', 'dataAbertura', 'usuarioAbertura'])
+        && operatorCanPdvAction(request.resource.data.ownerId, 'caixa', 'abrirCaixa')
+      );
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        request.resource.data.ownerId == resource.data.ownerId
+        && resource.data.status == 'aberto'
+        && request.resource.data.status == 'fechado'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'dataFechamento', 'totalFechamento', 'fechamentoDetalhes'])
+        && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'fecharCaixa')
+      );
+      allow delete: if isOwnerOf(resource.data.ownerId);
     }
 
     match /cash_transactions/{transactionId} {
-      allow get, list: if isStaffOf(resource.data.ownerId);
-      allow create, update, delete: if
-        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
-        (request.method != 'create' && isStaffOf(resource.data.ownerId));
+      allow get, list: if isOwnerOf(resource.data.ownerId)
+        || operatorCanOperateCash(resource.data.ownerId);
+      allow create: if isOwnerOf(request.resource.data.ownerId)
+        || operatorCanCreateCashTransaction(
+          request.resource.data.ownerId, request.resource.data);
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        resource.data.tipo == 'venda'
+        && !valueUsesContaCasa(resource.data.get('formaPagamento', ''))
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.caixaId == resource.data.caixaId
+        && cashRegisterIsOpen(resource.data.caixaId, resource.data.ownerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'canceled', 'canceledAt', 'canceledBy', 'canceledReason'])
+        && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'cancelarVenda')
+      );
+      allow delete: if isOwnerOf(resource.data.ownerId);
     }
 
     match /clientes/{clienteId} {
       // Leitura exige login (o anônimo do cardápio serve): o my-orders busca
       // o cliente por telefone para a Conta da Casa. Fechar mais que isso
       // exige mover essas consultas para API routes com Admin SDK.
-      allow get, list: if isSignedIn();
-      // Cadastro/atualização pela equipe (sincronia automática de cliente ao
-      // receber/finalizar pedido também roda no PDV do operador). Excluir
-      // cadastro continua só do dono.
-      allow create, update: if
-        (request.method == 'create' && isStaffOf(request.resource.data.ownerId)) ||
-        (request.method != 'create' && isStaffOf(resource.data.ownerId));
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow get, list: if isAnonymous()
+        || isOwnerOf(resource.data.ownerId);
+      // Base, condições de crédito e sincronização são owner-only. O cliente
+      // anônimo mantém apenas a leitura legada necessária ao my-orders.
+      allow create: if isOwnerOf(request.resource.data.ownerId);
+      allow update: if isOwnerOf(resource.data.ownerId);
+      allow delete: if isOwnerOf(resource.data.ownerId);
 
       match /credit_transactions/{transactionId} {
-        // Extrato visível para usuário logado (cliente vê o próprio fiado no
-        // my-orders); lançamentos pela equipe da loja do cliente (o Prazo é
-        // fechado no PDV, inclusive pelo operador).
-        allow get, list: if isSignedIn();
+        // Cliente anônimo lê o extrato legado no my-orders; somente o dono faz
+        // lançamentos ou altera a Conta da Casa.
+        allow get, list: if isAnonymous()
+          || isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
         allow create, update, delete: if
-          isStaffOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
+          isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
       }
     }
 
@@ -199,10 +475,15 @@ service cloud.firestore {
       // liga/desliga delivery do PDV). Todo o resto é só do dono.
       allow update: if (isAdmin() && request.auth.uid == profileId) ||
         (isOperatorOf(profileId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCaixaAberto'])) ||
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCaixaAberto'])
+          && ((request.resource.data.isCaixaAberto == true
+              && operatorCanPdvAction(profileId, 'caixa', 'abrirCaixa'))
+            || (request.resource.data.isCaixaAberto == false
+              && operatorCanPdvAction(profileId, 'caixa', 'fecharCaixa')))) ||
         (isOperatorOf(profileId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['general'])
-          && request.resource.data.general.diff(resource.data.general).affectedKeys().hasOnly(['disableDelivery']));
+          && request.resource.data.general.diff(resource.data.general).affectedKeys().hasOnly(['disableDelivery'])
+          && operatorCanPdvGlobal(profileId, 'toggleDelivery'));
       allow create, delete: if isAdmin() && request.auth.uid == profileId;
     }
 
@@ -211,7 +492,10 @@ service cloud.firestore {
       // então a escrita é aberta mas restrita ao formato do ping.
       allow create, update: if request.resource.data.keys().hasOnly(['storeId', 'lastActive']);
       allow delete: if true;
-      allow get, list: if isAdmin() || isActiveOperator();
+      // Leitura agora é isolada por loja. A query do painel deve filtrar por
+      // storeId; rules não usam o filtro local como barreira de segurança.
+      allow get, list: if isOwnerOf(resource.data.storeId)
+        || operatorCanPdvTab(resource.data.storeId, 'delivery');
     }
 
     match /promotions/{promoId} {

@@ -95,27 +95,38 @@ export async function patchWhatsAppIntegration(
   return next;
 }
 
-export async function saveWhatsAppMessageLog(
-  idToken: string,
-  data: {
-    ownerId: string;
-    empresaId: string;
-    phone: string;
-    message?: string;
-    type: string;
-    orderId?: string;
-    providerMessageId?: string;
-    status: string;
-    payload?: Record<string, unknown>;
-    errorMessage?: string;
-  },
-) {
-  return createFirestoreDocument('whatsapp_messages', {
+export interface WhatsAppMessageLogData {
+  ownerId: string;
+  empresaId: string;
+  actorUid?: string;
+  phone: string;
+  message?: string;
+  type: string;
+  orderId?: string;
+  providerMessageId?: string;
+  status: string;
+  payload?: Record<string, unknown>;
+  errorMessage?: string;
+}
+
+function buildWhatsAppMessageLog(data: WhatsAppMessageLogData) {
+  return Object.fromEntries(Object.entries({
     ...data,
     provider: 'wapi',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  }, idToken);
+  }).filter(([, value]) => value !== undefined));
+}
+
+export async function saveWhatsAppMessageLog(idToken: string, data: WhatsAppMessageLogData) {
+  return createFirestoreDocument('whatsapp_messages', buildWhatsAppMessageLog(data), idToken);
+}
+
+/** Log delegado: o token do operador não pode gravar como se fosse o owner. */
+export async function saveWhatsAppMessageLogAdmin(data: WhatsAppMessageLogData) {
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb) throw new Error('Firebase Admin indisponivel para salvar o log da mensagem.');
+  return adminDb.collection('whatsapp_messages').add(buildWhatsAppMessageLog(data));
 }
 
 export async function deleteWhatsAppIntegration(empresaId: string, idToken: string) {

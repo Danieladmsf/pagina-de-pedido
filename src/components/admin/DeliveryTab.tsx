@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, query, updateDoc, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
@@ -27,6 +27,7 @@ import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -46,6 +47,7 @@ interface DeliveryTabProps {
 }
 
 export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [], permissions }: DeliveryTabProps) {
+  const { ownerId, role } = usePdvAccess();
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
   // - qualquer pedido de entrega (delivery), de qualquer origem;
@@ -60,7 +62,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     || (o.orderType === 'pickup' && !['delivered', 'canceled'].includes(o.status))
   ) || [];
 
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId), [ownerId, user]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(onlyDeliveryAppOrders.length > 0 ? onlyDeliveryAppOrders[0].id : null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
@@ -92,6 +94,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     feePaidToMotoboyOnPrazo: true,
     formasPagamento: FORMAS_PAGAMENTO,
     allowAdjustments: can(permissions, 'actions.delivery.descontoAcrescimo'),
+    allowPrazo: role === 'owner',
   });
   const { toast } = useToast();
   const isReadOnlyHistorico = isCaixaHistorico;
@@ -105,10 +108,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   // Rastreia usuários ativos no cardápio
   useEffect(() => {
-    if (!db) return;
+    if (!db || !ownerId) return;
     
     // Observa sessões ativas da loja
-    const q = collection(db, 'active_sessions');
+    const q = query(collection(db, 'active_sessions'), where('storeId', '==', ownerId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       // Filtra localmente os que deram sinal de vida no último 1 minuto (60000 ms)
       const activeThreshold = Date.now() - 60000;
@@ -116,9 +119,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       
       snapshot.forEach(doc => {
         const data = doc.data();
-        const matchesStore = !storeProfile?.id || data.storeId === storeProfile.id || data.storeId === 'default' || !data.storeId;
-        
-        if (data.lastActive && data.lastActive >= activeThreshold && matchesStore) {
+        if (data.lastActive && data.lastActive >= activeThreshold) {
           count++;
         }
       });
@@ -126,7 +127,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     });
 
     return () => unsubscribe();
-  }, [db, storeProfile?.id]);
+  }, [db, ownerId]);
 
   const filteredOrders = onlyDeliveryAppOrders.filter(o =>
     o.id.includes(searchTerm) ||
@@ -353,7 +354,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       // (components/admin/fechamento) — igual em todos os canais.
       const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado, feeOffApplied } = fechamento.buildCheckout();
 
-      const ownerId = storeProfile?.id || paymentModalOrder.ownerId || (user as any)?.uid || 'default';
       const contaCasa = await resolveContaCasa(db, {
         splits: splitsToProcess,
         ownerId,
@@ -816,10 +816,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             setQuickRegisterModal(null);
             handleConfirmPayment();
           }}
-          canSubmit={() => can(permissions, 'actions.delivery.finalizarPedido')}
+          canSubmit={() => role === 'owner' && can(permissions, 'actions.delivery.finalizarPedido')}
           onSubmitBlocked={showPermissionRevokedToast}
           db={db}
-          ownerId={storeProfile?.id || (user as any)?.uid || 'default'}
+          ownerId={ownerId}
           initialName={quickRegisterModal.name}
           initialPhone={quickRegisterModal.phone}
           initialAddress={quickRegisterModal.address}

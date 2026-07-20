@@ -71,6 +71,10 @@ export interface LancamentoCaixa {
 }
 
 interface UseCaixaOptions {
+  /** UID da loja resolvido pelo PdvAccessContext (diferente do ator no operador). */
+  ownerId?: string | null;
+  /** Evita montar listeners financeiros em telas que não usam o Caixa. */
+  enabled?: boolean;
   caixaSelecionadoId?: string | null;
   onCaixaSelecionadoIdChange?: (id: string | null) => void;
 }
@@ -79,17 +83,19 @@ export function useCaixa(options?: UseCaixaOptions) {
   const db = useFirestore();
   const { user } = useUser();
   const isRealUser = !!(user && !user.isAnonymous);
+  const ownerId = options?.ownerId || (isRealUser ? user!.uid : null);
+  const enabled = options?.enabled !== false;
   const controlledCaixaSelecionadoId = options?.caixaSelecionadoId;
   const onCaixaSelecionadoIdChange = options?.onCaixaSelecionadoIdChange;
 
   // Busca TODOS os caixas do dono
   const caixaQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
+    if (!enabled || !db || !isRealUser || !ownerId) return null;
     return query(
       collection(db, 'cash_registers'),
-      where('ownerId', '==', user!.uid)
+      where('ownerId', '==', ownerId)
     );
-  }, [db, isRealUser, user?.uid]);
+  }, [db, enabled, isRealUser, ownerId]);
 
   const { data: todosCaixas, isLoading: loadingCaixas, error: caixaError } = useCollection(caixaQuery);
 
@@ -135,14 +141,14 @@ export function useCaixa(options?: UseCaixaOptions) {
 
   // Busca os lançamentos do caixa selecionado
   const lancamentosQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser || !caixaAtual?.id) return null;
+    if (!enabled || !db || !isRealUser || !ownerId || !caixaAtual?.id) return null;
     // O filtro de ownerId é exigido pelas regras (leitura restrita ao dono)
     return query(
       collection(db, 'cash_transactions'),
-      where('ownerId', '==', user!.uid),
+      where('ownerId', '==', ownerId),
       where('caixaId', '==', caixaAtual.id)
     );
-  }, [db, isRealUser, user?.uid, caixaAtual?.id]);
+  }, [db, enabled, isRealUser, ownerId, caixaAtual?.id]);
 
   const { data: lancamentosData, isLoading: loadingLancamentos, error: lancError } = useCollection(lancamentosQuery);
 
@@ -160,12 +166,12 @@ export function useCaixa(options?: UseCaixaOptions) {
   // saldos que atravessam dias — ex.: quanto ainda se deve a cada motoboy
   // somando o que foi pago em todas as sessões, não só na atual.
   const todasTransacoesQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
+    if (!enabled || !db || !isRealUser || !ownerId) return null;
     return query(
       collection(db, 'cash_transactions'),
-      where('ownerId', '==', user!.uid)
+      where('ownerId', '==', ownerId)
     );
-  }, [db, isRealUser, user?.uid]);
+  }, [db, enabled, isRealUser, ownerId]);
 
   const { data: todasTransacoesData } = useCollection(todasTransacoesQuery);
   const todasTransacoes = useMemo(
@@ -181,14 +187,14 @@ export function useCaixa(options?: UseCaixaOptions) {
   }, [todosCaixas]);
 
   const abrirCaixa = useCallback(async (saldoInicial: number) => {
-    if (!db || !isRealUser) throw new Error("Usuário não autenticado");
+    if (!enabled || !db || !isRealUser || !ownerId) throw new Error("Caixa indisponível nesta tela");
     if (caixaAberto) throw new Error("Já existe um caixa aberto. Feche-o primeiro.");
 
     const sessao = proximaSessao;
     console.log('[useCaixa] Abrindo caixa sessão:', sessao, 'saldo:', saldoInicial);
 
     const caixaRef = await addDoc(collection(db, 'cash_registers'), {
-      ownerId: user!.uid,
+      ownerId,
       status: 'aberto',
       sessao,
       saldoInicial: Number(saldoInicial),
@@ -198,7 +204,7 @@ export function useCaixa(options?: UseCaixaOptions) {
 
     await addDoc(collection(db, 'cash_transactions'), {
       caixaId: caixaRef.id,
-      ownerId: user!.uid,
+      ownerId,
       tipo: 'abertura',
       titulo: 'Abertura de Caixa',
       valor: Number(saldoInicial), // Positivo
@@ -208,11 +214,11 @@ export function useCaixa(options?: UseCaixaOptions) {
     });
 
     // Atualiza o perfil da loja para o cardápio de clientes
-    await setDoc(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: true }, { merge: true });
+    await setDoc(doc(db, 'store_profiles', ownerId), { isCaixaAberto: true }, { merge: true });
 
     setCaixaSelecionadoId(caixaRef.id);
     return caixaRef.id;
-  }, [db, isRealUser, user, caixaAberto, proximaSessao]);
+  }, [db, enabled, isRealUser, ownerId, user, caixaAberto, proximaSessao]);
 
   const fecharCaixa = useCallback(async (params?: { 
     taxaGarcom?: number; 
@@ -245,7 +251,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     diferencaCaixa?: number;
     justificativaFalta?: string;
   }) => {
-    if (!db || !isRealUser || !caixaAberto?.id) return;
+    if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) return;
 
     // Calcular totais
     const lancs = lancamentos.filter(l => l.caixaId === caixaAberto.id);
@@ -276,7 +282,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     if (params?.taxaGarcom && params.taxaGarcom > 0) {
       batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
-        ownerId: user!.uid,
+        ownerId,
         tipo: 'sangria',
         titulo: 'Taxa Garçom / Serviço de Mesa',
         valor: params.taxaGarcom * -1,
@@ -293,7 +299,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         if (valorPago > 0) {
           batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
-            ownerId: user!.uid,
+            ownerId,
             tipo: 'sangria',
             titulo: `Motoboy: ${m.name} (${m.entregas} entregas)`,
             valor: valorPago * -1,
@@ -314,7 +320,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         if (valorPago > 0) {
           batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
-            ownerId: user!.uid,
+            ownerId,
             tipo: 'sangria',
             titulo: `Freelancer: ${f.name} (${f.tipo})`,
             valor: valorPago * -1,
@@ -342,7 +348,7 @@ export function useCaixa(options?: UseCaixaOptions) {
       const isFalta = params.diferencaCaixa < 0;
       batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
-        ownerId: user!.uid,
+        ownerId,
         tipo: isFalta ? 'sangria' : 'suprimento',
         titulo: isFalta ? `Falta de Caixa: ${params.justificativaFalta || 'Não justificada'}` : 'Sobra de Caixa Identificada',
         valor: params.diferencaCaixa, // Positivo para sobra (suprimento), negativo para falta (sangria)
@@ -361,7 +367,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     if (valorParaRetirada > 0) {
       batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
-        ownerId: user!.uid,
+        ownerId,
         tipo: 'retirada_fechamento',
         titulo: 'Retirada no Fechamento',
         valor: valorParaRetirada * -1,
@@ -390,10 +396,10 @@ export function useCaixa(options?: UseCaixaOptions) {
     });
 
     // Atualiza o perfil da loja para o cardápio de clientes
-    batch.set(doc(db, 'store_profiles', user!.uid), { isCaixaAberto: false }, { merge: true });
+    batch.set(doc(db, 'store_profiles', ownerId), { isCaixaAberto: false }, { merge: true });
 
     await batch.commit();
-  }, [db, isRealUser, user, caixaAberto, lancamentos]);
+  }, [db, enabled, isRealUser, ownerId, user, caixaAberto, lancamentos]);
 
   const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo }: {
     tipo: 'sangria' | 'suprimento' | 'venda',
@@ -403,7 +409,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     destinatarioId?: string,
     destinatarioTipo?: 'motoboy' | 'freelancer'
   }) => {
-    if (!db || !isRealUser || !caixaAberto?.id) {
+    if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) {
       throw new Error("Não há caixa aberto no momento.");
     }
 
@@ -411,7 +417,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     
     await addDoc(collection(db, 'cash_transactions'), {
       caixaId: caixaAberto.id,
-      ownerId: user!.uid,
+      ownerId,
       tipo,
       titulo,
       valor: valorFinal,
@@ -421,13 +427,13 @@ export function useCaixa(options?: UseCaixaOptions) {
       ...(destinatarioId && { destinatarioId }),
       ...(destinatarioTipo && { destinatarioTipo }),
     });
-  }, [db, isRealUser, user, caixaAberto]);
+  }, [db, enabled, isRealUser, ownerId, user, caixaAberto]);
 
   // Cancelamento lógico de venda: marca/desmarca canceled no lançamento.
   // Só vendas do caixa ABERTO — mexer em caixa fechado dessincronizaria o
   // totalFechamento já gravado no cash_register.
   const setVendaCancelada = useCallback(async (lancamentoId: string, cancelar: boolean, motivo?: string) => {
-    if (!db || !isRealUser) throw new Error('Usuário não autenticado');
+    if (!enabled || !db || !isRealUser) throw new Error('Caixa indisponível nesta tela');
     if (!caixaAberto?.id) throw new Error('Só é possível alterar vendas com o caixa aberto.');
     const lanc = lancamentos.find(l => l.id === lancamentoId);
     if (!lanc) throw new Error('Lançamento não encontrado.');
@@ -444,7 +450,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     } else {
       await updateDoc(doc(db, 'cash_transactions', lancamentoId), { canceled: false });
     }
-  }, [db, isRealUser, user, caixaAberto, lancamentos]);
+  }, [db, enabled, isRealUser, user, caixaAberto, lancamentos]);
 
   return {
     caixaAberto,

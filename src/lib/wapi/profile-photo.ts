@@ -50,7 +50,7 @@ export function peekProfilePhoto(phone: string): string | null | undefined {
   return cache.has(key) ? cache.get(key) : undefined;
 }
 
-export function makeProfilePhotoLoader(user: any) {
+export function makeProfilePhotoLoader(user: any, ownerId?: string) {
   return async (phone: string): Promise<string | null> => {
     const key = digits(phone);
     if (!key || !user) return null;
@@ -67,7 +67,8 @@ export function makeProfilePhotoLoader(user: any) {
         const res = await fetch('/wapi/profile-pic', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ empresaId: user.uid, phone: key }),
+          // O token identifica quem executa; empresaId identifica a loja.
+          body: JSON.stringify({ empresaId: ownerId || user.uid, phone: key }),
         });
         const data = await res.json().catch(() => null);
         const link = res.ok && data?.link ? (data.link as string) : null;

@@ -29,6 +29,7 @@ import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 
@@ -64,18 +65,32 @@ const discardDraftOnUnmount = new Set<string>();
 const mountedDraftKeys = new Set<string>();
 
 export function discardMesasDraft(userId: string): void {
-  mesasDraftMemory.delete(userId);
-  // Only leave an unmount marker when that owner's Mesa UI is actually
-  // mounted. Otherwise the marker could survive logout and erase a future
-  // draft when the same account signs in again in this SPA session.
-  if (mountedDraftKeys.has(userId)) {
-    discardDraftOnUnmount.add(userId);
-  } else {
-    discardDraftOnUnmount.delete(userId);
+  // O chamador conhece a identidade autenticada; a memória usa também o
+  // tenant para impedir que uma eventual realocação de operador reaproveite
+  // o rascunho da loja anterior.
+  const keys = new Set<string>([userId]);
+  for (const key of mesasDraftMemory.keys()) {
+    if (key.startsWith(`${userId}:`)) keys.add(key);
+  }
+  for (const key of mountedDraftKeys) {
+    if (key.startsWith(`${userId}:`)) keys.add(key);
+  }
+
+  for (const key of keys) {
+    mesasDraftMemory.delete(key);
+    // Only leave an unmount marker when that actor/tenant Mesa UI is actually
+    // mounted. Otherwise the marker could survive logout and erase a future
+    // draft when the same account signs in again in this SPA session.
+    if (mountedDraftKeys.has(key)) {
+      discardDraftOnUnmount.add(key);
+    } else {
+      discardDraftOnUnmount.delete(key);
+    }
   }
 }
 
 export function MesasTab({ orders = [], categories = [], items = [], db, user, registrarLancamento, caixaAberto = false, storeInfo, onOpenCaixa, addons = [], addonCategories = [], onUnsavedChangesChange, permissions }: MesasTabProps) {
+  const { ownerId, role } = usePdvAccess();
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeInfo);
   const { toast } = useToast();
   const canGerenciarMesa = can(permissions, 'actions.mesas.gerenciarMesa');
@@ -86,7 +101,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     variant: 'destructive',
     title: 'Permissão removida pelo administrador',
   });
-  const draftKey = user?.uid || storeInfo?.id || 'default';
+  const draftKey = `${user?.uid || 'anonymous'}:${ownerId}`;
   const initialDraftRef = React.useRef<MesasDraftMemory | null>(mesasDraftMemory.get(draftKey) || null);
   const initialDraft = initialDraftRef.current;
   const [activeSubTab, setActiveSubTab] = useState<'abertas' | 'finalizadas'>('abertas');
@@ -138,7 +153,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // Modo manual = sem impressão automática (o operador imprime ao aceitar).
   const isManualPrint = !!(storeInfo?.general?.manualPrint || storeInfo?.manualPrint);
 
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId), [ownerId, user]);
 
   // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
   // para impressão pelo navegador (iframe) quando o QZ não estiver presente.
@@ -247,7 +262,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // ── Autocomplete de cliente (nome/celular) na comanda da mesa ──
   // Carga da lista + matches centralizados no hook (mesma fonte do Balcao).
   const { allCustomers, activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
-    useCustomerLookup(db, storeInfo?.id || user?.uid, customerName, customerPhone);
+    useCustomerLookup(db, role === 'owner' ? ownerId : undefined, customerName, customerPhone);
 
   // Cliente do cadastro que casa com o telefone atual — usado para indicar que o
   // Prazo está ativo (ao escolher na lista ou ao reabrir uma comanda vinculada).
@@ -292,7 +307,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     allowPrazo: can(permissions, 'actions.mesas.vendaPrazo'),
   });
 
-  const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, user?.uid);
+  const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, ownerId);
 
   // Os produtos sao sempre agrupados por categoria; clicar numa categoria
   // rola ate a secao e rolar a lista atualiza a pill ativa (igual cliente).
@@ -623,7 +638,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               mode: 'set' as const,
               data: {
                 id: finalOrderId,
-                ownerId: user?.uid || 'default',
+                ownerId,
                 customerName: customerName || `Mesa ${selectedTable}`,
                 customerPhone: customerPhone || '',
                 tableNumber: selectedTable,
@@ -784,7 +799,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       // centralizado (components/admin/fechamento) — igual em todos os canais.
       const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
 
-      const ownerId = storeInfo?.id || user?.uid || 'default';
       const linkedName = (customerName || '').trim();
       const phone = customerPhone || quickRegisterModal?.phone || '';
       const contaCasa = await resolveContaCasa(db, { splits: splitsToProcess, ownerId, phone });
@@ -827,17 +841,17 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
       // Vincula/contabiliza a venda no cadastro do cliente (só com cliente
       // identificado por telefone; venda anônima de mesa é ignorada). Idempotente.
-      if (phone) {
+      if (role === 'owner' && phone) {
         try {
           const activeOrder = activeOrders.find(o => o.id === activeOrderId);
           await syncCustomerFromOrder(db, {
             ...activeOrder,
             id: activeOrderId,
-            ownerId: user?.uid || 'default',
+            ownerId,
             customerName: linkedName,
             customerPhone: phone,
             totalAmount: totalCobrado,
-          }, { ownerId: user?.uid || 'default', countOrder: true });
+          }, { ownerId, countOrder: true });
         } catch (err) {
           console.error('Erro ao sincronizar cliente (mesa):', err);
         }
@@ -1400,7 +1414,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             && (!customerDirty || can(permissions, 'actions.mesas.gerenciarMesa'))}
           onSubmitBlocked={notifyPermissionRemoved}
           db={db}
-          ownerId={storeInfo?.id || user?.uid || 'default'}
+          ownerId={ownerId}
           initialName={quickRegisterModal.name}
           initialPhone={quickRegisterModal.phone}
           initialAddress={quickRegisterModal.address}

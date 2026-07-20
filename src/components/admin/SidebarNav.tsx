@@ -20,8 +20,15 @@ import {
   Printer,
   Megaphone,
   CakeSlice,
-  ShieldCheck
+  ShieldCheck,
+  UserCog,
 } from 'lucide-react';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import {
+  canAccessRetaguarda,
+  EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+  getRetaguardaPermissionForTab,
+} from '@/lib/user-permissions';
 
 interface SidebarNavProps {
   activeTab: string;
@@ -35,6 +42,13 @@ interface SidebarNavProps {
 
 export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo, theme }: SidebarNavProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const { role, operatorPermissions } = usePdvAccess();
+  const retaguardaPermissions = operatorPermissions?.retaguarda
+    ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
+  const canShowTab = (tabId: string) => {
+    const permission = getRetaguardaPermissionForTab(tabId);
+    return permission !== null && canAccessRetaguarda(role, retaguardaPermissions, permission);
+  };
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -48,7 +62,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     // Exclusivo da modalidade confeitaria (agendamento de encomendas).
     ...(theme === 'confeitaria' ? [{ id: 'encomendas', label: 'Encomendas', icon: CakeSlice, highlight: true }] : []),
     { id: 'freelance', label: 'Freelance', icon: Bike },
-  ];
+  ].filter((item) => canShowTab(item.id));
 
   const profileItems = [
     { id: 'perfil_geral', label: 'Dados e Contato', icon: Contact },
@@ -59,6 +73,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_impressora', label: 'Impressora', icon: Printer },
     { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },
   ];
+  const showProfile = canShowTab('perfil_geral');
+  const showPermissions = canShowTab('permissoes_pdv');
+  const showUsers = canShowTab('usuarios');
 
   const displayName = storeName || 'Minha Loja';
   const initials = displayName.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
@@ -114,7 +131,26 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
         })}
 
         {/* Perfil expansível */}
+        {(showPermissions || showUsers || showProfile) && (
         <div className="mt-4 pt-4 border-t border-white/10">
+          {showUsers && (
+          <button
+            onClick={() => setActiveTab('usuarios')}
+            className={`mb-1 flex w-full items-center overflow-hidden rounded-lg transition-colors ${
+              activeTab === 'usuarios' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-300 hover:bg-white/5'
+            }`}
+            style={{ height: '44px' }}
+          >
+            <div className="flex h-full w-12 shrink-0 items-center justify-center">
+              <UserCog className="h-5 w-5" />
+            </div>
+            <span className={`whitespace-nowrap font-medium transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
+              Usuários
+            </span>
+          </button>
+          )}
+
+          {showPermissions && (
           <button
             onClick={() => setActiveTab('permissoes_pdv')}
             className={`mb-1 flex w-full items-center overflow-hidden rounded-lg transition-colors ${
@@ -129,7 +165,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               Permissões do PDV
             </span>
           </button>
+          )}
 
+          {showProfile && (
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className={`flex items-center w-full rounded-lg transition-colors overflow-hidden shrink-0 ${
@@ -147,9 +185,11 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               {isProfileOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </div>
           </button>
+          )}
 
           {/* Sub-itens do perfil */}
-          <div 
+          {showProfile && (
+          <div
             className={`overflow-hidden transition-all duration-300 flex flex-col gap-1`}
             style={{ 
               height: isOpen && isProfileOpen ? `${profileItems.length * 40}px` : '0px',
@@ -174,7 +214,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               );
             })}
           </div>
+          )}
         </div>
+        )}
       </div>
     </div>
 

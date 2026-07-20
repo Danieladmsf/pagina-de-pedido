@@ -13,6 +13,7 @@ import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encome
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote } from 'lucide-react';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 const money = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatDateBR = (iso?: string) => {
@@ -48,6 +49,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   caixaAberto?: boolean;
   permissions: PdvPermissions;
 }) {
+  const { ownerId } = usePdvAccess();
   const { toast } = useToast();
   const permissionsRef = React.useRef(permissions);
   permissionsRef.current = permissions;
@@ -64,9 +66,9 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const [lancandoId, setLancandoId] = useState<string | null>(null);
 
   const encomendasQuery = useMemoFirebase(() => {
-    if (!db || !user?.uid) return null;
-    return query(collection(db, 'encomendas'), where('ownerId', '==', user.uid));
-  }, [db, user?.uid]);
+    if (!db || !ownerId) return null;
+    return query(collection(db, 'encomendas'), where('ownerId', '==', ownerId));
+  }, [db, ownerId]);
   const { data: encomendasRaw, isLoading } = useCollection<Encomenda>(encomendasQuery);
 
   const encomendas = useMemo(() => {

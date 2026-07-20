@@ -5,7 +5,7 @@ import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc, useAuth 
 import { collection, doc, updateDoc, query, where, getDoc, runTransaction } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { LockKeyhole, Settings, ShieldAlert, UnlockKeyhole } from 'lucide-react';
+import { Settings, ShieldAlert } from 'lucide-react';
 import { CaixaTab } from '@/components/caixa/CaixaTab';
 import { useToast } from '@/hooks/use-toast';
 import confetti from 'canvas-confetti';
@@ -23,7 +23,7 @@ import { warmupQz, type PrinterSize } from '@/lib/qz-print';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
-import { isAdminSessionUnlocked, OWNER_MODE_IDLE_MS, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
+import { isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import {
   arePermissionsResolved,
   can,
@@ -33,6 +33,8 @@ import {
   PDV_TAB_IDS,
   type PdvTabId,
 } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { hasAnyRetaguardaAccess } from '@/lib/user-permissions';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
 // estourar o limite de taxa da w-api numa rajada de pedidos.
@@ -48,11 +50,10 @@ export default function PdvPage() {
   const router = useRouter();
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
+  const { role, ownerId, operatorPermissions } = usePdvAccess();
   const [activeTab, setActiveTab] = useState<PdvTabId>('delivery');
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
-  const [ownerMode, setOwnerMode] = useState(false);
-  const ownerModeSecretRef = useRef<string | null>(null);
-  const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'gestao' | 'recovery' | 'owner' | null>(null);
+  const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'gestao' | 'recovery' | null>(null);
 
   // Esquenta a conexão com o QZ Tray (impressão silenciosa) uma vez por sessão.
   // Se o QZ não estiver no PC, isto não faz nada — a impressão segue por window.print().
@@ -109,8 +110,6 @@ export default function PdvPage() {
       if (previousUserId) discardMesasDraft(previousUserId);
       setActiveTab('delivery');
       setHasUnsavedMesaChanges(false);
-      ownerModeSecretRef.current = null;
-      setOwnerMode(false);
       setPasswordDialogPurpose(null);
       setAutoOpenAbrirCaixa(false);
       setCaixaSelecionadoId(null);
@@ -124,66 +123,72 @@ export default function PdvPage() {
   
   // Hook do Caixa compartilhado entre módulos
   const { caixaAberto, registrarLancamento, caixaAtual } = useCaixa({
+    ownerId,
     caixaSelecionadoId,
     onCaixaSelecionadoIdChange: setCaixaSelecionadoId,
   });
   
   const isRealUser = !!(user && !user.isAnonymous);
+  const canReadOperationalOrders = role === 'owner' || (!!operatorPermissions && (
+    can(operatorPermissions.pdv, 'tabs.delivery')
+    || can(operatorPermissions.pdv, 'tabs.novo_pedido')
+    || can(operatorPermissions.pdv, 'tabs.mesas')
+  ));
+  const canReadEncomendas = role === 'owner'
+    || (!!operatorPermissions && can(operatorPermissions.pdv, 'tabs.encomendas_pedidos'));
 
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return query(collection(db, 'categories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    return query(collection(db, 'categories'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, ownerId]);
 
   const itemsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return query(collection(db, 'menuItems'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    return query(collection(db, 'menuItems'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, ownerId]);
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return query(collection(db, 'orders'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || !canReadOperationalOrders) return null;
+    return query(collection(db, 'orders'), where('ownerId', '==', ownerId));
+  }, [canReadOperationalOrders, db, isRealUser, ownerId]);
 
   const addonsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return query(collection(db, 'addons'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    return query(collection(db, 'addons'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, ownerId]);
 
   const addonCategoriesQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return query(collection(db, 'addonCategories'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, user?.uid]);
+    return query(collection(db, 'addonCategories'), where('ownerId', '==', ownerId));
+  }, [db, isRealUser, ownerId]);
 
   const storeProfileRef = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
-    return doc(db, 'store_profiles', user!.uid);
-  }, [db, isRealUser, user?.uid]);
+    return doc(db, 'store_profiles', ownerId);
+  }, [db, isRealUser, ownerId]);
 
   const { data: storeProfile, isLoading: storeProfileLoading, error: storeProfileError } = useDoc(storeProfileRef);
 
   const adminSecretRef = useMemoFirebase(() => {
-    if (!db || !isRealUser) return null;
-    return doc(db, 'admin_secrets', user!.uid);
-  }, [db, isRealUser, user?.uid]);
+    if (!db || !isRealUser || role !== 'owner') return null;
+    return doc(db, 'admin_secrets', ownerId);
+  }, [db, isRealUser, ownerId, role]);
   const { data: adminSecret, isLoading: adminSecretLoading, error: adminSecretError } = useDoc<AdminSecret>(adminSecretRef);
-  const adminSecretResolved = !!adminSecretRef && !adminSecretLoading && !adminSecretError;
-  const adminSecretIdentity = adminSecret
-    ? `${adminSecret.version ?? 1}:${adminSecret.salt}:${adminSecret.passwordHash}`
-    : null;
-  const effectiveOwnerMode = ownerMode
-    && !!adminSecret
-    && ownerModeSecretRef.current === adminSecretIdentity
-    && storeProfile?.pdvPermissions?.enabled === true;
-
+  const adminSecretResolved = role === 'operator'
+    || (!!adminSecretRef && !adminSecretLoading && !adminSecretError);
   const resolvedStoreProfile = (storeProfileLoading || storeProfileError) ? undefined : storeProfile;
   const permissionsResolved = arePermissionsResolved(resolvedStoreProfile);
   const permissions = React.useMemo(
-    () => getPdvPermissions(resolvedStoreProfile, effectiveOwnerMode),
-    [effectiveOwnerMode, resolvedStoreProfile],
+    () => role === 'operator' && operatorPermissions
+      ? operatorPermissions.pdv
+      : getPdvPermissions({}),
+    [operatorPermissions, role],
   );
+  const hasRetaguardaAccess = role === 'owner'
+    || (!!operatorPermissions
+      && hasAnyRetaguardaAccess(role, operatorPermissions.retaguarda));
   const eligibleTabs = React.useMemo(
     () => permissionsResolved ? getEligibleTabs(permissions, storeProfile?.theme) : [],
     [permissions, permissionsResolved, storeProfile?.theme],
@@ -269,50 +274,6 @@ export default function PdvPage() {
     }
   }, [caixaSelecionadoId, eligibleTabs, permissions]);
 
-  // O Modo Dono existe apenas em memória e expira após dez minutos sem interação.
-  useEffect(() => {
-    if (!ownerMode) return;
-    let timeoutId: number | undefined;
-    let expiresAt = Date.now() + OWNER_MODE_IDLE_MS;
-    const validateAndSchedule = () => {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-      const remaining = expiresAt - Date.now();
-      if (remaining <= 0) {
-        setOwnerMode(false);
-        return;
-      }
-      timeoutId = window.setTimeout(validateAndSchedule, remaining + 50);
-    };
-    const recordActivity = () => {
-      expiresAt = Date.now() + OWNER_MODE_IDLE_MS;
-      validateAndSchedule();
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') validateAndSchedule();
-    };
-    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
-    events.forEach((eventName) => window.addEventListener(eventName, recordActivity, { passive: true }));
-    window.addEventListener('focus', validateAndSchedule);
-    document.addEventListener('visibilitychange', handleVisibility);
-    validateAndSchedule();
-    return () => {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-      events.forEach((eventName) => window.removeEventListener(eventName, recordActivity));
-      window.removeEventListener('focus', validateAndSchedule);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [ownerMode]);
-
-  useEffect(() => {
-    if (ownerMode && (
-      !adminSecret
-      || ownerModeSecretRef.current !== adminSecretIdentity
-      || storeProfile?.pdvPermissions?.enabled !== true
-    )) {
-      setOwnerMode(false);
-    }
-  }, [adminSecret, adminSecretIdentity, ownerMode, storeProfile?.pdvPermissions?.enabled]);
-
   useEffect(() => {
     if (!permissionsResolved) return;
     if (passwordDialogPurpose === 'gestao' && !can(permissions, 'global.botaoRetaguarda')) {
@@ -342,9 +303,9 @@ export default function PdvPage() {
   // novo pedido de delivery não as cobre. Assinamos aqui — só na confeitaria —
   // para o alerta de "nova encomenda" tocar em qualquer aba aberta.
   const encomendasAlertQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser || storeProfile?.theme !== 'confeitaria') return null;
-    return query(collection(db, 'encomendas'), where('ownerId', '==', user!.uid));
-  }, [db, isRealUser, storeProfile?.theme, user?.uid]);
+    if (!db || !isRealUser || !canReadEncomendas || storeProfile?.theme !== 'confeitaria') return null;
+    return query(collection(db, 'encomendas'), where('ownerId', '==', ownerId));
+  }, [canReadEncomendas, db, isRealUser, ownerId, storeProfile?.theme]);
   const { data: encomendasRaw } = useCollection(encomendasAlertQuery);
 
   const ordersRawSorted = React.useMemo(() => {
@@ -414,7 +375,7 @@ export default function PdvPage() {
   ordersForSweepRef.current = (ordersRaw as any[]) || null;
 
   useEffect(() => {
-    if (!user || !isRealUser || whatsappWebhookSyncRef.current) return;
+    if (!user || !isRealUser || role !== 'owner' || whatsappWebhookSyncRef.current) return;
     whatsappWebhookSyncRef.current = true;
 
     const timer = window.setTimeout(async () => {
@@ -426,7 +387,7 @@ export default function PdvPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ empresaId: user.uid }),
+          body: JSON.stringify({ empresaId: ownerId }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.error) {
@@ -438,7 +399,7 @@ export default function PdvPage() {
     }, 2500);
 
     return () => window.clearTimeout(timer);
-  }, [user, isRealUser]);
+  }, [isRealUser, ownerId, role, user]);
 
   const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0, stopAfterMs?: number) => {
     try {
@@ -576,17 +537,19 @@ export default function PdvPage() {
         // Não conta o pedido aqui (status ainda não é 'delivered'); só registra
         // quem é o cliente e o endereço, sem nunca sobrescrever com vazio.
         try {
-          const res = await syncCustomerFromOrder(db, order, { ownerId: user.uid, countOrder: false });
-          if (res.created && order.orderType === 'delivery') {
-            // Comemorar cliente novo no delivery!
-            setIsCelebrating(true);
-            const { id } = toast({
-              title: "🎉 CLIENTE NOVO!",
-              description: `${(order.customerName || 'Cliente').trim()} acabou de fazer o primeiro pedido!`,
-              className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
-              duration: 999999
-            });
-            newClientToastIdRef.current = id;
+          if (role === 'owner') {
+            const res = await syncCustomerFromOrder(db, order, { ownerId, countOrder: false });
+            if (res.created && order.orderType === 'delivery') {
+              // Comemorar cliente novo no delivery!
+              setIsCelebrating(true);
+              const { id } = toast({
+                title: "🎉 CLIENTE NOVO!",
+                description: `${(order.customerName || 'Cliente').trim()} acabou de fazer o primeiro pedido!`,
+                className: "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-none shadow-lg",
+                duration: 999999
+              });
+              newClientToastIdRef.current = id;
+            }
           }
         } catch (err) {
           console.error("Erro ao sincronizar cliente automático:", err);
@@ -711,7 +674,7 @@ export default function PdvPage() {
   };
 
   const handleOpenRetaguarda = () => {
-    if (!can(permissions, 'global.botaoRetaguarda') || !adminSecretResolved) return;
+    if (!hasRetaguardaAccess || !can(permissions, 'global.botaoRetaguarda') || !adminSecretResolved) return;
     if (adminSecret && !isAdminSessionUnlocked(user?.uid || '', adminSecret)) {
       setPasswordDialogPurpose('gestao');
       return;
@@ -720,19 +683,13 @@ export default function PdvPage() {
   };
 
   const handleRecoveryRetaguarda = () => {
-    if (!adminSecretResolved) return;
+    if (!hasRetaguardaAccess || !adminSecretResolved) return;
     if (adminSecret && !isAdminSessionUnlocked(user?.uid || '', adminSecret)) {
       setPasswordDialogPurpose('recovery');
       return;
     }
     router.push('/gestao');
   };
-
-  const handleOpenOwnerMode = () => {
-    if (!adminSecret || storeProfile?.pdvPermissions?.enabled !== true) return;
-    setPasswordDialogPurpose('owner');
-  };
-
 
   const isDeliveryDisabled = storeProfile?.general?.disableDelivery || false;
 
@@ -918,7 +875,7 @@ export default function PdvPage() {
         pagamento: paymentText,
         tempo_estimado: msgTempo,
         loja: storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja',
-        link: buildStoreLink(storeProfile, user.uid, typeof window !== 'undefined' ? window.location.origin : undefined),
+        link: buildStoreLink(storeProfile, ownerId, typeof window !== 'undefined' ? window.location.origin : undefined),
         horarios: formatWorkingHours(storeProfile?.workingHours),
         celular: phoneFormatted,
         endereco: addressLine,
@@ -986,7 +943,7 @@ export default function PdvPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          empresaId: user.uid,
+          empresaId: ownerId,
           phone: order.customerPhone,
           message,
           type: msgType,
@@ -1032,9 +989,9 @@ export default function PdvPage() {
       
       // Sincronização de Cliente quando o pedido é finalizado (entregue).
       // Conta o pedido de forma IDEMPOTENTE (não duplica entre PCs/re-disparos).
-      if (finalizingSale && currentOrder) {
+      if (role === 'owner' && finalizingSale && currentOrder) {
         try {
-          await syncCustomerFromOrder(db, currentOrder, { ownerId: user.uid, countOrder: true });
+          await syncCustomerFromOrder(db, currentOrder, { ownerId, countOrder: true });
         } catch (err) {
           console.error('Erro ao sincronizar cliente (entrega):', err);
         }
@@ -1171,25 +1128,7 @@ export default function PdvPage() {
               <div className="h-7 w-52 animate-pulse rounded bg-white/10" aria-label="Carregando controles" />
             ) : (
               <>
-                {effectiveOwnerMode ? (
-                  <div className="flex items-center gap-2">
-                    <Badge className="border border-amber-300/30 bg-amber-400/15 text-amber-300 hover:bg-amber-400/20">
-                      <UnlockKeyhole className="mr-1 h-3.5 w-3.5" /> Modo Dono ativo
-                    </Badge>
-                    <button onClick={() => {
-                      ownerModeSecretRef.current = null;
-                      setOwnerMode(false);
-                    }} className="text-xs font-semibold text-amber-200 hover:text-white">
-                      Sair do modo
-                    </button>
-                  </div>
-                ) : adminSecret && storeProfile?.pdvPermissions?.enabled === true ? (
-                  <button onClick={handleOpenOwnerMode} className="flex items-center gap-1.5 text-sm font-medium text-amber-300 transition-colors hover:text-white" title="Desbloquear temporariamente todas as funções">
-                    <LockKeyhole className="h-4 w-4" /> Modo Dono
-                  </button>
-                ) : null}
-
-                {adminSecretResolved && can(permissions, 'global.botaoRetaguarda') && (
+                {adminSecretResolved && hasRetaguardaAccess && can(permissions, 'global.botaoRetaguarda') && (
                   <button onClick={handleOpenRetaguarda} className="flex items-center gap-1.5 text-sm font-medium hover:text-white transition-colors" title="Abrir a Retaguarda (produtos, relatórios, perfil da loja)">
                     <Settings className="h-4 w-4" /> Retaguarda
                   </button>
@@ -1235,10 +1174,16 @@ export default function PdvPage() {
             <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-8 text-center shadow-sm">
               <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
               <h1 className="mt-4 text-xl font-bold text-slate-800">Nenhuma aba liberada</h1>
-              <p className="mt-2 text-sm text-slate-600">Ajuste as Permissões do PDV na Retaguarda para voltar a operar.</p>
-              <button onClick={handleRecoveryRetaguarda} className="mt-5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-                Abrir Retaguarda
-              </button>
+              <p className="mt-2 text-sm text-slate-600">
+                {hasRetaguardaAccess
+                  ? 'Ajuste as permissões na Retaguarda para voltar a operar.'
+                  : 'Peça ao administrador da loja para liberar ao menos uma função.'}
+              </p>
+              {hasRetaguardaAccess && (
+                <button onClick={handleRecoveryRetaguarda} className="mt-5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                  Abrir Retaguarda
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1339,21 +1284,15 @@ export default function PdvPage() {
           if (!open) setPasswordDialogPurpose(null);
         }}
         secret={adminSecret}
-        title={passwordDialogPurpose === 'owner' ? 'Ativar Modo Dono' : 'Abrir Retaguarda'}
-        description={passwordDialogPurpose === 'owner'
-          ? 'Digite a senha do administrador para liberar temporariamente todas as funções do PDV.'
-          : 'Digite a senha do administrador para acessar configurações e relatórios.'}
+        title="Abrir Retaguarda"
+        description="Digite a senha do administrador para acessar configurações e relatórios."
         onSuccess={() => {
           const purpose = passwordDialogPurpose;
           setPasswordDialogPurpose(null);
-          if (purpose === 'owner') {
-            if (!adminSecretResolved || storeProfile?.pdvPermissions?.enabled !== true) return;
-            ownerModeSecretRef.current = adminSecretIdentity;
-            setOwnerMode(true);
-          } else if (purpose === 'gestao' || purpose === 'recovery') {
+          if (purpose === 'gestao' || purpose === 'recovery') {
             const canOpen = purpose === 'recovery'
-              ? permissionsResolved && eligibleTabs.length === 0
-              : permissionsResolved && can(permissions, 'global.botaoRetaguarda');
+              ? permissionsResolved && eligibleTabs.length === 0 && hasRetaguardaAccess
+              : permissionsResolved && hasRetaguardaAccess && can(permissions, 'global.botaoRetaguarda');
             if (!canOpen) {
               toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
               return;
@@ -1365,10 +1304,10 @@ export default function PdvPage() {
       />
     )}
 
-    {db && isRealUser && !storeProfileLoading && !storeProfileError && !wizardDismissed && !storeProfile?.onboardingCompleted && (
+    {role === 'owner' && db && isRealUser && !storeProfileLoading && !storeProfileError && !wizardDismissed && !storeProfile?.onboardingCompleted && (
       <WelcomeWizard
         db={db}
-        userId={user!.uid}
+        userId={ownerId}
         storeName={storeProfile?.general?.name}
         onComplete={() => setWizardDismissed(true)}
       />

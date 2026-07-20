@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -62,6 +63,7 @@ export function CaixaTab({
   updateOrderStatus?: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
   permissions: PdvPermissions;
 }) {
+  const { ownerId } = usePdvAccess();
   const {
     caixaAberto,
     caixaAtual,
@@ -77,6 +79,7 @@ export function CaixaTab({
     setCaixaSelecionadoId,
     proximaSessao,
   } = useCaixa({
+    ownerId,
     caixaSelecionadoId: selectedCaixaId,
     onCaixaSelecionadoIdChange: onSelectedCaixaIdChange,
   });

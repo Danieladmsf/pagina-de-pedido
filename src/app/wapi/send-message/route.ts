@@ -1,18 +1,18 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
-import { ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
+import {
+  ok,
+  requireOperationalEmpresa,
+  requireOperationalIntegration,
+  requireOperationalMessageAccess,
+  withAuth,
+} from '@/app/wapi/_lib';
 import { sendWapiDocumentMessage, sendWapiImageMessage, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
-import { saveWhatsAppMessageLog } from '@/lib/wapi/integration-store';
+import { saveWhatsAppMessageLog, saveWhatsAppMessageLogAdmin } from '@/lib/wapi/integration-store';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import { normalizeWapiPhone } from '@/lib/wapi/operator-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function normalizePhone(phone: string) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('55')) return digits;
-  return `55${digits}`;
-}
 
 // Reivindica de forma ATÔMICA o envio de uma notificação de pedido, no servidor.
 // A trava do cliente (runTransaction) cai num fallback com corrida quando o
@@ -47,17 +47,25 @@ export async function POST(request: Request) {
   return withAuth(request, async (user) => {
     try {
       const body = await request.json();
-      const empresaId = requireEmpresa(user, body.empresaId);
-      const phone = normalizePhone(body.phone);
+      const access = await requireOperationalEmpresa(user, body.empresaId);
+      const empresaId = access.empresaId;
+      const phone = normalizeWapiPhone(body.phone);
 
       if (!phone) return ok({ error: 'Telefone obrigatorio.' }, 400);
 
-      const { integration, token } = await requireIntegration(empresaId, user.idToken);
+      const delegatedMessage = await requireOperationalMessageAccess(access, {
+        type: body.type,
+        orderId: body.orderId,
+        phone,
+        hasDocument: Boolean(body.documentUrl),
+        hasImage: Boolean(body.imageUrl),
+      });
+      const { integration, token } = await requireOperationalIntegration(access, user);
 
       // Trava anti-duplicidade — só para mensagens vinculadas a um pedido
       // (as notificações automáticas). Mensagens manuais/campanhas seguem livres.
-      const orderId = body.orderId ? String(body.orderId) : undefined;
-      const type = body.type ? String(body.type) : undefined;
+      const orderId = delegatedMessage?.orderId || (body.orderId ? String(body.orderId) : undefined);
+      const type = delegatedMessage?.messageType || (body.type ? String(body.type) : undefined);
       const { duplicate, claimRef } = await claimOrderNotification(empresaId, orderId, type);
       if (duplicate) return ok({ sent: false, duplicate: true });
 
@@ -104,17 +112,23 @@ export async function POST(request: Request) {
       }
 
       try {
-        await saveWhatsAppMessageLog(user.idToken, {
-          ownerId: user.uid,
+        const logData = {
+          ownerId: empresaId,
           empresaId,
+          actorUid: user.uid,
           phone,
           message: messagePreview.slice(0, 500),
-          type: String(body.type || 'manual'),
-          orderId: body.orderId ? String(body.orderId) : undefined,
+          type: String(type || 'manual'),
+          orderId,
           providerMessageId: result?.messageId,
           status: 'queued',
           payload: result,
-        });
+        };
+        if (access.role === 'operator') {
+          await saveWhatsAppMessageLogAdmin(logData);
+        } else {
+          await saveWhatsAppMessageLog(user.idToken, logData);
+        }
       } catch (logError) {
         console.warn('[W-API] Mensagem enviada, mas o log nao foi salvo:', logError);
       }
