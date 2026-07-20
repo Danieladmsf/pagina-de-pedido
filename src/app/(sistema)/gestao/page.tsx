@@ -36,7 +36,6 @@ import { Switch } from '@/components/ui/switch';
 import { removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
-import { PermissoesPdvTab } from '@/components/admin/PermissoesPdvTab';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -59,7 +58,6 @@ const GESTAO_TAB_ORDER = [
   'campanhas',
   'encomendas',
   'freelance',
-  'permissoes_pdv',
   'usuarios',
   'perfil_geral',
 ] as const;
@@ -760,7 +758,7 @@ export default function GestaoPage() {
         <div className={
           ['produtos', 'addons', 'categorias', 'clientes'].includes(activeTab)
             ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : ['freelance', 'permissoes_pdv', 'usuarios'].includes(activeTab) || activeTab.startsWith('perfil_')
+            : ['freelance', 'usuarios'].includes(activeTab) || activeTab.startsWith('perfil_')
               ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'
               : 'hidden'
         }>
@@ -2339,20 +2337,14 @@ export default function GestaoPage() {
             <AppearanceTab db={db} user={user} storeProfile={storeProfile} />
           )}
 
-          {activeTab === 'permissoes_pdv' && (
-            <PermissoesPdvTab
+          {activeTab === 'usuarios' && (
+            <UsuariosTab
               key={user.uid}
-              db={db}
               user={user}
-              storeProfile={storeProfile}
-              isProfileLoading={storeProfileLoading || !!storeProfileError}
+              db={db}
               adminSecret={adminSecret}
               isAdminSecretLoading={adminSecretLoading}
             />
-          )}
-
-          {activeTab === 'usuarios' && (
-            <UsuariosTab user={user} />
           )}
           {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && (
             <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />

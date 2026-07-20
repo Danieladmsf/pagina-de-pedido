@@ -20,7 +20,6 @@ import {
   Printer,
   Megaphone,
   CakeSlice,
-  ShieldCheck,
   UserCog,
 } from 'lucide-react';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -74,7 +73,6 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },
   ];
   const showProfile = canShowTab('perfil_geral');
-  const showPermissions = canShowTab('permissoes_pdv');
   const showUsers = canShowTab('usuarios');
 
   const displayName = storeName || 'Minha Loja';
@@ -131,7 +129,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
         })}
 
         {/* Perfil expansível */}
-        {(showPermissions || showUsers || showProfile) && (
+        {(showUsers || showProfile) && (
         <div className="mt-4 pt-4 border-t border-white/10">
           {showUsers && (
           <button
@@ -145,24 +143,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
               <UserCog className="h-5 w-5" />
             </div>
             <span className={`whitespace-nowrap font-medium transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
-              Usuários
-            </span>
-          </button>
-          )}
-
-          {showPermissions && (
-          <button
-            onClick={() => setActiveTab('permissoes_pdv')}
-            className={`mb-1 flex w-full items-center overflow-hidden rounded-lg transition-colors ${
-              activeTab === 'permissoes_pdv' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-300 hover:bg-white/5'
-            }`}
-            style={{ height: '44px' }}
-          >
-            <div className="flex h-full w-12 shrink-0 items-center justify-center">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <span className={`whitespace-nowrap font-medium transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
-              Permissões do PDV
+              Usuários e acesso
             </span>
           </button>
           )}

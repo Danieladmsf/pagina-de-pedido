@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
+import type { AdminSecret } from '@/lib/admin-password';
+import { AdminPasswordSection } from '@/components/admin/AdminPasswordSection';
 import {
   CircleAlert,
   KeyRound,
@@ -61,6 +64,9 @@ import {
 
 interface UsuariosTabProps {
   user: User;
+  db: Firestore;
+  adminSecret: (AdminSecret & { id?: string }) | null;
+  isAdminSecretLoading: boolean;
 }
 
 interface ManagedUser {
@@ -288,7 +294,7 @@ function getRetaguardaAccessLabels(permissions: OperatorPermissions): string[] {
     .map((key) => RETAGUARDA_LABELS[key].label);
 }
 
-export function UsuariosTab({ user }: UsuariosTabProps) {
+export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: UsuariosTabProps) {
   const { toast } = useToast();
   const [usuarios, setUsuarios] = useState<ManagedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -676,6 +682,9 @@ export function UsuariosTab({ user }: UsuariosTabProps) {
           )}
         </>
       )}
+
+      <Separator className="my-1" />
+      <AdminPasswordSection db={db} user={user} adminSecret={adminSecret} isLoading={isAdminSecretLoading} />
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !isSaving && setDialogOpen(open)}>
         <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
