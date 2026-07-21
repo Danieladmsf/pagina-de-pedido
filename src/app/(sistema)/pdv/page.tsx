@@ -50,7 +50,7 @@ export default function PdvPage() {
   const router = useRouter();
   const { toast, dismiss } = useToast();
   const { user, isUserLoading } = useUser();
-  const { role, ownerId, operatorPermissions } = usePdvAccess();
+  const { role, ownerId, actorId, actorName, operatorPermissions } = usePdvAccess();
   const [activeTab, setActiveTab] = useState<PdvTabId>('delivery');
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
   const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'gestao' | 'recovery' | null>(null);
@@ -124,6 +124,8 @@ export default function PdvPage() {
   // Hook do Caixa compartilhado entre módulos
   const { caixaAberto, registrarLancamento, caixaAtual } = useCaixa({
     ownerId,
+    actorId,
+    actorName,
     caixaSelecionadoId,
     onCaixaSelecionadoIdChange: setCaixaSelecionadoId,
   });

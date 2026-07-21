@@ -21,6 +21,8 @@ export interface PdvAccessContextValue {
   ownerId: string;
   actorId: string;
   operatorName: string | null;
+  /** Nome legível de quem está operando (dono ou funcionário) para carimbar vendas. */
+  actorName: string;
   operatorPermissions: OperatorPermissions | null;
   isLoading: false;
 }
@@ -139,11 +141,15 @@ export function PdvAccessProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const operatorName = role === 'operator' ? operatorRole?.name?.trim() || null : null;
   const value: PdvAccessContextValue = {
     role,
     ownerId,
     actorId,
-    operatorName: role === 'operator' ? operatorRole?.name?.trim() || null : null,
+    operatorName,
+    actorName: role === 'operator'
+      ? (operatorName || user?.email || 'Funcionário')
+      : (user?.displayName?.trim() || user?.email || 'Administrador'),
     operatorPermissions,
     isLoading: false,
   };

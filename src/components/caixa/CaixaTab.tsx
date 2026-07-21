@@ -63,7 +63,7 @@ export function CaixaTab({
   updateOrderStatus?: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
   permissions: PdvPermissions;
 }) {
-  const { ownerId } = usePdvAccess();
+  const { ownerId, actorId, actorName } = usePdvAccess();
   const {
     caixaAberto,
     caixaAtual,
@@ -80,6 +80,8 @@ export function CaixaTab({
     proximaSessao,
   } = useCaixa({
     ownerId,
+    actorId,
+    actorName,
     caixaSelecionadoId: selectedCaixaId,
     onCaixaSelecionadoIdChange: onSelectedCaixaIdChange,
   });

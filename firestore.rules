@@ -440,7 +440,7 @@ service cloud.firestore {
         && request.resource.data.caixaId == resource.data.caixaId
         && cashRegisterIsOpen(resource.data.caixaId, resource.data.ownerId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'canceled', 'canceledAt', 'canceledBy', 'canceledReason'])
+          'canceled', 'canceledAt', 'canceledBy', 'canceledByUid', 'canceledReason'])
         && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'cancelarVenda')
       );
       allow delete: if isOwnerOf(resource.data.ownerId);

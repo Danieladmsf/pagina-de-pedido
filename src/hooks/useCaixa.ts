@@ -75,6 +75,9 @@ interface UseCaixaOptions {
   ownerId?: string | null;
   /** Evita montar listeners financeiros em telas que não usam o Caixa. */
   enabled?: boolean;
+  /** Quem está operando (dono ou funcionário), para carimbar cada lançamento. */
+  actorId?: string | null;
+  actorName?: string | null;
   caixaSelecionadoId?: string | null;
   onCaixaSelecionadoIdChange?: (id: string | null) => void;
 }
@@ -85,6 +88,10 @@ export function useCaixa(options?: UseCaixaOptions) {
   const isRealUser = !!(user && !user.isAnonymous);
   const ownerId = options?.ownerId || (isRealUser ? user!.uid : null);
   const enabled = options?.enabled !== false;
+  // Autoria do lançamento: uid p/ consultas confiáveis + nome p/ exibição.
+  const actorId = options?.actorId || (isRealUser ? user!.uid : '');
+  const actorName = options?.actorName || user?.displayName || user?.email || 'Principal';
+  const autoria = { criadoPorUid: actorId, usuario: actorName };
   const controlledCaixaSelecionadoId = options?.caixaSelecionadoId;
   const onCaixaSelecionadoIdChange = options?.onCaixaSelecionadoIdChange;
 
@@ -210,7 +217,7 @@ export function useCaixa(options?: UseCaixaOptions) {
       valor: Number(saldoInicial), // Positivo
       formaPagamento: '--',
       data: serverTimestamp(),
-      usuario: user?.displayName || user?.email || 'Principal',
+      ...autoria,
     });
 
     // Atualiza o perfil da loja para o cardápio de clientes
@@ -218,7 +225,7 @@ export function useCaixa(options?: UseCaixaOptions) {
 
     setCaixaSelecionadoId(caixaRef.id);
     return caixaRef.id;
-  }, [db, enabled, isRealUser, ownerId, user, caixaAberto, proximaSessao]);
+  }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, proximaSessao]);
 
   const fecharCaixa = useCallback(async (params?: { 
     taxaGarcom?: number; 
@@ -288,7 +295,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         valor: params.taxaGarcom * -1,
         formaPagamento: '--',
         data: serverTimestamp(),
-        usuario: user?.displayName || user?.email || 'Principal',
+        ...autoria,
       });
     }
 
@@ -305,7 +312,7 @@ export function useCaixa(options?: UseCaixaOptions) {
             valor: valorPago * -1,
             formaPagamento: '--',
             data: serverTimestamp(),
-            usuario: user?.displayName || user?.email || 'Principal',
+            ...autoria,
             ...(m.id && { destinatarioId: m.id }),
             destinatarioTipo: 'motoboy',
           });
@@ -326,7 +333,7 @@ export function useCaixa(options?: UseCaixaOptions) {
             valor: valorPago * -1,
             formaPagamento: '--',
             data: serverTimestamp(),
-            usuario: user?.displayName || user?.email || 'Principal',
+            ...autoria,
             destinatarioId: f.name,
             destinatarioTipo: 'freelancer',
           });
@@ -354,7 +361,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         valor: params.diferencaCaixa, // Positivo para sobra (suprimento), negativo para falta (sangria)
         formaPagamento: '--',
         data: serverTimestamp(),
-        usuario: user?.displayName || user?.email || 'Principal',
+        ...autoria,
       });
     }
 
@@ -373,7 +380,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         valor: valorParaRetirada * -1,
         formaPagamento: '--',
         data: serverTimestamp(),
-        usuario: user?.displayName || user?.email || 'Principal',
+        ...autoria,
       });
     }
 
@@ -399,7 +406,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     batch.set(doc(db, 'store_profiles', ownerId), { isCaixaAberto: false }, { merge: true });
 
     await batch.commit();
-  }, [db, enabled, isRealUser, ownerId, user, caixaAberto, lancamentos]);
+  }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, lancamentos]);
 
   const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo }: {
     tipo: 'sangria' | 'suprimento' | 'venda',
@@ -423,11 +430,11 @@ export function useCaixa(options?: UseCaixaOptions) {
       valor: valorFinal,
       formaPagamento,
       data: serverTimestamp(),
-      usuario: user?.displayName || user?.email || 'Principal',
+      ...autoria,
       ...(destinatarioId && { destinatarioId }),
       ...(destinatarioTipo && { destinatarioTipo }),
     });
-  }, [db, enabled, isRealUser, ownerId, user, caixaAberto]);
+  }, [db, enabled, isRealUser, ownerId, actorId, actorName, caixaAberto]);
 
   // Cancelamento lógico de venda: marca/desmarca canceled no lançamento.
   // Só vendas do caixa ABERTO — mexer em caixa fechado dessincronizaria o
@@ -444,13 +451,14 @@ export function useCaixa(options?: UseCaixaOptions) {
       await updateDoc(doc(db, 'cash_transactions', lancamentoId), {
         canceled: true,
         canceledAt: serverTimestamp(),
-        canceledBy: user?.displayName || user?.email || 'Principal',
+        canceledBy: actorName,
+        canceledByUid: actorId,
         ...(motivo?.trim() ? { canceledReason: motivo.trim() } : {}),
       });
     } else {
       await updateDoc(doc(db, 'cash_transactions', lancamentoId), { canceled: false });
     }
-  }, [db, enabled, isRealUser, user, caixaAberto, lancamentos]);
+  }, [db, enabled, isRealUser, actorId, actorName, caixaAberto, lancamentos]);
 
   return {
     caixaAberto,

@@ -68,7 +68,7 @@ export default function GestaoPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
-  const { role, ownerId, operatorName, operatorPermissions } = usePdvAccess();
+  const { role, ownerId, actorId, actorName, operatorName, operatorPermissions } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda
     ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
   const isTabAllowed = React.useCallback((tabId: string) => {
@@ -167,6 +167,8 @@ export default function GestaoPage() {
   // Clientes (registrarLancamento/caixaAberto); sessão/histórico ficam no PDV.
   const { caixaAberto, registrarLancamento } = useCaixa({
     ownerId,
+    actorId,
+    actorName,
     enabled: role === 'owner',
   });
   
