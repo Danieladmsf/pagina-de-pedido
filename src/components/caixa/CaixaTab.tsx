@@ -1404,13 +1404,14 @@ export function CaixaTab({
                     <TableHead>Valor</TableHead>
                     <TableHead>Forma de Pagamento</TableHead>
                     <TableHead>Tipo</TableHead>
+                    <TableHead>Quem fez</TableHead>
                     <TableHead className="pr-6 w-10 text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedLancamentos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
                     </TableRow>
                   ) : (
                     paginatedLancamentos.map((lanc) => {
@@ -1474,6 +1475,12 @@ export function CaixaTab({
                                 <Badge className={`${badgeColor} border text-[10px] uppercase font-bold`}>{tipoLabel[lanc.tipo] || lanc.tipo}</Badge>
                               )}
                             </TableCell>
+                            <TableCell className="text-xs whitespace-nowrap text-muted-foreground" title={isCanceled && lanc.canceledBy ? `Cancelada por ${lanc.canceledBy}` : undefined}>
+                              {lanc.usuario || '—'}
+                              {isCanceled && lanc.canceledBy && (
+                                <span className="ml-1 text-rose-500">· cancel. {lanc.canceledBy}</span>
+                              )}
+                            </TableCell>
                             <TableCell className="pr-6 text-right">
                               {podeCancelar && can(permissions, 'actions.caixa.cancelarVenda') && (
                                 isCanceled ? (
@@ -1503,7 +1510,7 @@ export function CaixaTab({
 
                           {isExpandable && isOpen && (
                             <TableRow className="hover:bg-transparent border-b-0">
-                              <TableCell colSpan={6} className="p-0 pl-6 pr-6 pb-2">
+                              <TableCell colSpan={7} className="p-0 pl-6 pr-6 pb-2">
                                 <VendaDetalhe order={vendaOrder} lanc={lanc} />
                               </TableCell>
                             </TableRow>
