@@ -15,11 +15,10 @@ import { NovoPedidoTab } from '@/components/admin/NovoPedidoTab';
 import { discardMesasDraft, MesasTab } from '@/components/admin/MesasTab';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { EncomendasPedidosTab } from '@/components/admin/EncomendasPedidosTab';
-import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { useCaixa } from '@/hooks/useCaixa';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
-import { warmupQz, type PrinterSize } from '@/lib/qz-print';
+import { playLoudAudio } from '@/lib/order-sound';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
@@ -55,11 +54,9 @@ export default function PdvPage() {
   const [hasUnsavedMesaChanges, setHasUnsavedMesaChanges] = useState(false);
   const [passwordDialogPurpose, setPasswordDialogPurpose] = useState<'gestao' | 'recovery' | null>(null);
 
-  // Esquenta a conexão com o QZ Tray (impressão silenciosa) uma vez por sessão.
-  // Se o QZ não estiver no PC, isto não faz nada — a impressão segue por window.print().
-  useEffect(() => {
-    warmupQz();
-  }, []);
+  // (O warmup do QZ Tray e o alerta de pedido novo — som + impressão automática —
+  // agora vivem no <OrderAlertsWatcher/> do layout, pra funcionarem também na
+  // Retaguarda. Aqui embaixo ficam só as tarefas específicas do PDV.)
 
   // ── Varredura de re-tentativa de WhatsApp ──
   // A cada 30s, re-tenta o aviso de "pedido recebido" para pedidos recentes que
@@ -301,9 +298,9 @@ export default function PdvPage() {
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
 
-  // Encomendas ficam em coleção própria (não em `orders`), então o alerta de
-  // novo pedido de delivery não as cobre. Assinamos aqui — só na confeitaria —
-  // para o alerta de "nova encomenda" tocar em qualquer aba aberta.
+  // Encomendas ficam em coleção própria (não em `orders`). Assinamos aqui — só na
+  // confeitaria — para o CONTADOR (badge) da aba Encomendas. O alerta sonoro/aviso
+  // de "nova encomenda" mora no <OrderAlertsWatcher/> do layout.
   const encomendasAlertQuery = useMemoFirebase(() => {
     if (!db || !isRealUser || !canReadEncomendas || storeProfile?.theme !== 'confeitaria') return null;
     return query(collection(db, 'encomendas'), where('ownerId', '==', ownerId));
@@ -403,55 +400,9 @@ export default function PdvPage() {
     return () => window.clearTimeout(timer);
   }, [isRealUser, ownerId, role, user]);
 
-  const playLoudAudio = React.useCallback(async (volumeMultiplier = 4.0, stopAfterMs?: number) => {
-    try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!(window as any)._sharedAudioCtx) {
-        (window as any)._sharedAudioCtx = new AudioCtx();
-      }
-      const ctx = (window as any)._sharedAudioCtx as AudioContext;
-      if (ctx.state === 'suspended') await ctx.resume();
-
-      if (!(window as any)._cachedAudioBuffer) {
-        const response = await fetch('/foodora.mp3');
-        const arrayBuffer = await response.arrayBuffer();
-        (window as any)._cachedAudioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      }
-
-      if ((window as any)._currentAudioSource) {
-        try {
-          (window as any)._currentAudioSource.stop();
-        } catch(e) {}
-      }
-
-      const source = ctx.createBufferSource();
-      (window as any)._currentAudioSource = source;
-      source.buffer = (window as any)._cachedAudioBuffer;
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = volumeMultiplier; // Amplifica o volume
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      // Modo "automático com som": toca em loop e corta exatamente em stopAfterMs
-      // (ex.: 6s), independente da duração do MP3.
-      if (stopAfterMs && stopAfterMs > 0) source.loop = true;
-      source.start(0);
-      if (stopAfterMs && stopAfterMs > 0) {
-        setTimeout(() => { try { source.stop(); } catch {} }, stopAfterMs);
-      }
-    } catch (e) {
-      console.error('Erro ao tocar audio:', e);
-    }
-  }, []);
-
-  const playNewOrderBeep = React.useCallback(() => {
-    playLoudAudio(4.0);
-  }, [playLoudAudio]);
-
-  // Modo "automático com som": toca o alerta por ~12 segundos e para sozinho.
-  const playOrderSound6s = React.useCallback(() => {
-    playLoudAudio(4.0, 12000);
-  }, [playLoudAudio]);
+  // O som do alerta agora mora em @/lib/order-sound e é disparado pelo
+  // <OrderAlertsWatcher/> (layout). Aqui só reusamos playLoudAudio (importado) na
+  // campainha contínua do modo manual, mais abaixo.
 
   // Pedidos "comer no local" do app NÃO recebem mesa automaticamente: ficam na
   // fila "Novos pedidos online" (purgatório) do MesasTab até o operador aceitar e
@@ -473,43 +424,10 @@ export default function PdvPage() {
     const pendingNewOnes = allNewOnes.filter(o => o.status === 'pending' && o.source !== 'pdv');
     
     if (pendingNewOnes.length > 0) {
-      const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
-      // printMode: 'auto_silent' | 'auto_sound' | 'manual'. Deriva do legado
-      // manualPrint quando o perfil ainda não tem o campo novo.
-      const printMode = storeProfile?.general?.printMode || (storeProfile as any)?.printMode
-        || (isManualPrint ? 'manual' : 'auto_silent');
-      if (printMode === 'manual') {
-        playNewOrderBeep();
-      } else if (printMode === 'auto_sound') {
-        playOrderSound6s();
-      }
-      toast({ title: `Novo pedido recebido!`, description: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
-      try {
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Novo pedido!', { body: `${pendingNewOnes.length} pedido(s) aguardando confirmação.` });
-        }
-      } catch {}
-
-      // ── Impressão Automática de Pedidos (INTELIGENTE) ──
-      // Só imprime automaticamente onde há impressão silenciosa de verdade (QZ
-      // Tray instalado nesta máquina). Sem QZ, NÃO cai no window.print() — assim
-      // um PC de monitoramento, sem impressora, não abre o modal do navegador a
-      // cada pedido. (Os botões manuais seguem imprimindo normalmente.)
-      if (typeof window !== 'undefined' && !(storeProfile?.general?.manualPrint || storeProfile?.manualPrint)) {
-        const printerSize = ((storeProfile?.general?.printerSize || storeProfile?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
-        pendingNewOnes.forEach((ord: any, index: number) => {
-          setTimeout(() => {
-            // Fallback no-op: sem QZ nesta máquina = não imprime automático (sem modal).
-            printOrderReceipt({
-              order: ord,
-              storeInfo: storeProfile,
-              printerSize,
-              fallback: () => console.info('[QZ] sem impressão silenciosa nesta máquina → pedido NÃO impresso automaticamente (sem modal). Use os botões manuais se precisar.'),
-            });
-          }, index * 2000);
-        });
-      }
-
+      // O alerta imediato (som + impressão automática + aviso do navegador) foi
+      // movido para <OrderAlertsWatcher/> no layout, pra tocar/imprimir também na
+      // Retaguarda. Aqui fica só o que é do PDV: avisar o cliente no WhatsApp
+      // (a baixa de estoque / cadastro seguem logo abaixo em processIncomingOrders).
       // ── Envio Automático de Notificação WhatsApp (com fila/limite) ──
       pendingNewOnes.forEach((ord: any) => {
         void whatsappQueue(() => sendOrderWhatsAppNotification(ord, 'received'));
@@ -561,41 +479,10 @@ export default function PdvPage() {
     void processIncomingOrders();
 
     seenOrderIdsRef.current = currentIds;
-  }, [ordersRaw, playNewOrderBeep, playOrderSound6s, toast, db, user, storeProfile]);
+  }, [ordersRaw, toast, db, user, storeProfile]);
 
-  // ── Alerta de NOVA ENCOMENDA (confeitaria) ──
-  // Espelha o alerta de delivery, mas sobre a coleção `encomendas`: toca o som,
-  // mostra toast e dispara a notificação do navegador quando um doc NOVO entra.
-  // Detecção por id não-visto → trocar o status (mesmo id) NÃO re-alerta. Sem
-  // impressão automática (encomenda é sob medida; o lojista imprime pelo card).
-  const seenEncomendaIdsRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    if (!encomendasRaw || !db || !user) return;
-    const currentIds = new Set((encomendasRaw as any[]).map((e) => e.id));
-    if (seenEncomendaIdsRef.current === null) {
-      seenEncomendaIdsRef.current = currentIds; // primeira carga: não apita as já existentes
-      return;
-    }
-    const newOnes = (encomendasRaw as any[]).filter((e) => !seenEncomendaIdsRef.current!.has(e.id));
-    if (newOnes.length > 0) {
-      // Diferente do delivery, aqui NUNCA fica mudo: não há impressão como alternativa.
-      const printMode = storeProfile?.general?.printMode || (storeProfile as any)?.printMode || 'auto_silent';
-      if (printMode === 'auto_sound') playOrderSound6s(); else playNewOrderBeep();
-      toast({ title: 'Nova encomenda recebida!', description: `${newOnes.length} encomenda(s) aguardando confirmação.` });
-      try {
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Nova encomenda!', { body: `${newOnes.length} encomenda(s) aguardando confirmação.` });
-        }
-      } catch {}
-    }
-    seenEncomendaIdsRef.current = currentIds;
-  }, [encomendasRaw, playNewOrderBeep, playOrderSound6s, toast, db, user, storeProfile]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
+  // (Alerta de nova encomenda e pedido de permissão de notificação também foram
+  // para o <OrderAlertsWatcher/> — tocam em qualquer tela, PDV ou Retaguarda.)
 
   // Efeito do confete contínuo e limpeza da notificação
   useEffect(() => {

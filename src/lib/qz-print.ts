@@ -122,6 +122,11 @@ async function createConfig(qz: any, printerSize: PrinterSize) {
     margins: 0,
     scaleContent: true,
     rasterize: true,
+    // Trava explícita em 1 via por job. Sem isto, o QZ herda o "número de cópias"
+    // padrão do driver do Windows — se a impressora estiver configurada em 2/4
+    // cópias, cada pedido saía repetido. Forçar copies:1 aqui sobrepõe esse
+    // padrão do driver no ticket de impressão.
+    copies: 1,
   });
 }
 

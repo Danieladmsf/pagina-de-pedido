@@ -5,6 +5,7 @@ import { useFirestore, useUser, useAuth } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { PdvAccessProvider } from '@/contexts/PdvAccessContext';
+import { OrderAlertsWatcher } from '@/components/system/OrderAlertsWatcher';
 
 // Guard de autenticação único do sistema interno (PDV + Gestão). É a mesma
 // lógica que vivia na antiga página raiz; centralizada aqui, as duas rotas não
@@ -58,5 +59,13 @@ export default function SistemaLayout({ children }: { children: React.ReactNode 
     );
   }
 
-  return <PdvAccessProvider>{children}</PdvAccessProvider>;
+  // O OrderAlertsWatcher fica AQUI (não dentro de /pdv) de propósito: o layout não
+  // remonta ao navegar entre PDV e Retaguarda, então o alerta de pedido novo (som +
+  // impressão automática) toca em qualquer uma das duas telas.
+  return (
+    <PdvAccessProvider>
+      <OrderAlertsWatcher />
+      {children}
+    </PdvAccessProvider>
+  );
 }
