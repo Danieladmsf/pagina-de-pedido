@@ -930,21 +930,25 @@ export default function GestaoPage() {
                             onClick={() => {
                               setQuickPriceEdit({ id: item.id, name: item.name, price: item.price || 0 });
                             }}
-                          >R$ {(item.price || 0).toFixed(2)}</TableCell>
+                          >R$ {(item.price || 0).toFixed(2)}{item.saleUnit === 'kg' ? '/kg' : ''}</TableCell>
                           <TableCell className="text-center">
-                            <Input 
-                              type="number" 
-                              className="w-20 text-center mx-auto h-8 text-sm" 
-                              value={item.stockQuantity ?? ''} 
-                              placeholder="∞"
-                              onChange={async (e) => {
-                                if (!db) return;
-                                const val = e.target.value;
-                                await updateDoc(doc(db, 'menuItems', item.id), { 
-                                  stockQuantity: val === '' ? null : parseInt(val) || 0 
-                                });
-                              }}
-                            />
+                            {item.saleUnit === 'kg' ? (
+                              <span className="text-xs text-slate-400">por kg</span>
+                            ) : (
+                              <Input
+                                type="number"
+                                className="w-20 text-center mx-auto h-8 text-sm"
+                                value={item.stockQuantity ?? ''}
+                                placeholder="∞"
+                                onChange={async (e) => {
+                                  if (!db) return;
+                                  const val = e.target.value;
+                                  await updateDoc(doc(db, 'menuItems', item.id), {
+                                    stockQuantity: val === '' ? null : parseInt(val) || 0
+                                  });
+                                }}
+                              />
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">

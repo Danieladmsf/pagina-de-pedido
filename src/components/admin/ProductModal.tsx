@@ -28,6 +28,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const { toast } = useToast();
   const [categoryId, setCategoryId] = useState('');
   const [fixedItemsText, setFixedItemsText] = useState('');
+  const [saleUnit, setSaleUnit] = useState<'un' | 'kg'>('un');
   const [groups, setGroups] = useState<AddonGroup[]>([]);
   
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -44,6 +45,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     if (editingProduct) {
       setCategoryId(editingProduct.categoryId || categories?.[0]?.id || '');
       setFixedItemsText((editingProduct.fixedItems || []).join(', '));
+      setSaleUnit(editingProduct.saleUnit === 'kg' ? 'kg' : 'un');
       setGroups(editingProduct.addonGroups || []);
       setImageFile(null);
       setImagePreview(editingProduct.imageUrl || '');
@@ -105,8 +107,12 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     const priceStr = formData.get('price') as string;
     const price = parseFloat(priceStr) || 0;
     
+    const effectiveSaleUnit = isMarmita ? 'un' : saleUnit;
     const stockQuantityStr = formData.get('stockQuantity') as string;
-    const stockQuantity = stockQuantityStr ? parseInt(stockQuantityStr, 10) : null;
+    // Itens por peso não usam estoque por unidade — sempre sem limite (null).
+    const stockQuantity = effectiveSaleUnit === 'kg'
+      ? null
+      : (stockQuantityStr ? parseInt(stockQuantityStr, 10) : null);
 
     let imageUrl = editingProduct?.imageUrl || '';
     
@@ -131,6 +137,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       const data = {
         name,
         price,
+        saleUnit: effectiveSaleUnit,
         stockQuantity,
         categoryId,
         description,
@@ -302,13 +309,17 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                 </select>
               </div>
               <div className="col-span-4 md:col-span-2 space-y-1.5">
-                <Label htmlFor="price" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Preço (R$)</Label>
+                <Label htmlFor="price" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {saleUnit === 'kg' ? 'Preço por Kg (R$)' : 'Preço (R$)'}
+                </Label>
                 <CurrencyInput id="price" name="price" defaultValue={editingProduct?.price} required placeholder="0,00" />
               </div>
-              <div className="col-span-4 md:col-span-2 space-y-1.5">
-                <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
-                <Input id="stockQuantity" name="stockQuantity" type="number" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
-              </div>
+              {saleUnit !== 'kg' && (
+                <div className="col-span-4 md:col-span-2 space-y-1.5">
+                  <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
+                  <Input id="stockQuantity" name="stockQuantity" type="number" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
+                </div>
+              )}
               <div className="col-span-4 md:col-span-2 space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Foto</Label>
                 <div className="flex items-center gap-2">
@@ -342,6 +353,33 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                 </div>
               </div>
             </div>
+
+            {!isMarmita && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Forma de venda</Label>
+                <div className="flex bg-slate-100 p-0.5 rounded-lg gap-0.5 max-w-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSaleUnit('un')}
+                    className={`flex-1 text-sm font-bold py-1.5 rounded-md transition-colors ${saleUnit === 'un' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Por unidade
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaleUnit('kg')}
+                    className={`flex-1 text-sm font-bold py-1.5 rounded-md transition-colors ${saleUnit === 'kg' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Por quilo (kg)
+                  </button>
+                </div>
+                {saleUnit === 'kg' && (
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    O preço acima é <b>por quilo</b>. Na venda, o operador digita o peso em gramas e o valor é calculado automaticamente.
+                  </p>
+                )}
+              </div>
+            )}
 
             <GalleryUploader
               ref={galleryRef}

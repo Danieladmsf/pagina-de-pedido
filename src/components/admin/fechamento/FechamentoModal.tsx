@@ -110,7 +110,7 @@ export function FechamentoModal({
                 {items.map((it: any, i: number) => (
                   <li key={i} className="flex items-start justify-between gap-3 py-1.5">
                     <span className="flex items-start gap-2 text-[12.5px] text-slate-700">
-                      <span className="mt-px font-bold text-blue-600">{Number(it.quantity) || 0}×</span>
+                      <span className="mt-px font-bold text-blue-600">{it.saleUnit === 'kg' ? `${Number(it.weightGrams) || 0}g` : `${Number(it.quantity) || 0}×`}</span>
                       <span>
                         {it.name}
                         {it.addons?.length ? (

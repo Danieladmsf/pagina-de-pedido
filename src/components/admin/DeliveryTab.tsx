@@ -16,7 +16,8 @@ import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { getOrderStatusBadgeColor } from '@/lib/order-status';
-import { buildCustomizedCartItem } from '@/lib/cart';
+import { buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
+import { WeightInput } from '@/components/admin/WeightInput';
 import { normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -247,6 +248,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     });
   };
 
+  const updateEditWeight = (cartItemId: string, grams: number) => {
+    setEditItemsCart(prev => setCartLineWeight(prev, cartItemId, grams));
+  };
+
   const removeFromEditCart = (cartItemId: string) => {
     setEditItemsCart(prev => prev.filter(i => (i.cartItemId || i.id) !== cartItemId));
   };
@@ -257,6 +262,11 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       return;
     }
     if (!db || !selectedOrder) return;
+    const unweighed = findUnweighedItem(editItemsCart);
+    if (unweighed) {
+      toast({ variant: 'destructive', title: 'Peso não informado', description: `Digite o peso de "${unweighed.name}" antes de salvar.` });
+      return;
+    }
     setIsSavingItems(true);
 
     try {
@@ -265,6 +275,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         name: i.name || '',
         quantity: Number(i.quantity) || 1,
         unitPrice: Number(i.unitPrice ?? i.price) || 0,
+        saleUnit: i.saleUnit === 'kg' ? 'kg' : 'un',
+        weightGrams: i.saleUnit === 'kg' ? (Number(i.weightGrams) || 0) : null,
+        pricePerKg: i.saleUnit === 'kg' ? (Number(i.pricePerKg ?? i.price) || 0) : null,
         addons: (i.addons || []).map((addon: any) => ({
           id: addon.id || '',
           name: addon.name || '',
@@ -497,7 +510,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     return (
       <button
         key={item.id}
-        onClick={outOfStock ? undefined : () => setSelectedItemForDialog(item)}
+        onClick={outOfStock ? undefined : () => isWeightItem(item)
+          ? setEditItemsCart(prev => [...prev, makeWeightCartLine(item)])
+          : setSelectedItemForDialog(item)}
         disabled={outOfStock}
         className={`text-left border bg-white p-2.5 rounded-lg transition-colors group flex items-center gap-3 min-h-[80px] relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5'}`}
       >
@@ -517,7 +532,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         )}
         <div className="flex flex-col flex-1 min-w-0 gap-1">
           <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
-          <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+          <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
         </div>
       </button>
     );
@@ -865,11 +880,23 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                         )}
                         {item.notes && <div className="text-[10px] text-orange-500 mt-0.5">Obs: {item.notes}</div>}
                       </div>
-                      <div className="flex items-center gap-1.5 bg-slate-100 rounded-md p-0.5 border shrink-0">
-                        <button onClick={() => updateEditQuantity(item.cartItemId || item.id, -1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-3 w-3" /></button>
-                        <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
-                        <button onClick={() => updateEditQuantity(item.cartItemId || item.id, 1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-3 w-3" /></button>
-                      </div>
+                      {isWeightItem(item) ? (
+                        <div className="shrink-0">
+                          <WeightInput
+                            grams={Number(item.weightGrams) || 0}
+                            pricePerKg={Number(item.pricePerKg ?? item.price) || 0}
+                            onChange={(g) => updateEditWeight(item.cartItemId || item.id, g)}
+                            size="sm"
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 bg-slate-100 rounded-md p-0.5 border shrink-0">
+                          <button onClick={() => updateEditQuantity(item.cartItemId || item.id, -1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-3 w-3" /></button>
+                          <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
+                          <button onClick={() => updateEditQuantity(item.cartItemId || item.id, 1)} className="h-6 w-6 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-3 w-3" /></button>
+                        </div>
+                      )}
                       <button onClick={() => removeFromEditCart(item.cartItemId || item.id)} className="h-8 w-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
                         <X className="h-4 w-4" />
                       </button>

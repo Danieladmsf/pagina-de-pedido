@@ -20,7 +20,8 @@ import { usePromotions } from '@/hooks/usePromotions';
 import { buildAdminMenuGroups } from '@/lib/menu-groups';
 import { useCustomerLookup } from '@/hooks/useCustomerLookup';
 import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
-import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem } from '@/lib/cart';
+import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
+import { WeightInput } from '@/components/admin/WeightInput';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
@@ -224,8 +225,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         // Sincroniza com o pedido do servidor (a menos que haja edições locais
         // ainda não salvas, para não sobrescrever o que o operador está digitando).
         if (tableChanged || !hasUnsavedChanges) {
-          setCart(activeOrder.items || []);
-          setOriginalCart(activeOrder.items || []);
+          // cartItemId determinístico por linha: mantém cart/originalCart idênticos
+          // (preserva o "Salvo ✅") e evita colisão ao editar duas pesagens do
+          // mesmo produto por kg na mesma comanda.
+          const hydratedItems = (activeOrder.items || []).map((it: any, idx: number) => ({ ...it, cartItemId: it.cartItemId || `${it.id}-${idx}` }));
+          setCart(hydratedItems);
+          setOriginalCart(hydratedItems);
           setActiveOrderId(activeOrder.id);
           setReceiptPrinted(activeOrder.status === 'awaiting_payment');
           // Carrega o cliente vinculado à comanda (ignora o rótulo "Mesa N").
@@ -346,11 +351,21 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       }
     }
 
-    if (itemNeedsCustomization(effectiveItem)) {
+    if (isWeightItem(effectiveItem)) {
+      setCart(prev => [...prev, makeWeightCartLine(effectiveItem)]);
+    } else if (itemNeedsCustomization(effectiveItem)) {
       setSelectedItemForDialog(effectiveItem);
     } else {
       setCart(prev => addSimpleItemToCart(prev, effectiveItem));
     }
+  };
+
+  const updateWeight = (cartItemId: string, grams: number) => {
+    if (!can(permissions, 'actions.mesas.lancarItens')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    setCart(prev => setCartLineWeight(prev, cartItemId, grams));
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
@@ -585,8 +600,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       return;
     }
     if (!db || !user || !selectedTable || cart.length === 0) return;
+    const unweighed = findUnweighedItem(cart);
+    if (unweighed) {
+      toast({ variant: 'destructive', title: 'Peso não informado', description: `Digite o peso de "${unweighed.name}" antes de salvar.` });
+      return;
+    }
     setIsSubmitting(true);
-    
+
     // Itens NOVOS (diferença vs comanda atual) para imprimir na cozinha.
     const newItemsToPrint: any[] = [];
     cart.forEach(item => {
@@ -603,6 +623,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         name: i.name || '',
         quantity: Number(i.quantity) || 1,
         unitPrice: Number(i.unitPrice ?? i.price) || 0,
+        saleUnit: i.saleUnit === 'kg' ? 'kg' : 'un',
+        weightGrams: i.saleUnit === 'kg' ? (Number(i.weightGrams) || 0) : null,
+        pricePerKg: i.saleUnit === 'kg' ? (Number(i.pricePerKg ?? i.price) || 0) : null,
         addons: (i.addons || []).map((addon: any) => ({
           id: addon.id || '',
           name: addon.name || '',
@@ -744,6 +767,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       
       if (pendingItemToAdd) {
         setCart(prev => {
+          if (isWeightItem(pendingItemToAdd)) return [...prev, makeWeightCartLine(pendingItemToAdd)];
           const existing = prev.find(i => i.id === pendingItemToAdd.id);
           if (existing) return prev.map(i => i.id === pendingItemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
           return [...prev, { id: pendingItemToAdd.id, name: pendingItemToAdd.name, quantity: 1, unitPrice: pendingItemToAdd.price, addons: [], notes: '' }];
@@ -924,10 +948,10 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           {promoItemsMap[item.id] ? (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
-              <span className="text-sm font-black text-green-600">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}</span>
+              <span className="text-sm font-black text-green-600">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
             </div>
           ) : (
-            <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}</span>
+            <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
           )}
         </div>
       </button>
@@ -1195,15 +1219,24 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           {item.notes && <div className="text-xs text-orange-500 mt-0.5">Obs: {item.notes}</div>}
                         </div>
                         {canEditTableItems ? <>
-                          <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
-                            <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
-                            <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
-                          </div>
+                          {isWeightItem(item) ? (
+                            <WeightInput
+                              grams={Number(item.weightGrams) || 0}
+                              pricePerKg={Number(item.pricePerKg ?? item.price) || 0}
+                              onChange={(g) => updateWeight(item.cartItemId || item.id, g)}
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 bg-slate-100 rounded-md p-1 border">
+                              <button onClick={() => updateQuantity(item.cartItemId || item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Minus className="h-4 w-4" /></button>
+                              <span className="w-8 text-center text-sm font-bold">{item.quantity}</span>
+                              <button onClick={() => updateQuantity(item.cartItemId || item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-white rounded shadow-sm hover:text-primary"><Plus className="h-4 w-4" /></button>
+                            </div>
+                          )}
                           <button onClick={() => removeFromCart(item.cartItemId || item.id)} className="h-9 w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0">
                             <X className="h-5 w-5" />
                           </button>
-                        </> : <span className="rounded-md bg-slate-100 px-2 py-1 text-sm font-bold text-slate-600">{item.quantity}×</span>}
+                        </> : <span className="rounded-md bg-slate-100 px-2 py-1 text-sm font-bold text-slate-600">{isWeightItem(item) ? `${Number(item.weightGrams) || 0} g` : `${item.quantity}×`}</span>}
                       </div>
                     ))}
                   </div>

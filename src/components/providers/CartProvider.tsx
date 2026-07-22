@@ -42,6 +42,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const addToCart = (item: MenuItem, quantity: number, customization?: CartItem['customization']) => {
+    // Itens vendidos por peso (kg) só são vendidos no PDV interno (balcão), onde
+    // se digita o peso. No cardápio online eles aparecem como "R$ X/kg" e não
+    // entram no carrinho — guarda defensiva para qualquer caminho de adição.
+    if ((item as any)?.saleUnit === 'kg') return;
     setCart(prev => {
       const existingIndex = prev.findIndex(i => i.id === item.id && areCustomizationsEqual(i.customization, customization));
       if (existingIndex > -1) {

@@ -22,7 +22,8 @@ import { usePromotions } from '@/hooks/usePromotions';
 import { buildAdminMenuGroups } from '@/lib/menu-groups';
 import { useCustomerLookup } from '@/hooks/useCustomerLookup';
 import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
-import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem } from '@/lib/cart';
+import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
+import { WeightInput } from '@/components/admin/WeightInput';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
@@ -97,11 +98,18 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   const addToCart = (item: any) => {
     const effectiveItem = applyPromoPrice(item, promoItemsMap);
-    if (itemNeedsCustomization(effectiveItem)) {
+    if (isWeightItem(effectiveItem)) {
+      // Item por peso: cada clique abre uma nova linha para digitar o peso.
+      setCart(prev => [...prev, makeWeightCartLine(effectiveItem)]);
+    } else if (itemNeedsCustomization(effectiveItem)) {
       setSelectedItemForDialog(effectiveItem);
     } else {
       setCart(prev => addSimpleItemToCart(prev, effectiveItem));
     }
+  };
+
+  const updateWeight = (cartItemId: string, grams: number) => {
+    setCart(prev => setCartLineWeight(prev, cartItemId, grams));
   };
 
   const handleDialogAddToCart = (item: any, quantity: number, options: any) => {
@@ -399,6 +407,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       return;
     }
     if (cart.length === 0) return;
+    const unweighed = findUnweighedItem(cart);
+    if (unweighed) {
+      toast({ variant: 'destructive', title: 'Peso não informado', description: `Digite o peso de "${unweighed.name}" antes de finalizar.` });
+      return;
+    }
     fechamento.reset();
     setPaymentModalOpen(true);
   };
@@ -455,6 +468,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           name: i.name || '',
           quantity: Number(i.quantity) || 1,
           unitPrice: Number(i.unitPrice ?? i.price) || 0,
+          saleUnit: i.saleUnit === 'kg' ? 'kg' : 'un',
+          weightGrams: i.saleUnit === 'kg' ? (Number(i.weightGrams) || 0) : null,
+          pricePerKg: i.saleUnit === 'kg' ? (Number(i.pricePerKg ?? i.price) || 0) : null,
           addons: (i.addons || []).map((addon: any) => ({
             id: addon.id || '',
             name: addon.name || '',
@@ -610,10 +626,10 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                {promoItemsMap[item.id] ? (
                  <>
                    <span className="text-[10px] text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
-                   <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}</Badge>
+                   <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</Badge>
                  </>
                ) : (
-                 <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {item.price.toFixed(2)}</Badge>
+                 <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</Badge>
                )}
             </div>
           </div>
@@ -624,7 +640,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             <Button variant="ghost" size="sm" disabled className="w-full h-8 text-xs font-bold text-slate-400 cursor-not-allowed">
                Sem estoque
             </Button>
-          ) : needsCust ? (
+          ) : (needsCust || isWeightItem(item)) ? (
             <Button variant="ghost" size="sm" className="w-full h-8 text-xs font-bold text-slate-500 group-hover:bg-primary group-hover:text-white transition-colors" onClick={() => addToCart(item)}>
                <ShoppingCart className="h-3 w-3 mr-2" /> Adicionar
             </Button>
@@ -922,22 +938,36 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 <div key={item.cartItemId || item.id} className="flex justify-between items-start border-b pb-2">
                   <div className="flex-1">
                     <h4 className="font-semibold text-xs text-slate-800">{item.name}</h4>
-                    <p className="text-[10px] text-muted-foreground">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
-                    {item.addons && item.addons.length > 0 && (
-                      <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-                        {item.addons.map((a: any) => a.name).join(', ')}
+                    {isWeightItem(item) ? (
+                      <div className="mt-1">
+                        <WeightInput
+                          grams={Number(item.weightGrams) || 0}
+                          pricePerKg={Number(item.pricePerKg ?? item.price) || 0}
+                          onChange={(g) => updateWeight(item.cartItemId || item.id, g)}
+                          size="sm"
+                          autoFocus
+                        />
                       </div>
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-muted-foreground">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                        {item.addons && item.addons.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                            {item.addons.map((a: any) => a.name).join(', ')}
+                          </div>
+                        )}
+                        {item.notes && <div className="text-[10px] text-orange-500 mt-0.5">Obs: {item.notes}</div>}
+                        <div className="flex items-center gap-1 mt-1">
+                          <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, -1)}>
+                            <Minus className="h-2 w-2" />
+                          </Button>
+                          <span className="text-[10px] font-bold w-3 text-center">{item.quantity}</span>
+                          <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, 1)}>
+                            <Plus className="h-2 w-2" />
+                          </Button>
+                        </div>
+                      </>
                     )}
-                    {item.notes && <div className="text-[10px] text-orange-500 mt-0.5">Obs: {item.notes}</div>}
-                    <div className="flex items-center gap-1 mt-1">
-                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, -1)}>
-                        <Minus className="h-2 w-2" />
-                      </Button>
-                      <span className="text-[10px] font-bold w-3 text-center">{item.quantity}</span>
-                      <Button variant="outline" size="icon" className="h-4 w-4 rounded-full" onClick={() => updateQuantity(item.cartItemId || item.id, 1)}>
-                        <Plus className="h-2 w-2" />
-                      </Button>
-                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                      <span className="font-semibold text-xs">R$ {((item.unitPrice || item.price) * item.quantity).toFixed(2)}</span>

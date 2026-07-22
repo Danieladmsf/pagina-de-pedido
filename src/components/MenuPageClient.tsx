@@ -1179,13 +1179,16 @@ export function MenuPageClient({
               const discountPct = isPromoItem && promo.originalPrice > 0 ? Math.round((1 - promo.promoPrice / promo.originalPrice) * 100) : 0;
 
               const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
+              // Vendido por peso (kg): no cardápio online mostra só "R$ X/kg" e não
+              // é pedido pelo cliente (a pesagem acontece no balcão).
+              const weightItem = item.saleUnit === 'kg';
 
               return (
-                <Card 
-                  key={item.id} 
-                  className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all cursor-pointer rounded-2xl bg-white flex flex-col md:rounded-3xl ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
+                <Card
+                  key={item.id}
+                  className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all rounded-2xl bg-white flex flex-col md:rounded-3xl ${weightItem ? 'cursor-default' : 'cursor-pointer'} ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
                   onClick={() => {
-                    if (isOutOfStock) return;
+                    if (isOutOfStock || weightItem) return;
                     const promo = promoItemsMap[item.id];
                     const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
                     setSelectedItem(effectiveItem);
@@ -1220,7 +1223,7 @@ export function MenuPageClient({
                       </>
                     ) : item.price > 0 ? (
                       <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
-                        R$ {item.price.toFixed(2)}
+                        R$ {item.price.toFixed(2)}{weightItem ? ' /kg' : ''}
                       </Badge>
                     ) : null}
                     {isOutOfStock && (
@@ -1250,7 +1253,11 @@ export function MenuPageClient({
                       <span className="max-w-[calc(100%-3rem)] truncate text-[10px] font-black text-primary/40 uppercase tracking-widest md:text-xs">
                         {isPromoItem ? <span className="text-orange-500">🔥 PROMO</span> : categories?.find(c => c.id === item.categoryId)?.name}
                       </span>
-                      {qtyInCart > 0 && !itemNeedsCustomization(item) ? (
+                      {weightItem ? (
+                        <span className="text-[11px] font-black text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-3 py-1.5 uppercase tracking-wide whitespace-nowrap">
+                          No balcão
+                        </span>
+                      ) : qtyInCart > 0 && !itemNeedsCustomization(item) ? (
                         <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border animate-pop motion-reduce:animate-none" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"

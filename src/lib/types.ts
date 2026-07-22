@@ -46,6 +46,10 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
+  // Forma de venda. Ausente ou 'un' = vendido por unidade (padrão histórico).
+  // 'kg' = vendido por peso; nesse caso `price` é o preço POR QUILO e a venda
+  // pede o peso (em gramas) para calcular o valor da linha.
+  saleUnit?: 'un' | 'kg';
   category?: Category;
   categoryId?: string;
   imageUrl: string;
@@ -79,6 +83,9 @@ export interface SelectedAddon {
 export interface CartItem extends MenuItem {
   cartId: string;
   quantity: number;
+  // Preenchidos apenas em itens vendidos por peso (saleUnit === 'kg'):
+  weightGrams?: number;   // peso digitado na venda, em gramas
+  pricePerKg?: number;    // preço por quilo capturado no momento da adição
   customization?: {
     addons?: SelectedAddon[];
     notes?: string;

@@ -89,6 +89,16 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
 
   const itemsRows = items
     .map((item) => {
+      // Item vendido por peso: a coluna Qtd mostra as gramas e uma linha
+      // "485 g × R$ X/kg" fica sob o nome. O valor (unitPrice × quantity) e o
+      // subtotal já saem corretos porque unitPrice guarda o valor pesado.
+      const isWeight = item.saleUnit === 'kg';
+      const grams = Number(item.weightGrams) || 0;
+      const pricePerKg = Number(item.pricePerKg) || (grams > 0 ? (Number(item.unitPrice) || 0) * 1000 / grams : 0);
+      const qtyLabel = isWeight ? `${grams}g` : esc(item.quantity);
+      const weightLine = isWeight
+        ? `<div class="wline">${grams} g${pricePerKg ? ` &times; R$ ${money(pricePerKg)}/kg` : ''}</div>`
+        : '';
       const addonList: any[] = item.addons || [];
       const addonHtml = (a: any) =>
         `<div class="addon">&gt; ${esc(a.name)} ${
@@ -127,14 +137,14 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
             ? `<tr><td colspan="${isKitchen ? 2 : 3}" class="details">${addonsGrouped}${notes}</td></tr>`
             : '';
         return `<tr>
-        <td class="qtd">${esc(item.quantity)}</td>
-        <td><div class="item-name">${esc(item.name)}</div></td>
+        <td class="qtd">${qtyLabel}</td>
+        <td><div class="item-name">${esc(item.name)}</div>${weightLine}</td>
         ${valueCell}
       </tr>${details}`;
       }
       return `<tr>
-        <td class="qtd">${esc(item.quantity)}</td>
-        <td><div class="item-name">${esc(item.name)}</div>${addons}${notes}</td>
+        <td class="qtd">${qtyLabel}</td>
+        <td><div class="item-name">${esc(item.name)}</div>${weightLine}${addons}${notes}</td>
         ${valueCell}
       </tr>`;
     })
@@ -195,6 +205,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     .val { width:64px; text-align:right; white-space:nowrap; }
     .item-name { font-weight:bold; font-size:13px; }
     .addon { font-size:${addonFontSize}; font-weight:bold; padding-left:8px; margin-bottom:${addonGap}; }
+    .wline { font-size:11px; font-weight:bold; }
     .obs { font-size:12px; font-weight:bold; padding-left:8px; font-style:italic; }
     .details .addon, .details .obs { padding-left:0; }
     .addon-title { font-weight:bold; text-transform:uppercase; font-size:11px; margin-top:3px; }
