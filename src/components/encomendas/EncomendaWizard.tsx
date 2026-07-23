@@ -112,6 +112,26 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [compName, setCompName] = useState('');
   const [compUploading, setCompUploading] = useState(false);
 
+  // Reconhece o cliente pelo cadastro salvo no navegador (o MESMO do app de delivery:
+  // customer_profile / customer_phone). Preenche sem sobrescrever o que já foi digitado.
+  useEffect(() => {
+    try {
+      let prof: any = {};
+      const s = localStorage.getItem('customer_profile');
+      if (s) prof = JSON.parse(s) || {};
+      const savedPhone = prof.phone || localStorage.getItem('customer_phone') || '';
+      if (savedPhone) setPhone((v) => v || savedPhone);
+      if (prof.name) setName((v) => v || prof.name);
+      if (prof.birthDate) setBirthday((v) => v || prof.birthDate);
+      if (prof.street) setStreet((v) => v || prof.street);
+      if (prof.number) setNumber((v) => v || prof.number);
+      if (prof.complement) setComplement((v) => v || prof.complement);
+      if (prof.neighborhood) setNeighborhood((v) => v || prof.neighborhood);
+      if (prof.city) setCity((v) => v || prof.city);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sobe um arquivo do cliente (foto da plaquinha / comprovante PIX). Máx. 5MB.
   const uploadCustomerFile = useCallback(async (file: File): Promise<string> => {
     if (file.size > 5 * 1024 * 1024) throw new Error('Arquivo acima de 5MB.');
@@ -436,6 +456,19 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     const waTab = window.open('about:blank', '_blank');
 
     setSubmitting(true);
+    // Guarda o cadastro no navegador (o MESMO do delivery) p/ reconhecer nas próximas —
+    // merge, sem apagar campos que o app de delivery já tinha salvo (ex.: cep).
+    try {
+      let prev: any = {};
+      try { prev = JSON.parse(localStorage.getItem('customer_profile') || '{}') || {}; } catch {}
+      localStorage.setItem('customer_phone', phone);
+      localStorage.setItem('customer_profile', JSON.stringify({
+        ...prev,
+        name: name || prev.name, phone: phone || prev.phone, birthDate: birthday || prev.birthDate,
+        street: street || prev.street, number: number || prev.number, complement: complement || prev.complement,
+        neighborhood: neighborhood || prev.neighborhood, city: city || prev.city,
+      }));
+    } catch {}
     try {
       if (db && auth && storeId) {
         const user = await ensureAuthenticated(auth);

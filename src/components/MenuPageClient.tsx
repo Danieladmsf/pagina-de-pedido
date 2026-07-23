@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 import { StoreSplash } from '@/components/StoreSplash';
-import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp, Menu as MenuIcon, ShoppingCart } from 'lucide-react';
+import { Plus, Minus, Search, Loader2, ShoppingBag, Leaf, Lock, ChevronLeft, ChevronRight, Info, ArrowLeft, MapPin, Phone, Clock as ClockIcon, Truck, CreditCard, Flame, Timer, ArrowUp, Menu as MenuIcon, ShoppingCart, CakeSlice } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import Link from 'next/link';
@@ -974,6 +974,17 @@ export function MenuPageClient({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Botão de Encomendas (aparece quando a loja liga em Encomendas > config) */}
+            {storeProfile?.encomendas?.showInApp && storeProfile?.encomendas?.enabled !== false && storeSlug && (
+              <Link
+                href={`/${storeSlug}/encomendas`}
+                className="flex h-11 items-center gap-1.5 rounded-2xl border border-primary/10 bg-white/90 px-3.5 text-sm font-black text-primary shadow-md backdrop-blur transition-all hover:bg-primary hover:text-white active:scale-95 motion-reduce:transition-none"
+                aria-label="Encomendas"
+              >
+                <CakeSlice className="h-5 w-5" />
+                <span>Encomendas</span>
+              </Link>
+            )}
             {/* Menu unico (☰) que agrupa carrinho, meus pedidos e informacoes */}
             <button
               onClick={() => setMenuOpen(true)}
@@ -1482,6 +1493,30 @@ export function MenuPageClient({
               </span>
               <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>
+
+            {/* Minhas encomendas (aparece quando a loja liga o botão de Encomendas) */}
+            {storeProfile?.encomendas?.showInApp && storeProfile?.encomendas?.enabled !== false && (
+              <Link
+                href={(() => {
+                  const p = new URLSearchParams();
+                  if (storeId) p.set('storeId', storeId);
+                  if (storeSlug) p.set('returnTo', '/' + storeSlug);
+                  const qs = p.toString();
+                  return '/my-encomendas' + (qs ? '?' + qs : '');
+                })()}
+                onClick={() => setMenuOpen(false)}
+                className="group flex w-full items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99] motion-reduce:transition-none"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <CakeSlice className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-bold text-foreground">Minhas encomendas</span>
+                  <span className="block text-xs text-muted-foreground">Acompanhe o status da sua encomenda</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            )}
 
             {/* Informacoes da loja */}
             <button

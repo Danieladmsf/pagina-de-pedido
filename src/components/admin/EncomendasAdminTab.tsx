@@ -27,6 +27,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
   const [minDays, setMinDays] = useState(3);
   const [daysLabel, setDaysLabel] = useState('Terça a Sábado');
   const [weekDays, setWeekDays] = useState<number[]>([]);
+  const [showInApp, setShowInApp] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -38,6 +39,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setMinDays(typeof e.minDays === 'number' ? e.minDays : 3);
     setDaysLabel(e.daysLabel || 'Terça a Sábado');
     setWeekDays(Array.isArray(e.weekDays) ? e.weekDays : []);
+    setShowInApp(e.showInApp === true);
   }, [storeProfile]);
 
   const shareUrl = useMemo(() => {
@@ -51,7 +53,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setSavingCfg(true);
     try {
       await setDoc(doc(db, 'store_profiles', user.uid), {
-        encomendas: { enabled, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
+        encomendas: { enabled, showInApp, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
       }, { merge: true });
       revalidateStorePages(user.uid);
       toast({ title: 'Configuração salva', description: 'As encomendas usam esses valores a partir de agora.' });
@@ -83,6 +85,14 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
               <p className="text-sm text-muted-foreground">Quando ligada, os clientes podem montar encomendas pelo link abaixo.</p>
             </div>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <p className="font-semibold">Mostrar botão de Encomendas no app</p>
+              <p className="text-sm text-muted-foreground">Coloca um botão "Encomendas" no topo do cardápio e um atalho "Minhas encomendas" no menu do cliente.</p>
+            </div>
+            <Switch checked={showInApp} onCheckedChange={setShowInApp} />
           </div>
 
           {shareUrl && (
