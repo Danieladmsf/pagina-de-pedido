@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { StepIndicator, OptionCard, StepHeader, SkuRow, money } from '@/components/encomendas/primitives';
@@ -84,6 +84,10 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [cakeCover, setCakeCover] = useState('naked');
   const [plateOn, setPlateOn] = useState(false);
   const [plate, setPlate] = useState({ name: '', age: '', theme: '', notes: '' });
+  // Modelo simples "por kg" (bolo = sabor pronto + peso)
+  const [cakeFlavor, setCakeFlavor] = useState('');
+  const [cakeWeight, setCakeWeight] = useState('');
+  const [cakeShape, setCakeShape] = useState('');
   const [especial, setEspecial] = useState<Qmap>({});
   const [tortas, setTortas] = useState<Qmap>({});
   const [docinhos, setDocinhos] = useState<Qmap>({});
@@ -130,6 +134,10 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const TORTAS = cat.tortas.filter((x) => x.enabled !== false);
   const DOCINHOS = cat.docinhos.filter((x) => x.enabled !== false);
   const DELIVERY_TIMES = cat.deliveryTimes;
+  // Fluxo simples "cardápio por kg": ativo quando o catálogo tem `cakes`.
+  const CAKES = cat.cakes || [];
+  const CAKE_WEIGHTS = cat.cakeWeights || [];
+  const SIMPLE_CAKE = CAKES.length > 0;
 
   // Rótulos das seções de tortas/docinhos vêm do card do produto (products[].title/
   // description). Assim o passo combina com o que o cliente escolheu — ex.: um lojista
@@ -154,6 +162,11 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
   const has = (k: ProductKind) => products.has(k);
 
+  // PDF da Gostinho: não entregamos bolos recheados -> tendo bolo, só retirada.
+  useEffect(() => {
+    if (products.has('bolo') && delType === 'delivery') setDelType('retirada');
+  }, [products, delType]);
+
   // Validação da data de retirada/entrega: antecedência mínima (config.minDays)
   // e dias da semana atendidos (config.weekDays; vazio = todos os dias).
   const minDateIso = localIsoPlusDays(config.minDays || 0);
@@ -173,10 +186,18 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     // O lojista pode apagar TODAS as opções de uma seção no editor (ex.: sem
     // coberturas). Passo sem nenhuma opção é PULADO — nunca pode travar o fluxo.
     if (has('bolo')) {
-      if (CAKE_SIZES.length > 0) s.push({ id: 'tamanho' });
-      if (CAKE_DOUGHS.length > 0 || CAKE_FILLINGS.length > 0) s.push({ id: 'recheio' });
-      if (CAKE_COVERS.length > 0) s.push({ id: 'cobertura' });
-      s.push({ id: 'plaquinha' });
+      if (SIMPLE_CAKE) {
+        // Gostinho: escolhe o bolo (sabor/kg) -> escolhe o peso -> formato (só se houver escolha).
+        s.push({ id: 'bolo' });
+        if (CAKE_WEIGHTS.length > 0) s.push({ id: 'peso' });
+        const w = CAKE_WEIGHTS.find((x) => x.id === cakeWeight);
+        if (w && (w.shapes?.length || 0) > 1) s.push({ id: 'formato' });
+      } else {
+        if (CAKE_SIZES.length > 0) s.push({ id: 'tamanho' });
+        if (CAKE_DOUGHS.length > 0 || CAKE_FILLINGS.length > 0) s.push({ id: 'recheio' });
+        if (CAKE_COVERS.length > 0) s.push({ id: 'cobertura' });
+        s.push({ id: 'plaquinha' });
+      }
     }
     if (has('especial')) s.push({ id: 'especial' });
     if (has('tortas')) s.push({ id: 'tortas' });
@@ -184,7 +205,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     s.push({ id: 'entrega' }, { id: 'resumo' });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, CAKE_SIZES.length, CAKE_DOUGHS.length, CAKE_FILLINGS.length, CAKE_COVERS.length]);
+  }, [products, SIMPLE_CAKE, CAKES.length, CAKE_WEIGHTS.length, cakeWeight, CAKE_SIZES.length, CAKE_DOUGHS.length, CAKE_FILLINGS.length, CAKE_COVERS.length]);
 
   const total = steps.length;
   const safeIdx = Math.min(stepIdx, total - 1);
@@ -193,8 +214,17 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const sizeObj = CAKE_SIZES.find((x) => x.id === cakeSize);
   const fillObj = CAKE_FILLINGS.find((x) => x.id === cakeFilling);
   const coverObj = CAKE_COVERS.find((x) => x.id === cakeCover);
-  const boloTotal = has('bolo') && sizeObj
-    ? sizeObj.basePrice + (fillObj?.price || 0) + (coverObj?.price || 0) + (plateOn ? PLATE_PRICE : 0) : 0;
+  // Fluxo simples: preço = fixo (Baby) OU preço/kg do sabor × peso + embalagem.
+  const flavorObj = CAKES.find((x) => x.id === cakeFlavor);
+  const weightObj = CAKE_WEIGHTS.find((x) => x.id === cakeWeight);
+  const simpleBoloTotal = weightObj
+    ? (weightObj.fixedPrice != null
+        ? weightObj.fixedPrice
+        : (flavorObj ? flavorObj.pricePerKg * (weightObj.kg || 0) + (weightObj.packaging || 0) : 0))
+    : 0;
+  const boloTotal = !has('bolo') ? 0
+    : SIMPLE_CAKE ? simpleBoloTotal
+    : (sizeObj ? sizeObj.basePrice + (fillObj?.price || 0) + (coverObj?.price || 0) + (plateOn ? PLATE_PRICE : 0) : 0);
   const sumQ = (map: Qmap, list: { id: string; price: number }[]) =>
     list.reduce((acc, it) => acc + (map[it.id] || 0) * it.price, 0);
   const especialTotal = has('especial') ? sumQ(especial, ESPECIAL_ITEMS) : 0;
@@ -245,6 +275,9 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     switch (step.id) {
       case 'contato': return phone.trim().length >= 8 && name.trim().length > 1;
       case 'produtos': return products.size > 0;
+      case 'bolo': return !!cakeFlavor;
+      case 'peso': return !!cakeWeight;
+      case 'formato': return !!cakeShape;
       case 'tamanho': return !!cakeSize;
       // Só exige escolha do que existe: massa sem opções não bloqueia, idem recheio.
       case 'recheio': return (CAKE_DOUGHS.length === 0 || !!cakeDough) && (CAKE_FILLINGS.length === 0 || !!cakeFilling);
@@ -277,7 +310,13 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     const lines = (map: Qmap, list: any[]) =>
       list.filter((x) => (map[x.id] || 0) > 0).map((x) => `   - ${map[x.id]}× ${x.name} — ${money(map[x.id] * x.price)}`);
 
-    if (has('bolo') && sizeObj) {
+    if (has('bolo') && SIMPLE_CAKE) {
+      L.push('', '*Bolo*');
+      if (flavorObj) L.push(`   - Sabor: ${flavorObj.name} (${money(flavorObj.pricePerKg)}/kg)`);
+      if (weightObj) L.push(`   - Peso: ${weightObj.label}`);
+      if (cakeShape) L.push(`   - Formato: ${cakeShape}`);
+      L.push(`   Subtotal bolo: ${money(boloTotal)}`);
+    } else if (has('bolo') && sizeObj) {
       L.push('', '*Bolo personalizado*');
       L.push(`   - Tamanho: ${sizeObj.label} (${sizeObj.sub})`);
       L.push(`   - Massa: ${cakeDough || '—'}`);
@@ -325,7 +364,20 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       customerBirthDate: birthday || '',
       isEmpresa,
       products: Array.from(products),
-      bolo: has('bolo') && sizeObj ? {
+      bolo: !has('bolo') ? null : (SIMPLE_CAKE ? {
+        sizeId: weightObj?.id || '',
+        size: weightObj?.label || '',
+        dough: '',
+        filling: flavorObj?.name || '',
+        cover: '',
+        plate: { on: false },
+        total: boloTotal,
+        flavor: flavorObj?.name || '',
+        weight: weightObj?.label || '',
+        shape: cakeShape || '',
+        pricePerKg: flavorObj?.pricePerKg,
+        kg: weightObj?.kg,
+      } : (sizeObj ? {
         sizeId: sizeObj.id,
         size: sizeObj.label,
         dough: cakeDough,
@@ -333,7 +385,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         cover: coverObj?.name || '',
         plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes, imageUrl: plateImageUrl },
         total: boloTotal,
-      } : null,
+      } : null)),
       especialItems: especialLines,
       tortasItems: tortasLines,
       docinhosItems: docinhosLines,
@@ -446,6 +498,54 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <OptionCard key={p.kind} icon={p.icon} image={p.imageUrl} title={p.title} description={p.description}
                     selected={has(p.kind)} onClick={() => toggleProduct(p.kind)}
                     badge={p.kind === 'especial' ? 'Edição limitada' : undefined} />
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {step.id === 'bolo' && (
+            <Section title="Escolha o bolo" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Todos os sabores são por quilo — o valor depende do peso que você escolher.">
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {CAKES.map((c) => (
+                  <button key={c.id} type="button" onClick={() => setCakeFlavor(c.id)}
+                    className={`flex items-center justify-between gap-2 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${cakeFlavor === c.id ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border bg-card hover:border-primary/40'}`}>
+                    <span className="font-medium text-foreground">{c.name}</span>
+                    <span className="shrink-0 text-sm font-bold text-primary">{money(c.pricePerKg)}/kg</span>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {step.id === 'peso' && (
+            <Section title="Peso do bolo" kicker={`Passo ${safeIdx + 1} de ${total}`}
+              subtitle={flavorObj ? `${flavorObj.name} · ${money(flavorObj.pricePerKg)}/kg` : 'Escolha o tamanho ideal para a sua festa.'}>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {CAKE_WEIGHTS.map((w) => {
+                  const price = w.fixedPrice != null ? w.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (w.kg || 0) + (w.packaging || 0) : 0);
+                  return (
+                    <button key={w.id} type="button"
+                      onClick={() => { setCakeWeight(w.id); const sh = w.shapes || []; setCakeShape(sh.length === 1 ? sh[0] : ''); }}
+                      className={`rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${cakeWeight === w.id ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border bg-card hover:border-primary/40'}`}>
+                      <div className="flex items-baseline justify-between">
+                        <p className="font-display text-2xl font-bold text-foreground">{w.label}</p>
+                        <p className="text-sm font-bold text-primary">{money(price)}</p>
+                      </div>
+                      {w.sub && <p className="mt-1 text-xs text-muted-foreground">{w.sub}</p>}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">Finalização especial (ganache, chantininho, KitKat, brigadeiros, glitter, topper) tem acréscimo — valor combinado no WhatsApp.</p>
+            </Section>
+          )}
+
+          {step.id === 'formato' && (
+            <Section title="Formato do bolo" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Escolha o formato.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(weightObj?.shapes || []).map((sh) => (
+                  <OptionCard key={sh} title={sh.charAt(0).toUpperCase() + sh.slice(1)}
+                    selected={cakeShape === sh} onClick={() => setCakeShape(sh)} />
                 ))}
               </div>
             </Section>
@@ -625,17 +725,20 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                 </Field>
               </div>
               <p className="mt-4 mb-2 text-[11px] font-bold uppercase tracking-wider text-gold">Como prefere receber? *</p>
+              {has('bolo') && <p className="-mt-1 mb-2 text-xs text-muted-foreground">Bolos são só para <strong>retirada</strong> — não fazemos entrega de bolo recheado.</p>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <button type="button" onClick={() => setDelType('retirada')}
                   className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-all ${delType === 'retirada' ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border hover:border-primary/40'}`}>
                   <Store className="h-5 w-5 text-primary" />
                   <span><span className="block font-semibold">Retirar no local</span><span className="block text-xs text-muted-foreground">Sem custo adicional</span></span>
                 </button>
-                <button type="button" onClick={() => setDelType('delivery')}
-                  className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-all ${delType === 'delivery' ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border hover:border-primary/40'}`}>
-                  <Bike className="h-5 w-5 text-primary" />
-                  <span><span className="block font-semibold">Entrega</span><span className="block text-xs text-muted-foreground">Taxa conforme o bairro</span></span>
-                </button>
+                {!has('bolo') && (
+                  <button type="button" onClick={() => setDelType('delivery')}
+                    className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-all ${delType === 'delivery' ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border hover:border-primary/40'}`}>
+                    <Bike className="h-5 w-5 text-primary" />
+                    <span><span className="block font-semibold">Entrega</span><span className="block text-xs text-muted-foreground">Taxa conforme o bairro</span></span>
+                  </button>
+                )}
               </div>
               {delType === 'delivery' && (
                 <div className="mt-4 space-y-3 rounded-2xl bg-secondary/40 p-4">
@@ -696,6 +799,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
           {step.id === 'resumo' && (
             <ResumoStep config={config} name={name} phone={phone} products={products} sizeObj={sizeObj} cakeDough={cakeDough}
+              simpleCake={SIMPLE_CAKE} flavorObj={flavorObj} weightObj={weightObj} cakeShape={cakeShape}
               fillObj={fillObj} coverObj={coverObj} plateOn={plateOn} plate={plate}
               especial={especial} tortas={tortas} docinhos={docinhos}
               delDate={delDate} delTime={delTime} delType={delType}
@@ -838,6 +942,7 @@ function Field({ label, required, children }: { label: React.ReactNode; required
 
 function ResumoStep(props: any) {
   const { config, name, phone, products, sizeObj, cakeDough, fillObj, coverObj, plateOn, plate,
+    simpleCake, flavorObj, weightObj, cakeShape,
     especial, tortas, docinhos, delDate, delTime, delType, delAddress, delNeighborhood,
     boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes,
     compUrl, compName, compUploading, onComprovante, onClearComp } = props;
@@ -854,7 +959,15 @@ function ResumoStep(props: any) {
       <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
         <Row label="Cliente" value={name} />
         <Row label="WhatsApp" value={phone} />
-        {products.has('bolo') && sizeObj && (
+        {products.has('bolo') && simpleCake && weightObj && (
+          <Block icon={<Cake className="h-4 w-4" />} title="Bolo">
+            <Row label="Sabor" value={flavorObj?.name} />
+            <Row label="Peso" value={weightObj?.label} />
+            {cakeShape && <Row label="Formato" value={cakeShape} />}
+            <Row label="Subtotal bolo" value={money(boloTotal)} strong />
+          </Block>
+        )}
+        {products.has('bolo') && !simpleCake && sizeObj && (
           <Block icon={<Cake className="h-4 w-4" />} title="Bolo">
             <Row label="Tamanho" value={sizeObj.label} />
             <Row label="Massa" value={cakeDough} />

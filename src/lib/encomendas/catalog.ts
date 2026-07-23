@@ -56,6 +56,21 @@ export const CAKE_COVERS: CoverOption[] = [
   { id: 'chantininho', name: 'Chantininho', desc: 'Chantilly firme, pode ser colorido.', price: 35 },
 ];
 
+// Modelo simples "cardápio por kg" (ex.: confeitaria Gostinho): o bolo já é o
+// sabor pronto, com preço POR KG. O cliente escolhe o sabor e depois o peso —
+// sem etapas de massa/recheio/cobertura. Quando `cakes` tem itens, o wizard usa
+// este fluxo no lugar do modelo antigo (tamanho + recheio).
+export interface CakeFlavor { id: string; name: string; pricePerKg: number; }
+export interface CakeWeight {
+  id: string;
+  label: string;
+  sub?: string;
+  kg?: number;            // multiplica o preço/kg do sabor
+  fixedPrice?: number;    // preço fixo (ex.: Baby R$55) — ignora kg e sabor
+  packaging?: number;     // embalagem somada ao total (Baby e 1kg = 16)
+  shapes?: string[];      // formatos permitidos: ['redondo'] ou ['redondo','quadrado']
+}
+
 export const PLATE_PRICE = 30;
 
 export interface SkuOption {
@@ -118,6 +133,8 @@ export interface EncomendaCatalog {
   tortas: SkuOption[];
   docinhos: SkuOption[];
   deliveryTimes: string[];
+  cakes: CakeFlavor[];
+  cakeWeights: CakeWeight[];
 }
 
 export const DEFAULT_CATALOG: EncomendaCatalog = {
@@ -133,6 +150,8 @@ export const DEFAULT_CATALOG: EncomendaCatalog = {
   tortas: TORTAS,
   docinhos: DOCINHOS,
   deliveryTimes: DELIVERY_TIMES,
+  cakes: [],
+  cakeWeights: [],
 };
 
 // ---- Ponte cardápio → encomendas ----
@@ -189,5 +208,7 @@ export function mergeCatalog(partial: any): EncomendaCatalog {
     tortas: arr(p.tortas, DEFAULT_CATALOG.tortas),
     docinhos: arr(p.docinhos, DEFAULT_CATALOG.docinhos),
     deliveryTimes: arr(p.deliveryTimes, DEFAULT_CATALOG.deliveryTimes),
+    cakes: arr(p.cakes, DEFAULT_CATALOG.cakes),
+    cakeWeights: arr(p.cakeWeights, DEFAULT_CATALOG.cakeWeights),
   };
 }

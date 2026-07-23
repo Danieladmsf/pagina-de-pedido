@@ -37,6 +37,12 @@ export interface EncomendaBolo {
   cover: string;       // nome da cobertura
   plate: { on: boolean; name?: string; age?: string; theme?: string; notes?: string; imageUrl?: string };
   total: number;
+  // Modelo simples "por kg" (opcional): bolo escolhido por sabor + peso.
+  flavor?: string;      // nome do bolo (ex.: "Chocolatudo")
+  weight?: string;      // label do peso (ex.: "2 kg" ou "Baby")
+  shape?: string;       // formato (Redondo/Quadrado)
+  pricePerKg?: number;
+  kg?: number;
 }
 
 export interface Encomenda {
