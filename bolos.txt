@@ -1,0 +1,94 @@
+========================================================================
+CARDÁPIO DE BOLOS RECHEADOS — GOSTINHO DE CÉU
+Fonte: "Cardápio Bolo Recheado Gostinho de Céu  (1).pdf"
+Contato: @gostinho.de.ceu · (16) 99363-8485
+
+>>> O cardápio é POR QUILO. Cada sabor tem seu preço por kg.        <<<
+>>> Preço do bolo = (R$/kg do sabor) x (peso).  Baby = R$55 fixo.   <<<
+========================================================================
+
+
+########################################################################
+# PARTE 1 — EXATAMENTE O QUE ESTÁ NO PDF
+########################################################################
+
+SABORES (preço por kg)
+------------------------------------------------------------------------
+Chocolatudo (brigadeiro) .......... R$ 75,00/kg
+Dois amores ....................... R$ 75,00/kg
+Ninho ............................. R$ 75,00/kg
+Doce de leite com brigadeiro ...... R$ 75,00/kg
+Ninho com morango ................. R$ 80,00/kg
+Olho de sogra ..................... R$ 80,00/kg
+Ninho com abacaxi ................. R$ 80,00/kg
+Ninho com geleia de morango ....... R$ 80,00/kg
+Maracujá com brigadeiro ........... R$ 80,00/kg
+Prestígio com brigadeiro .......... R$ 80,00/kg
+Ninho com cocada .................. R$ 80,00/kg
+Cocada com doce de leite .......... R$ 80,00/kg
+Dois amores com morango ........... R$ 80,00/kg
+Brigadeiro com morango ............ R$ 80,00/kg
+Brigadeiro com cereja ............. R$ 80,00/kg
+Floresta negra .................... R$ 80,00/kg
+Ninho com cereja .................. R$ 80,00/kg
+Dois amores com ouro branco ....... R$ 80,00/kg
+Brigadeiro com ouro branco ........ R$ 80,00/kg
+Ninho com fios de nutella ......... R$ 80,00/kg
+Ninho trufado ..................... R$ 85,00/kg
+Merengue .......................... R$ 85,00/kg
+Kinder ............................ R$ 85,00/kg
+Nozes com doce de leite ........... R$ 85,00/kg
+Brigadeiro com castanhas .......... R$ 85,00/kg
+Brigadeiro com nozes .............. R$ 85,00/kg
+Chocolate trufado com doce de leite  R$ 85,00/kg
+Ferrero ........................... R$ 85,00/kg
+
+BOLO BABY ......................... R$ 55,00  (fixo · serve de 4 a 5 fatias)
+
+INFORMAÇÕES IMPORTANTES (regras que estão no PDF)
+------------------------------------------------------------------------
+- Pedidos com 3 dias de antecedência.
+- NÃO entregamos bolos recheados (somente retirada).
+- Atendemos de 1 a 7 kg. Rendimento: 10 fatias por kg.
+- Bolo de 1 kg: APENAS redondo.
+- Bolo Baby e de 1 kg: cobrado o valor da embalagem — R$ 16,00.
+- Modelo do bolo (glitter, cores, topper...) e finalização (ganache,
+  chantininho, raspas, KitKat, brigadeiros): há acréscimo — CONSULTAR VALORES.
+
+
+########################################################################
+# PARTE 2 — COMO FICA NO SITE (só o que o PDF manda, nada inventado)
+########################################################################
+
+FLUXO DO BOLO:
+  1) Cliente escolhe o SABOR  -> vê o preço por kg de cada um (75, 80 ou 85).
+  2) Próxima tela: escolhe o PESO  -> Baby, ou de 1 a 7 kg.
+  3) Total = preço/kg do sabor x peso.
+
+CONTA DO PESO:
+  Baby ...... R$ 55,00 (fixo, qualquer sabor)
+  1 kg ...... sabor/kg x 1  + R$ 16,00 de embalagem
+  2 kg ...... sabor/kg x 2
+  3 kg ...... sabor/kg x 3
+  4 kg ...... sabor/kg x 4
+  5 kg ...... sabor/kg x 5
+  6 kg ...... sabor/kg x 6
+  7 kg ...... sabor/kg x 7
+  (embalagem R$16 só no Baby e no 1 kg)
+
+  Exemplos:
+    Ninho (75/kg), 2 kg  = 75 x 2               = R$ 150,00
+    Ninho com morango (80/kg), 3 kg = 80 x 3    = R$ 240,00
+    Ferrero (85/kg), 1 kg = 85 x 1 + 16         = R$ 101,00
+
+REGRAS (do PDF) QUE VIRAM TRAVAS:
+  - Formato: 1 kg só redondo; de 2 kg pra cima pode redondo ou quadrado.
+  - Se tem bolo no pedido -> só retirada (não entregamos recheado).
+  - Finalização/decoração especial -> "valor sob consulta" (sem preço fixo).
+  - Antecedência mínima de 3 dias.
+
+NÃO TEM NO PDF -> NÃO VAI PRO SITE:
+  - Níveis "Tradicional/Especial/Premium" (inventado — REMOVIDO).
+  - Escolha de "massa" (branca/chocolate) (inventado — REMOVIDO).
+  - "Plaquinha" R$30 (inventado — REMOVIDO).
+  - Ganache/cobertura com preço fixo (o PDF diz "consultar" — REMOVIDO).
