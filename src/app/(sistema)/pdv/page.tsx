@@ -704,6 +704,13 @@ export default function PdvPage() {
       msgTempo = `\n⏳ Tempo estimado para retirada: ${storeProfile.fees.pickupTime}`;
     }
 
+    // Chave Pix da loja (para a mensagem de cobrança por Pix).
+    const pixKey = (storeProfile?.creditPixKey || '').trim();
+    const pixName = (storeProfile?.creditPixName || '').trim();
+    const pixBlock = pixKey
+      ? `\n🔑 *Chave Pix:* ${pixKey}${pixName ? `\n👤 ${pixName}` : ''}\n`
+      : '';
+
     let message = '';
     let msgType = '';
     let templateKey:
@@ -770,7 +777,15 @@ export default function PdvPage() {
         endereco: addressLine,
         subtotal: subtotalStr,
         taxa_entrega: feeStr,
+        chave_pix: pixBlock,
       });
+    }
+
+    // Rede de segurança: se a loja tem chave Pix configurada mas o texto salvo
+    // é antigo (sem a variável {chave_pix}), anexa a chave assim mesmo para o
+    // cliente não precisar pedir. O includes evita duplicar quando já veio no template.
+    if (templateKey === 'pixProofRequest' && pixKey && !message.includes(pixKey)) {
+      message += `\n\n🔑 *Chave Pix:* ${pixKey}${pixName ? `\n👤 ${pixName}` : ''}`;
     }
 
     if (!message) return { sent: false, skipped: true, reason: 'Mensagem vazia.' };

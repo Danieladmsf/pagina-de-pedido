@@ -515,6 +515,12 @@ function MessageTemplatesSection({
   workingHours?: any[];
   storeProfile?: any;
 }) {
+  const pixKeySample = (storeProfile?.creditPixKey || '').trim();
+  const pixNameSample = (storeProfile?.creditPixName || '').trim();
+  const pixBlockSample = pixKeySample
+    ? `\n🔑 *Chave Pix:* ${pixKeySample}${pixNameSample ? `\n👤 ${pixNameSample}` : ''}\n`
+    : '\n🔑 *Chave Pix:* (defina em Perfil da loja)\n';
+
   const sampleValues = {
     loja: storeName,
     link: storeLink || '{link}',
@@ -531,6 +537,7 @@ function MessageTemplatesSection({
     endereco: 'Comer no local: Antonio Pizzi, 21, João Berbel II',
     subtotal: 'R$ 28,90',
     taxa_entrega: 'R$ 0,00',
+    chave_pix: pixBlockSample,
   };
 
   return (
@@ -544,7 +551,7 @@ function MessageTemplatesSection({
                 Mensagens automaticas
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}, {'{celular}'}, {'{endereco}'}, {'{subtotal}'}, {'{taxa_entrega}'}.
+                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}, {'{celular}'}, {'{endereco}'}, {'{subtotal}'}, {'{taxa_entrega}'}, {'{chave_pix}'} (so na mensagem de Pix).
               </p>
             </div>
             <div className="flex gap-2">
