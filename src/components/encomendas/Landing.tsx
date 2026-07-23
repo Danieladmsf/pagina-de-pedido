@@ -2,26 +2,20 @@ import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight, CalendarClock, MapPin, HeartHandshake, Sparkles, Store, ShieldCheck,
-  AtSign, Quote, Check, Cake, CakeSlice, Cookie,
+  AtSign, Check, Cake, CakeSlice, Cookie,
 } from 'lucide-react';
 
 const WHAT = [
-  { icon: Cake, title: 'Bolos personalizados', desc: 'Do P ao XXG, com recheios em três níveis e acabamento à escolha.', tag: 'a partir de R$ 120' },
-  { icon: CakeSlice, title: 'Tortas geladas', desc: 'Camadas cremosas e base crocante, nos tamanhos P, M e G.', tag: 'a partir de R$ 55' },
-  { icon: Cookie, title: 'Docinhos finos', desc: 'Brigadeiros, beijinhos e gourmet sortido para a mesa de doces.', tag: 'mín. 50 un' },
-];
-
-const DEPO = [
-  { ini: 'AB', name: 'Ana B.', ctx: 'Aniversário de 1 ano', text: 'O bolo ficou exatamente como sonhei. Massa fofinha e recheio na medida — todo mundo elogiou.' },
-  { ini: 'CR', name: 'Carla R.', ctx: 'Chá de bebê', text: 'Os docinhos chegaram lindos e pontuais. Atendimento atencioso do começo ao fim.' },
-  { ini: 'JM', name: 'João M.', ctx: 'Comemoração em família', text: 'A torta gelada foi a estrela do dia. Sabor delicado, nada enjoativo. Recomendo demais.' },
+  { icon: Cake, title: 'Bolos recheados', desc: 'Sabores variados, vendidos por quilo — do Baby aos 7 kg.', tag: 'a partir de R$ 55' },
+  { icon: Cookie, title: 'Brigadeiros', desc: 'Tradicionais e gourmet, 18g cada. Mínimo de 50 por sabor.', tag: 'cento a partir de R$ 140' },
+  { icon: CakeSlice, title: 'Doces finos', desc: 'Copinhos, bombons, brownies, camafeu e bem-casado.', tag: 'por cento' },
 ];
 
 const SOBRE = [
   'Ingredientes selecionados e sempre frescos',
   'Massas feitas do zero, no dia',
   'Decoração delicada e personalizada',
-  'Atendimento próximo, do orçamento à entrega',
+  'Atendimento próximo, do orçamento à retirada',
 ];
 
 export function Landing({ config, onStart }: { config: EncomendaConfig; onStart: () => void }) {
@@ -89,7 +83,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
             </div>
             <div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-muted-foreground">
               <span className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4 text-primary" /> Mín. {config.minDays} dias de antecedência</span>
-              {config.city && <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" /> Entrega em {config.city}</span>}
+              {config.city && <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" /> Retirada em {config.city}</span>}
             </div>
           </div>
           {/* Cartão decorativo */}
@@ -139,29 +133,6 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
               <span className="mt-4 inline-block rounded-full bg-accent/15 px-3 py-1 text-xs font-bold text-gold">{c.tag}</span>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Depoimentos */}
-      <section className="border-y border-border/60 bg-secondary/30">
-        <div className="mx-auto max-w-6xl px-4 py-20">
-          <Kicker>Depoimentos</Kicker>
-          <h2 className="mt-2 text-center font-display text-3xl font-bold text-foreground sm:text-4xl">Quem prova, volta sempre.</h2>
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {DEPO.map((d) => (
-              <figure key={d.name} className="rounded-3xl border border-border bg-card p-6 shadow-card">
-                <Quote className="h-7 w-7 text-primary/25" />
-                <blockquote className="mt-3 text-sm leading-relaxed text-foreground/90">“{d.text}”</blockquote>
-                <figcaption className="mt-5 flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{d.ini}</span>
-                  <span>
-                    <span className="block text-sm font-bold text-foreground">{d.name}</span>
-                    <span className="block text-xs text-muted-foreground">{d.ctx}</span>
-                  </span>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
         </div>
       </section>
 
