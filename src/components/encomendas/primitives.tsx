@@ -93,9 +93,15 @@ export function OptionCard({
 /* ---------- Stepper de quantidade ---------- */
 // `min` é o mínimo QUANDO o item está selecionado: o "+" a partir de 0 pula
 // direto para o mínimo (ex.: 50 docinhos) e o "−" abaixo do mínimo volta a 0.
-export function QuantityStepper({ value, onChange, min = 0, step = 1 }: { value: number; onChange: (v: number) => void; min?: number; step?: number; }) {
-  const dec = () => onChange(value - step >= Math.max(min, 1) ? value - step : 0);
-  const inc = () => onChange(value === 0 ? Math.max(min, step) : value + step);
+export function QuantityStepper({ value, onChange, min = 0, step = 1, sequence }: { value: number; onChange: (v: number) => void; min?: number; step?: number; sequence?: number[]; }) {
+  const dec = () => {
+    if (sequence) { const i = sequence.indexOf(value); onChange(i > 0 ? sequence[i - 1] : 0); return; }
+    onChange(value - step >= Math.max(min, 1) ? value - step : 0);
+  };
+  const inc = () => {
+    if (sequence) { const i = sequence.indexOf(value); onChange(i < 0 ? sequence[0] : (i < sequence.length - 1 ? sequence[i + 1] : value)); return; }
+    onChange(value === 0 ? Math.max(min, step) : value + step);
+  };
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card p-1">
       <button
@@ -119,7 +125,19 @@ export function QuantityStepper({ value, onChange, min = 0, step = 1 }: { value:
 }
 
 /* ---------- Linha de SKU com quantidade ---------- */
-export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, image }: { name: string; desc?: string; price: number; qty: number; onQty: (v: number) => void; step?: number; minQty?: number; image?: string; }) {
+// Sequência de quantidade "por cento": 50, depois centos inteiros (100, 200, 300...).
+export const CENTO_SEQ = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+// Total de um SKU: por unidade (qty × price) OU "por cento" (quando tem priceCento):
+// as 50 usam price50 (ou metade do cento); cada 100 usa priceCento.
+export function skuTotal(sku: { price: number; priceCento?: number; price50?: number }, qty: number): number {
+  if (typeof sku.priceCento === 'number') {
+    if (qty <= 0) return 0;
+    return qty === 50 ? (typeof sku.price50 === 'number' ? sku.price50 : Math.round(sku.priceCento / 2)) : (qty / 100) * sku.priceCento;
+  }
+  return qty * sku.price;
+}
+
+export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, image, priceCento, price50 }: { name: string; desc?: string; price: number; qty: number; onQty: (v: number) => void; step?: number; minQty?: number; image?: string; priceCento?: number; price50?: number; }) {
   return (
     <div className={cn('flex items-center justify-between gap-3 rounded-2xl border-2 p-3 sm:p-4 transition-colors', qty > 0 ? 'border-primary/40 bg-secondary/40' : 'border-border bg-card')}>
       <div className="flex min-w-0 items-center gap-3">
@@ -131,12 +149,15 @@ export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, im
           <p className="font-semibold leading-tight text-foreground text-sm sm:text-[15px]">{name}</p>
           {desc && <p className="mt-0.5 text-xs leading-snug text-muted-foreground line-clamp-2">{desc}</p>}
           <p className="mt-1 text-sm font-bold text-primary">
-            {money(price)}
-            {minQty > 1 && <span className="ml-1.5 font-medium text-muted-foreground">· mín. {minQty} un</span>}
+            {typeof priceCento === 'number'
+              ? (qty > 0
+                  ? <>{money(skuTotal({ price, priceCento, price50 }, qty))}<span className="ml-1.5 font-medium text-muted-foreground">· {qty === 50 ? '50 un' : `${qty / 100} cento${qty > 100 ? 's' : ''}`}</span></>
+                  : <>{typeof price50 === 'number' && <>50 un {money(price50)} · </>}cento {money(priceCento)}</>)
+              : <>{money(price)}{minQty > 1 && <span className="ml-1.5 font-medium text-muted-foreground">· mín. {minQty} un</span>}</>}
           </p>
         </div>
       </div>
-      <QuantityStepper value={qty} onChange={onQty} step={step} min={minQty} />
+      <QuantityStepper value={qty} onChange={onQty} step={step} min={minQty} sequence={typeof priceCento === 'number' ? (typeof price50 === 'number' ? CENTO_SEQ : CENTO_SEQ.filter((n) => n >= 100)) : undefined} />
     </div>
   );
 }

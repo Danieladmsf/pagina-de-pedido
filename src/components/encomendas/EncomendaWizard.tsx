@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
-import { StepIndicator, OptionCard, StepHeader, SkuRow, money } from '@/components/encomendas/primitives';
+import { StepIndicator, OptionCard, StepHeader, SkuRow, money, skuTotal } from '@/components/encomendas/primitives';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -233,8 +233,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const boloTotal = !has('bolo') ? 0
     : SIMPLE_CAKE ? simpleBoloTotal
     : (sizeObj ? sizeObj.basePrice + (fillObj?.price || 0) + (coverObj?.price || 0) + (plateOn ? PLATE_PRICE : 0) : 0);
-  const sumQ = (map: Qmap, list: { id: string; price: number }[]) =>
-    list.reduce((acc, it) => acc + (map[it.id] || 0) * it.price, 0);
+  const sumQ = (map: Qmap, list: { id: string; price: number; priceCento?: number; price50?: number }[]) =>
+    list.reduce((acc, it) => acc + skuTotal(it, map[it.id] || 0), 0);
   const especialTotal = has('especial') ? sumQ(especial, ESPECIAL_ITEMS) : 0;
   const tortasTotal = has('tortas') ? sumQ(tortas, TORTAS) : 0;
   const docinhosTotal = has('docinhos') ? sumQ(docinhos, DOCINHOS) : 0;
@@ -273,8 +273,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const saldo = grandTotal - sinal;
 
   // Itens resolvidos (id/nome/preço) — reaproveitados no doc persistido.
-  const toLines = (map: Qmap, list: { id: string; name: string; price: number }[]): EncomendaLineItem[] =>
-    list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ id: x.id, name: x.name, qty: map[x.id], unitPrice: x.price, total: map[x.id] * x.price }));
+  const toLines = (map: Qmap, list: { id: string; name: string; price: number; priceCento?: number; price50?: number }[]): EncomendaLineItem[] =>
+    list.filter((x) => (map[x.id] || 0) > 0).map((x) => { const total = skuTotal(x, map[x.id]); return { id: x.id, name: x.name, qty: map[x.id], unitPrice: map[x.id] ? total / map[x.id] : x.price, total }; });
   const especialLines = has('especial') ? toLines(especial, ESPECIAL_ITEMS) : [];
   const tortasLines = has('tortas') ? toLines(tortas, TORTAS) : [];
   const docinhosLines = has('docinhos') ? toLines(docinhos, DOCINHOS) : [];
@@ -318,7 +318,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     if (isEmpresa) L.push('*Emitir NF-e (empresa):* sim');
 
     const lines = (map: Qmap, list: any[]) =>
-      list.filter((x) => (map[x.id] || 0) > 0).map((x) => `   - ${map[x.id]}× ${x.name} — ${money(map[x.id] * x.price)}`);
+      list.filter((x) => (map[x.id] || 0) > 0).map((x) => `   - ${map[x.id]}× ${x.name} — ${money(skuTotal(x, map[x.id]))}`);
 
     if (has('bolo') && SIMPLE_CAKE) {
       L.push('', '*Bolo*');
@@ -719,6 +719,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   {group && <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{group}</p>}
                   {items.map((t) => (
                     <SkuRow key={t.id} name={t.name} desc={t.desc} price={t.price} image={t.imageUrl}
+                      priceCento={t.priceCento} price50={t.price50}
                       minQty={t.minQty || 0} step={t.stepQty || 1}
                       qty={tortas[t.id] || 0} onQty={(v) => setTortas({ ...tortas, [t.id]: v })} />
                   ))}
@@ -737,6 +738,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   {group && <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-gold">{group}</p>}
                   {items.map((d) => (
                     <SkuRow key={d.id} name={d.name} desc={d.desc} price={d.price} image={d.imageUrl}
+                      priceCento={d.priceCento} price50={d.price50}
                       minQty={d.minQty || 0} step={d.stepQty || 1}
                       qty={docinhos[d.id] || 0} onQty={(v) => setDocinhos({ ...docinhos, [d.id]: v })} />
                   ))}
@@ -930,11 +932,11 @@ function FileUploadBox({ accept, uploading, previewUrl, fileName, label, hint, o
 
 // Mini-resumo da etapa: itens já escolhidos, com remoção rápida e subtotal da seção.
 function SelectedList({ title, map, list, onRemove }: {
-  title: string; map: Qmap; list: { id: string; name: string; price: number }[]; onRemove: (id: string) => void;
+  title: string; map: Qmap; list: { id: string; name: string; price: number; priceCento?: number; price50?: number }[]; onRemove: (id: string) => void;
 }) {
   const sel = list.filter((x) => (map[x.id] || 0) > 0);
   if (sel.length === 0) return null;
-  const total = sel.reduce((acc, x) => acc + map[x.id] * x.price, 0);
+  const total = sel.reduce((acc, x) => acc + skuTotal(x, map[x.id]), 0);
   return (
     <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -949,7 +951,7 @@ function SelectedList({ title, map, list, onRemove }: {
           <div key={x.id} className="flex items-center justify-between gap-2 text-sm">
             <span className="min-w-0 truncate text-muted-foreground">{map[x.id]}× {x.name}</span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className="font-medium text-foreground">{money(map[x.id] * x.price)}</span>
+              <span className="font-medium text-foreground">{money(skuTotal(x, map[x.id]))}</span>
               <button type="button" onClick={() => onRemove(x.id)} title="Remover"
                 className="text-muted-foreground transition-colors hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
@@ -991,7 +993,7 @@ function ResumoStep(props: any) {
   const docinhosLabel = cat.products.find((p: any) => p.kind === 'docinhos')?.title || 'Docinhos';
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(config.pixKey); setCopied(true); setTimeout(() => setCopied(false), 1500); };
-  const lines = (map: Qmap, list: any[]) => list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ name: x.name, qty: map[x.id], total: map[x.id] * x.price }));
+  const lines = (map: Qmap, list: any[]) => list.filter((x) => (map[x.id] || 0) > 0).map((x) => ({ name: x.name, qty: map[x.id], total: skuTotal(x, map[x.id]) }));
 
   return (
     <div className="space-y-5">

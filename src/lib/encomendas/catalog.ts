@@ -89,6 +89,10 @@ export interface SkuOption {
   name: string;
   desc?: string;
   price: number;
+  // Venda "por cento": quando priceCento existe, a quantidade é 50, 100, 200...
+  // e o preço é o TOTAL (as 50 usam price50; cada 100 usa priceCento).
+  price50?: number;
+  priceCento?: number;
   imageUrl?: string;
   group?: string;                   // seção na página (ex.: "Tortas Pequenas (P)", "Doces finos")
   minQty?: number;                  // pedido mínimo por item (ex.: 50 unidades por sabor)
