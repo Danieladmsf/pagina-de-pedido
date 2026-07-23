@@ -88,6 +88,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [cakeFlavor, setCakeFlavor] = useState('');
   const [cakeWeight, setCakeWeight] = useState('');
   const [cakeShape, setCakeShape] = useState('');
+  const [cakeExtrasSel, setCakeExtrasSel] = useState<Set<string>>(new Set());
   const [especial, setEspecial] = useState<Qmap>({});
   const [tortas, setTortas] = useState<Qmap>({});
   const [docinhos, setDocinhos] = useState<Qmap>({});
@@ -138,6 +139,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const CAKES = cat.cakes || [];
   const CAKE_WEIGHTS = cat.cakeWeights || [];
   const SIMPLE_CAKE = CAKES.length > 0;
+  const CAKE_EXTRAS = cat.cakeExtras || [];
 
   // Rótulos das seções de tortas/docinhos vêm do card do produto (products[].title/
   // description). Assim o passo combina com o que o cliente escolheu — ex.: um lojista
@@ -192,6 +194,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         if (CAKE_WEIGHTS.length > 0) s.push({ id: 'peso' });
         const w = CAKE_WEIGHTS.find((x) => x.id === cakeWeight);
         if (w && (w.shapes?.length || 0) > 1) s.push({ id: 'formato' });
+        if (CAKE_DOUGHS.length > 0) s.push({ id: 'massa' });
+        if (CAKE_EXTRAS.length > 0) s.push({ id: 'adicionais' });
       } else {
         if (CAKE_SIZES.length > 0) s.push({ id: 'tamanho' });
         if (CAKE_DOUGHS.length > 0 || CAKE_FILLINGS.length > 0) s.push({ id: 'recheio' });
@@ -205,7 +209,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     s.push({ id: 'entrega' }, { id: 'resumo' });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, SIMPLE_CAKE, CAKES.length, CAKE_WEIGHTS.length, cakeWeight, CAKE_SIZES.length, CAKE_DOUGHS.length, CAKE_FILLINGS.length, CAKE_COVERS.length]);
+  }, [products, SIMPLE_CAKE, CAKES.length, CAKE_WEIGHTS.length, cakeWeight, CAKE_EXTRAS.length, CAKE_SIZES.length, CAKE_DOUGHS.length, CAKE_FILLINGS.length, CAKE_COVERS.length]);
 
   const total = steps.length;
   const safeIdx = Math.min(stepIdx, total - 1);
@@ -214,14 +218,18 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const sizeObj = CAKE_SIZES.find((x) => x.id === cakeSize);
   const fillObj = CAKE_FILLINGS.find((x) => x.id === cakeFilling);
   const coverObj = CAKE_COVERS.find((x) => x.id === cakeCover);
-  // Fluxo simples: preço = fixo (Baby) OU preço/kg do sabor × peso + embalagem.
+  // Fluxo simples: base = fixo (Baby) OU preço/kg × peso; SEMPRE soma embalagem
+  // (Baby e 1kg têm R$16). Adicionais: fixos ou "a cada 2 kg" (ceil(peso/2)).
   const flavorObj = CAKES.find((x) => x.id === cakeFlavor);
   const weightObj = CAKE_WEIGHTS.find((x) => x.id === cakeWeight);
-  const simpleBoloTotal = weightObj
-    ? (weightObj.fixedPrice != null
-        ? weightObj.fixedPrice
-        : (flavorObj ? flavorObj.pricePerKg * (weightObj.kg || 0) + (weightObj.packaging || 0) : 0))
+  const weightKg = weightObj?.kg || 1; // Baby (sem kg) conta como 1 bloco de 2 kg
+  const extraPrice = (x: { price: number; per?: string }) => (x.per === '2kg' ? x.price * Math.ceil(weightKg / 2) : x.price);
+  const selectedExtras = SIMPLE_CAKE ? CAKE_EXTRAS.filter((x) => cakeExtrasSel.has(x.id)) : [];
+  const extrasTotal = selectedExtras.reduce((acc, x) => acc + extraPrice(x), 0);
+  const simpleBoloBase = weightObj
+    ? (weightObj.fixedPrice != null ? weightObj.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (weightObj.kg || 0) : 0)) + (weightObj.packaging || 0)
     : 0;
+  const simpleBoloTotal = simpleBoloBase + extrasTotal;
   const boloTotal = !has('bolo') ? 0
     : SIMPLE_CAKE ? simpleBoloTotal
     : (sizeObj ? sizeObj.basePrice + (fillObj?.price || 0) + (coverObj?.price || 0) + (plateOn ? PLATE_PRICE : 0) : 0);
@@ -278,6 +286,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       case 'bolo': return !!cakeFlavor;
       case 'peso': return !!cakeWeight;
       case 'formato': return !!cakeShape;
+      case 'massa': return CAKE_DOUGHS.length === 0 || !!cakeDough;
+      case 'adicionais': return true;
       case 'tamanho': return !!cakeSize;
       // Só exige escolha do que existe: massa sem opções não bloqueia, idem recheio.
       case 'recheio': return (CAKE_DOUGHS.length === 0 || !!cakeDough) && (CAKE_FILLINGS.length === 0 || !!cakeFilling);
@@ -315,6 +325,8 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       if (flavorObj) L.push(`   - Sabor: ${flavorObj.name} (${money(flavorObj.pricePerKg)}/kg)`);
       if (weightObj) L.push(`   - Peso: ${weightObj.label}`);
       if (cakeShape) L.push(`   - Formato: ${cakeShape}`);
+      if (cakeDough) L.push(`   - Massa: ${cakeDough}`);
+      selectedExtras.forEach((x) => L.push(`   - ${x.name}: ${money(extraPrice(x))}`));
       L.push(`   Subtotal bolo: ${money(boloTotal)}`);
     } else if (has('bolo') && sizeObj) {
       L.push('', '*Bolo personalizado*');
@@ -367,7 +379,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       bolo: !has('bolo') ? null : (SIMPLE_CAKE ? {
         sizeId: weightObj?.id || '',
         size: weightObj?.label || '',
-        dough: '',
+        dough: cakeDough || '',
         filling: flavorObj?.name || '',
         cover: '',
         plate: { on: false },
@@ -377,6 +389,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         shape: cakeShape || '',
         pricePerKg: flavorObj?.pricePerKg,
         kg: weightObj?.kg,
+        extras: selectedExtras.map((x) => ({ name: x.name, price: extraPrice(x) })),
       } : (sizeObj ? {
         sizeId: sizeObj.id,
         size: sizeObj.label,
@@ -512,7 +525,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
               subtitle={flavorObj ? `${flavorObj.name} · ${money(flavorObj.pricePerKg)}/kg` : 'Escolha o tamanho ideal para a sua festa.'}>
               <div className="grid gap-3 sm:grid-cols-3">
                 {CAKE_WEIGHTS.map((w) => {
-                  const price = w.fixedPrice != null ? w.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (w.kg || 0) + (w.packaging || 0) : 0);
+                  const price = (w.fixedPrice != null ? w.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (w.kg || 0) : 0)) + (w.packaging || 0);
                   return (
                     <button key={w.id} type="button"
                       onClick={() => { setCakeWeight(w.id); const sh = w.shapes || []; setCakeShape(sh.length === 1 ? sh[0] : ''); }}
@@ -526,7 +539,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   );
                 })}
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">Finalização especial (ganache, chantininho, KitKat, brigadeiros, glitter, topper) tem acréscimo — valor combinado no WhatsApp.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Nos próximos passos você escolhe a massa e os acabamentos (ganache, topper, glitter...).</p>
             </Section>
           )}
 
@@ -537,6 +550,43 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <OptionCard key={sh} title={sh.charAt(0).toUpperCase() + sh.slice(1)}
                     selected={cakeShape === sh} onClick={() => setCakeShape(sh)} />
                 ))}
+              </div>
+            </Section>
+          )}
+
+          {step.id === 'massa' && (
+            <Section title="Massa" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Escolha a massa do bolo — sem custo.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {CAKE_DOUGHS.map((d) => (
+                  <OptionCard key={d} title={d} selected={cakeDough === d} onClick={() => setCakeDough(d)} />
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {step.id === 'adicionais' && (
+            <Section title="Acabamentos e adicionais" kicker={`Passo ${safeIdx + 1} de ${total}`} subtitle="Opcional — marque o que quiser (dá pra pular).">
+              <div className="grid gap-2.5">
+                {CAKE_EXTRAS.map((x) => {
+                  const sel = cakeExtrasSel.has(x.id);
+                  return (
+                    <button key={x.id} type="button"
+                      onClick={() => setCakeExtrasSel((prev) => { const n = new Set(prev); if (n.has(x.id)) n.delete(x.id); else n.add(x.id); return n; })}
+                      className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-4 text-left transition-colors ${sel ? 'border-primary bg-secondary/50' : 'border-dashed border-border hover:border-primary/40'}`}>
+                      <span className="flex items-center gap-3">
+                        <span aria-hidden className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors', sel ? 'border-primary bg-primary text-primary-foreground' : 'border-primary/30')}>
+                          {sel && <Check className="h-3.5 w-3.5" />}
+                        </span>
+                        <span>
+                          <span className="block font-semibold text-foreground">{x.name}</span>
+                          {x.per === '2kg' && <span className="block text-xs text-muted-foreground">cobrado a cada 2 kg</span>}
+                          {x.desc && <span className="block text-xs text-muted-foreground">{x.desc}</span>}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-bold text-primary">{money(extraPrice(x))}</span>
+                    </button>
+                  );
+                })}
               </div>
             </Section>
           )}
@@ -789,7 +839,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
           {step.id === 'resumo' && (
             <ResumoStep config={config} name={name} phone={phone} products={products} sizeObj={sizeObj} cakeDough={cakeDough}
-              simpleCake={SIMPLE_CAKE} flavorObj={flavorObj} weightObj={weightObj} cakeShape={cakeShape}
+              simpleCake={SIMPLE_CAKE} flavorObj={flavorObj} weightObj={weightObj} cakeShape={cakeShape} extras={selectedExtras.map((x) => ({ name: x.name, price: extraPrice(x) }))}
               fillObj={fillObj} coverObj={coverObj} plateOn={plateOn} plate={plate}
               especial={especial} tortas={tortas} docinhos={docinhos}
               delDate={delDate} delTime={delTime} delType={delType}
@@ -932,7 +982,7 @@ function Field({ label, required, children }: { label: React.ReactNode; required
 
 function ResumoStep(props: any) {
   const { config, name, phone, products, sizeObj, cakeDough, fillObj, coverObj, plateOn, plate,
-    simpleCake, flavorObj, weightObj, cakeShape,
+    simpleCake, flavorObj, weightObj, cakeShape, extras,
     especial, tortas, docinhos, delDate, delTime, delType, delAddress, delNeighborhood,
     boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes,
     compUrl, compName, compUploading, onComprovante, onClearComp } = props;
@@ -954,6 +1004,8 @@ function ResumoStep(props: any) {
             <Row label="Sabor" value={flavorObj?.name} />
             <Row label="Peso" value={weightObj?.label} />
             {cakeShape && <Row label="Formato" value={cakeShape} />}
+            {cakeDough && <Row label="Massa" value={cakeDough} />}
+            {(extras || []).map((e: any) => <Row key={e.name} label={e.name} value={money(e.price)} />)}
             <Row label="Subtotal bolo" value={money(boloTotal)} strong />
           </Block>
         )}

@@ -43,6 +43,7 @@ export interface EncomendaBolo {
   shape?: string;       // formato (Redondo/Quadrado)
   pricePerKg?: number;
   kg?: number;
+  extras?: { name: string; price: number }[];
 }
 
 export interface Encomenda {

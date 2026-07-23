@@ -71,6 +71,17 @@ export interface CakeWeight {
   shapes?: string[];      // formatos permitidos: ['redondo'] ou ['redondo','quadrado']
 }
 
+// Adicionais/acabamentos do bolo (Topper, Glitter, Ganache, Chantininho...).
+// `per`: 'unidade' = valor fixo; '2kg' = cobra a cada 2 kg (ceil(peso/2)) — ex.:
+// a receita de ganache cobre até 2 kg; acima disso soma outra.
+export interface CakeExtra {
+  id: string;
+  name: string;
+  price: number;
+  per?: 'unidade' | '2kg';
+  desc?: string;
+}
+
 export const PLATE_PRICE = 30;
 
 export interface SkuOption {
@@ -135,6 +146,7 @@ export interface EncomendaCatalog {
   deliveryTimes: string[];
   cakes: CakeFlavor[];
   cakeWeights: CakeWeight[];
+  cakeExtras: CakeExtra[];
 }
 
 export const DEFAULT_CATALOG: EncomendaCatalog = {
@@ -152,6 +164,7 @@ export const DEFAULT_CATALOG: EncomendaCatalog = {
   deliveryTimes: DELIVERY_TIMES,
   cakes: [],
   cakeWeights: [],
+  cakeExtras: [],
 };
 
 // ---- Ponte cardápio → encomendas ----
@@ -210,5 +223,6 @@ export function mergeCatalog(partial: any): EncomendaCatalog {
     deliveryTimes: arr(p.deliveryTimes, DEFAULT_CATALOG.deliveryTimes),
     cakes: arr(p.cakes, DEFAULT_CATALOG.cakes),
     cakeWeights: arr(p.cakeWeights, DEFAULT_CATALOG.cakeWeights),
+    cakeExtras: arr(p.cakeExtras, DEFAULT_CATALOG.cakeExtras),
   };
 }
