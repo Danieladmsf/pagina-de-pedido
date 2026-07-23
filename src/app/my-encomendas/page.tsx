@@ -6,9 +6,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, query, where } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { useCustomerFirebase } from '@/firebase/customer-client';
+import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,6 +83,7 @@ export default function MyEncomendasPage() {
   const [phoneInput, setPhoneInput] = useState('');
   const [storeId, setStoreId] = useState<string | null>(null);
   const [backHref, setBackHref] = useState('/');
+  const [themeId, setThemeId] = useState('padrao');
 
   useEffect(() => {
     try {
@@ -97,6 +99,15 @@ export default function MyEncomendasPage() {
       else { const lp = localStorage.getItem('last_store_path'); if (lp && lp.startsWith('/') && !lp.startsWith('//')) setBackHref(lp); }
     } catch {}
   }, []);
+
+  // Tema da loja (rosa da confeitaria etc.) — store_profiles é leitura pública.
+  useEffect(() => { ensureBrandFontsLoaded(); }, []);
+  useEffect(() => {
+    if (!db || !storeId) return;
+    getDoc(doc(db, 'store_profiles', storeId))
+      .then((snap) => { const t = (snap.data() as any)?.theme; if (t) setThemeId(t); })
+      .catch(() => {});
+  }, [db, storeId]);
 
   useEffect(() => {
     if (!auth || isUserLoading || user || !customerPhone) return;
@@ -125,7 +136,7 @@ export default function MyEncomendasPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-muted/30" style={themeToCssVars(getTheme(themeId))}>
       <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
           <Link href={backHref} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Voltar">
