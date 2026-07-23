@@ -17,7 +17,7 @@ import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { useToast } from '@/hooks/use-toast';
 import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
 import {
-  ArrowLeft, ArrowRight, Gift, Building2, Copy, MapPin, Store, Bike, Upload,
+  ArrowLeft, ArrowRight, Gift, Copy, MapPin, Store, Bike, Upload,
   CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2, Trash2,
 } from 'lucide-react';
 
@@ -76,7 +76,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [birthday, setBirthday] = useState('');
-  const [isEmpresa, setEmpresa] = useState(false);
+  const [isEmpresa] = useState(false); // NF-e removida da UI; mantido inerte (sempre false)
   const [products, setProducts] = useState<Set<ProductKind>>(new Set());
   const [cakeSize, setCakeSize] = useState('');
   const [cakeDough, setCakeDough] = useState('');
@@ -478,16 +478,6 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                 <Input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
                 <p className="mt-1 text-xs text-muted-foreground">Adoramos lembrar de você no seu dia 💛</p>
               </Field>
-              <button type="button" onClick={() => setEmpresa((v) => !v)}
-                className={`mt-2 flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition-colors ${isEmpresa ? 'border-primary bg-secondary/50' : 'border-dashed border-border hover:border-primary/40'}`}>
-                <span aria-hidden className={cn('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors', isEmpresa ? 'border-primary bg-primary text-primary-foreground' : 'border-primary/30')}>
-                  {isEmpresa && <Check className="h-3.5 w-3.5" />}
-                </span>
-                <span>
-                  <span className="flex items-center gap-1.5 font-semibold text-foreground"><Building2 className="h-4 w-4 text-gold" /> Encomenda para empresa — emitir NF-e</span>
-                  <span className="block text-xs text-muted-foreground">Marque se precisar de Nota Fiscal Eletrônica.</span>
-                </span>
-              </button>
             </Section>
           )}
 
