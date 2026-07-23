@@ -71,7 +71,9 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
     try {
       // Atualiza o snapshot dos itens vinculados com os dados atuais do cadastro:
       // é o fallback da página pública caso o produto seja apagado do cardápio.
-      const toSave = applyProductLinks(cat, menuProducts);
+      // JSON.stringify remove campos undefined (ex.: peso sem "preço fixo") —
+      // o Firestore rejeita undefined; mergeCatalog recompõe defaults na leitura.
+      const toSave = JSON.parse(JSON.stringify(applyProductLinks(cat, menuProducts)));
       await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { catalog: toSave } }, { merge: true });
       revalidateStorePages(user.uid);
       setCat(toSave);
@@ -84,6 +86,9 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
       setSaving(false);
     }
   }
+
+  // Loja no modelo "cardápio por kg" (Gostinho): edita sabores/pesos/massa/adicionais.
+  const simple = (cat.cakes?.length || 0) > 0;
 
   return (
     <div className="space-y-5">
@@ -122,63 +127,121 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
       </Section>
 
       {/* Bolo */}
-      <Section title="Bolo — tamanhos">
-        {cat.cakeSizes.map((s, i) => (
-          <Row key={s.id} onRemove={() => delItem('cakeSizes', i)}>
-            <Col label="Sigla" w="70px"><Input value={s.label} onChange={(e) => updItem('cakeSizes', i, { label: e.target.value })} /></Col>
-            <Col label="Descrição"><Input value={s.sub} onChange={(e) => updItem('cakeSizes', i, { sub: e.target.value })} /></Col>
-            <Col label="Preço" w="110px"><Input inputMode="decimal" value={s.basePrice} onChange={(e) => updItem('cakeSizes', i, { basePrice: num(e.target.value) })} /></Col>
-            <Col label="Formato" w="130px">
-              <select value={s.shape} onChange={(e) => updItem('cakeSizes', i, { shape: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
-                <option value="redondo">Redondo</option>
-                <option value="retangular">Retangular</option>
-              </select>
-            </Col>
-          </Row>
-        ))}
-        <AddBtn onClick={() => addItem('cakeSizes', { id: genId(), label: '', sub: '', basePrice: 0, shape: 'redondo' })} label="Adicionar tamanho" />
-      </Section>
+      {simple ? (
+        <>
+          <Section title="Bolo — sabores (preço por kg)" hint="Cada sabor tem seu preço por quilo. O cliente escolhe o sabor e depois o peso.">
+            {cat.cakes.map((ck, i) => (
+              <Row key={ck.id} onRemove={() => delItem('cakes', i)}>
+                <Col label="Sabor"><Input value={ck.name} onChange={(e) => updItem('cakes', i, { name: e.target.value })} /></Col>
+                <Col label="R$/kg" w="120px"><Input inputMode="decimal" value={ck.pricePerKg} onChange={(e) => updItem('cakes', i, { pricePerKg: num(e.target.value) })} /></Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakes', { id: genId(), name: '', pricePerKg: 0 })} label="Adicionar sabor" />
+          </Section>
 
-      <Section title="Bolo — massas">
-        <StrList items={cat.cakeDoughs} onChange={(i, v) => setStr('cakeDoughs', i, v)} onRemove={(i) => delItem('cakeDoughs', i)} onAdd={() => addItem('cakeDoughs', '')} placeholder="Ex.: Massa branca (baunilha)" />
-      </Section>
+          <Section title="Bolo — tamanhos (peso)" hint="Preço fixo (ex.: Baby) OU por kg (multiplica o preço do sabor). Embalagem soma ao total (ex.: Baby e 1 kg = 16). Deixe em branco o que não usar.">
+            {cat.cakeWeights.map((w, i) => (
+              <Row key={w.id} onRemove={() => delItem('cakeWeights', i)}>
+                <Col label="Nome" w="88px"><Input value={w.label} onChange={(e) => updItem('cakeWeights', i, { label: e.target.value })} /></Col>
+                <Col label="Descrição"><Input value={w.sub || ''} onChange={(e) => updItem('cakeWeights', i, { sub: e.target.value })} /></Col>
+                <Col label="Kg" w="60px"><Input inputMode="decimal" value={w.kg ?? ''} placeholder="—" onChange={(e) => updItem('cakeWeights', i, { kg: e.target.value === '' ? undefined : num(e.target.value) })} /></Col>
+                <Col label="Preço fixo" w="88px"><Input inputMode="decimal" value={w.fixedPrice ?? ''} placeholder="—" onChange={(e) => updItem('cakeWeights', i, { fixedPrice: e.target.value === '' ? undefined : num(e.target.value) })} /></Col>
+                <Col label="Embalagem" w="88px"><Input inputMode="decimal" value={w.packaging ?? ''} placeholder="—" onChange={(e) => updItem('cakeWeights', i, { packaging: e.target.value === '' ? undefined : num(e.target.value) })} /></Col>
+                <Col label="Formatos" w="150px">
+                  <div className="flex h-10 items-center gap-3">
+                    {['redondo', 'quadrado'].map((sh) => (
+                      <label key={sh} className="flex items-center gap-1 text-xs capitalize">
+                        <input type="checkbox" checked={(w.shapes || []).includes(sh)} onChange={(e) => { const cur = new Set(w.shapes || []); if (e.target.checked) cur.add(sh); else cur.delete(sh); updItem('cakeWeights', i, { shapes: [...cur] }); }} /> {sh}
+                      </label>
+                    ))}
+                  </div>
+                </Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakeWeights', { id: genId(), label: '', kg: 1, shapes: ['redondo'] })} label="Adicionar tamanho" />
+          </Section>
 
-      <Section title="Bolo — recheios" hint="O nível agrupa os recheios (ex.: Clássico incluso; Premium com acréscimo).">
-        {cat.cakeFillings.map((f, i) => (
-          <Row key={f.id} onRemove={() => delItem('cakeFillings', i)}>
-            <Col label="Recheio"><Input value={f.name} onChange={(e) => updItem('cakeFillings', i, { name: e.target.value })} /></Col>
-            <Col label="Nível" w="150px">
-              <select value={f.tier} onChange={(e) => updItem('cakeFillings', i, { tier: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
-                {cat.fillingTiers.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Col>
-            <Col label="Acréscimo" w="110px"><Input inputMode="decimal" value={f.price} onChange={(e) => updItem('cakeFillings', i, { price: num(e.target.value) })} /></Col>
-          </Row>
-        ))}
-        <AddBtn onClick={() => addItem('cakeFillings', { id: genId(), name: '', tier: cat.fillingTiers[0] || 'Clássico', price: 0 })} label="Adicionar recheio" />
-        <div className="mt-3">
-          <Label className="text-xs text-muted-foreground">Níveis de recheio</Label>
-          <StrList items={cat.fillingTiers} onChange={(i, v) => setStr('fillingTiers', i, v)} onRemove={(i) => delItem('fillingTiers', i)} onAdd={() => addItem('fillingTiers', '')} placeholder="Ex.: Premium" />
-        </div>
-      </Section>
+          <Section title="Bolo — massa" hint="Sem custo. Ex.: Branca, Preta.">
+            <StrList items={cat.cakeDoughs} onChange={(i, v) => setStr('cakeDoughs', i, v)} onRemove={(i) => delItem('cakeDoughs', i)} onAdd={() => addItem('cakeDoughs', '')} placeholder="Ex.: Branca" />
+          </Section>
 
-      <Section title="Bolo — coberturas">
-        {cat.cakeCovers.map((cv, i) => (
-          <Row key={cv.id} onRemove={() => delItem('cakeCovers', i)}>
-            <Col label="Cobertura" w="180px"><Input value={cv.name} onChange={(e) => updItem('cakeCovers', i, { name: e.target.value })} /></Col>
-            <Col label="Descrição"><Input value={cv.desc} onChange={(e) => updItem('cakeCovers', i, { desc: e.target.value })} /></Col>
-            <Col label="Acréscimo" w="110px"><Input inputMode="decimal" value={cv.price} onChange={(e) => updItem('cakeCovers', i, { price: num(e.target.value) })} /></Col>
-          </Row>
-        ))}
-        <AddBtn onClick={() => addItem('cakeCovers', { id: genId(), name: '', desc: '', price: 0 })} label="Adicionar cobertura" />
-      </Section>
+          <Section title="Bolo — acabamentos e adicionais" hint='"A cada 2 kg" multiplica pelo peso (ex.: ganache num bolo de 4 kg = 2×). "Valor fixo" cobra uma vez só.'>
+            {cat.cakeExtras.map((x, i) => (
+              <Row key={x.id} onRemove={() => delItem('cakeExtras', i)}>
+                <Col label="Adicional"><Input value={x.name} onChange={(e) => updItem('cakeExtras', i, { name: e.target.value })} /></Col>
+                <Col label="Preço" w="100px"><Input inputMode="decimal" value={x.price} onChange={(e) => updItem('cakeExtras', i, { price: num(e.target.value) })} /></Col>
+                <Col label="Cobrança" w="150px">
+                  <select value={x.per === '2kg' ? '2kg' : 'unidade'} onChange={(e) => updItem('cakeExtras', i, { per: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
+                    <option value="unidade">Valor fixo</option>
+                    <option value="2kg">A cada 2 kg</option>
+                  </select>
+                </Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakeExtras', { id: genId(), name: '', price: 0, per: 'unidade' })} label="Adicionar acabamento" />
+          </Section>
+        </>
+      ) : (
+        <>
+          <Section title="Bolo — tamanhos">
+            {cat.cakeSizes.map((s, i) => (
+              <Row key={s.id} onRemove={() => delItem('cakeSizes', i)}>
+                <Col label="Sigla" w="70px"><Input value={s.label} onChange={(e) => updItem('cakeSizes', i, { label: e.target.value })} /></Col>
+                <Col label="Descrição"><Input value={s.sub} onChange={(e) => updItem('cakeSizes', i, { sub: e.target.value })} /></Col>
+                <Col label="Preço" w="110px"><Input inputMode="decimal" value={s.basePrice} onChange={(e) => updItem('cakeSizes', i, { basePrice: num(e.target.value) })} /></Col>
+                <Col label="Formato" w="130px">
+                  <select value={s.shape} onChange={(e) => updItem('cakeSizes', i, { shape: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
+                    <option value="redondo">Redondo</option>
+                    <option value="retangular">Retangular</option>
+                  </select>
+                </Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakeSizes', { id: genId(), label: '', sub: '', basePrice: 0, shape: 'redondo' })} label="Adicionar tamanho" />
+          </Section>
 
-      <Section title="Bolo — plaquinha">
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">Preço da plaquinha personalizada</Label>
-          <Input inputMode="decimal" value={cat.platePrice} onChange={(e) => mut((c) => { c.platePrice = num(e.target.value); })} className="w-32" />
-        </div>
-      </Section>
+          <Section title="Bolo — massas">
+            <StrList items={cat.cakeDoughs} onChange={(i, v) => setStr('cakeDoughs', i, v)} onRemove={(i) => delItem('cakeDoughs', i)} onAdd={() => addItem('cakeDoughs', '')} placeholder="Ex.: Massa branca (baunilha)" />
+          </Section>
+
+          <Section title="Bolo — recheios" hint="O nível agrupa os recheios (ex.: Clássico incluso; Premium com acréscimo).">
+            {cat.cakeFillings.map((f, i) => (
+              <Row key={f.id} onRemove={() => delItem('cakeFillings', i)}>
+                <Col label="Recheio"><Input value={f.name} onChange={(e) => updItem('cakeFillings', i, { name: e.target.value })} /></Col>
+                <Col label="Nível" w="150px">
+                  <select value={f.tier} onChange={(e) => updItem('cakeFillings', i, { tier: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
+                    {cat.fillingTiers.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </Col>
+                <Col label="Acréscimo" w="110px"><Input inputMode="decimal" value={f.price} onChange={(e) => updItem('cakeFillings', i, { price: num(e.target.value) })} /></Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakeFillings', { id: genId(), name: '', tier: cat.fillingTiers[0] || 'Clássico', price: 0 })} label="Adicionar recheio" />
+            <div className="mt-3">
+              <Label className="text-xs text-muted-foreground">Níveis de recheio</Label>
+              <StrList items={cat.fillingTiers} onChange={(i, v) => setStr('fillingTiers', i, v)} onRemove={(i) => delItem('fillingTiers', i)} onAdd={() => addItem('fillingTiers', '')} placeholder="Ex.: Premium" />
+            </div>
+          </Section>
+
+          <Section title="Bolo — coberturas">
+            {cat.cakeCovers.map((cv, i) => (
+              <Row key={cv.id} onRemove={() => delItem('cakeCovers', i)}>
+                <Col label="Cobertura" w="180px"><Input value={cv.name} onChange={(e) => updItem('cakeCovers', i, { name: e.target.value })} /></Col>
+                <Col label="Descrição"><Input value={cv.desc} onChange={(e) => updItem('cakeCovers', i, { desc: e.target.value })} /></Col>
+                <Col label="Acréscimo" w="110px"><Input inputMode="decimal" value={cv.price} onChange={(e) => updItem('cakeCovers', i, { price: num(e.target.value) })} /></Col>
+              </Row>
+            ))}
+            <AddBtn onClick={() => addItem('cakeCovers', { id: genId(), name: '', desc: '', price: 0 })} label="Adicionar cobertura" />
+          </Section>
+
+          <Section title="Bolo — plaquinha">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Preço da plaquinha personalizada</Label>
+              <Input inputMode="decimal" value={cat.platePrice} onChange={(e) => mut((c) => { c.platePrice = num(e.target.value); })} className="w-32" />
+            </div>
+          </Section>
+        </>
+      )}
 
       {/* Especial */}
       <Section title="Especial da casa">
@@ -192,12 +255,12 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
       </Section>
 
       {/* Tortas / Docinhos */}
-      <Section title="Tortas" hint='Use o campo "Grupo" para criar seções na página (ex.: Tortas Pequenas (P), Tortas Grandes (G)).'>
-        <SkuEditor items={cat.tortas} groups products={menuProducts} onAddFromMenu={(p) => addItem('tortas', { ...skuFromProduct(p), group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onUpd={(i, patch) => updItem('tortas', i, patch)} onDel={(i) => delItem('tortas', i)} onAdd={() => addItem('tortas', { id: genId(), name: '', price: 0, group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
+      <Section title="Brigadeiros / Tortas" hint='Por cento: preencha o preço das 50 e do cento (a Cobrança define). "Grupo" cria seções (ex.: Brigadeiros Tradicionais, Gourmet).'>
+        <SkuEditor items={cat.tortas} groups cento products={menuProducts} onAddFromMenu={(p) => addItem('tortas', { ...skuFromProduct(p), group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onUpd={(i, patch) => updItem('tortas', i, patch)} onDel={(i) => delItem('tortas', i)} onAdd={() => addItem('tortas', { id: genId(), name: '', price: 0, group: cat.tortas[cat.tortas.length - 1]?.group || '' })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
       </Section>
 
-      <Section title="Docinhos" hint='Preço por unidade. "Mín." é o pedido mínimo por sabor (ex.: 50) e "De X em X" o salto do contador. Use "Grupo" para seções (ex.: Doces finos, Adicionais opcionais).'>
-        <SkuEditor items={cat.docinhos} groups minimums products={menuProducts} onAddFromMenu={(p) => addItem('docinhos', { ...skuFromProduct(p), group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onUpd={(i, patch) => updItem('docinhos', i, patch)} onDel={(i) => delItem('docinhos', i)} onAdd={() => addItem('docinhos', { id: genId(), name: '', price: 0, group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
+      <Section title="Doces finos / Docinhos" hint='Cada item: "Por cento" (preço das 50 e do cento) ou "Por unidade" (com "Mín." por sabor). "Grupo" cria seções na página.'>
+        <SkuEditor items={cat.docinhos} groups minimums cento products={menuProducts} onAddFromMenu={(p) => addItem('docinhos', { ...skuFromProduct(p), group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onUpd={(i, patch) => updItem('docinhos', i, patch)} onDel={(i) => delItem('docinhos', i)} onAdd={() => addItem('docinhos', { id: genId(), name: '', price: 0, group: cat.docinhos[cat.docinhos.length - 1]?.group || '', minQty: 0, stepQty: 1 })} onErr={() => toast({ variant: 'destructive', title: 'Falha no upload' })} />
       </Section>
 
       {/* Horários */}
@@ -258,11 +321,12 @@ function StrList({ items, onChange, onRemove, onAdd, placeholder, grid }: {
   );
 }
 
-function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles, products, onAddFromMenu }: {
+function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles, cento: centoOption, products, onAddFromMenu }: {
   items: SkuOption[]; onUpd: (i: number, patch: any) => void; onDel: (i: number) => void; onAdd: () => void; onErr: () => void;
   groups?: boolean;   // campo "Grupo" (cria seções na página, ex.: "Tortas Pequenas (P)")
   minimums?: boolean; // campos "Mín." e "De X em X" (ex.: 50 docinhos por sabor)
   roles?: boolean;    // Especial: item Principal (obrigatório) ou Adicional
+  cento?: boolean;    // "por cento": mostra preço das 50 e do cento + seletor de cobrança
   products?: LinkedProduct[];                 // produtos da aba Produtos, para vincular
   onAddFromMenu?: (p: LinkedProduct) => void; // adiciona um SKU vinculado ao produto
 }) {
@@ -274,6 +338,7 @@ function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles,
         // (só leitura aqui); se o produto sumiu do cardápio, volta a ser editável.
         const linked = it.productId ? byId.get(it.productId) : undefined;
         const orphan = !!it.productId && !linked && (products?.length || 0) > 0;
+        const cento = typeof it.priceCento === 'number';
         return (
         <div key={it.id} className="mb-2 space-y-2 rounded-lg border p-2">
           {(linked || orphan) && (
@@ -302,10 +367,17 @@ function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles,
               <Input value={linked?.name ?? it.name} placeholder="Nome do item" disabled={!!linked} onChange={(e) => onUpd(i, { name: e.target.value })} className="font-medium" />
               <Input value={it.desc || ''} placeholder={linked ? 'Descrição (opcional; vazio usa a do produto)' : 'Descrição (opcional)'} onChange={(e) => onUpd(i, { desc: e.target.value })} className="text-sm" />
             </div>
-            <div className="w-24 shrink-0 space-y-1">
-              <Label className="text-[11px] text-muted-foreground">Preço</Label>
-              <Input inputMode="decimal" value={typeof linked?.price === 'number' ? linked.price : it.price} disabled={!!linked} onChange={(e) => onUpd(i, { price: num(e.target.value) })} />
-            </div>
+            {cento ? (
+              <div className="flex shrink-0 gap-1.5">
+                <div className="w-[68px] space-y-1"><Label className="text-[11px] text-muted-foreground">50 un</Label><Input inputMode="decimal" value={it.price50 ?? ''} onChange={(e) => onUpd(i, { price50: num(e.target.value) })} /></div>
+                <div className="w-[68px] space-y-1"><Label className="text-[11px] text-muted-foreground">Cento</Label><Input inputMode="decimal" value={it.priceCento ?? ''} onChange={(e) => onUpd(i, { priceCento: num(e.target.value) })} /></div>
+              </div>
+            ) : (
+              <div className="w-24 shrink-0 space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Preço</Label>
+                <Input inputMode="decimal" value={typeof linked?.price === 'number' ? linked.price : it.price} disabled={!!linked} onChange={(e) => onUpd(i, { price: num(e.target.value) })} />
+              </div>
+            )}
             <button type="button" onClick={() => onDel(i)} className="mt-6 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
           </div>
           <div className="flex flex-wrap items-end gap-2 pl-14">
@@ -334,6 +406,16 @@ function SkuEditor({ items, onUpd, onDel, onAdd, onErr, groups, minimums, roles,
                     className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
                     <option value="principal">Principal</option>
                     <option value="adicional">Adicional</option>
+                  </select>
+                </div>
+              )}
+              {centoOption && (
+                <div className="w-32 shrink-0 space-y-1">
+                  <Label className="text-[11px] text-muted-foreground">Cobrança</Label>
+                  <select value={cento ? 'cento' : 'unidade'} onChange={(e) => onUpd(i, e.target.value === 'cento' ? { priceCento: it.priceCento ?? 0, price50: it.price50 ?? 0 } : { priceCento: undefined, price50: undefined })}
+                    className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
+                    <option value="unidade">Por unidade</option>
+                    <option value="cento">Por cento</option>
                   </select>
                 </div>
               )}
