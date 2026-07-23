@@ -1,7 +1,7 @@
 import type { EncomendaConfig } from '@/lib/encomendas/config';
 import { Button } from '@/components/ui/button';
 import {
-  ArrowRight, CalendarClock, MapPin, HeartHandshake, Sparkles, Truck, ShieldCheck,
+  ArrowRight, CalendarClock, MapPin, HeartHandshake, Sparkles, Store, ShieldCheck,
   AtSign, Quote, Check, Cake, CakeSlice, Cookie,
 } from 'lucide-react';
 
@@ -30,7 +30,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
     { icon: HeartHandshake, title: 'Feito à mão', desc: 'Cada encomenda é montada com calma, camada por camada.' },
     { icon: Sparkles, title: 'Sabores autorais', desc: 'Recheios clássicos aos de assinatura, criados na casa.' },
     { icon: CalendarClock, title: 'Agenda cuidada', desc: `Reserve com no mínimo ${config.minDays} dias para garantir sua data.` },
-    { icon: Truck, title: 'Entrega com zelo', desc: 'Seu pedido chega inteiro, fresco e na hora combinada.' },
+    { icon: Store, title: 'Retirada com carinho', desc: 'Aqui é só retirada: preparamos com todo carinho e você busca fresquinho, na hora combinada.' },
   ];
 
   const Logo = () =>
