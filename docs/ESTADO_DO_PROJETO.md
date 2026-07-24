@@ -1,18 +1,21 @@
-# Estado do Projeto — retomar daqui (atualizado 2026-07-20)
+# Estado do Projeto — retomar daqui (atualizado 2026-07-25)
 
 > Documento de handoff. Se o contexto se perder, comece por aqui.
-> Última sessão terminou com o dono precisando sair; nada urgente ficou pela metade em produção.
+> Nada ficou pela metade em produção.
 
 ---
 
 ## Resumo em 30 segundos
 
-Três frentes:
-1. **Permissões do PDV** — PRONTO e NO AR. Nada a fazer.
-2. **Usuários / login de operador** — CÓDIGO IMPLEMENTADO no working tree (pelo Codex), revisado e testado por mim, mas **NÃO commitado nem publicado**. Espera decisão do dono para publicar.
-3. **WhatsApp parado (Lima Limão + Gostinho de Céu)** — DIAGNOSTICADO. Não é o código. Espera ação do dono (reconectar pela tela).
+As três frentes que abriram este documento (19–20/07):
 
-O último commit no GitHub é `9bed103` (19/07). Há **30 arquivos não commitados** (a feature de usuários). As regras do Firestore em produção ainda são as antigas (sem operador).
+1. **Permissões do PDV** — PRONTO e NO AR. Nada a fazer.
+2. **Usuários / login de operador** — **PUBLICADO e validado em produção** em 20/07 (commit `4e51258` + regras). Sobraram duas pontas, nenhuma urgente: a **decisão de design da Retaguarda** (§2) e a **Etapa 2** do relatório de vendas por funcionário (§2).
+3. **WhatsApp parado (Lima Limão + Gostinho de Céu)** — DIAGNOSTICADO em 20/07 e **não é o código**. Depende de ação do dono na tela (reconectar/reler QR). **Nada mudou aqui desde então: confirmar com ele antes de assumir que segue quebrado.**
+
+Depois disso o trabalho foi para outro lado (21–25/07): **Encomendas** ganhou o fluxo de confeitaria completo (bolo por kg, doces por cento, catálogo editável, acompanhamento do cliente), entrou **venda por peso (kg)** no PDV, a **auditoria** de quem fez cada lançamento do caixa, **frete editável** no pedido, e a **consolidação da impressão de cupom** (§5).
+
+Código: `main` em `dee1604`, sincronizado com o GitHub, working tree limpo. Regras do Firestore em produção são as **novas** (com operador). Detalhe em §4.
 
 ---
 
@@ -100,14 +103,47 @@ Compartilhar a instância da Arte do Sabor com a Lima **não é limpo**: as mens
 
 ## 4. Estado do código (git)
 
-- Branch: `main`. Último commit: `9bed103` (19/07, um doc).
-- **30 arquivos não commitados** = a feature de usuários (Codex) + regras + wapi. NÃO commitar sem o OK do dono para publicar.
-- Arquivos novos principais: `src/contexts/PdvAccessContext.tsx`, `src/lib/user-permissions.ts`, `src/app/api/usuarios/route.ts`, `src/components/admin/UsuariosTab.tsx`, `src/components/admin/OperatorCatalogReadOnly.tsx`, `src/lib/wapi/operator-access.ts`, `scripts/firestore-rules.test.mjs`, e testes.
-- Modificados: `firestore.rules` (370 linhas), `pdv/page.tsx`, `gestao/page.tsx`, `(sistema)/layout.tsx`, os 5 componentes de aba, `useCaixa.ts`, `firebase-admin.ts`, rotas wapi, `vitest.config.ts`, `firebase.json` (config do emulador).
+- Branch: `main`, último commit `dee1604`. Local e `origin/main` **alinhados**.
+- **Working tree limpo.** Ficam de fora, de propósito, só dois arquivos: `claude-auto.sh` (reescrita do dono, em andamento) e `.claude/settings.local.json` (config de máquina).
+- Os **30 arquivos pendentes** que esta seção listava eram a feature de usuários. **Foram publicados** em `4e51258` (20/07) e estão versionados — conferido arquivo por arquivo (`PdvAccessContext.tsx`, `user-permissions.ts`, `api/usuarios/route.ts`, `UsuariosTab.tsx`, `OperatorCatalogReadOnly.tsx`, `wapi/operator-access.ts`, `scripts/firestore-rules.test.mjs`).
+- **O repositório é PÚBLICO** (`Danieladmsf/pagina-de-pedido`). Segredo nenhum é versionado: `.env*`, service account do Firebase e `qz/private-key.pem` estão no `.gitignore`. O `qz/digital-certificate.txt` é rastreado de propósito — é o certificado **público**, que precisa ser distribuído.
+
+### O que entrou desde o `9bed103` (29 commits, 20–25/07)
+
+| quando | o quê |
+|---|---|
+| 20/07 | Login de operador publicado (`4e51258`), UI de Usuários (`cb2c6f8`), Permissões do PDV consolidada dentro de Usuários (`9c9397f`), carimbo de quem fez cada lançamento (`cdad1b3`) |
+| 21–22/07 | Coluna "Quem fez" no caixa, **venda por peso (kg)** no PDV, alerta de pedido novo também na Retaguarda + 1 via por job |
+| 23/07 | Bloco grande de **Encomendas**: bolo por kg, doces por cento, catálogo editável, acompanhamento do cliente, tema da loja, Pix na cobrança |
+| 24/07 | Encomendas (brigadeiros de 50 em 50, sobra proporcional), **frete editável** no pedido, limpeza da raiz do repo |
+| 24–25/07 | **Consolidação da impressão de cupom** — ver §5 |
 
 ---
 
-## 5. Como retomar (para a próxima sessão / próximo agente)
+## 5. Impressão de cupom — ✅ CONSOLIDADA (24–25/07)
+
+Existiam **três geradores de cupom independentes** (pedido, caixa, encomenda), cada um com sua cópia do CSS térmico, do tamanho de papel e do fallback de impressão. Tinham divergido: o cupom de encomenda não declarava `@page`, então sem o QZ Tray o navegador imprimia em folha A4.
+
+Hoje são quatro módulos no mesmo formato (`build*Html` monta, `print*` imprime):
+
+- `src/lib/receipt-print.ts` — a base: papel, CSS térmico, documento, `brl()`, `printReceipt` (**único** ponto de entrada de impressão), `resolvePrintMode`, `claimAutoPrint`
+- `src/lib/order-receipt-html.ts` · `src/lib/caixa-receipt.ts` · `src/lib/encomendas/receipt.ts`
+
+**O QZ Tray continua sendo o caminho principal** — o navegador só entra quando ele não responde. Nada mudou na impressão silenciosa.
+
+### A pegadinha que mais custa tempo aqui
+O QZ **ignora `@media print` e `@page`**: com `format:'html'` ele renderiza como TELA e rasteriza na largura do config. Só o fallback do navegador lê essas regras. Logo, **a medida do cupom (largura e padding) tem que morar no `body`** — o bloco de impressão só pode repetir a mesma medida. Havia exatamente essa contradição, e por isso ajuste no `@media print` não surtia efeito na impressora de verdade.
+
+### Também resolvido no caminho
+- `manualPrint` (legado) × `printMode`: dois campos decidiam a mesma coisa, e no mesmo `useEffect` o som lia um e a impressão lia o outro. Fonte única agora é `resolvePrintMode`; o perfil não grava mais o espelho.
+- PDV e Retaguarda abertos em duas abas do mesmo PC imprimiam o pedido **duas vezes** — `claimAutoPrint` reserva por máquina.
+- Dinheiro padronizado em `R$ 1.500,00` nos três (pedido e caixa saíam com ponto decimal).
+
+61 testes cobrindo isso em `src/lib/receipt-print.test.ts` e `src/lib/caixa-receipt.test.ts`. Detalhe completo na memória `qz-tray-silent-printing.md`.
+
+---
+
+## 6. Como retomar (para a próxima sessão / próximo agente)
 
 1. Ler este arquivo + a memória do projeto (MEMORY.md).
 2. Confirmar com o dono as duas decisões abertas: (a) modelo da Retaguarda para usuários (§2); (b) WhatsApp compartilhar vs instância própria (§3).
