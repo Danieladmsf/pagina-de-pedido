@@ -1,46 +1,29 @@
 'use client';
 
 /**
- * Gera o cupom de PEDIDO como HTML autossuficiente (estilos inline/embutidos),
- * espelhando o componente <PrintReceipt/>. Impressão segue o MESMO caminho
- * nativo da sangria (printHtmlViaQz → QZ format:'html'): o QZ pagina pelo
- * conteúdo e imprime o cupom inteiro, sem rasterizar imagem e sem "picar".
+ * Gera o cupom de PEDIDO. O corpo/estilo específico do pedido mora aqui; a
+ * caixa do cupom (papel, fonte térmica, reforço de tinta) e a impressão em si
+ * vêm da base compartilhada em `receipt-print.ts`, a mesma usada pelo caixa e
+ * pelas encomendas.
  */
 
-import { printHtmlOrFallback, type PrinterSize } from './qz-print';
-
-function esc(v: unknown): string {
-  return String(v ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import {
+  buildReceiptDocument,
+  printReceipt,
+  resolvePrinterSize,
+  thermalTokens,
+  esc,
+  type PrinterSize,
+} from './receipt-print';
 
 function money(n: number): string {
   return (Number.isFinite(n) ? n : 0).toFixed(2);
 }
 
-function resolvePrinterSize(storeInfo: any): PrinterSize {
-  return (storeInfo?.general?.printerSize || storeInfo?.printerSize) === '58mm' ? '58mm' : '80mm';
-}
-
-/** Monta a string HTML completa do cupom (igual em conteúdo ao PrintReceipt). */
+/** Monta a string HTML completa do cupom do pedido. */
 export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = false): string {
   const printerSize = resolvePrinterSize(storeInfo);
-  const is58 = printerSize === '58mm';
-  const maxWidth = is58 ? '58mm' : '80mm';
-  // Fonte POR tamanho de papel (independentes — cada conta usa só um). 58mm:
-  // bobina pequena imprime fraco, então a fonte é maior (13px) e o cupom inteiro
-  // sai em negrito, aproveitando o vertical do rolo já que a largura é apertada.
-  // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
-  const fontSize = is58 ? '13px' : '12px';
-  const bodyWeight = is58 ? 'bold' : 'normal';
-  // Impressão térmica sai apagada; o text-stroke engrossa cada letra no render
-  // do QZ (Chromium) e escurece sem aumentar a fonte. Propriedade herdada → pega
-  // o cupom inteiro. 58mm precisa de mais reforço (bobina menor imprime mais
-  // fraco) que o 80mm.
-  const inkBoost = is58 ? '-webkit-text-stroke:0.4px #000;' : '-webkit-text-stroke:0.3px #000;';
+  const { is58 } = thermalTokens(printerSize);
   // Adicionais ("> nome"): no 58mm a bobina imprime fraco, então sobe pra 14px
   // pra ficar legível. 80mm permanece em 10px (intacto).
   const addonFontSize = is58 ? '14px' : '10px';
@@ -183,8 +166,6 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
       </div>`;
 
   const css = `
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Courier New',Courier,monospace; color:#000; background:#fff; font-size:${fontSize}; font-weight:${bodyWeight}; ${inkBoost} line-height:1.25; padding:16px; max-width:${maxWidth}; margin:0 auto; }
     .center { text-align:center; }
     .bold { font-weight:bold; }
     .upper { text-transform:uppercase; }
@@ -213,7 +194,6 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     .pay { margin-top:16px; text-transform:uppercase; font-weight:bold; font-size:14px; }
     .forma { margin-top:16px; text-transform:uppercase; font-size:13px; }
     .footer { margin-top:32px; text-align:center; font-size:10px; }
-    @media print { body { padding:0; width:${maxWidth} !important; max-width:${maxWidth} !important; } @page { size:${maxWidth} auto !important; margin:0 !important; } }
   `;
 
   const body = `
@@ -257,29 +237,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     ${totaisBlock}
   `;
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Pedido</title><style>${css}</style></head><body>${body}</body></html>`;
-}
-
-/** Fallback do navegador: imprime o HTML num iframe oculto (igual à sangria). */
-function printHtmlInIframe(html: string): void {
-  if (typeof document === 'undefined') return;
-  const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  document.body.appendChild(iframe);
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    document.body.removeChild(iframe);
-    return;
-  }
-  doc.write(html);
-  doc.close();
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe);
-    }, 2000);
-  }, 500);
+  return buildReceiptDocument({ size: printerSize, title: 'Pedido', css, body });
 }
 
 /**
@@ -299,6 +257,5 @@ export function printOrderReceipt(opts: {
   if (!order) return;
   const html = buildOrderReceiptHtml(order, storeInfo, isKitchen);
   const printerSize = opts.printerSize ?? resolvePrinterSize(storeInfo);
-  const fallback = opts.fallback ?? (() => printHtmlInIframe(html));
-  void printHtmlOrFallback({ html, printerSize, fallback });
+  printReceipt({ html, printerSize, fallback: opts.fallback });
 }

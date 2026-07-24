@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
-import { printHtmlOrFallback, type PrinterSize } from '@/lib/qz-print';
+import { buildReceiptDocument, printReceipt, resolvePrinterSize } from '@/lib/receipt-print';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -294,25 +294,13 @@ export function CaixaTab({
     return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;
   };
 
-  const printerSize = storeProfile?.general?.printerSize || storeProfile?.printerSize || '80mm';
-  const is58 = printerSize === '58mm';
-  const maxWidth = is58 ? '58mm' : '80mm';
-  // Fonte POR tamanho de papel (independentes — cada conta usa só um). 58mm:
-  // bobina pequena imprime fraco, então a fonte é maior (13px) e o cupom inteiro
-  // sai em negrito, aproveitando o vertical do rolo já que a largura é apertada.
-  // 80mm permanece intacto: 12px e peso normal. Mexer numa NÃO afeta a outra.
-  const fontSize = is58 ? '13px' : '12px';
-  const bodyWeight = is58 ? 'bold' : 'normal';
-  // Impressão térmica sai apagada; o text-stroke engrossa cada letra no render
-  // do QZ (Chromium) e escurece sem aumentar a fonte. Propriedade herdada → pega
-  // o cupom inteiro. 58mm precisa de mais reforço (bobina menor imprime mais
-  // fraco) que o 80mm.
-  const inkBoost = is58 ? '-webkit-text-stroke: 0.4px #000;' : '-webkit-text-stroke: 0.3px #000;';
+  const printerSize = resolvePrinterSize(storeProfile);
 
-  // ── Estilo térmico compartilhado ──
-  const thermalCSS = `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; font-size: ${fontSize}; font-weight: ${bodyWeight}; ${inkBoost} line-height: 1.4; max-width: ${maxWidth}; margin: 0 auto; background: #fff; }
+  // ── Estilo dos comprovantes do caixa ──
+  // A caixa do cupom (largura do papel, fonte térmica, reforço de tinta e a
+  // regra de impressão) vem da base compartilhada em `receipt-print.ts` — a
+  // mesma do cupom de pedido e do de encomenda. Aqui fica só o que é do caixa.
+  const caixaCSS = `
     .header { text-align: center; margin-bottom: 4px; }
     .header h1 { font-size: 14px; font-weight: bold; text-transform: uppercase; }
     .header p { font-size: 11px; }
@@ -330,52 +318,18 @@ export function CaixaTab({
     .resumo .row { padding: 1px 0; }
     .total-final { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
     .footer { text-align: center; margin-top: 16px; font-size: 10px; }
-    @media print { 
-      body { padding: 0; width: ${maxWidth} !important; max-width: ${maxWidth} !important; } 
-      @page { size: ${maxWidth} auto !important; margin: 0 !important; } 
-    }
   `;
 
   const openPrintWindow = (title: string, bodyHTML: string) => {
-    const fullHtml = `
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>${thermalCSS}</style>
-        </head>
-        <body>${bodyHTML}</body>
-      </html>
-    `;
-
-    // Fallback: o caminho atual (iframe + window.print do navegador).
-    const fallbackIframe = () => {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow?.document;
-      if (!doc) return;
-
-      doc.write(fullHtml);
-      doc.close();
-
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            document.body.removeChild(iframe);
-          }
-        }, 2000);
-      }, 500);
-    };
-
-    // QZ Tray (silencioso) com fallback total para o iframe acima.
-    void printHtmlOrFallback({
-      html: fullHtml,
-      printerSize: (maxWidth === '58mm' ? '58mm' : '80mm') as PrinterSize,
-      fallback: fallbackIframe,
+    const html = buildReceiptDocument({
+      size: printerSize,
+      title,
+      lineHeight: '1.4',
+      css: caixaCSS,
+      body: bodyHTML,
     });
+    // QZ Tray (silencioso) com fallback total para o navegador.
+    printReceipt({ html, printerSize });
   };
 
   // ── Comprovante de Abertura ──
