@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { normalizeSearch } from '@/lib/utils';
-import { buildReceiptDocument, printReceipt, resolvePrinterSize } from '@/lib/receipt-print';
+import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -294,138 +294,6 @@ export function CaixaTab({
     return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;
   };
 
-  const printerSize = resolvePrinterSize(storeProfile);
-
-  // ── Estilo dos comprovantes do caixa ──
-  // A caixa do cupom (largura do papel, fonte térmica, reforço de tinta e a
-  // regra de impressão) vem da base compartilhada em `receipt-print.ts` — a
-  // mesma do cupom de pedido e do de encomenda. Aqui fica só o que é do caixa.
-  const caixaCSS = `
-    .header { text-align: center; margin-bottom: 4px; }
-    .header h1 { font-size: 14px; font-weight: bold; text-transform: uppercase; }
-    .header p { font-size: 11px; }
-    .sep { text-align: center; margin: 4px 0; letter-spacing: -1px; }
-    .section { margin: 4px 0; }
-    .title { font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
-    .row { display: flex; justify-content: space-between; padding: 1px 0; }
-    .bold { font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-    th, td { text-align: left; padding: 2px 4px 2px 0; font-size: 11px; vertical-align: top; }
-    td:first-child { white-space: nowrap; padding-right: 8px; }
-    th { border-bottom: 1px dashed #000; font-weight: bold; }
-    .r { text-align: right; padding-right: 0; }
-    .resumo { margin-top: 4px; }
-    .resumo .row { padding: 1px 0; }
-    .total-final { font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
-    .footer { text-align: center; margin-top: 16px; font-size: 10px; }
-  `;
-
-  const openPrintWindow = (title: string, bodyHTML: string) => {
-    const html = buildReceiptDocument({
-      size: printerSize,
-      title,
-      lineHeight: '1.4',
-      css: caixaCSS,
-      body: bodyHTML,
-    });
-    // QZ Tray (silencioso) com fallback total para o navegador.
-    printReceipt({ html, printerSize });
-  };
-
-  // ── Comprovante de Abertura ──
-  const printComprovanteAbertura = (sessao: number, saldoInicial: number) => {
-    const agora = new Date();
-    const dataFormatada = agora.toLocaleDateString('pt-BR');
-    const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Loja';
-    const sep = '================================';
-    const sepDash = '--------------------------------';
-
-    openPrintWindow('Abertura de Caixa', `
-      <div class="header">
-        <h1>${storeName}</h1>
-      </div>
-      <p class="sep">${sep}</p>
-      <div style="text-align:center; padding:6px 0; border:2px solid #000; margin:4px 0; font-size:16px; font-weight:bold; letter-spacing:2px;">
-        ★ ABERTURA DE CAIXA ★
-      </div>
-      <p class="sep">${sep}</p>
-      <div class="section">
-        <div class="row"><span>Sessão</span><span class="bold">${sessao}</span></div>
-        <div class="row"><span>Data</span><span>${dataFormatada}</span></div>
-        <div class="row"><span>Hora</span><span>${horaFormatada}</span></div>
-      </div>
-      <p class="sep">${sepDash}</p>
-      <div class="section">
-        <div class="row total-final"><span>Saldo Inicial</span><span>R$ ${saldoInicial.toFixed(2)}</span></div>
-      </div>
-      <p class="sep">${sepDash}</p>
-      <div class="section">
-        <div class="row"><span>Operador</span><span>${storeProfile?.general?.name || 'Principal'}</span></div>
-      </div>
-      <div class="footer">
-        <p>${sep}</p>
-        <p>Documento gerado automaticamente</p>
-        <p>${storeName}</p>
-      </div>
-    `);
-  };
-
-  // ── Comprovante de Operação (Sangria / Suprimento / Venda) ──
-  const printComprovanteOperacao = (tipo: string, titulo: string, valor: number, formaPagamento: string) => {
-    const agora = new Date();
-    const dataFormatada = agora.toLocaleDateString('pt-BR');
-    const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Loja';
-    const sep = '================================';
-    const sepDash = '--------------------------------';
-
-    const tipoLabels: Record<string, string> = {
-      sangria: '▼ SANGRIA DE CAIXA ▼',
-      suprimento: '▲ SUPRIMENTO DE CAIXA ▲',
-      venda: '$ VENDA MANUAL $',
-    };
-
-    const isSangria = tipo === 'sangria';
-
-    openPrintWindow(tipoLabels[tipo] || 'Operação', `
-      <div class="header">
-        <h1>${storeName}</h1>
-      </div>
-      <p class="sep">${sep}</p>
-      <div style="text-align:center; padding:8px 0; border:2px solid #000; margin:4px 0; font-size:14px; font-weight:bold; letter-spacing:1px;">
-        ${tipoLabels[tipo] || tipo.toUpperCase()}
-      </div>
-      <p class="sep">${sep}</p>
-      <div class="section">
-        <div class="row"><span>Sessão</span><span class="bold">${caixaAtual?.sessao || '-'}</span></div>
-        <div class="row"><span>Data</span><span>${dataFormatada}</span></div>
-        <div class="row"><span>Hora</span><span>${horaFormatada}</span></div>
-      </div>
-      <p class="sep">${sepDash}</p>
-      <div class="section">
-        <div class="row"><span class="bold">Descrição:</span></div>
-        <div style="padding:4px 8px; margin:4px 0; background:#f0f0f0; border-radius:2px; font-weight:bold; font-size:12px;">
-          ${titulo}
-        </div>
-      </div>
-      <p class="sep">${sepDash}</p>
-      <div class="section">
-        <div class="row"><span>Forma de Pgto.</span><span class="bold">${(formaPagamento === 'conta_casa' ? 'Prazo' : formaPagamento).toUpperCase()}</span></div>
-      </div>
-      <p class="sep">${sepDash}</p>
-      <div style="text-align:center; padding:8px 0; margin:4px 0; border:1px solid #000;">
-        <div style="font-size:11px; text-transform:uppercase;">${isSangria ? '(−) Valor Retirado' : tipo === 'suprimento' ? '(+) Valor Adicionado' : 'Valor da Venda'}</div>
-        <div style="font-size:18px; font-weight:bold; margin-top:2px;">R$ ${valor.toFixed(2)}</div>
-      </div>
-      <div class="footer">
-        <p>${sep}</p>
-        <p>Documento gerado automaticamente</p>
-        <p>${storeName}</p>
-      </div>
-    `);
-  };
-
   // ---- Handlers ----
   const openMovimentacaoModal = (tipo: 'sangria' | 'suprimento') => {
     const permitido = tipo === 'sangria'
@@ -492,7 +360,7 @@ export function CaixaTab({
       if (modalOpen === 'abrir') {
         await abrirCaixa(valorInput);
         toast({ title: 'Caixa aberto com sucesso!' });
-        printComprovanteAbertura(proximaSessao, valorInput);
+        printAberturaCaixa({ storeInfo: storeProfile, sessao: proximaSessao, saldoInicial: valorInput });
       } else if (modalOpen === 'sangria' || modalOpen === 'suprimento' || modalOpen === 'venda') {
         let titulo = justificativaInput;
         let destId = undefined;
@@ -523,7 +391,14 @@ export function CaixaTab({
           destinatarioTipo: destTipo as any
         });
         toast({ title: `${modalOpen === 'sangria' ? 'Sangria' : modalOpen === 'suprimento' ? 'Suprimento' : 'Venda'} registrado!` });
-        printComprovanteOperacao(modalOpen, titulo, valorInput, formaPagamentoInput);
+        printOperacaoCaixa({
+          storeInfo: storeProfile,
+          tipo: modalOpen,
+          titulo,
+          valor: valorInput,
+          formaPagamento: formaPagamentoInput,
+          sessao: caixaAtual?.sessao,
+        });
       }
       setModalOpen(null);
       resetForm();
@@ -1015,175 +890,70 @@ export function CaixaTab({
     const freelancerRows = isFechado
       ? caixaAtual?.fechamentoDetalhes?.freelancers || []
       : freelancersFechamento;
-    const totalMotoboysImpressao = motoboyRows.reduce((s, m) => s + (m.valorPago ?? m.total), 0);
-    const totalFreelancersImpressao = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
-    const totalMotoboys = totalMotoboysImpressao;
-    const totalFreelancersCalc = totalFreelancersImpressao;
+    const totalMotoboys = motoboyRows.reduce((s, m) => s + (m.valorPago ?? m.total), 0);
+    const totalFreelancers = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
     // VALOR ESPERADO precisa descontar taxa/motoboys/freelancers SEMPRE.
     // Em caixa fechado, esses pagamentos viram sangria com formaPagamento '--',
     // que NÃO entra em totalSangriaDinheiro — então valorEmCaixa sozinho ignora
     // essas saídas e fica inconsistente com a Diferença (gravada no fechamento).
-    const valorLiquido = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancersCalc;
+    const valorEsperado = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancers;
+
     const agora = new Date();
     const dataFormatada = agora.toLocaleDateString('pt-BR');
     const horaFormatada = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Loja';
 
     const feeLabel = (storeProfile?.fees?.tableServiceFeeType === 'percentage' || storeProfile?.fees?.tableServiceFeeType === '%')
       ? `${storeProfile?.fees?.tableServiceFee}%`
       : `R$ ${Number(storeProfile?.fees?.tableServiceFee || 0).toFixed(2)}`;
 
-    const sep = '--------------------------------';
-
-    let motoboyBlock = '';
-    if (motoboyRows.length > 0) {
-      motoboyBlock = `
-        <div class="section">
-          <p class="title">MOTOBOYS / ENTREGAS</p>
-          <table>
-            <thead><tr><th>Nome</th><th class="r">Devido</th><th class="r">Pago</th><th class="r">Rest.</th></tr></thead>
-            <tbody>
-              ${motoboyRows.map(m => {
-                const saldoBase = m.saldo ?? m.total;
-                const valorPago = m.valorPago ?? m.total;
-                const saldoRestante = m.saldoRestante ?? Math.max(0, saldoBase - valorPago);
-                return `<tr><td>${m.name}</td><td class="r">R$ ${saldoBase.toFixed(2)}</td><td class="r">R$ ${valorPago.toFixed(2)}</td><td class="r bold">R$ ${saldoRestante.toFixed(2)}</td></tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-          <div class="row bold"><span>Pago no fechamento</span><span>R$ ${totalMotoboysImpressao.toFixed(2)}</span></div>
-        </div>
-        <p class="sep">${sep}</p>
-      `;
-    }
-
-    let freelancerBlock = '';
-    if (freelancerRows.length > 0) {
-      freelancerBlock = `
-        <div class="section">
-          <p class="title">FREELANCERS / EXTRAS</p>
-          <table>
-            <thead><tr><th>Nome</th><th class="r">Devido</th><th class="r">Pago</th><th class="r">Rest.</th></tr></thead>
-            <tbody>
-              ${freelancerRows.map(f => {
-                const saldoBase = f.saldo ?? f.total;
-                const valorPago = f.valorPago ?? f.total;
-                const saldoRestante = f.saldoRestante ?? Math.max(0, saldoBase - valorPago);
-                return `<tr><td>${f.name}</td><td class="r">R$ ${saldoBase.toFixed(2)}</td><td class="r">R$ ${valorPago.toFixed(2)}</td><td class="r bold">R$ ${saldoRestante.toFixed(2)}</td></tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-          <div class="row bold"><span>Pago no fechamento</span><span>R$ ${totalFreelancersImpressao.toFixed(2)}</span></div>
-        </div>
-        <p class="sep">${sep}</p>
-      `;
-    }
-
-    const sangriasDinheiroBlock = sangriasDinheiro.length > 0 ? `
-      <div class="section">
-        <p class="title">SANGRIAS EM DINHEIRO</p>
-        <table>
-          <thead><tr><th>Hora</th><th>Titulo</th><th class="r">Valor</th></tr></thead>
-          <tbody>
-            ${sangriasDinheiro.map(l => `
-              <tr>
-                <td>${l.data?.toDate?.().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) || '-'}</td>
-                <td>${l.titulo}</td>
-                <td class="r">R$ ${Math.abs(l.valor || 0).toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="row bold"><span>Total sangrias em dinheiro</span><span>R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
-      </div>
-      <p class="sep">${sep}</p>
-    ` : '';
-
     const fechamentoData = isFechado && caixaAtual?.dataFechamento?.toDate ? caixaAtual.dataFechamento.toDate() : null;
-    const dataFechamentoStr = fechamentoData 
+    const dataHora = fechamentoData
       ? `${fechamentoData.toLocaleDateString('pt-BR')} ${fechamentoData.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
       : `${dataFormatada} ${horaFormatada}`;
-      
+
+    // A 2ª via só é marcada como REIMPRESSÃO depois de 5min: o cupom que sai
+    // junto com o próprio fechamento não é reimpressão.
     const diffMinutos = fechamentoData ? (agora.getTime() - fechamentoData.getTime()) / 60000 : 0;
-    const isReimpressao = isFechado && diffMinutos > 5;
-    const reimpressaoLabel = isReimpressao ? `<p style="font-weight:bold;margin-top:2px;">(REIMPRESSÃO: ${dataFormatada} ${horaFormatada})</p>` : '';
+    const reimpressaoEm = isFechado && diffMinutos > 5 ? `${dataFormatada} ${horaFormatada}` : null;
 
-    openPrintWindow('Fechamento de Caixa', `
-      <div class="header">
-        <h1>${storeName}</h1>
-        <p>FECHAMENTO DE CAIXA</p>
-        <p>Sessão: ${caixaAtual?.sessao || '-'}</p>
-        <p>${isFechado ? 'Fechado em' : 'Data'}: ${dataFechamentoStr}</p>
-        ${reimpressaoLabel}
-      </div>
+    // O que foi contado na gaveta: em caixa fechado vem do que ficou gravado;
+    // em caixa aberto, do que o operador acabou de digitar na prévia.
+    const apuracao = isFechado && caixaAtual?.fechamentoDetalhes?.dinheiroApurado !== undefined
+      ? {
+          apurado: caixaAtual.fechamentoDetalhes.dinheiroApurado,
+          diferenca: caixaAtual.fechamentoDetalhes.diferencaCaixa,
+        }
+      : (!isFechado && dinheiroApurado !== ''
+        ? { apurado: Number(dinheiroApurado), diferenca: Number(dinheiroApurado) - valorEsperado }
+        : null);
 
-      <p class="sep">${sep}</p>
+    const linhaPagamento = (r: any) => {
+      const devido = r.saldo ?? r.total;
+      const pago = r.valorPago ?? r.total;
+      return { nome: r.name, devido, pago, restante: r.saldoRestante ?? Math.max(0, devido - pago) };
+    };
 
-      <div class="section">
-        <p class="title">RESUMO DE VENDAS</p>
-        <div class="row"><span>Dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
-        <div class="row"><span>Pix</span><span>R$ ${totais.totalPix.toFixed(2)}</span></div>
-        <div class="row"><span>Débito</span><span>R$ ${totais.totalDebito.toFixed(2)}</span></div>
-        <div class="row"><span>Crédito</span><span>R$ ${totais.totalCredito.toFixed(2)}</span></div>
-        <div class="row"><span>Prazo</span><span>R$ ${totais.totalPrazo.toFixed(2)}</span></div>
-        ${vendasCanceladas.length > 0 ? `<div class="row"><span>Vendas canceladas (${vendasCanceladas.length}) — não somam</span><span>R$ ${totalVendasCanceladas.toFixed(2)}</span></div>` : ''}
-      </div>
-
-      <p class="sep">${sep}</p>
-
-      <div class="section">
-        <p class="title">APURAÇÃO DE DINHEIRO (GAVETA)</p>
-        <div class="row"><span>Saldo Inicial (Troco)</span><span>R$ ${Math.abs(totais.saldoInicial).toFixed(2)}</span></div>
-        <div class="row"><span>(+) Vendas em dinheiro</span><span>R$ ${totais.totalDinheiro.toFixed(2)}</span></div>
-        <div class="row"><span>(+) Suprimentos (Entrada)</span><span>R$ ${Math.abs(totais.totalSuprimentoDinheiro).toFixed(2)}</span></div>
-        <div class="row"><span>(-) Sangrias (Retirada)</span><span style="color: #000;">R$ ${Math.abs(totais.totalSangriaDinheiro).toFixed(2)}</span></div>
-        ${taxaGarcomCalculada > 0 ? `<div class="row"><span>(-) Taxa Garçom (Paga agora)</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>` : ''}
-        ${totalMotoboys > 0 ? `<div class="row"><span>(-) Motoboys (Pagos agora)</span><span>R$ ${totalMotoboys.toFixed(2)}</span></div>` : ''}
-        ${totalFreelancersCalc > 0 ? `<div class="row"><span>(-) Freelancers (Pagos agora)</span><span>R$ ${totalFreelancersCalc.toFixed(2)}</span></div>` : ''}
-        <div class="row total-final" style="margin-top: 6px; font-size: 14px;"><span>(=) VALOR ESPERADO</span><span>R$ ${valorLiquido.toFixed(2)}</span></div>
-      </div>
-
-      <p class="sep">${sep}</p>
-
-      ${(sangriasDinheiroBlock || motoboyBlock || freelancerBlock) ? `
-      <p style="text-align:center;font-weight:bold;font-size:10px;margin:8px 0 4px 0;">--- EXTRATOS DETALHADOS ---</p>
-      ` : ''}
-
-      ${sangriasDinheiroBlock}
-
-      ${taxaGarcomCalculada > 0 ? `
-      <div class="section">
-        <p class="title">TAXA DE SERVIÇO</p>
-        <div class="row"><span>Taxa: ${feeLabel} · ${pedidosDaSessao.length} ped.</span><span>R$ ${taxaGarcomCalculada.toFixed(2)}</span></div>
-      </div>
-      <p class="sep">${sep}</p>
-      ` : ''}
-
-      ${motoboyBlock}
-      ${freelancerBlock}
-
-      ${isFechado && caixaAtual?.fechamentoDetalhes?.dinheiroApurado !== undefined ? `
-      <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
-        <div class="row"><span>Apurado na Gaveta Fisicamente</span><span>R$ ${caixaAtual.fechamentoDetalhes.dinheiroApurado.toFixed(2)}</span></div>
-        ${caixaAtual.fechamentoDetalhes.diferencaCaixa !== 0 ? `
-          <div class="row bold"><span>Diferença (${caixaAtual.fechamentoDetalhes.diferencaCaixa > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${caixaAtual.fechamentoDetalhes.diferencaCaixa.toFixed(2)}</span></div>
-        ` : ''}
-      </div>
-      ` : (!isFechado && dinheiroApurado !== '' ? `
-      <div class="section" style="margin-top: 8px; border-top: 1px dashed #000; padding-top: 4px;">
-        <div class="row"><span>Apurado na Gaveta Fisicamente</span><span>R$ ${Number(dinheiroApurado).toFixed(2)}</span></div>
-        ${Number(dinheiroApurado) - valorLiquido !== 0 ? `
-          <div class="row bold"><span>Diferença (${Number(dinheiroApurado) - valorLiquido > 0 ? 'Sobra' : 'Quebra'})</span><span>R$ ${(Number(dinheiroApurado) - valorLiquido).toFixed(2)}</span></div>
-        ` : ''}
-      </div>
-      ` : '')}
-
-      <div class="footer">
-        <p>${sep}</p>
-        <p>Documento gerado automaticamente</p>
-        <p>${storeName}</p>
-      </div>
-    `);
+    printFechamentoCaixa({
+      storeInfo: storeProfile,
+      sessao: caixaAtual?.sessao,
+      isFechado,
+      dataHora,
+      reimpressaoEm,
+      totais,
+      vendasCanceladas: { quantidade: vendasCanceladas.length, total: totalVendasCanceladas },
+      taxaGarcom: { valor: taxaGarcomCalculada, label: feeLabel, pedidos: pedidosDaSessao.length },
+      totalMotoboys,
+      totalFreelancers,
+      valorEsperado,
+      motoboys: motoboyRows.map(linhaPagamento),
+      freelancers: freelancerRows.map(linhaPagamento),
+      sangriasDinheiro: sangriasDinheiro.map((l: any) => ({
+        hora: l.data?.toDate?.().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) || '-',
+        titulo: l.titulo,
+        valor: l.valor || 0,
+      })),
+      apuracao,
+    });
   };
 
   const handlePrintPreview = () => {
