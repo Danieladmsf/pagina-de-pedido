@@ -23,6 +23,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 firebase-debug.log
+firestore-debug.log
+*-debug.log
 
 # local env files
 .env*.local
@@ -47,3 +49,7 @@ pglite-debug.log
 
 # Arquivos pessoais da loja (fotos, PDFs, notas, scripts avulsos) - fora do git e das buscas
 /arquivos
+
+# Material solto largado na raiz (PDF/audio/print): mover para /arquivos
+/*.pdf
+/*.ogg
