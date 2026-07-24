@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -375,8 +375,6 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
     if (!searchQuery) return combos;
     return combos.filter(c => normalizeSearch(c.name).includes(normalizeSearch(searchQuery)));
   }, [combos, searchQuery]);
-
-  const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">

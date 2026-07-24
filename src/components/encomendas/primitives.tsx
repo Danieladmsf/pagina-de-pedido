@@ -1,9 +1,5 @@
 import { Check, Minus, Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-export function money(n: number) {
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
+import { brl, cn } from '@/lib/utils';
 
 /* ---------- Indicador de passos ---------- */
 export function StepIndicator({ total, current }: { total: number; current: number }) {
@@ -81,7 +77,7 @@ export function OptionCard({
           </span>
           {included && <span className="text-xs font-semibold text-primary">Incluso</span>}
           {!included && price !== undefined && price > 0 && (
-            <span className="whitespace-nowrap text-sm font-bold text-primary">+ {money(price)}</span>
+            <span className="whitespace-nowrap text-sm font-bold text-primary">+ {brl(price)}</span>
           )}
           {!included && price === 0 && <span className="text-xs font-medium text-muted-foreground">Incluso</span>}
         </div>
@@ -154,9 +150,9 @@ export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, im
           <p className="mt-1 text-sm font-bold text-primary">
             {typeof priceCento === 'number'
               ? (qty > 0
-                  ? <>{money(skuTotal({ price, priceCento, price50 }, qty))}<span className="ml-1.5 font-medium text-muted-foreground">· {qty} un</span></>
-                  : <>{typeof price50 === 'number' && <>50 un {money(price50)} · </>}cento {money(priceCento)}</>)
-              : <>{money(price)}{minQty > 1 && <span className="ml-1.5 font-medium text-muted-foreground">· mín. {minQty} un</span>}</>}
+                  ? <>{brl(skuTotal({ price, priceCento, price50 }, qty))}<span className="ml-1.5 font-medium text-muted-foreground">· {qty} un</span></>
+                  : <>{typeof price50 === 'number' && <>50 un {brl(price50)} · </>}cento {brl(priceCento)}</>)
+              : <>{brl(price)}{minQty > 1 && <span className="ml-1.5 font-medium text-muted-foreground">· mín. {minQty} un</span>}</>}
           </p>
         </div>
       </div>

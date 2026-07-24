@@ -16,8 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ChevronLeft, CakeSlice, Loader2, CalendarDays, Store, Bike, Search, XCircle, CheckCircle2 } from 'lucide-react';
 import { ENCOMENDA_STATUS_LABEL, type EncomendaStatus } from '@/lib/encomendas/types';
+import { brl } from '@/lib/utils';
 
-const money = (n: number) => `R$ ${(Number(n) || 0).toFixed(2).replace('.', ',')}`;
 const fmtDate = (iso?: string) => {
   if (!iso) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
@@ -194,10 +194,10 @@ export default function MyEncomendasPage() {
                   </ul>
                   <div className="mt-3 flex items-center justify-between border-t border-dashed pt-3">
                     <span className="text-sm text-muted-foreground">Total</span>
-                    <span className="font-black text-primary">{money(e.total)}</span>
+                    <span className="font-black text-primary">{brl(e.total)}</span>
                   </div>
                   {typeof e.sinal === 'number' && e.sinal > 0 && (
-                    <p className="mt-1 text-right text-xs text-muted-foreground">Sinal {money(e.sinal)} · saldo {money(e.saldo)}</p>
+                    <p className="mt-1 text-right text-xs text-muted-foreground">Sinal {brl(e.sinal)} · saldo {brl(e.saldo)}</p>
                   )}
                 </div>
               </div>

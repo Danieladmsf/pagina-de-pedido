@@ -14,8 +14,8 @@ import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote } from 'lucide-react';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { brl } from '@/lib/utils';
 
-const money = (n: number) => (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatDateBR = (iso?: string) => {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
@@ -99,7 +99,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         formaPagamento: 'pix',
       });
       await updateDoc(doc(db, 'encomendas', enc.id), { sinalLancado: true });
-      toast({ title: 'Sinal lançado no caixa', description: `${money(enc.sinal)} (PIX) — Encomenda ${enc.id.substring(0, 5)}.` });
+      toast({ title: 'Sinal lançado no caixa', description: `${brl(enc.sinal)} (PIX) — Encomenda ${enc.id.substring(0, 5)}.` });
       return true;
     } catch (err) {
       console.error('[encomendas] erro ao lançar sinal no caixa:', err);
@@ -243,8 +243,8 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, ca
           </a>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-primary">{money(enc.total)}</p>
-          <p className="text-xs text-muted-foreground">Sinal {money(enc.sinal)} · saldo {money(enc.saldo)}</p>
+          <p className="text-lg font-bold text-primary">{brl(enc.total)}</p>
+          <p className="text-xs text-muted-foreground">Sinal {brl(enc.sinal)} · saldo {brl(enc.saldo)}</p>
           {enc.sinalLancado && <p className="text-[11px] font-semibold text-emerald-600">Sinal lançado no caixa ✓</p>}
         </div>
       </div>

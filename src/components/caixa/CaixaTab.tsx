@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -2235,14 +2235,14 @@ export function CaixaTab({
                             className="bg-white border-rose-300 focus-visible:ring-rose-500"
                           />
                           <p className="text-[10px] text-rose-600">
-                            A falta de {Math.abs(diferenca).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL'})} será registrada como uma Sangria de Quebra no relatório.
+                            A falta de {brl(Math.abs(diferenca))} será registrada como uma Sangria de Quebra no relatório.
                           </p>
                         </div>
                       )}
                       
                       {isSobra && (
                         <p className="text-[10px] text-emerald-600 px-1">
-                          A sobra de {diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL'})} será registrada como um Suprimento de Sobra no relatório.
+                          A sobra de {brl(diferenca)} será registrada como um Suprimento de Sobra no relatório.
                         </p>
                       )}
                     </div>

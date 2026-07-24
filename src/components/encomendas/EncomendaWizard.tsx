@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type ProductKind } from '@/lib/encomendas/catalog';
 import type { EncomendaConfig } from '@/lib/encomendas/config';
-import { StepIndicator, OptionCard, StepHeader, SkuRow, money, skuTotal } from '@/components/encomendas/primitives';
+import { StepIndicator, OptionCard, StepHeader, SkuRow, skuTotal } from '@/components/encomendas/primitives';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { cn, neighborhoodMatchesQuery } from '@/lib/utils';
+import { brl, cn, neighborhoodMatchesQuery } from '@/lib/utils';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
@@ -340,16 +340,16 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     if (isEmpresa) L.push('*Emitir NF-e (empresa):* sim');
 
     const lines = (map: Qmap, list: any[]) =>
-      list.filter((x) => (map[x.id] || 0) > 0).map((x) => `   - ${map[x.id]}× ${x.name} — ${money(skuTotal(x, map[x.id]))}`);
+      list.filter((x) => (map[x.id] || 0) > 0).map((x) => `   - ${map[x.id]}× ${x.name} — ${brl(skuTotal(x, map[x.id]))}`);
 
     if (has('bolo') && SIMPLE_CAKE) {
       L.push('', '*Bolo*');
-      if (flavorObj) L.push(`   - Sabor: ${flavorObj.name} (${money(flavorObj.pricePerKg)}/kg)`);
+      if (flavorObj) L.push(`   - Sabor: ${flavorObj.name} (${brl(flavorObj.pricePerKg)}/kg)`);
       if (weightObj) L.push(`   - Peso: ${weightObj.label}`);
       if (cakeShape) L.push(`   - Formato: ${cakeShape}`);
       if (cakeDough) L.push(`   - Massa: ${cakeDough}`);
-      selectedExtras.forEach((x) => L.push(`   - ${x.name}: ${money(extraPrice(x))}`));
-      L.push(`   Subtotal bolo: ${money(boloTotal)}`);
+      selectedExtras.forEach((x) => L.push(`   - ${x.name}: ${brl(extraPrice(x))}`));
+      L.push(`   Subtotal bolo: ${brl(boloTotal)}`);
     } else if (has('bolo') && sizeObj) {
       L.push('', '*Bolo personalizado*');
       L.push(`   - Tamanho: ${sizeObj.label} (${sizeObj.sub})`);
@@ -362,7 +362,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         if (plate.notes) L.push(`     Obs. plaquinha: ${plate.notes}`);
         if (plateImageUrl) L.push(`     Imagem de referência: ${plateImageUrl}`);
       }
-      L.push(`   Subtotal bolo: ${money(boloTotal)}`);
+      L.push(`   Subtotal bolo: ${brl(boloTotal)}`);
     }
     if (has('especial')) { L.push('', '*Especial da casa*'); L.push(...lines(especial, ESPECIAL_ITEMS)); }
     if (has('tortas')) { L.push('', `*${tortasLabel}*`); L.push(...lines(tortas, TORTAS)); }
@@ -375,14 +375,14 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       const addr = [street, number, complement].filter(Boolean).join(', ');
       if (addr) L.push(`   - Endereço: ${addr}`);
       if (neighborhood || city) L.push(`   - Bairro: ${[neighborhood, city].filter(Boolean).join(' · ')}`);
-      L.push(`   - Taxa de entrega: ${feeKnown ? money(deliveryFee) : 'a combinar'}`);
+      L.push(`   - Taxa de entrega: ${feeKnown ? brl(deliveryFee) : 'a combinar'}`);
     } else {
       L.push('   - Forma: Retirada no local');
     }
 
-    L.push('', `*Total: ${money(grandTotal)}*`);
-    L.push(`Sinal (${config.sinalPercent}%): ${money(sinal)}${config.pixKey ? ` — PIX ${config.pixKey}` : ''}`);
-    L.push(`Saldo na entrega: ${money(saldo)}`);
+    L.push('', `*Total: ${brl(grandTotal)}*`);
+    L.push(`Sinal (${config.sinalPercent}%): ${brl(sinal)}${config.pixKey ? ` — PIX ${config.pixKey}` : ''}`);
+    L.push(`Saldo na entrega: ${brl(saldo)}`);
     if (compUrl) L.push(`Comprovante do sinal: ${compUrl}`);
     if (orderNotes) L.push('', `*Observação:* ${orderNotes}`);
     return L.join('\n');
@@ -548,7 +548,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <button key={c.id} type="button" onClick={() => setCakeFlavor(c.id)}
                     className={`flex items-center justify-between gap-2 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${cakeFlavor === c.id ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border bg-card hover:border-primary/40'}`}>
                     <span className="font-medium text-foreground">{c.name}</span>
-                    <span className="shrink-0 text-sm font-bold text-primary">{money(c.pricePerKg)}/kg</span>
+                    <span className="shrink-0 text-sm font-bold text-primary">{brl(c.pricePerKg)}/kg</span>
                   </button>
                 ))}
               </div>
@@ -557,7 +557,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
           {step.id === 'peso' && (
             <Section title="Peso do bolo" kicker={`Passo ${safeIdx + 1} de ${total}`}
-              subtitle={flavorObj ? `${flavorObj.name} · ${money(flavorObj.pricePerKg)}/kg` : 'Escolha o tamanho ideal para a sua festa.'}>
+              subtitle={flavorObj ? `${flavorObj.name} · ${brl(flavorObj.pricePerKg)}/kg` : 'Escolha o tamanho ideal para a sua festa.'}>
               <div className="grid gap-3 sm:grid-cols-3">
                 {CAKE_WEIGHTS.map((w) => {
                   const price = (w.fixedPrice != null ? w.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (w.kg || 0) : 0)) + (w.packaging || 0);
@@ -567,7 +567,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                       className={`rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${cakeWeight === w.id ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border bg-card hover:border-primary/40'}`}>
                       <div className="flex items-baseline justify-between">
                         <p className="font-display text-2xl font-bold text-foreground">{w.label}</p>
-                        <p className="text-sm font-bold text-primary">{money(price)}</p>
+                        <p className="text-sm font-bold text-primary">{brl(price)}</p>
                       </div>
                       {w.sub && <p className="mt-1 text-xs text-muted-foreground">{w.sub}</p>}
                     </button>
@@ -618,7 +618,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                           {x.desc && <span className="block text-xs text-muted-foreground">{x.desc}</span>}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm font-bold text-primary">{money(extraPrice(x))}</span>
+                      <span className="shrink-0 text-sm font-bold text-primary">{brl(extraPrice(x))}</span>
                     </button>
                   );
                 })}
@@ -634,7 +634,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                     className={`rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 ${cakeSize === s.id ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border bg-card hover:border-primary/40'}`}>
                     <div className="flex items-baseline justify-between">
                       <p className="font-display text-2xl font-bold text-foreground">{s.label}</p>
-                      <p className="text-sm font-bold text-primary">{money(s.basePrice)}</p>
+                      <p className="text-sm font-bold text-primary">{brl(s.basePrice)}</p>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{s.sub}</p>
                   </button>
@@ -866,7 +866,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   <p className="text-sm font-semibold text-foreground">
                     Taxa de entrega:{' '}
                     {calculatingFee ? <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-primary" />
-                      : feeKnown ? <span className="text-primary">{money(deliveryFee)}</span>
+                      : feeKnown ? <span className="text-primary">{brl(deliveryFee)}</span>
                       : <span className="font-medium text-muted-foreground">a combinar no WhatsApp</span>}
                   </p>
                 </div>
@@ -917,7 +917,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/90 backdrop-blur">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3">
             <span className="text-sm font-medium text-muted-foreground">Subtotal parcial</span>
-            <span className="font-display text-xl font-bold text-primary">{money(subtotal)}</span>
+            <span className="font-display text-xl font-bold text-primary">{brl(subtotal)}</span>
           </div>
         </div>
       )}
@@ -979,14 +979,14 @@ function SelectedList({ title, map, list, onRemove }: {
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
           <p className="font-display text-base font-bold text-foreground">{sel.length} {sel.length === 1 ? 'item' : 'itens'}</p>
         </div>
-        <span className="font-display text-lg font-bold text-primary">{money(total)}</span>
+        <span className="font-display text-lg font-bold text-primary">{brl(total)}</span>
       </div>
       <div className="mt-2 space-y-1.5 border-t border-dashed border-border pt-2">
         {sel.map((x) => (
           <div key={x.id} className="flex items-center justify-between gap-2 text-sm">
             <span className="min-w-0 truncate text-muted-foreground">{map[x.id]}× {x.name}</span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className="font-medium text-foreground">{money(skuTotal(x, map[x.id]))}</span>
+              <span className="font-medium text-foreground">{brl(skuTotal(x, map[x.id]))}</span>
               <button type="button" onClick={() => onRemove(x.id)} title="Remover"
                 className="text-muted-foreground transition-colors hover:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1042,8 +1042,8 @@ function ResumoStep(props: any) {
             <Row label="Peso" value={weightObj?.label} />
             {cakeShape && <Row label="Formato" value={cakeShape} />}
             {cakeDough && <Row label="Massa" value={cakeDough} />}
-            {(extras || []).map((e: any) => <Row key={e.name} label={e.name} value={money(e.price)} />)}
-            <Row label="Subtotal bolo" value={money(boloTotal)} strong />
+            {(extras || []).map((e: any) => <Row key={e.name} label={e.name} value={brl(e.price)} />)}
+            <Row label="Subtotal bolo" value={brl(boloTotal)} strong />
           </Block>
         )}
         {products.has('bolo') && !simpleCake && sizeObj && (
@@ -1053,30 +1053,30 @@ function ResumoStep(props: any) {
             <Row label="Recheio" value={fillObj?.name} />
             <Row label="Cobertura" value={coverObj?.name} />
             {plateOn && <Row label="Plaquinha" value={[plate.name, plate.age].filter(Boolean).join(', ') || 'Sim'} />}
-            <Row label="Subtotal bolo" value={money(boloTotal)} strong />
+            <Row label="Subtotal bolo" value={brl(boloTotal)} strong />
           </Block>
         )}
         {products.has('especial') && (
           <Block icon={<Sparkles className="h-4 w-4" />} title="Especial da casa">
-            {lines(especial, cat.especialItems).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}
+            {lines(especial, cat.especialItems).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={brl(l.total)} />)}
           </Block>
         )}
         {products.has('tortas') && (
-          <Block title={tortasLabel}>{lines(tortas, cat.tortas).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title={tortasLabel}>{lines(tortas, cat.tortas).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={brl(l.total)} />)}</Block>
         )}
         {products.has('docinhos') && (
-          <Block title={docinhosLabel}>{lines(docinhos, cat.docinhos).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={money(l.total)} />)}</Block>
+          <Block title={docinhosLabel}>{lines(docinhos, cat.docinhos).map((l) => <Row key={l.name} label={`${l.qty}× ${l.name}`} value={brl(l.total)} />)}</Block>
         )}
         <Block icon={<MapPin className="h-4 w-4" />} title="Entrega">
           <Row label="Data" value={`${formatDateBR(delDate)} ${delTime || ''}`} />
           <Row label="Forma" value={delType === 'delivery' ? 'Entrega' : 'Retirada no local'} />
           {delType === 'delivery' && delAddress && <Row label="Endereço" value={delAddress} />}
           {delType === 'delivery' && delNeighborhood && <Row label="Bairro" value={delNeighborhood} />}
-          {delType === 'delivery' && <Row label="Taxa de entrega" value={feeKnown ? money(deliveryFee) : 'a combinar'} />}
+          {delType === 'delivery' && <Row label="Taxa de entrega" value={feeKnown ? brl(deliveryFee) : 'a combinar'} />}
         </Block>
         <div className="flex items-center justify-between border-t border-dashed border-border pt-3">
           <span className="font-display text-lg font-bold">Total</span>
-          <span className="font-display text-xl font-bold text-primary">{money(grandTotal)}</span>
+          <span className="font-display text-xl font-bold text-primary">{brl(grandTotal)}</span>
         </div>
       </div>
 
@@ -1087,8 +1087,8 @@ function ResumoStep(props: any) {
 
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#9d164c] p-5 text-white shadow-soft">
         <p className="text-[11px] font-bold uppercase tracking-wider text-white/70">Pagamento PIX</p>
-        <p className="mt-1 font-display text-2xl font-bold">Entrada de {money(sinal)}</p>
-        <p className="text-sm text-white/80">Sinal de {config.sinalPercent}% · saldo de {money(saldo)} na entrega</p>
+        <p className="mt-1 font-display text-2xl font-bold">Entrada de {brl(sinal)}</p>
+        <p className="text-sm text-white/80">Sinal de {config.sinalPercent}% · saldo de {brl(saldo)} na entrega</p>
         {config.pixKey && (
           <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/15 px-3 py-2.5">
             <span className="truncate font-mono text-sm">{config.pixKey}</span>

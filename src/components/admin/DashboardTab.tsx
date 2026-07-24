@@ -34,6 +34,7 @@ import {
   CreditCard,
   CalendarDays,
 } from 'lucide-react';
+import { brl } from '@/lib/utils';
 
 interface DashboardTabProps {
   db: any;
@@ -61,10 +62,6 @@ const ORDER_TYPE_LABELS: Record<string, { label: string; Icon: any }> = {
 };
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
-
-function brl(n: number) {
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function startOfDay(d: Date) {
   const x = new Date(d);

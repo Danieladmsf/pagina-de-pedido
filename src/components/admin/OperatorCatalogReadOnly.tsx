@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye, PackageSearch } from 'lucide-react';
+import { brl } from '@/lib/utils';
 
 type CatalogTab = 'produtos' | 'categorias' | 'addons' | 'promocoes';
 
@@ -13,10 +14,12 @@ const CONFIG: Record<CatalogTab, { title: string; empty: string }> = {
   promocoes: { title: 'Ofertas', empty: 'Nenhuma oferta cadastrada.' },
 };
 
+// Catálogo em leitura: preço ausente aparece como travessão, não como R$ 0,00.
+// Por isso este wrapper existe — a formatação em si vem do brl compartilhado.
 function money(value: unknown): string {
   const number = Number(value);
   if (!Number.isFinite(number)) return '—';
-  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return brl(number);
 }
 
 export function OperatorCatalogReadOnly({
