@@ -132,9 +132,10 @@ export const CENTO_SEQ = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 600, 
 export function skuTotal(sku: { price: number; priceCento?: number; price50?: number }, qty: number): number {
   if (typeof sku.priceCento === 'number') {
     if (qty <= 0) return 0;
-    // Cada 100 usa o preço do cento; a sobra de 50 usa o preço das 50 (mais caro/un).
-    const p50 = typeof sku.price50 === 'number' ? sku.price50 : Math.round(sku.priceCento / 2);
-    return Math.floor(qty / 100) * sku.priceCento + (qty % 100 >= 50 ? p50 : 0);
+    // Só 50 SOZINHO cobra o preço das 50 (mais caro). Acima disso, a sobra de 50 é
+    // PROPORCIONAL (metade do cento) — ex.: 150 = cento (140) + meio cento (70) = 210.
+    if (qty === 50) return typeof sku.price50 === 'number' ? sku.price50 : Math.round(sku.priceCento / 2);
+    return Math.floor(qty / 100) * sku.priceCento + (qty % 100 === 50 ? sku.priceCento / 2 : 0);
   }
   return qty * sku.price;
 }
