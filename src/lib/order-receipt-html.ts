@@ -8,13 +8,13 @@
  */
 
 import {
-  brl,
   buildReceiptDocument,
   printReceipt,
   resolvePrinterSize,
   thermalTokens,
   esc,
 } from './receipt-print';
+import { brl } from '@/lib/utils';
 
 /** Monta a string HTML completa do cupom do pedido. */
 export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = false): string {

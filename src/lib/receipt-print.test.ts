@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { baseReceiptCss, brl, buildReceiptDocument, claimAutoPrint, resolvePrintMode, resolvePrinterSize } from './receipt-print';
+import { baseReceiptCss, buildReceiptDocument, claimAutoPrint, resolvePrintMode, resolvePrinterSize } from './receipt-print';
+import { brl } from './utils';
 import { buildOrderReceiptHtml } from './order-receipt-html';
 import { buildEncomendaReceiptHtml } from './encomendas/receipt';
 

@@ -4,6 +4,22 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+/**
+ * Dinheiro em português: `R$ 1.500,00`. Vale para tela E para cupom.
+ *
+ * O `replace` troca o espaço não-quebrável que o ICU põe entre "R$" e o número
+ * por um espaço comum: o cupom é monoespaçado e é impresso por dois motores
+ * diferentes (QZ Tray e navegador), então espaço normal é o previsível nos dois.
+ *
+ * Valor quebrado vira `R$ 0,00` em vez de "R$ NaN" — no papel isso não tem
+ * conserto depois de impresso.
+ */
+export function brl(n: number): string {
+  return (Number.isFinite(n) ? n : 0)
+    .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    .replace(/\s/g, ' ');
+}
+
 export function removeAccents(str: string): string {
   if (!str) return '';
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');

@@ -6,13 +6,13 @@
 // Ver [[qz-tray-silent-printing]].
 
 import {
-  brl,
   buildReceiptDocument,
   printReceipt,
   resolvePrinterSize,
   thermalTokens,
   esc,
 } from '@/lib/receipt-print';
+import { brl } from '@/lib/utils';
 import type { Encomenda } from './types';
 import { ENCOMENDA_STATUS_LABEL } from './types';
 

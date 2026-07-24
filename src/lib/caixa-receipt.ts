@@ -12,12 +12,12 @@
  */
 
 import {
-  brl,
   buildReceiptDocument,
   esc,
   printReceipt,
   resolvePrinterSize,
 } from './receipt-print';
+import { brl } from '@/lib/utils';
 
 /** Estilo próprio dos comprovantes do caixa (o resto vem da base). */
 const CAIXA_CSS = `
