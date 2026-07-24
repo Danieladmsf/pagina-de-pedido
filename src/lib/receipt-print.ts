@@ -100,6 +100,9 @@ export function thermalTokens(size: PrinterSize): ThermalTokens {
  * CSS base do cupom: reset, corpo térmico e a regra de papel. É a única parte
  * que precisa ser idêntica entre QZ e navegador — o resto do visual cada cupom
  * monta como quiser e passa em `css`.
+ *
+ * Exportado para o teste que guarda essa simetria (o `buildReceiptDocument` já
+ * chama por dentro; nenhum cupom precisa usar direto).
  */
 export function baseReceiptCss(
   size: PrinterSize,
@@ -140,8 +143,12 @@ export function buildReceiptDocument(opts: {
  *
  * Não usa `display:none` (navegador pode pular iframe oculto na impressão) e
  * limpa por `onafterprint`, não por timer no escuro.
+ *
+ * INTERNO de propósito: só o `printReceipt` chama, e só depois de o QZ Tray
+ * ter recusado. Exportar isto seria abrir a mesma porta do antigo
+ * `printHtmlOrFallback` — dava pra imprimir pulando o QZ sem perceber.
  */
-export function printHtmlInIframe(html: string): void {
+function printHtmlInIframe(html: string): void {
   if (typeof document === 'undefined') return;
   const iframe = document.createElement('iframe');
   Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
