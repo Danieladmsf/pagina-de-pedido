@@ -183,11 +183,13 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   const especialPrincipalOk = especialPrincipais.some((x) => (especial[x.id] || 0) > 0);
 
   const has = (k: ProductKind) => products.has(k);
+  // Só retirada: quando a loja é pickupOnly (PDF sem entrega) OU quando tem bolo
+  // recheado no pedido (o PDF diz que não entrega bolo).
+  const onlyPickup = config.pickupOnly === true || has('bolo');
 
-  // PDF da Gostinho: não entregamos bolos recheados -> tendo bolo, só retirada.
   useEffect(() => {
-    if (products.has('bolo') && delType === 'delivery') setDelType('retirada');
-  }, [products, delType]);
+    if ((config.pickupOnly === true || products.has('bolo')) && delType === 'delivery') setDelType('retirada');
+  }, [products, delType, config.pickupOnly]);
 
   // Validação da data de retirada/entrega: antecedência mínima (config.minDays)
   // e dias da semana atendidos (config.weekDays; vazio = todos os dias).
@@ -800,14 +802,14 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                 </Field>
               </div>
               <p className="mt-4 mb-2 text-[11px] font-bold uppercase tracking-wider text-gold">Como prefere receber? *</p>
-              {has('bolo') && <p className="-mt-1 mb-2 text-xs text-muted-foreground">Bolos são só para <strong>retirada</strong> — não fazemos entrega de bolo recheado.</p>}
+              {onlyPickup && <p className="-mt-1 mb-2 text-xs text-muted-foreground">{config.pickupOnly === true ? <>As encomendas são <strong>retirada na loja</strong> — sem entrega.</> : <>Bolos são só para <strong>retirada</strong> — não fazemos entrega de bolo recheado.</>}</p>}
               <div className="grid gap-3 sm:grid-cols-2">
                 <button type="button" onClick={() => setDelType('retirada')}
                   className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-all ${delType === 'retirada' ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border hover:border-primary/40'}`}>
                   <Store className="h-5 w-5 text-primary" />
                   <span><span className="block font-semibold">Retirar no local</span><span className="block text-xs text-muted-foreground">Sem custo adicional</span></span>
                 </button>
-                {!has('bolo') && (
+                {!onlyPickup && (
                   <button type="button" onClick={() => setDelType('delivery')}
                     className={`flex items-start gap-3 rounded-2xl border-2 p-4 text-left transition-all ${delType === 'delivery' ? 'border-primary bg-secondary/50 ring-2 ring-primary/15' : 'border-border hover:border-primary/40'}`}>
                     <Bike className="h-5 w-5 text-primary" />

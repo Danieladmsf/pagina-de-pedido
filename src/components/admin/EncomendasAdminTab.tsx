@@ -28,6 +28,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
   const [daysLabel, setDaysLabel] = useState('Terça a Sábado');
   const [weekDays, setWeekDays] = useState<number[]>([]);
   const [showInApp, setShowInApp] = useState(false);
+  const [pickupOnly, setPickupOnly] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -40,6 +41,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setDaysLabel(e.daysLabel || 'Terça a Sábado');
     setWeekDays(Array.isArray(e.weekDays) ? e.weekDays : []);
     setShowInApp(e.showInApp === true);
+    setPickupOnly(e.pickupOnly === true);
   }, [storeProfile]);
 
   const shareUrl = useMemo(() => {
@@ -53,7 +55,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setSavingCfg(true);
     try {
       await setDoc(doc(db, 'store_profiles', user.uid), {
-        encomendas: { enabled, showInApp, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
+        encomendas: { enabled, showInApp, pickupOnly, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
       }, { merge: true });
       revalidateStorePages(user.uid);
       toast({ title: 'Configuração salva', description: 'As encomendas usam esses valores a partir de agora.' });
@@ -93,6 +95,14 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
               <p className="text-sm text-muted-foreground">Coloca um botão "Encomendas" no topo do cardápio e um atalho "Minhas encomendas" no menu do cliente.</p>
             </div>
             <Switch checked={showInApp} onCheckedChange={setShowInApp} />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <p className="font-semibold">Somente retirada (sem entrega)</p>
+              <p className="text-sm text-muted-foreground">Quando ligada, o cliente só escolhe "Retirar no local" — sem opção de entrega. (Bolo recheado é sempre só retirada.)</p>
+            </div>
+            <Switch checked={pickupOnly} onCheckedChange={setPickupOnly} />
           </div>
 
           {shareUrl && (
