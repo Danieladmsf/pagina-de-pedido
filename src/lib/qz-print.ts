@@ -133,31 +133,17 @@ async function createConfig(qz: any, printerSize: PrinterSize) {
 /**
  * Imprime um HTML autossuficiente (com estilos inline) via QZ.
  * Retorna true se imprimiu pelo QZ; false se o QZ não está disponível.
+ *
+ * Este arquivo é a camada de TRANSPORTE (falar com o QZ Tray e mais nada).
+ * Quem decide o que fazer quando o QZ está fora é `receipt-print.ts`, via
+ * `printReceipt` — o único ponto de entrada de impressão do app. Não chame isto
+ * direto de uma tela: foi assim que nasceram as três cópias de cupom que o
+ * commit 9166b5b juntou.
  */
-async function printHtmlViaQz(html: string, printerSize: PrinterSize): Promise<boolean> {
+export async function printHtmlViaQz(html: string, printerSize: PrinterSize): Promise<boolean> {
   const qz = await getConnectedQz();
   if (!qz) return false;
   const cfg = await createConfig(qz, printerSize);
   await qz.print(cfg, [{ type: 'pixel', format: 'html', flavor: 'plain', data: html }]);
   return true;
-}
-
-/**
- * Imprime um HTML autossuficiente pelo QZ; se indisponível/erro, chama `fallback`.
- */
-export async function printHtmlOrFallback(opts: {
-  html: string;
-  fallback: () => void;
-  printerSize?: PrinterSize;
-}): Promise<void> {
-  const { html, fallback, printerSize = '80mm' } = opts;
-  try {
-    if (isQzKnownUnavailable()) { console.warn('[QZ] indisponível → impressão pelo navegador'); fallback(); return; }
-    const ok = await printHtmlViaQz(html, printerSize);
-    if (!ok) { console.warn('[QZ] não conectado no momento da impressão → impressão pelo navegador'); fallback(); }
-    else { console.info('[QZ] HTML enviado ao QZ Tray com sucesso'); }
-  } catch (e) {
-    console.error('[QZ] FALHA ao imprimir via QZ → impressão pelo navegador. Motivo:', e);
-    fallback();
-  }
 }

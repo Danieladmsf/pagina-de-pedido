@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
+import { resolvePrintMode } from '@/lib/receipt-print';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { getOrderStatusBadgeColor } from '@/lib/order-status';
@@ -188,7 +189,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     updateOrderStatus(order.id, 'received');
     // Impressao vinculada ao fluxo/status continua sendo automatica e nao usa
     // a permissao de impressao manual.
-    if (storeProfile?.general?.manualPrint || storeProfile?.manualPrint) triggerPrint(order);
+    if (resolvePrintMode(storeProfile) === 'manual') triggerPrint(order);
   };
 
   const handleCancelOrder = (order: any) => {

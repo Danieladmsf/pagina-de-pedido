@@ -19,6 +19,7 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { playLoudAudio } from '@/lib/order-sound';
+import { resolvePrintMode } from '@/lib/receipt-print';
 import { createConcurrencyQueue } from '@/lib/throttle-queue';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
@@ -519,8 +520,7 @@ export default function PdvPage() {
 
   // Som constante enquanto houver pedidos pendentes
   useEffect(() => {
-    const isManualPrint = !!(storeProfile?.general?.manualPrint || storeProfile?.manualPrint);
-    if (!isManualPrint) return;
+    if (resolvePrintMode(storeProfile) !== 'manual') return;
 
     // Só toca a campainha para pedidos que ESTÃO VISÍVEIS e acionáveis na tela de
     // Delivery (deliveryOrders), garantindo que sempre haja um botão "Recebido"

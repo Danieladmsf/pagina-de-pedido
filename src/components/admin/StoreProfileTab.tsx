@@ -17,6 +17,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadImage } from '@/lib/upload';
 import { normalizeSearch } from '@/lib/utils';
+import { resolvePrintMode, type PrintMode } from '@/lib/receipt-print';
 
 interface StoreProfileTabProps {
   db: any;
@@ -57,8 +58,7 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     enableInventory: false,
     printerSize: '80mm' as '80mm' | '58mm',
     autoPrint: false,
-    manualPrint: false,
-    printMode: 'auto_silent' as 'auto_silent' | 'auto_sound' | 'manual',
+    printMode: 'auto_silent' as PrintMode,
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -110,8 +110,8 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
             ...data.general,
             ...data.fees,
             tableServiceFeeType: data.fees?.tableServiceFeeType || 'percentage',
-            // Migra perfis antigos (só tinham manualPrint) para o novo printMode.
-            printMode: data.general?.printMode || (data.general?.manualPrint ? 'manual' : 'auto_silent'),
+            // Perfil antigo só tinha manualPrint: a conversão mora em um lugar só.
+            printMode: resolvePrintMode(data),
           }));
           if (data.workingHours) setWorkingHours(data.workingHours);
           if (data.motoboys) {
@@ -168,9 +168,12 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           enableInventory: formData.enableInventory,
           printerSize: formData.printerSize,
           autoPrint: formData.autoPrint,
+          // Fonte única de como a loja recebe pedido novo. O antigo `manualPrint`
+          // NÃO é mais gravado: todo mundo lê por `resolvePrintMode`, que
+          // converte o legado na leitura. O campo que já está gravado nos perfis
+          // fica onde está — de propósito. Apagar não traria ganho nenhum e
+          // quebraria uma aba que ficou aberta desde antes do deploy.
           printMode: formData.printMode,
-          // Mantém o legado em sincronia: outros módulos (Delivery/Mesas) ainda leem manualPrint.
-          manualPrint: formData.printMode === 'manual',
           // disableDelivery e controlado pelo botao "Delivery" no topo do painel;
           // o perfil nao grava esse campo para nao sobrescrever o toggle do header.
         },

@@ -13,7 +13,6 @@ import {
   resolvePrinterSize,
   thermalTokens,
   esc,
-  type PrinterSize,
 } from './receipt-print';
 
 function money(n: number): string {
@@ -250,12 +249,13 @@ export function printOrderReceipt(opts: {
   order: any;
   storeInfo: any;
   isKitchen?: boolean;
-  printerSize?: PrinterSize;
   fallback?: () => void;
 }): void {
   const { order, storeInfo, isKitchen = false } = opts;
   if (!order) return;
+  // O papel sai do próprio perfil da loja, uma vez só: aceitar um `printerSize`
+  // por fora criava um segundo caminho pro mesmo número, livre pra discordar do
+  // que o cupom foi montado.
   const html = buildOrderReceiptHtml(order, storeInfo, isKitchen);
-  const printerSize = opts.printerSize ?? resolvePrinterSize(storeInfo);
-  printReceipt({ html, printerSize, fallback: opts.fallback });
+  printReceipt({ html, printerSize: resolvePrinterSize(storeInfo), fallback: opts.fallback });
 }

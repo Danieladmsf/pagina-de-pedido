@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { baseReceiptCss, buildReceiptDocument, resolvePrinterSize } from './receipt-print';
+import { baseReceiptCss, buildReceiptDocument, claimAutoPrint, resolvePrintMode, resolvePrinterSize } from './receipt-print';
 import { buildOrderReceiptHtml } from './order-receipt-html';
 import { buildEncomendaReceiptHtml } from './encomendas/receipt';
 
@@ -52,6 +52,93 @@ describe('resolvePrinterSize', () => {
     expect(resolvePrinterSize(loja80)).toBe('80mm');
     expect(resolvePrinterSize(undefined)).toBe('80mm');
     expect(resolvePrinterSize({ general: {} })).toBe('80mm');
+  });
+});
+
+describe('resolvePrintMode', () => {
+  it('o campo novo manda, mesmo com o legado gravado ao contrário', () => {
+    // Este é o ponto do refactor: perfil que tem os dois e discorda não pode
+    // mais fazer o som obedecer um e a impressão obedecer o outro.
+    expect(resolvePrintMode({ general: { printMode: 'auto_sound', manualPrint: true } })).toBe('auto_sound');
+    expect(resolvePrintMode({ general: { printMode: 'manual', manualPrint: false } })).toBe('manual');
+  });
+
+  it('perfil antigo, que só tem manualPrint, continua funcionando sem migração', () => {
+    expect(resolvePrintMode({ general: { manualPrint: true } })).toBe('manual');
+    expect(resolvePrintMode({ general: { manualPrint: false } })).toBe('auto_silent');
+    expect(resolvePrintMode({ manualPrint: true })).toBe('manual');
+  });
+
+  it('lê o campo na raiz do perfil, não só dentro de general', () => {
+    expect(resolvePrintMode({ printMode: 'auto_sound' })).toBe('auto_sound');
+  });
+
+  it('sem perfil, ou com valor estragado, cai no automático silencioso', () => {
+    expect(resolvePrintMode(undefined)).toBe('auto_silent');
+    expect(resolvePrintMode({})).toBe('auto_silent');
+    expect(resolvePrintMode({ general: { printMode: 'qualquer_coisa' } })).toBe('auto_silent');
+    expect(resolvePrintMode({ general: { printMode: 'qualquer_coisa', manualPrint: true } })).toBe('manual');
+  });
+});
+
+describe('claimAutoPrint', () => {
+  // localStorage de mentira: o teste roda em node, sem navegador.
+  function storageFalso(throwOnWrite = false) {
+    const map = new Map<string, string>();
+    return {
+      get length() { return map.size; },
+      key: (i: number) => Array.from(map.keys())[i] ?? null,
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => { if (throwOnWrite) throw new Error('bloqueado'); map.set(k, v); },
+      removeItem: (k: string) => { map.delete(k); },
+      _map: map,
+    };
+  }
+
+  const montarJanela = (storage: any) => { (globalThis as any).window = { localStorage: storage }; };
+
+  beforeEach(() => { vi.useRealTimers(); });
+  afterEach(() => { delete (globalThis as any).window; vi.useRealTimers(); });
+
+  it('a primeira aba ganha e a segunda desiste — é o cupom dobrado que isto evita', async () => {
+    montarJanela(storageFalso());
+    expect(await claimAutoPrint('pedido-1')).toBe(true);
+    expect(await claimAutoPrint('pedido-1')).toBe(false);
+    expect(await claimAutoPrint('pedido-1')).toBe(false);
+  });
+
+  it('cada pedido tem a sua reserva', async () => {
+    montarJanela(storageFalso());
+    expect(await claimAutoPrint('pedido-1')).toBe(true);
+    expect(await claimAutoPrint('pedido-2')).toBe(true);
+  });
+
+  it('reserva velha (fora do TTL) não trava o pedido para sempre', async () => {
+    const storage = storageFalso();
+    montarJanela(storage);
+    storage._map.set('autoprint:pedido-1', String(Date.now() - 11 * 60 * 1000));
+    expect(await claimAutoPrint('pedido-1')).toBe(true);
+  });
+
+  it('varre reservas vencidas de outros pedidos em vez de acumular', async () => {
+    const storage = storageFalso();
+    montarJanela(storage);
+    storage._map.set('autoprint:antigo', String(Date.now() - 60 * 60 * 1000));
+    storage._map.set('nao-e-nosso', 'preservar');
+    await claimAutoPrint('pedido-1');
+    expect(storage._map.has('autoprint:antigo')).toBe(false);
+    expect(storage._map.get('nao-e-nosso')).toBe('preservar');
+  });
+
+  it('com localStorage bloqueado, imprime: cupom repetido incomoda, pedido perdido custa', async () => {
+    montarJanela(storageFalso(true));
+    expect(await claimAutoPrint('pedido-1')).toBe(true);
+    expect(await claimAutoPrint('pedido-1')).toBe(true);
+  });
+
+  it('sem id de pedido não reserva nada', async () => {
+    montarJanela(storageFalso());
+    expect(await claimAutoPrint('')).toBe(true);
   });
 });
 

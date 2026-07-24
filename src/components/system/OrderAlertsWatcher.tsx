@@ -6,7 +6,8 @@ import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc } from '@
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
-import { warmupQz, type PrinterSize } from '@/lib/qz-print';
+import { warmupQz } from '@/lib/qz-print';
+import { claimAutoPrint, resolvePrintMode } from '@/lib/receipt-print';
 import { playNewOrderBeep, playOrderSound6s } from '@/lib/order-sound';
 import { can } from '@/lib/pdv-permissions';
 
@@ -92,11 +93,7 @@ export function OrderAlertsWatcher() {
     );
 
     if (pendingNewOnes.length > 0) {
-      const isManualPrint = !!((storeProfile as any)?.general?.manualPrint || (storeProfile as any)?.manualPrint);
-      // printMode: 'auto_silent' | 'auto_sound' | 'manual'. Deriva do legado
-      // manualPrint quando o perfil ainda não tem o campo novo.
-      const printMode = (storeProfile as any)?.general?.printMode || (storeProfile as any)?.printMode
-        || (isManualPrint ? 'manual' : 'auto_silent');
+      const printMode = resolvePrintMode(storeProfile);
       if (printMode === 'manual') {
         playNewOrderBeep();
       } else if (printMode === 'auto_sound') {
@@ -113,14 +110,20 @@ export function OrderAlertsWatcher() {
       // Só imprime automaticamente onde há impressão silenciosa de verdade (QZ Tray
       // nesta máquina). Sem QZ, o fallback é no-op: um PC de monitoramento sem
       // impressora NÃO abre o modal do navegador a cada pedido.
-      if (typeof window !== 'undefined' && !isManualPrint) {
-        const printerSize = (((storeProfile as any)?.general?.printerSize || (storeProfile as any)?.printerSize) === '58mm' ? '58mm' : '80mm') as PrinterSize;
+      //
+      // A reserva (claimAutoPrint) é o que impede o cupom dobrado quando o PDV e
+      // a Retaguarda estão abertos em duas abas do mesmo PC: este watcher vive no
+      // layout compartilhado, então as duas abas veem o mesmo pedido chegar.
+      if (typeof window !== 'undefined' && printMode !== 'manual') {
         pendingNewOnes.forEach((ord: any, index: number) => {
-          setTimeout(() => {
+          setTimeout(async () => {
+            if (!(await claimAutoPrint(ord.id))) {
+              console.info('[QZ] pedido já reservado por outra aba desta máquina → não reimprime');
+              return;
+            }
             printOrderReceipt({
               order: ord,
               storeInfo: storeProfile,
-              printerSize,
               fallback: () => console.info('[QZ] sem impressão silenciosa nesta máquina → pedido NÃO impresso automaticamente (sem modal). Use os botões manuais se precisar.'),
             });
           }, index * 2000);
@@ -144,8 +147,7 @@ export function OrderAlertsWatcher() {
     const newOnes = (encomendasRaw as any[]).filter((e) => !seenEncomendaIdsRef.current!.has(e.id));
     if (newOnes.length > 0) {
       // Encomenda nunca fica muda: não há impressão como alternativa.
-      const printMode = (storeProfile as any)?.general?.printMode || (storeProfile as any)?.printMode || 'auto_silent';
-      if (printMode === 'auto_sound') playOrderSound6s(); else playNewOrderBeep();
+      if (resolvePrintMode(storeProfile) === 'auto_sound') playOrderSound6s(); else playNewOrderBeep();
       toast({ title: 'Nova encomenda recebida!', description: `${newOnes.length} encomenda(s) aguardando confirmação.` });
       try {
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {

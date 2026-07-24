@@ -12,6 +12,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
+import { resolvePrintMode } from '@/lib/receipt-print';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { getPhoneVariants, normalizeCreditPhone, isCreditEnabled } from '@/lib/customer-credit';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
@@ -152,7 +153,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // as mesas estavam ocupadas no momento da auto-atribuição).
   const ordersSemMesa = activeOrders.filter(o => !o.tableNumber);
   // Modo manual = sem impressão automática (o operador imprime ao aceitar).
-  const isManualPrint = !!(storeInfo?.general?.manualPrint || storeInfo?.manualPrint);
+  const isManualPrint = resolvePrintMode(storeInfo) === 'manual';
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId), [ownerId, user]);
 
