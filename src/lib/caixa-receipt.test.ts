@@ -34,7 +34,7 @@ describe('comprovante de abertura', () => {
   it('traz sessão, saldo inicial e o papel da loja', () => {
     expect(html).toContain('★ ABERTURA DE CAIXA ★');
     expect(html).toContain('<span class="bold">7</span>');
-    expect(html).toContain('R$ 150.00');
+    expect(html).toContain('R$ 150,00');
     expect(html).toContain('@page { size:80mm auto; margin:0; }');
   });
 });
@@ -47,7 +47,7 @@ describe('comprovante de operação', () => {
     });
     expect(html).toContain('▼ SANGRIA DE CAIXA ▼');
     expect(html).toContain('(−) Valor Retirado');
-    expect(html).toContain('R$ 80.00');
+    expect(html).toContain('R$ 80,00');
     expect(html).toContain('DINHEIRO');
   });
 
@@ -75,9 +75,9 @@ describe('comprovante de fechamento', () => {
     expect(html).toContain('FECHAMENTO DE CAIXA');
     expect(html).toContain('Sessão: 7');
     expect(html).toContain('(=) VALOR ESPERADO');
-    expect(html).toContain('R$ 340.00');
+    expect(html).toContain('R$ 340,00');
     // Sangria entra em módulo: no cupom é sempre uma saída positiva.
-    expect(html).toContain('<span>(-) Sangrias (Retirada)</span><span style="color: #000;">R$ 80.00</span>');
+    expect(html).toContain('<span>(-) Sangrias (Retirada)</span><span style="color: #000;">R$ 80,00</span>');
   });
 
   it('esconde os blocos que não têm o que mostrar', () => {
@@ -109,7 +109,7 @@ describe('comprovante de fechamento', () => {
     expect(html).toContain('<td>Zé</td>');
     expect(html).toContain('Vendas canceladas (2)');
     // Sangria listada sai positiva, como o total.
-    expect(html).toContain('<td class="r">R$ 80.00</td>');
+    expect(html).toContain('<td class="r">R$ 80,00</td>');
   });
 
   it('sobra e quebra na conferência da gaveta', () => {

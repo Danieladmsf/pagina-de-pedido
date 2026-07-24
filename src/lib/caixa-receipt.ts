@@ -12,6 +12,7 @@
  */
 
 import {
+  brl,
   buildReceiptDocument,
   esc,
   printReceipt,
@@ -41,10 +42,6 @@ const CAIXA_CSS = `
 
 const SEP = '================================';
 const SEP_DASH = '--------------------------------';
-
-function brl(n: number): string {
-  return `R$ ${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
-}
 
 function nomeDaLoja(storeInfo: any): string {
   return storeInfo?.general?.name || storeInfo?.storeName || 'Loja';

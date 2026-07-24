@@ -8,16 +8,13 @@
  */
 
 import {
+  brl,
   buildReceiptDocument,
   printReceipt,
   resolvePrinterSize,
   thermalTokens,
   esc,
 } from './receipt-print';
-
-function money(n: number): string {
-  return (Number.isFinite(n) ? n : 0).toFixed(2);
-}
 
 /** Monta a string HTML completa do cupom do pedido. */
 export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = false): string {
@@ -79,12 +76,12 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
       const pricePerKg = Number(item.pricePerKg) || (grams > 0 ? (Number(item.unitPrice) || 0) * 1000 / grams : 0);
       const qtyLabel = isWeight ? `${grams}g` : esc(item.quantity);
       const weightLine = isWeight
-        ? `<div class="wline">${grams} g${pricePerKg ? ` &times; R$ ${money(pricePerKg)}/kg` : ''}</div>`
+        ? `<div class="wline">${grams} g${pricePerKg ? ` &times; ${brl(pricePerKg)}/kg` : ''}</div>`
         : '';
       const addonList: any[] = item.addons || [];
       const addonHtml = (a: any) =>
         `<div class="addon">&gt; ${esc(a.name)} ${
-          !isKitchen && a.price ? `(+R$ ${money(a.price)})` : ''
+          !isKitchen && a.price ? `(+${brl(a.price)})` : ''
         }</div>`;
       // 80mm (intacto): lista plana dos adicionais.
       const addons = addonList.map(addonHtml).join('');
@@ -108,7 +105,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
       })();
       const notes = item.notes ? `<div class="obs">Obs: ${esc(item.notes)}</div>` : '';
       const valueCell = !isKitchen
-        ? `<td class="val">R$ ${money((item.unitPrice || 0) * (item.quantity || 0))}</td>`
+        ? `<td class="val">${brl((item.unitPrice || 0) * (item.quantity || 0))}</td>`
         : '';
       // 58mm: detalhes (título do grupo + adicionais + obs) numa linha de largura
       // total começando na margem esquerda — aproveita o espaço e não quebra
@@ -136,24 +133,24 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     ? ''
     : `
       <div class="sec mb">
-        <div class="row"><span>Subtotal</span><span>R$ ${money(subtotal)}</span></div>
+        <div class="row"><span>Subtotal</span><span>${brl(subtotal)}</span></div>
         ${
           order?.orderType === 'delivery' && order?.payDeliveryToMotoboy !== true
             ? `<div class="row"><span>Taxa de entrega</span><span>${
-                order?.deliveryFee > 0 ? `R$ ${money(order.deliveryFee)}` : 'Grátis'
+                order?.deliveryFee > 0 ? brl(order.deliveryFee) : 'Grátis'
               }</span></div>`
             : ''
         }
-        ${order?.discount > 0 ? `<div class="row"><span>Desconto</span><span>- R$ ${money(order.discount)}</span></div>` : ''}
-        ${order?.surcharge > 0 ? `<div class="row"><span>Acréscimo</span><span>+ R$ ${money(order.surcharge)}</span></div>` : ''}
+        ${order?.discount > 0 ? `<div class="row"><span>Desconto</span><span>- ${brl(order.discount)}</span></div>` : ''}
+        ${order?.surcharge > 0 ? `<div class="row"><span>Acréscimo</span><span>+ ${brl(order.surcharge)}</span></div>` : ''}
         <div class="t-dash mt2 pt2">
-          <div class="row total-row"><span>TOTAL</span><span>R$ ${money(order?.totalAmount || 0)}</span></div>
+          <div class="row total-row"><span>TOTAL</span><span>${brl(order?.totalAmount || 0)}</span></div>
         </div>
         ${
           changeFor > 0 && changeAmount > 0
             ? `<div class="pay sec">
-                 <div class="row"><span>PAGAMENTO</span><span>R$ ${money(changeFor)}</span></div>
-                 <div class="row"><span>TROCO</span><span>R$ ${money(changeAmount)}</span></div>
+                 <div class="row"><span>PAGAMENTO</span><span>${brl(changeFor)}</span></div>
+                 <div class="row"><span>TROCO</span><span>${brl(changeAmount)}</span></div>
                </div>`
             : ''
         }

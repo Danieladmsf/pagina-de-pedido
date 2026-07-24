@@ -6,6 +6,7 @@
 // Ver [[qz-tray-silent-printing]].
 
 import {
+  brl,
   buildReceiptDocument,
   printReceipt,
   resolvePrinterSize,
@@ -15,9 +16,6 @@ import {
 import type { Encomenda } from './types';
 import { ENCOMENDA_STATUS_LABEL } from './types';
 
-function money(n: number): string {
-  return (Number.isFinite(n) ? n : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 function dateBR(iso?: string): string {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
@@ -30,7 +28,7 @@ export function buildEncomendaReceiptHtml(enc: Encomenda, storeInfo: any): strin
 
   const lineRows = (title: string, items: any[]) => (items && items.length) ? `
     <div class="sec">${esc(title)}</div>
-    ${items.map((l) => `<div class="row"><span>${l.qty}x ${esc(l.name)}</span><span>${money(l.total)}</span></div>`).join('')}
+    ${items.map((l) => `<div class="row"><span>${l.qty}x ${esc(l.name)}</span><span>${brl(l.total)}</span></div>`).join('')}
   ` : '';
 
   const boloBlock = enc.bolo ? `
@@ -40,7 +38,7 @@ export function buildEncomendaReceiptHtml(enc: Encomenda, storeInfo: any): strin
     <div>Recheio: ${esc(enc.bolo.filling)}</div>
     <div>Cobertura: ${esc(enc.bolo.cover)}</div>
     ${enc.bolo.plate?.on ? `<div>Plaquinha: ${esc([enc.bolo.plate.name, enc.bolo.plate.age && `${enc.bolo.plate.age} anos`, enc.bolo.plate.theme].filter(Boolean).join(', ') || 'sim')}</div>` : ''}
-    <div class="row"><span>Subtotal bolo</span><span>${money(enc.bolo.total)}</span></div>
+    <div class="row"><span>Subtotal bolo</span><span>${brl(enc.bolo.total)}</span></div>
   ` : '';
 
   const css = `
@@ -68,7 +66,7 @@ export function buildEncomendaReceiptHtml(enc: Encomenda, storeInfo: any): strin
       [enc.delivery.street, enc.delivery.number, enc.delivery.complement].filter(Boolean).length
         ? `<div>End: ${esc([enc.delivery.street, enc.delivery.number, enc.delivery.complement].filter(Boolean).join(', '))}</div>` : '',
       enc.delivery.neighborhood ? `<div>Bairro: ${esc([enc.delivery.neighborhood, enc.delivery.city].filter(Boolean).join(' - '))}</div>` : '',
-      `<div>Taxa: ${enc.delivery.feeStatus === 'a_combinar' ? 'a combinar' : money(enc.deliveryFee || 0)}</div>`,
+      `<div>Taxa: ${enc.delivery.feeStatus === 'a_combinar' ? 'a combinar' : brl(enc.deliveryFee || 0)}</div>`,
     ].join('') : ''}
     <div class="hr"></div>
     ${boloBlock}
@@ -76,9 +74,9 @@ export function buildEncomendaReceiptHtml(enc: Encomenda, storeInfo: any): strin
     ${lineRows('Tortas', enc.tortasItems || [])}
     ${lineRows('Docinhos', enc.docinhosItems || [])}
     <div class="hr"></div>
-    <div class="row big"><span>TOTAL</span><span>${money(enc.total)}</span></div>
-    <div class="row"><span>Sinal (${esc(enc.sinalPercent)}%)</span><span>${money(enc.sinal)}</span></div>
-    <div class="row"><span>Saldo na entrega</span><span>${money(enc.saldo)}</span></div>
+    <div class="row big"><span>TOTAL</span><span>${brl(enc.total)}</span></div>
+    <div class="row"><span>Sinal (${esc(enc.sinalPercent)}%)</span><span>${brl(enc.sinal)}</span></div>
+    <div class="row"><span>Saldo na entrega</span><span>${brl(enc.saldo)}</span></div>
     ${enc.orderNotes ? `<div class="hr"></div><div>Obs: ${esc(enc.orderNotes)}</div>` : ''}
     <div class="hr"></div>
     <div class="center">Status: ${esc(ENCOMENDA_STATUS_LABEL[enc.status] || enc.status)}</div>

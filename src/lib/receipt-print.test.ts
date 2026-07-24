@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { baseReceiptCss, buildReceiptDocument, claimAutoPrint, resolvePrintMode, resolvePrinterSize } from './receipt-print';
+import { baseReceiptCss, brl, buildReceiptDocument, claimAutoPrint, resolvePrintMode, resolvePrinterSize } from './receipt-print';
 import { buildOrderReceiptHtml } from './order-receipt-html';
 import { buildEncomendaReceiptHtml } from './encomendas/receipt';
 
@@ -52,6 +52,29 @@ describe('resolvePrinterSize', () => {
     expect(resolvePrinterSize(loja80)).toBe('80mm');
     expect(resolvePrinterSize(undefined)).toBe('80mm');
     expect(resolvePrinterSize({ general: {} })).toBe('80mm');
+  });
+});
+
+describe('brl', () => {
+  it('escreve dinheiro em português: vírgula no centavo e ponto no milhar', () => {
+    expect(brl(150)).toBe('R$ 150,00');
+    expect(brl(1500)).toBe('R$ 1.500,00');
+    expect(brl(12345.6)).toBe('R$ 12.345,60');
+    expect(brl(0)).toBe('R$ 0,00');
+  });
+
+  it('usa espaço comum, não o não-quebrável do ICU', () => {
+    // O cupom é monoespaçado e passa por dois motores (QZ e navegador);
+    // espaço normal é o previsível nos dois.
+    const NBSP = String.fromCharCode(160);
+    expect(brl(150).charCodeAt(2)).toBe(32);
+    expect(brl(12345.6)).not.toContain(NBSP);
+  });
+
+  it('valor quebrado não vira "R$ NaN" no cupom', () => {
+    expect(brl(NaN)).toBe('R$ 0,00');
+    expect(brl(undefined as any)).toBe('R$ 0,00');
+    expect(brl(Infinity)).toBe('R$ 0,00');
   });
 });
 
@@ -196,6 +219,19 @@ describe('os três cupons saem da mesma base', () => {
       expect(html).toContain('font-size:13px');
     }
   });
+
+  it('todos escrevem dinheiro do mesmo jeito', () => {
+    // Antes cada cupom formatava por conta própria: pedido e caixa saíam com
+    // PONTO decimal e a encomenda com vírgula. O caixa é coberto no seu próprio
+    // arquivo de teste; aqui ficam pedido e encomenda.
+    const { pedido: cupomPedido, encomenda: cupomEncomenda } = cupons(loja80);
+    expect(cupomPedido).toContain('R$ 35,00');
+    expect(cupomEncomenda).toContain('R$ 200,00');
+    for (const html of [cupomPedido, cupomEncomenda]) {
+      // Nenhum valor com ponto decimal sobrando (o ponto só vale pro milhar).
+      expect(html).not.toMatch(/R\$ \d+\.\d\d(?!\d)/);
+    }
+  });
 });
 
 describe('cupom do pedido', () => {
@@ -205,7 +241,7 @@ describe('cupom do pedido', () => {
     expect(html).toContain('Rua das Flores, 10');
     expect(html).toContain('*** ENTREGA ***');
     expect(html).toContain('Pedido: #abc12');
-    expect(html).toContain('35.00');
+    expect(html).toContain('R$ 35,00');
   });
 
   it('na via da cozinha some o dinheiro e aparece o cabeçalho de produção', () => {

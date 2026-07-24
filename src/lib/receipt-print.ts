@@ -35,6 +35,23 @@ export function esc(v: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Dinheiro no cupom, em português: `R$ 1.500,00`.
+ *
+ * Fonte única dos três cupons. Antes cada um formatava do seu jeito e o da
+ * encomenda era o único certo: pedido e caixa saíam com PONTO decimal
+ * (`R$ 150.00`, formato americano) e sem separador de milhar.
+ *
+ * O `replace` troca o espaço não-quebrável que o ICU põe entre "R$" e o número
+ * por um espaço comum — o cupom é monoespaçado e impresso por dois motores
+ * diferentes (QZ e navegador); espaço normal é previsível nos dois.
+ */
+export function brl(n: number): string {
+  return (Number.isFinite(n) ? n : 0)
+    .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    .replace(/\s/g, ' ');
+}
+
 /** Tamanho de papel da loja (58mm ou 80mm). Aceita o formato novo e o legado. */
 export function resolvePrinterSize(storeInfo: any): PrinterSize {
   return (storeInfo?.general?.printerSize || storeInfo?.printerSize) === '58mm' ? '58mm' : '80mm';
