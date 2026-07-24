@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Plus, X, Minus, ShoppingCart, Tag } from 'lucide-react';
+import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Plus, X, Minus, ShoppingCart, Tag, Pencil } from 'lucide-react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -78,6 +78,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const [editSearch, setEditSearch] = useState<string>('');
   const [selectedItemForDialog, setSelectedItemForDialog] = useState<any | null>(null);
   const [isSavingItems, setIsSavingItems] = useState(false);
+  // Edição manual do frete do pedido selecionado
+  const [editingFee, setEditingFee] = useState(false);
+  const [feeDraft, setFeeDraft] = useState('');
+  useEffect(() => { setEditingFee(false); }, [selectedOrderId]);
   // Regra fixa: pagamento a Prazo ⇒ a taxa de entrega é paga na entrega, direto
   // ao motoboy — sai da cobrança automaticamente, sem perguntar nada.
   // payDeliveryToMotoboy === true no pedido = frete já nasceu fora do total (cardápio).
@@ -314,6 +318,27 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       toast({ variant: 'destructive', title: isStock ? 'Estoque insuficiente' : 'Erro', description: err.message || 'Falha ao atualizar itens.' });
     } finally {
       setIsSavingItems(false);
+    }
+  };
+
+  // Editar manualmente o valor do frete. Ajusta o total quando o frete está DENTRO
+  // dele (payDeliveryToMotoboy=false); se o frete está fora do total, o total não muda.
+  const handleSaveFee = async () => {
+    if (!selectedOrder || !db) return;
+    if (!can(permissions, 'actions.delivery.editarItens')) { showPermissionRevokedToast(); return; }
+    const newFee = Math.max(0, Number(String(feeDraft).replace(',', '.')) || 0);
+    const feeInTotal = selectedOrder.payDeliveryToMotoboy !== true;
+    const oldFee = Number(selectedOrder.deliveryFee) || 0;
+    const newTotal = feeInTotal
+      ? (Number(selectedOrder.totalAmount) || 0) - oldFee + newFee
+      : (Number(selectedOrder.totalAmount) || 0);
+    try {
+      await updateDoc(doc(db, 'orders', selectedOrder.id), { deliveryFee: newFee, totalAmount: newTotal });
+      setEditingFee(false);
+      toast({ title: 'Frete atualizado', description: `Novo frete: R$ ${newFee.toFixed(2)}` });
+    } catch (err: any) {
+      console.error('Erro ao salvar frete:', err);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não consegui salvar o frete.' });
     }
   };
 
@@ -718,10 +743,30 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 {selectedOrder.paymentMethod === 'conta_casa' ? 'Prazo' : (selectedOrder.paymentMethod || 'Não definido')}
               </div>
               {selectedOrder.orderType === 'delivery' && (
-                <div className="border border-teal-200 bg-teal-50 px-3 py-1 rounded text-teal-700 font-bold whitespace-nowrap">
-                  🛵 Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
-                  {selectedOrder.distanceKm && <span className="text-[10px] font-normal ml-1">({selectedOrder.distanceKm}km)</span>}
-                  {selectedOrder.payDeliveryToMotoboy === true && <span className="text-[10px] font-normal ml-1">· pago ao motoboy</span>}
+                <div className="border border-teal-200 bg-teal-50 px-3 py-1 rounded text-teal-700 font-bold whitespace-nowrap flex items-center gap-1">
+                  {editingFee ? (
+                    <>
+                      <span>🛵 Frete: R$</span>
+                      <input autoFocus value={feeDraft} inputMode="decimal"
+                        onChange={(e) => setFeeDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveFee(); if (e.key === 'Escape') setEditingFee(false); }}
+                        className="w-16 rounded border border-teal-300 bg-white px-1 py-0.5 text-teal-800" />
+                      <button type="button" onClick={handleSaveFee} className="text-green-600 hover:text-green-700" title="Salvar frete"><CheckCircle2 className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => setEditingFee(false)} className="text-slate-400 hover:text-slate-600" title="Cancelar"><X className="h-3.5 w-3.5" /></button>
+                    </>
+                  ) : (
+                    <>
+                      🛵 Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
+                      {selectedOrder.distanceKm && <span className="text-[10px] font-normal ml-1">({selectedOrder.distanceKm}km)</span>}
+                      {selectedOrder.payDeliveryToMotoboy === true && <span className="text-[10px] font-normal ml-1">· pago ao motoboy</span>}
+                      {!isReadOnlyHistorico && selectedOrder.status !== 'delivered' && selectedOrder.status !== 'canceled' && can(permissions, 'actions.delivery.editarItens') && (
+                        <button type="button" title="Editar frete" className="ml-1 text-teal-600 hover:text-teal-900"
+                          onClick={() => { setFeeDraft(selectedOrder.deliveryFee != null ? String(selectedOrder.deliveryFee) : ''); setEditingFee(true); }}>
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
