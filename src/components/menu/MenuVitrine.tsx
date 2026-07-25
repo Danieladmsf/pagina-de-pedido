@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { Flame, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { brl, cn } from '@/lib/utils';
 import {
   Carousel,
   CarouselContent,
@@ -152,11 +152,11 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
                     </div>
                     <div className="flex flex-col items-end">
                       {originalPrice > price && (
-                        <span className="text-xs font-bold text-white/70 line-through">R$ {originalPrice.toFixed(2)}</span>
+                        <span className="text-xs font-bold text-white/70 line-through">{brl(originalPrice)}</span>
                       )}
                       {price > 0 && (
                         <span className="rounded-xl bg-accent px-3 py-1.5 text-base font-black text-white shadow-lg md:text-lg">
-                          R$ {price.toFixed(2)}
+                          {brl(price)}
                         </span>
                       )}
                     </div>

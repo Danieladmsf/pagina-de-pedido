@@ -25,7 +25,7 @@ import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
 import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
 import { WeightInput } from '@/components/admin/WeightInput';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
-import { neighborhoodMatchesQuery } from '@/lib/utils';
+import { brl, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
@@ -525,7 +525,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 
-      toast({ title: '✅ Pedido finalizado!', description: `Venda R$ ${totalCobrado.toFixed(2)} registrada em ${splitsToProcess.length} parte(s).` });
+      toast({ title: '✅ Pedido finalizado!', description: `Venda ${brl(totalCobrado)} registrada em ${splitsToProcess.length} parte(s).` });
       
       // Cupom como HTML nativo via QZ (mesmo caminho da sangria), com fallback
       // para impressão pelo navegador (iframe) quando o QZ não estiver presente.
@@ -625,11 +625,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             <div className="mt-auto pt-1 flex items-center gap-1.5 flex-wrap">
                {promoItemsMap[item.id] ? (
                  <>
-                   <span className="text-[10px] text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
-                   <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</Badge>
+                   <span className="text-[10px] text-muted-foreground line-through">{brl(item.price)}</span>
+                   <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">{brl(promoItemsMap[item.id].promoPrice)}{isWeightItem(item) ? '/kg' : ''}</Badge>
                  </>
                ) : (
-                 <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</Badge>
+                 <Badge variant="destructive" className="text-[10px] bg-red-500 hover:bg-red-600 font-bold">{brl(item.price)}{isWeightItem(item) ? '/kg' : ''}</Badge>
                )}
             </div>
           </div>
@@ -809,7 +809,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
                     <span>📝 Prazo ativo</span>
                     {limit > 0 && (
-                      <span className="font-semibold text-amber-600">· disponível R$ {(limit - balance).toFixed(2)} de R$ {limit.toFixed(2)}</span>
+                      <span className="font-semibold text-amber-600">· disponível {brl((limit - balance))} de {brl(limit)}</span>
                     )}
                   </div>
                 );
@@ -902,7 +902,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                                 }}
                               >
                                 <span className="font-medium text-slate-700 truncate">{rule.keyword}</span>
-                                <span className="text-[10px] text-blue-600 font-bold shrink-0">R$ {Number(rule.fee).toFixed(2)}</span>
+                                <span className="text-[10px] text-blue-600 font-bold shrink-0">{brl(Number(rule.fee))}</span>
                               </button>
                             ))}
                           </div>
@@ -950,7 +950,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                       </div>
                     ) : (
                       <>
-                        <p className="text-[10px] text-muted-foreground">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground">{brl((item.unitPrice || item.price))}</p>
                         {item.addons && item.addons.length > 0 && (
                           <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
                             {item.addons.map((a: any) => a.name).join(', ')}
@@ -970,7 +970,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                     <span className="font-semibold text-xs">R$ {((item.unitPrice || item.price) * item.quantity).toFixed(2)}</span>
+                     <span className="font-semibold text-xs">{brl(((item.unitPrice || item.price) * item.quantity))}</span>
                      <Button variant="ghost" size="icon" className="h-5 w-5 text-red-400 hover:text-red-500" onClick={() => removeFromCart(item.cartItemId || item.id)}>
                         <X className="h-3 w-3" />
                      </Button>
@@ -986,7 +986,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             <div className="space-y-1 pb-2 border-b">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500">Subtotal</span>
-                <span className="font-semibold text-slate-700">R$ {cartTotal.toFixed(2)}</span>
+                <span className="font-semibold text-slate-700">{brl(cartTotal)}</span>
               </div>
               {orderType === 'delivery' && (
                 <div className="flex justify-between items-center text-xs">
@@ -1014,7 +1014,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
             
             <div className="flex justify-between items-center text-sm">
               <span className="font-semibold text-slate-600">Total</span>
-              <span className="font-black text-red-500">R$ {finalTotal.toFixed(2)}</span>
+              <span className="font-black text-red-500">{brl(finalTotal)}</span>
             </div>
             {canFinalizarVenda && (
               <Button className="w-full h-8 bg-green-500 hover:bg-green-600 text-sm font-bold" onClick={handleCheckout}>

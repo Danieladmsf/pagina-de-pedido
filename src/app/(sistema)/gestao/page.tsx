@@ -33,7 +33,7 @@ import { ComboModal } from '@/components/admin/ComboModal';
 import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
-import { removeAccents } from '@/lib/utils';
+import { brl, removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
@@ -930,7 +930,7 @@ export default function GestaoPage() {
                             onClick={() => {
                               setQuickPriceEdit({ id: item.id, name: item.name, price: item.price || 0 });
                             }}
-                          >R$ {(item.price || 0).toFixed(2)}{item.saleUnit === 'kg' ? '/kg' : ''}</TableCell>
+                          >{brl((item.price || 0))}{item.saleUnit === 'kg' ? '/kg' : ''}</TableCell>
                           <TableCell className="text-center">
                             {item.saleUnit === 'kg' ? (
                               <span className="text-xs text-slate-400">por kg</span>
@@ -1067,7 +1067,7 @@ export default function GestaoPage() {
                   }
                   try {
                     await updateDoc(doc(db, quickPriceEdit.collection || 'menuItems', quickPriceEdit.id), { price: newPrice });
-                    toast({ title: 'Preço atualizado!', description: `${quickPriceEdit.name}: R$ ${newPrice.toFixed(2)}` });
+                    toast({ title: 'Preço atualizado!', description: `${quickPriceEdit.name}: ${brl(newPrice)}` });
                     setQuickPriceEdit(null);
                   } catch (err: any) {
                     toast({ variant: 'destructive', title: 'Erro', description: err?.message });
@@ -2236,7 +2236,7 @@ export default function GestaoPage() {
                             className="text-primary font-semibold cursor-pointer hover:bg-primary/5 hover:underline transition-colors rounded"
                             title="Clique para editar preço"
                             onClick={() => setQuickPriceEdit({ id: addon.id, name: addon.name, price: addon.price || 0, collection: 'addons' })}
-                          >R$ {(addon.price || 0).toFixed(2)}</TableCell>
+                          >{brl((addon.price || 0))}</TableCell>
                           <TableCell className="text-right pr-6">
                             {isContainerView ? (
                               <div className="flex items-center justify-end gap-2">

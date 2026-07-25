@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
-import { normalizeSearch, neighborhoodMatchesQuery, detectNeighborhood } from '@/lib/utils';
+import { brl, detectNeighborhood, neighborhoodMatchesQuery, normalizeSearch } from '@/lib/utils';
 import { getManagedStock, getStockDemand } from '@/lib/inventory';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
@@ -979,7 +979,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <div key={item.cartId} className="flex flex-col gap-2 pb-4 border-b border-muted last:border-0">
                     <div className="flex justify-between items-start">
                       <h4 className="font-bold">{item.name}</h4>
-                      <span className="font-semibold text-primary">R$ {(unitPrice * item.quantity).toFixed(2)}</span>
+                      <span className="font-semibold text-primary">{brl((unitPrice * item.quantity))}</span>
                     </div>
                     {addons.length > 0 && (
                       <div className="text-xs text-muted-foreground pl-2 space-y-2">
@@ -993,7 +993,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                           <div key={groupName} className="space-y-0.5">
                             <p className="text-[10px] font-bold uppercase tracking-wide text-foreground/60">{groupName}</p>
                             {groupAddons.map((a, idx) => (
-                              <div key={a.id || idx} className="pl-1">+ {a.name}{a.price > 0 ? ` (R$ ${a.price.toFixed(2)})` : ''}</div>
+                              <div key={a.id || idx} className="pl-1">+ {a.name}{a.price > 0 ? ` (${brl(a.price)})` : ''}</div>
                             ))}
                           </div>
                         ))}
@@ -1264,7 +1264,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                           <Navigation className="h-3.5 w-3.5" />
                           {distanceInfo.distanceText} <span className="opacity-70">· {distanceInfo.durationText}</span>
                         </span>
-                        <span className="font-bold text-green-800">R$ {dynamicFee?.toFixed(2)}</span>
+                        <span className="font-bold text-green-800">{brl(dynamicFee)}</span>
                       </div>
                     </div>
                   )}
@@ -1294,7 +1294,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                     <div className="bg-blue-50 p-2.5 rounded-lg border border-blue-200 flex items-start gap-1.5">
                       <span className="text-base leading-none">🛵</span>
                       <p className="text-[11px] text-blue-800 leading-tight">
-                        <b>Atenção:</b> a taxa de entrega de <b>R$ {baseDeliveryFee.toFixed(2)}</b> não entra no Prazo — você paga direto ao motoboy na hora da entrega. Na sua conta será lançado somente o valor dos itens.
+                        <b>Atenção:</b> a taxa de entrega de <b>{brl(baseDeliveryFee)}</b> não entra no Prazo — você paga direto ao motoboy na hora da entrega. Na sua conta será lançado somente o valor dos itens.
                       </p>
                     </div>
                   )}
@@ -1321,8 +1321,8 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                       {Number(cashChange) > 0 && (
                         <div className={`text-xs font-bold ${Number(cashChange) >= grandTotal ? 'text-green-600' : 'text-red-500'}`}>
                           {Number(cashChange) >= grandTotal
-                            ? `Troco: R$ ${(Number(cashChange) - grandTotal).toFixed(2)}`
-                            : `Falta R$ ${(grandTotal - Number(cashChange)).toFixed(2)}`}
+                            ? `Troco: ${brl((Number(cashChange) - grandTotal))}`
+                            : `Falta ${brl((grandTotal - Number(cashChange)))}`}
                         </div>
                       )}
                     </div>
@@ -1398,23 +1398,23 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
               <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span>R$ {totalPrice.toFixed(2)}</span>
+                  <span>{brl(totalPrice)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>Taxa de entrega {distanceInfo ? `(${distanceInfo.distanceText})` : ''}</span>
                   {isFreeDelivery ? (
                     <span className="text-green-600 font-bold">Grátis</span>
                   ) : prazoFeeToMotoboy ? (
-                    <span className="text-blue-600 font-bold">R$ {baseDeliveryFee.toFixed(2)} ao motoboy</span>
+                    <span className="text-blue-600 font-bold">{brl(baseDeliveryFee)} ao motoboy</span>
                   ) : (
-                    <span>R$ {appliedDeliveryFee.toFixed(2)}</span>
+                    <span>{brl(appliedDeliveryFee)}</span>
                   )}
                 </div>
               </div>
             )}
             <div className="flex justify-between items-center">
               <span className="font-medium text-sm">Total</span>
-              <span className="font-bold text-xl text-primary">R$ {grandTotal.toFixed(2)}</span>
+              <span className="font-bold text-xl text-primary">{brl(grandTotal)}</span>
             </div>
 
             {step === 'cart' ? (

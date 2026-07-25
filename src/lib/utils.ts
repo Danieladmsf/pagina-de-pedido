@@ -14,8 +14,12 @@ export function cn(...inputs: ClassValue[]) {
  * Valor quebrado vira `R$ 0,00` em vez de "R$ NaN" — no papel isso não tem
  * conserto depois de impresso.
  */
-export function brl(n: number): string {
-  return (Number.isFinite(n) ? n : 0)
+export function brl(n: number | null | undefined): string {
+  // Aceita nulo de propósito: campo de dinheiro que ainda não foi preenchido é
+  // comum (frete calculado, saldo sem lançamento) e virava optional chaining em
+  // cada chamada. Aqui vira R$ 0,00, que é o que se quer mostrar.
+  const v = Number(n);
+  return (Number.isFinite(v) ? v : 0)
     .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     .replace(/\s/g, ' ');
 }

@@ -1,4 +1,5 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
+import { brl } from '@/lib/utils';
 
 export type CreditCustomer = {
   id: string;
@@ -15,7 +16,6 @@ export type CreditValidationResult = {
   nextBalance?: number;
 };
 
-const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`;
 
 // creditEnabled explícito (true/false, gravado pela aba Clientes) tem
 // precedência; o legado contaCasa.enabled só vale quando creditEnabled
@@ -192,7 +192,7 @@ function validateCreditData(
       return {
         allowed: false,
         reason: 'past_due',
-        message: `Prazo bloqueado: divida de ${formatMoney(balance)} venceu no dia ${payDay}. Quite o saldo para voltar a comprar a prazo.`,
+        message: `Prazo bloqueado: divida de ${brl(balance)} venceu no dia ${payDay}. Quite o saldo para voltar a comprar a prazo.`,
         customer,
         balance,
         limit,
@@ -203,11 +203,11 @@ function validateCreditData(
 
   const limitReached = safeAmount > 0 ? nextBalance > limit : effectiveBalance >= limit;
   if (limit > 0 && limitReached) {
-    const pendingNote = pendingAmount > 0 ? ` (inclui ${formatMoney(pendingAmount)} de pedidos em andamento)` : '';
+    const pendingNote = pendingAmount > 0 ? ` (inclui ${brl(pendingAmount)} de pedidos em andamento)` : '';
     return {
       allowed: false,
       reason: 'over_limit',
-      message: `Limite de prazo excedido. Saldo atual ${formatMoney(effectiveBalance)}${pendingNote} + compra ${formatMoney(safeAmount)} passa do limite de ${formatMoney(limit)}.`,
+      message: `Limite de prazo excedido. Saldo atual ${brl(effectiveBalance)}${pendingNote} + compra ${brl(safeAmount)} passa do limite de ${brl(limit)}.`,
       customer,
       balance,
       limit,

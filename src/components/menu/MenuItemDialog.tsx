@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProductGallery } from '@/components/menu/ProductGallery';
 import { Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { brl } from '@/lib/utils';
 
 const checkCartStock = (
   projectedCart: any[],
@@ -338,7 +339,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                         </div>
                       </div>
                       {addon.price > 0 && (
-                        <span className="shrink-0 text-[11px] font-bold text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
+                        <span className="shrink-0 text-[11px] font-bold text-emerald-600">+ {brl(addon.price)}</span>
                       )}
                     </label>
                   );
@@ -392,7 +393,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                             </span>
                           )}
                           {usesPrice && addon.price > 0 && (
-                            <span className="mt-0.5 block text-[11px] font-bold text-emerald-600">+ R$ {addon.price.toFixed(2)}</span>
+                            <span className="mt-0.5 block text-[11px] font-bold text-emerald-600">+ {brl(addon.price)}</span>
                           )}
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
@@ -453,7 +454,7 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
               onClick={handleAdd}
               disabled={!isStoreOpen || !canAddToCart}
             >
-              {isStoreOpen ? (total > 0 ? `Adicionar • R$ ${total.toFixed(2)}` : 'Adicionar') : 'Loja Fechada'}
+              {isStoreOpen ? (total > 0 ? `Adicionar • ${brl(total)}` : 'Adicionar') : 'Loja Fechada'}
             </Button>
           </div>
         </DialogFooter>

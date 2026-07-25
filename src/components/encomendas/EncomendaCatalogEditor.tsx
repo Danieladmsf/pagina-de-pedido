@@ -11,6 +11,7 @@ import { uploadImage } from '@/lib/upload';
 import { applyProductLinks, mergeCatalog, type EncomendaCatalog, type LinkedProduct, type SkuOption } from '@/lib/encomendas/catalog';
 import { revalidateStorePages } from '@/lib/revalidate-store';
 import { Loader2, Save, Plus, Trash2, Upload, ExternalLink, Link2, Unlink, Search } from 'lucide-react';
+import { brl } from '@/lib/utils';
 
 const genId = () => Math.random().toString(36).slice(2, 9);
 const num = (v: string) => Number(String(v).replace(',', '.')) || 0;
@@ -467,7 +468,7 @@ function MenuProductPicker({ products, linkedIds, onPick }: { products: LinkedPr
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{p.name || 'Sem nome'}{linked.has(p.id) && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(já vinculado)</span>}</span>
-                  <span className="block text-xs text-muted-foreground">R$ {(typeof p.price === 'number' ? p.price : 0).toFixed(2).replace('.', ',')}</span>
+                  <span className="block text-xs text-muted-foreground">{brl((typeof p.price === 'number' ? p.price : 0))}</span>
                 </span>
               </button>
             ))}

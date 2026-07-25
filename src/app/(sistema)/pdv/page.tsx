@@ -35,6 +35,7 @@ import {
 } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { hasAnyRetaguardaAccess } from '@/lib/user-permissions';
+import { brl } from '@/lib/utils';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
 // estourar o limite de taxa da w-api numa rajada de pedidos.
@@ -640,14 +641,13 @@ export default function PdvPage() {
 
     const firstName = order.customerName ? order.customerName.split(' ')[0] : 'Cliente';
     const shortId = order.id ? order.id.slice(-6).toUpperCase() : '000000';
-    const totalStr = typeof order.totalAmount === 'number' ? `R$ ${order.totalAmount.toFixed(2).replace('.', ',')}` : 'R$ 0,00';
+    const totalStr = typeof order.totalAmount === 'number' ? `${brl(order.totalAmount)}` : 'R$ 0,00';
     
     let itemsList = '';
     if (order.items && Array.isArray(order.items)) {
       itemsList = order.items.map((item: any) => {
         const itemTotal = (item.unitPrice || 0) * (item.quantity || 1);
-        const itemTotalStr = itemTotal.toFixed(2).replace('.', ',');
-        let line = `${item.quantity}x ${item.name} - R$ ${itemTotalStr}`;
+        let line = `${item.quantity}x ${item.name} - ${brl(itemTotal)}`;
 
         if (item.addons && Array.isArray(item.addons)) {
           item.addons.forEach((addon: any) => {
@@ -677,13 +677,13 @@ export default function PdvPage() {
     }
 
     const subtotalVal = order.subtotal !== undefined ? order.subtotal : ((order.totalAmount || 0) - (order.deliveryFee || 0));
-    const subtotalStr = `R$ ${subtotalVal.toFixed(2).replace('.', ',')}`;
+    const subtotalStr = `${brl(subtotalVal)}`;
     const feeVal = order.deliveryFee || 0;
     // Frete a Prazo não é registrado pela loja (acerto direto cliente→entregador):
     // o resumo não lista valor, só a instrução — e o Total segue sem a taxa.
     const feeStr = feeVal > 0 && order.payDeliveryToMotoboy === true
       ? 'paga direto ao entregador na entrega'
-      : `R$ ${feeVal.toFixed(2).replace('.', ',')}`;
+      : `${brl(feeVal)}`;
 
     const formatPhoneDisplay = (phoneStr: string) => {
       const digits = phoneStr.replace(/\D/g, '');

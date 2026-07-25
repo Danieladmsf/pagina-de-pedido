@@ -10,6 +10,7 @@ import { Plus, Trash2, MapPin, Save, Loader2 } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { brl } from '@/lib/utils';
 
 interface DeliveryZonesTabProps {
   db: any;
@@ -166,11 +167,11 @@ export function DeliveryZonesTab({ db, user, adminRole }: DeliveryZonesTabProps)
             <p className="font-bold text-blue-700 mb-2">📋 Resumo das Faixas:</p>
             {feeRules.sort((a, b) => a.maxKm - b.maxKm).map((rule, i) => (
               <p key={i} className="text-blue-600">
-                • Até <strong>{rule.maxKm} km</strong> → <strong>R$ {rule.fee.toFixed(2)}</strong>
+                • Até <strong>{rule.maxKm} km</strong> → <strong>{brl(rule.fee)}</strong>
               </p>
             ))}
             <p className="text-blue-500 mt-2 italic">
-              Acima de {feeRules[feeRules.length - 1]?.maxKm || 0} km, será cobrado R$ {feeRules[feeRules.length - 1]?.fee.toFixed(2) || '0.00'}.
+              Acima de {feeRules[feeRules.length - 1]?.maxKm || 0} km, será cobrado {brl(feeRules[feeRules.length - 1]?.fee)}.
             </p>
           </div>
         </CardContent>

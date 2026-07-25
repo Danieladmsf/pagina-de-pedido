@@ -18,6 +18,7 @@ import { useCart } from '@/components/providers/CartProvider';
 import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
+import { brl } from '@/lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Aguardando Confirmação',
@@ -426,7 +427,7 @@ export default function MyOrdersPage() {
               </div>
               <div className="text-center py-2">
                 <p className="text-indigo-100 text-[11px]">Saldo Devedor</p>
-                <p className="text-3xl font-black">R$ {(contaCasaInfo.creditBalance || 0).toFixed(2)}</p>
+                <p className="text-3xl font-black">{brl((contaCasaInfo.creditBalance || 0))}</p>
               </div>
               {(contaCasaStore?.creditPixKey || contaCasaStore?.creditPixName) && (
                 <div className="bg-white/10 p-2.5 rounded-lg border border-white/20 space-y-1.5 mt-2">
@@ -498,7 +499,7 @@ export default function MyOrdersPage() {
                             <p className="text-[9px] text-slate-400">{new Date(t.date).toLocaleString('pt-BR')}</p>
                           </div>
                           <div className={`text-xs font-black ${t.type === 'debit' ? 'text-red-500' : 'text-emerald-600'}`}>
-                            {t.type === 'debit' ? '+' : '-'} R$ {(t.amount || 0).toFixed(2)}
+                            {t.type === 'debit' ? '+' : '-'} {brl((t.amount || 0))}
                           </div>
                         </div>
                         {matchedOrder && matchedOrder.items && (
@@ -506,13 +507,13 @@ export default function MyOrdersPage() {
                             {matchedOrder.items.map((it: any, i: number) => (
                               <div key={i} className="flex justify-between text-[10px] text-slate-600">
                                 <span>{it.quantity}x {it.name}{it.addons?.length > 0 ? ` (${it.addons.map((a:any) => a.name).join(', ')})` : ''}</span>
-                                <span className="text-slate-400">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                                <span className="text-slate-400">{brl((it.unitPrice * it.quantity))}</span>
                               </div>
                             ))}
                             {matchedOrder.deliveryFee > 0 && matchedOrder.payDeliveryToMotoboy !== true && (
                               <div className="flex justify-between text-[10px] text-slate-400 border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
                                 <span>Frete</span>
-                                <span>R$ {matchedOrder.deliveryFee.toFixed(2)}</span>
+                                <span>{brl(matchedOrder.deliveryFee)}</span>
                               </div>
                             )}
                           </div>
@@ -555,15 +556,15 @@ export default function MyOrdersPage() {
                             <span className="text-slate-700"><span className="font-bold">{it.quantity}x</span> {it.name}
                               {it.addons?.length > 0 && <span className="text-slate-400"> ({it.addons.map((a:any) => a.name).join(', ')})</span>}
                             </span>
-                            <span className="text-slate-500 flex-shrink-0">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                            <span className="text-slate-500 flex-shrink-0">{brl((it.unitPrice * it.quantity))}</span>
                           </div>
                         ))}
                       </div>
                       <div className="flex items-center justify-between pt-1 border-t border-dashed">
                         <div className="text-[10px] text-slate-400">
-                          {order.deliveryFee > 0 && order.payDeliveryToMotoboy !== true && <span>Frete: R$ {order.deliveryFee.toFixed(2)}</span>}
+                          {order.deliveryFee > 0 && order.payDeliveryToMotoboy !== true && <span>Frete: {brl(order.deliveryFee)}</span>}
                         </div>
-                        <span className="text-sm font-black text-primary">R$ {order.totalAmount.toFixed(2)}</span>
+                        <span className="text-sm font-black text-primary">{brl(order.totalAmount)}</span>
                       </div>
                       <button onClick={() => handleRepeatOrder(order)} className="w-full text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 flex items-center justify-center gap-1 py-1">
                         <RotateCcw className="h-3 w-3" /> Repetir Pedido

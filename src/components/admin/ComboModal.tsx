@@ -7,7 +7,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { MenuItem, ComboItem } from '@/lib/types';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Upload, X } from 'lucide-react';
@@ -235,7 +235,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                         onCheckedChange={() => handleToggleItem(item)}
                       />
                       <Label htmlFor={`combo-item-${item.id}`} className="flex-1 cursor-pointer font-normal text-sm">
-                        {item.name} <span className="text-muted-foreground ml-1">(R$ {item.price.toFixed(2)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'})</span>
+                        {item.name} <span className="text-muted-foreground ml-1">({brl(item.price)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'})</span>
                       </Label>
                     </div>
                   ))}
@@ -269,7 +269,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                             <span className="text-[10px] text-muted-foreground">Estoque: {stockDisplay}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-muted-foreground font-medium">R$ {item.price.toFixed(2)}</span>
+                            <span className="text-xs text-muted-foreground font-medium">{brl(item.price)}</span>
                             <Button 
                               type="button" 
                               variant="ghost" 
@@ -291,7 +291,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
             <div className="bg-slate-50 p-4 rounded-lg flex justify-between items-center border">
               <div>
                 <span className="text-xs text-muted-foreground">Valor sem desconto (soma)</span>
-                <div className="font-semibold text-slate-400 line-through">R$ {originalPrice.toFixed(2)}</div>
+                <div className="font-semibold text-slate-400 line-through">{brl(originalPrice)}</div>
               </div>
               <div className="space-y-1 w-[180px]">
                 <Label htmlFor="price" className="text-emerald-700 font-bold">Preço do Combo (R$)</Label>

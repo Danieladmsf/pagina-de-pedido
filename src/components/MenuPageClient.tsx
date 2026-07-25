@@ -21,7 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
-import { removeAccents } from '@/lib/utils';
+import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
@@ -766,7 +766,7 @@ export function MenuPageClient({
               <div className="p-6 space-y-3 text-sm">
                 <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
                   <span className="text-muted-foreground">Pedido mínimo de:</span>
-                  <span className="font-bold text-slate-700">R$ {(storeProfile?.fees?.minOrderValue || 0).toFixed(2)}</span>
+                  <span className="font-bold text-slate-700">{brl((storeProfile?.fees?.minOrderValue || 0))}</span>
                 </div>
                 {(() => {
                   const rules = storeProfile?.fees?.feeRules || storeProfile?.feeRules || [];
@@ -776,14 +776,14 @@ export function MenuPageClient({
                     return (
                       <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
                         <span className="text-muted-foreground">Taxa de entrega:</span>
-                        <span className="font-bold text-slate-700">R$ {fees[0].toFixed(2)} a R$ {fees[fees.length - 1].toFixed(2)}</span>
+                        <span className="font-bold text-slate-700">{brl(fees[0])} a {brl(fees[fees.length - 1])}</span>
                       </div>
                     );
                   } else if (fixedFee > 0) {
                     return (
                       <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
                         <span className="text-muted-foreground">Taxa de entrega:</span>
-                        <span className="font-bold text-slate-700">R$ {fixedFee.toFixed(2)}</span>
+                        <span className="font-bold text-slate-700">{brl(fixedFee)}</span>
                       </div>
                     );
                   }
@@ -1225,16 +1225,16 @@ export function MenuPageClient({
                         </Badge>
                         <div className="absolute top-3 right-3 md:top-4 md:right-4 flex flex-col items-end gap-1">
                           <Badge className="bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:px-3 md:text-base">
-                            R$ {displayPrice.toFixed(2)}
+                            {brl(displayPrice)}
                           </Badge>
                           <span className="text-[11px] font-bold text-white/90 line-through bg-black/40 backdrop-blur-sm rounded px-1.5 py-0.5">
-                            R$ {promo.originalPrice.toFixed(2)}
+                            {brl(promo.originalPrice)}
                           </span>
                         </div>
                       </>
                     ) : item.price > 0 ? (
                       <Badge className="absolute top-3 right-3 bg-accent text-white font-black border-none shadow-lg px-2.5 py-1 text-sm md:top-4 md:right-4 md:px-3 md:text-base">
-                        R$ {item.price.toFixed(2)}{weightItem ? ' /kg' : ''}
+                        {brl(item.price)}{weightItem ? ' /kg' : ''}
                       </Badge>
                     ) : null}
                     {isOutOfStock && (
@@ -1385,7 +1385,7 @@ export function MenuPageClient({
             <span className="font-bold text-base whitespace-nowrap">Ver pedido</span>
           </span>
           <span className="font-black text-base whitespace-nowrap tabular-nums">
-            R$ {totalPrice.toFixed(2)}
+            {brl(totalPrice)}
           </span>
         </button>
       )}
@@ -1463,7 +1463,7 @@ export function MenuPageClient({
               <span className="min-w-0 flex-1">
                 <span className="block font-bold text-foreground">Meu carrinho</span>
                 <span className="block text-xs text-muted-foreground">
-                  {totalItems > 0 ? `${totalItems} ${totalItems === 1 ? 'item' : 'itens'} · R$ ${totalPrice.toFixed(2)}` : 'Seu carrinho está vazio'}
+                  {totalItems > 0 ? `${totalItems} ${totalItems === 1 ? 'item' : 'itens'} · ${brl(totalPrice)}` : 'Seu carrinho está vazio'}
                 </span>
               </span>
               {totalItems > 0 && (

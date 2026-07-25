@@ -17,7 +17,7 @@ import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDay
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
@@ -438,7 +438,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
       return;
     }
-    const fmt = (v: number) => (v || 0).toFixed(2).replace('.', ',');
     const saldo = contaCasaCliente.creditBalance || 0;
     const SEP = '━━━━━━━━━━━━━━';
 
@@ -447,7 +446,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     const blocos = contaCasaTransactions.map(t => {
       const data = new Date(t.date).toLocaleDateString('pt-BR');
       if (t.type !== 'debit') {
-        return `${SEP}\n✅ ${data} · Pagamento recebido\n− R$ ${fmt(t.amount)}`;
+        return `${SEP}\n✅ ${data} · Pagamento recebido\n− ${brl(t.amount)}`;
       }
       const hasRef = (t.description || '').includes('#');
       const ref = hasRef ? (t.description || '').replace(/^.*#/, '').trim() : '';
@@ -459,14 +458,14 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       });
       let bloco = `${SEP}\n🛒 ${data} · ${titulo}`;
       if (itens.length > 0) bloco += `\n${itens.join('\n')}`;
-      bloco += `\nSubtotal: R$ ${fmt(t.amount)}`;
+      bloco += `\nSubtotal: ${brl(t.amount)}`;
       return bloco;
     });
 
     let msg = `🧾 *EXTRATO DA SUA CONTA*\n`;
     if (contaCasaCliente.nome) msg += `\n👤 *${contaCasaCliente.nome}*\n`;
     if (blocos.length > 0) msg += `\n${blocos.join('\n')}\n${SEP}\n`;
-    msg += `\n💰 *SALDO DEVEDOR: R$ ${fmt(saldo)}*`;
+    msg += `\n💰 *SALDO DEVEDOR: ${brl(saldo)}*`;
     if (storePixKey || storePixName) {
       msg += `\n\n📲 *Pague via PIX*`;
       if (storePixKey) msg += `\n🔑 ${storePixKey}`;
@@ -775,7 +774,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                       <Badge variant="outline" className="font-bold">{c.totalPedidos || 0}</Badge>
                     </TableCell>
                     <TableCell className="text-center font-bold text-emerald-600 text-sm">
-                      {c.ticketMedio ? `R$ ${c.ticketMedio.toFixed(2)}` : '-'}
+                      {c.ticketMedio ? `${brl(c.ticketMedio)}` : '-'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
                     <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
@@ -1142,7 +1141,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 px-4 py-3 rounded-lg text-center shadow-sm">
               <p className="text-[10px] text-indigo-200 font-medium">Saldo Devedor</p>
-              <p className="text-2xl font-black text-white">R$ {(contaCasaCliente?.creditBalance || 0).toFixed(2)}</p>
+              <p className="text-2xl font-black text-white">{brl((contaCasaCliente?.creditBalance || 0))}</p>
               <button
                 type="button"
                 onClick={handleSendExtratoWhatsApp}
@@ -1224,7 +1223,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                             </div>
                           </div>
                           <div className={`text-[11px] font-black shrink-0 ${t.type === 'debit' ? 'text-red-500' : 'text-emerald-600'}`}>
-                            {t.type === 'debit' ? '+' : '-'} R$ {(t.amount || 0).toFixed(2)}
+                            {t.type === 'debit' ? '+' : '-'} {brl((t.amount || 0))}
                           </div>
                         </div>
                         {isExpanded && matchedOrder && (
@@ -1233,19 +1232,19 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                               {(matchedOrder.items || []).map((it: any, i: number) => (
                                 <div key={i} className="flex justify-between gap-2 text-[10px] text-slate-600">
                                   <span className="min-w-0">{it.quantity}x {it.name}{(it.addons?.length > 0) ? ` (${it.addons.map((a: any) => a.name).join(', ')})` : ''}</span>
-                                  <span className="shrink-0 text-slate-400">R$ {((it.unitPrice || 0) * (it.quantity || 1)).toFixed(2)}</span>
+                                  <span className="shrink-0 text-slate-400">{brl(((it.unitPrice || 0) * (it.quantity || 1)))}</span>
                                 </div>
                               ))}
                               {matchedOrder.deliveryFee > 0 && matchedOrder.payDeliveryToMotoboy !== true && (
                                 <div className="flex justify-between border-t border-dashed border-slate-200 pt-0.5 mt-0.5 text-[10px] text-slate-400">
                                   <span>Frete</span>
-                                  <span>R$ {(matchedOrder.deliveryFee || 0).toFixed(2)}</span>
+                                  <span>{brl((matchedOrder.deliveryFee || 0))}</span>
                                 </div>
                               )}
                               {typeof matchedOrder.totalAmount === 'number' && (
                                 <div className="flex justify-between border-t border-slate-200 pt-0.5 mt-0.5 text-[10px] font-bold text-slate-600">
                                   <span>Total do pedido</span>
-                                  <span>R$ {matchedOrder.totalAmount.toFixed(2)}</span>
+                                  <span>{brl(matchedOrder.totalAmount)}</span>
                                 </div>
                               )}
                             </div>

@@ -15,6 +15,7 @@ import { useCart } from '@/components/providers/CartProvider';
 import { useStoreMenuData } from '@/hooks/useStoreMenuData';
 import { themeToCssVars } from '@/lib/themes';
 import { applyPromoPrice, itemNeedsCustomization } from '@/lib/cart';
+import { brl } from '@/lib/utils';
 
 type ShowcaseMode = 'combos' | 'promocoes' | 'ofertas';
 
@@ -206,11 +207,11 @@ export function ShowcasePageClient({
                     )}
                     <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
                       <Badge className="border-none bg-accent px-2.5 py-1 text-sm font-black text-white shadow-lg md:text-base">
-                        R$ {displayPrice.toFixed(2)}
+                        {brl(displayPrice)}
                       </Badge>
                       {originalPrice > displayPrice && (
                         <span className="rounded bg-black/40 px-1.5 py-0.5 text-[11px] font-bold text-white/90 line-through backdrop-blur-sm">
-                          R$ {originalPrice.toFixed(2)}
+                          {brl(originalPrice)}
                         </span>
                       )}
                     </div>
@@ -235,7 +236,7 @@ export function ShowcasePageClient({
 
                     {savings > 0 && (
                       <div className="mb-3 inline-flex w-fit items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
-                        💰 Economize R$ {savings.toFixed(2)}
+                        💰 Economize {brl(savings)}
                       </div>
                     )}
 
@@ -301,7 +302,7 @@ export function ShowcasePageClient({
               <ShoppingCart className="h-4 w-4" /> Ver pedido
             </span>
           </span>
-          <span className="whitespace-nowrap text-base font-black tabular-nums">R$ {totalPrice.toFixed(2)}</span>
+          <span className="whitespace-nowrap text-base font-black tabular-nums">{brl(totalPrice)}</span>
         </button>
       )}
 

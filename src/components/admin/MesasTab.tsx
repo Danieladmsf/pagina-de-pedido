@@ -34,6 +34,7 @@ import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
+import { brl } from '@/lib/utils';
 
 interface MesasTabProps {
   orders?: any[];
@@ -948,11 +949,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           <span className="text-sm font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary pr-6">{item.name}</span>
           {promoItemsMap[item.id] ? (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs text-muted-foreground line-through">R$ {item.price.toFixed(2)}</span>
-              <span className="text-sm font-black text-green-600">R$ {promoItemsMap[item.id].promoPrice.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
+              <span className="text-xs text-muted-foreground line-through">{brl(item.price)}</span>
+              <span className="text-sm font-black text-green-600">{brl(promoItemsMap[item.id].promoPrice)}{isWeightItem(item) ? '/kg' : ''}</span>
             </div>
           ) : (
-            <span className="text-sm font-black text-green-600">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
+            <span className="text-sm font-black text-green-600">{brl(item.price)}{isWeightItem(item) ? '/kg' : ''}</span>
           )}
         </div>
       </button>
@@ -1091,7 +1092,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       <div className="px-3 py-2 border-t">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-[11px] text-slate-400">{itemCount} {itemCount === 1 ? 'item' : 'itens'}</span>
-                          <span className="font-black text-green-600">R$ {(o.totalAmount || 0).toFixed(2)}</span>
+                          <span className="font-black text-green-600">{brl((o.totalAmount || 0))}</span>
                         </div>
                         <div className="flex gap-2">
                           {needsAttention && canAceitarPedidoOnline && (
@@ -1192,7 +1193,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
                         <span>📝 Prazo ativo</span>
                         {limit > 0 && (
-                          <span className="font-semibold text-amber-600">· disponível R$ {(limit - balance).toFixed(2)} de R$ {limit.toFixed(2)}</span>
+                          <span className="font-semibold text-amber-600">· disponível {brl((limit - balance))} de {brl(limit)}</span>
                         )}
                       </div>
                     );
@@ -1211,7 +1212,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       <div key={item.cartItemId || item.id || index} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm">
                         <div className="flex-1 min-w-0">
                           <p className="text-base font-bold text-slate-800 truncate">{item.name}</p>
-                          <p className="text-sm text-green-600 font-bold">R$ {Number(item.unitPrice ?? item.price ?? 0).toFixed(2)}</p>
+                          <p className="text-sm text-green-600 font-bold">{brl(Number(item.unitPrice ?? item.price ?? 0))}</p>
                           {item.addons && item.addons.length > 0 && (
                             <div className="text-xs text-muted-foreground leading-tight mt-0.5">
                               {item.addons.map((a: any) => a.name).join(', ')}
@@ -1248,7 +1249,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               <div className="p-4 bg-white shrink-0 space-y-3 border-t">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Subtotal:</span>
-                  <span className="text-2xl font-black text-slate-800">R$ {cartTotal.toFixed(2)}</span>
+                  <span className="text-2xl font-black text-slate-800">{brl(cartTotal)}</span>
                 </div>
                 <div className="flex gap-2">
                   {(() => {

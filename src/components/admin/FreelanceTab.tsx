@@ -6,6 +6,7 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { brl } from '@/lib/utils';
 
 interface FreelanceTabProps {
   orders: any[];
@@ -309,9 +310,9 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                           )}
                         </div>
                         <div className="text-sm text-slate-500 mt-1.5 flex items-center gap-3">
-                          <span>Ganhos: <strong className="text-slate-700">R$ {m.total.toFixed(2)}</strong></span>
+                          <span>Ganhos: <strong className="text-slate-700">{brl(m.total)}</strong></span>
                           <span className="text-slate-300">•</span>
-                          <span>Pagos/Vales: <strong className="text-rose-600">-R$ {m.jaPago.toFixed(2)}</strong></span>
+                          <span>Pagos/Vales: <strong className="text-rose-600">-{brl(m.jaPago)}</strong></span>
                         </div>
                       </div>
                     </div>
@@ -320,7 +321,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                       <div className="text-right">
                         <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-0.5">Saldo / A Pagar</span>
                         <span className={`text-2xl font-black leading-none ${m.saldo > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                          R$ {m.saldo.toFixed(2)}
+                          {brl(m.saldo)}
                         </span>
                       </div>
                       <div className="text-slate-400 bg-white shadow-sm border rounded-full p-1">
@@ -339,7 +340,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                       <div className="p-4 bg-slate-50/30 flex flex-col max-h-[400px]">
                         <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center justify-between shrink-0">
                           <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-blue-500" /> Entregas Feitas</span>
-                          <span className="text-xs bg-white border px-2 py-0.5 rounded-full text-slate-500 font-medium">R$ {m.somaFretes.toFixed(2)} fretes + R$ {(m.total - m.somaFretes).toFixed(2)} diárias</span>
+                          <span className="text-xs bg-white border px-2 py-0.5 rounded-full text-slate-500 font-medium">{brl(m.somaFretes)} fretes + {brl((m.total - m.somaFretes))} diárias</span>
                         </h4>
                         {m.pedidosLista.length === 0 ? (
                           <p className="text-xs text-slate-400 italic">Nenhuma entrega neste período.</p>
@@ -360,14 +361,14 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                                   </p>
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <span className="text-xs font-bold text-slate-700">R$ {Number(ped.deliveryFee || 0).toFixed(2)}</span>
+                                  <span className="text-xs font-bold text-slate-700">{brl(Number(ped.deliveryFee || 0))}</span>
                                 </div>
                               </div>
                             ))}
                             {m.taxa > 0 && m.diasTrabalhados > 0 && (
                               <div className="flex justify-between items-center bg-blue-50/50 p-2.5 rounded-lg border border-blue-100 shrink-0 mt-2">
-                                <span className="text-xs font-semibold text-blue-800">Taxa Fixa ({m.diasTrabalhados} dias x R$ {m.taxa.toFixed(2)})</span>
-                                <span className="text-xs font-bold text-blue-700">R$ {(m.taxa * m.diasTrabalhados).toFixed(2)}</span>
+                                <span className="text-xs font-semibold text-blue-800">Taxa Fixa ({m.diasTrabalhados} dias x {brl(m.taxa)})</span>
+                                <span className="text-xs font-bold text-blue-700">{brl((m.taxa * m.diasTrabalhados))}</span>
                               </div>
                             )}
                           </div>
@@ -378,7 +379,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                       <div className="p-4 bg-slate-50/30 flex flex-col max-h-[400px]">
                         <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center justify-between shrink-0">
                           <span className="flex items-center gap-1.5"><ReceiptText className="h-4 w-4 text-rose-500" /> Pagamentos e Vales</span>
-                          <span className="text-xs bg-rose-50 border-rose-100 border px-2 py-0.5 rounded-full text-rose-600 font-bold">- R$ {m.jaPago.toFixed(2)}</span>
+                          <span className="text-xs bg-rose-50 border-rose-100 border px-2 py-0.5 rounded-full text-rose-600 font-bold">- {brl(m.jaPago)}</span>
                         </h4>
                         {m.sangriasLista.length === 0 ? (
                           <p className="text-xs text-slate-400 italic">Nenhum vale ou pagamento registrado neste período.</p>
@@ -394,7 +395,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                                   <p className="text-xs text-slate-600 font-medium">{val.titulo || 'Retirada / Vale'}</p>
                                 </div>
                                 <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                  <span className="text-xs font-bold text-rose-600">-R$ {Math.abs(val.valor).toFixed(2)}</span>
+                                  <span className="text-xs font-bold text-rose-600">-{brl(Math.abs(val.valor))}</span>
                                   {(() => {
                                     const fp = (val.formaPagamento || '').trim();
                                     if (!fp || fp === '--') {

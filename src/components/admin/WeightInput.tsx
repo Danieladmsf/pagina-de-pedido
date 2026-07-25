@@ -1,5 +1,6 @@
 import React from 'react';
 import { Input } from '@/components/ui/input';
+import { brl } from '@/lib/utils';
 
 interface WeightInputProps {
   /** Peso atual em gramas. */
@@ -38,7 +39,7 @@ export function WeightInput({ grams, pricePerKg, onChange, size = 'md', autoFocu
         />
         <span className="text-[11px] font-bold text-slate-500">g</span>
       </div>
-      <span className="text-[9px] text-slate-400 whitespace-nowrap">R$ {(Number(pricePerKg) || 0).toFixed(2)}/kg</span>
+      <span className="text-[9px] text-slate-400 whitespace-nowrap">{brl((Number(pricePerKg) || 0))}/kg</span>
     </div>
   );
 }

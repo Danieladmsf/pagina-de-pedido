@@ -14,7 +14,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { buildStoreLink } from '@/lib/whatsapp-messages';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import {
   Megaphone, Send, ImagePlus, Users, Info, X, Search, ArrowDownWideNarrow,
   Rocket, ChevronRight, ChevronDown, Loader2, CheckCircle2, AlertTriangle, Ban, Phone, Wand2, Check, Plus,
@@ -48,7 +48,6 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'recencia', label: 'Compra recente' },
 ];
 const spentOf = (c: ClientLike) => (c.totalPedidos || 0) * (c.ticketMedio || 0);
-const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { toast } = useToast();

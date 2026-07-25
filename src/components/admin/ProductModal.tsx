@@ -13,6 +13,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
+import { brl } from '@/lib/utils';
 
 interface ProductModalProps {
   db: any;
@@ -575,7 +576,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
                                             </span>
                                             {group.usePrice !== false && addon.price > 0 && (
                                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-semibold flex-shrink-0">
-                                                +R$ {addon.price.toFixed(2)}
+                                                +{brl(addon.price)}
                                               </span>
                                             )}
                                             <button

@@ -19,7 +19,7 @@ import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
 import { WeightInput } from '@/components/admin/WeightInput';
-import { normalizeSearch } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
@@ -336,7 +336,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     try {
       await updateDoc(doc(db, 'orders', selectedOrder.id), { deliveryFee: newFee, totalAmount: newTotal });
       setEditingFee(false);
-      toast({ title: 'Frete atualizado', description: `Novo frete: R$ ${newFee.toFixed(2)}` });
+      toast({ title: 'Frete atualizado', description: `Novo frete: ${brl(newFee)}` });
     } catch (err: any) {
       console.error('Erro ao salvar frete:', err);
       toast({ variant: 'destructive', title: 'Erro', description: 'Não consegui salvar o frete.' });
@@ -558,7 +558,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         )}
         <div className="flex flex-col flex-1 min-w-0 gap-1">
           <span className="text-xs font-bold text-slate-700 line-clamp-2 leading-tight group-hover:text-primary">{item.name}</span>
-          <span className="text-xs font-black text-green-600">R$ {item.price.toFixed(2)}{isWeightItem(item) ? '/kg' : ''}</span>
+          <span className="text-xs font-black text-green-600">{brl(item.price)}{isWeightItem(item) ? '/kg' : ''}</span>
         </div>
       </button>
     );
@@ -630,7 +630,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                         <span className="text-xs font-semibold text-slate-800 truncate">{order.customerName}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-xs font-black text-green-600">R$ {order.totalAmount?.toFixed(2)}</span>
+                        <span className="text-xs font-black text-green-600">{brl(order.totalAmount)}</span>
                         <Badge className={`text-[8px] uppercase font-bold px-1.5 py-0 h-4 leading-none ${getOrderStatusBadgeColor(order.status)}`}>
                           {getStatusLabel(order.status, order.orderType)}
                         </Badge>
@@ -649,7 +649,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         
         <div className="bg-white p-2.5 rounded-lg shadow-sm border flex justify-between items-center font-bold text-base">
           <div className="bg-red-500 text-white px-4 py-2 rounded-md">
-            Total: R$ {filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toFixed(2)}
+            Total: {brl(filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0))}
           </div>
           <div className="bg-green-500 text-white px-4 py-2 rounded-md flex items-center gap-2">
             {onlineCount} Cliente{onlineCount !== 1 ? 's' : ''} online <Clock className="h-5 w-5" />
@@ -738,7 +738,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                 {selectedOrder.orderType === 'pickup' ? '🏪 Retirar no Local' : selectedOrder.orderType === 'dine_in' ? '🍽️ Comer no Local' : `🛵 ${selectedOrder.deliveryAddress}`}
               </div>
               <div className="bg-[#f05a66] text-white px-3 py-1 rounded font-bold whitespace-nowrap">
-                R$ {selectedOrder.totalAmount?.toFixed(2)}
+                {brl(selectedOrder.totalAmount)}
               </div>
               <div className="border px-3 py-1 rounded text-slate-700 font-medium whitespace-nowrap">
                 {selectedOrder.paymentMethod === 'conta_casa' ? 'Prazo' : (selectedOrder.paymentMethod || 'Não definido')}
@@ -757,7 +757,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                     </>
                   ) : (
                     <>
-                      🛵 Frete: R$ {selectedOrder.deliveryFee?.toFixed(2) || '0.00'}
+                      🛵 Frete: {brl(selectedOrder.deliveryFee)}
                       {selectedOrder.distanceKm && <span className="text-[10px] font-normal ml-1">({selectedOrder.distanceKm}km)</span>}
                       {selectedOrder.payDeliveryToMotoboy === true && <span className="text-[10px] font-normal ml-1">· pago ao motoboy</span>}
                       {!isReadOnlyHistorico && selectedOrder.status !== 'delivered' && selectedOrder.status !== 'canceled' && can(permissions, 'actions.delivery.editarItens') && (
@@ -805,10 +805,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                       <td className="px-4 py-3 text-center">{item.quantity}</td>
                       <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {item.addons?.map((a: any) => `1x ${a.name}${a.price > 0 ? ` - R$ ${a.price.toFixed(2)}` : ''}`).join('\n')}
+                        {item.addons?.map((a: any) => `1x ${a.name}${a.price > 0 ? ` - ${brl(a.price)}` : ''}`).join('\n')}
                       </td>
-                      <td className="px-4 py-3 text-right">R$ {item.unitPrice?.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right font-medium">R$ {(item.unitPrice * item.quantity).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right">{brl(item.unitPrice)}</td>
+                      <td className="px-4 py-3 text-right font-medium">{brl((item.unitPrice * item.quantity))}</td>
                       <td className="px-4 py-3 text-xs text-red-500">{item.notes || '-'}</td>
                     </tr>
                   ))}
@@ -849,7 +849,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               <SelectContent>
                 <SelectItem value="retirada" className="text-amber-600 font-bold">Retirou no local</SelectItem>
                 {storeProfile?.motoboys?.map((m: any) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name} (R$ {Number(m.fee || 0).toFixed(2)})</SelectItem>
+                  <SelectItem key={m.id} value={m.id}>{m.name} ({brl(Number(m.fee || 0))})</SelectItem>
                 ))}
                 {(!storeProfile?.motoboys || storeProfile.motoboys.length === 0) && (
                   <SelectItem value="none" disabled>Nenhum motoboy cadastrado</SelectItem>
@@ -918,7 +918,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                     <div key={item.cartItemId || item.id || index} className="bg-white p-3 border rounded-lg flex items-center justify-between gap-3 shadow-sm font-medium">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate">{item.name}</p>
-                        <p className="text-xs text-green-600 font-bold">R$ {(item.unitPrice || item.price).toFixed(2)}</p>
+                        <p className="text-xs text-green-600 font-bold">{brl((item.unitPrice || item.price))}</p>
                         {item.addons && item.addons.length > 0 && (
                           <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
                             {item.addons.map((a: any) => a.name).join(', ')}
@@ -953,17 +953,17 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               <div className="p-4 border-t bg-white shrink-0">
                 <div className="flex justify-between items-center text-sm font-black text-slate-800 mb-1">
                   <span>Subtotal:</span>
-                  <span>R$ {editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0).toFixed(2)}</span>
+                  <span>{brl(editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0))}</span>
                 </div>
                 {selectedOrder?.orderType === 'delivery' && (
                   <div className="flex justify-between items-center text-xs text-muted-foreground mb-3">
                     <span>Taxa de Entrega:</span>
-                    <span>R$ {Number(selectedOrder.deliveryFee || 0).toFixed(2)}</span>
+                    <span>{brl(Number(selectedOrder.deliveryFee || 0))}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center text-base font-black text-slate-900 border-t pt-2">
                   <span>Total Geral:</span>
-                  <span>R$ {(editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0) + Number(selectedOrder?.deliveryFee || 0)).toFixed(2)}</span>
+                  <span>{brl((editItemsCart.reduce((sum, item) => sum + ((item.unitPrice || item.price) * item.quantity), 0) + Number(selectedOrder?.deliveryFee || 0)))}</span>
                 </div>
               </div>
             </div>

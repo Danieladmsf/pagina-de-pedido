@@ -551,7 +551,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-lg font-black text-purple-700">R$ {(combo.comboPrice || combo.price || 0).toFixed(2)}</p>
+                            <p className="text-lg font-black text-purple-700">{brl((combo.comboPrice || combo.price || 0))}</p>
                           </div>
                         </div>
 
