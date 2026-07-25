@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { brl, normalizeSearch } from '@/lib/utils';
+import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -165,7 +166,7 @@ export function CaixaTab({
   const [expandedVendaId, setExpandedVendaId] = useState<string | null>(null);
 
   // Cancelamento de venda: alvo do modal de confirmação + motivo opcional.
-  const [cancelVendaTarget, setCancelVendaTarget] = useState<LancamentoCaixa | null>(null);
+  const [cancelVendaTarget, setCancelVendaTarget] = useState<LinhaCaixa | null>(null);
   const [cancelVendaMotivo, setCancelVendaMotivo] = useState('');
   const [isCancelingVenda, setIsCancelingVenda] = useState(false);
   const isCaixaHistoricoSelecionado = !!caixaSelecionadoId
@@ -263,8 +264,16 @@ export function CaixaTab({
     return result;
   }, [lancamentos, searchTerm, filterFormaPagamento, filterTipoOperacao]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredLancamentos.length / ITEMS_PER_PAGE));
-  const paginatedLancamentos = filteredLancamentos.slice(
+  // As partes de uma venda dividida viram UMA linha "Múltiplos" com a soma; a
+  // expansão mostra os itens uma vez e detalha cada forma. Lógica (e o porquê)
+  // em lib/caixa-lancamentos.ts.
+  const linhasCaixa = useMemo<LinhaCaixa[]>(
+    () => agruparLancamentosCaixa(filteredLancamentos),
+    [filteredLancamentos],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(linhasCaixa.length / ITEMS_PER_PAGE));
+  const paginatedLancamentos = linhasCaixa.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
@@ -324,13 +333,13 @@ export function CaixaTab({
     if (printAfterOpen) setPrintRequested(true);
   };
 
-  const openCancelarVendaModal = (lanc: LancamentoCaixa) => {
+  const openCancelarVendaModal = (linha: LinhaCaixa) => {
     if (!can(permissions, 'actions.caixa.cancelarVenda')) {
       showPermissionRevokedToast();
       return;
     }
     setCancelVendaMotivo('');
-    setCancelVendaTarget(lanc);
+    setCancelVendaTarget(linha);
   };
 
   const handleAction = async (e: React.FormEvent) => {
@@ -424,9 +433,13 @@ export function CaixaTab({
     if (!cancelVendaTarget) return;
     setIsCancelingVenda(true);
     try {
-      await setVendaCancelada(cancelVendaTarget.id, true, cancelVendaMotivo);
+      // Venda dividida em várias formas: cancela TODAS as partes. Cancelar
+      // metade deixaria o caixa com um pedaço de uma venda que não existe mais.
+      for (const parte of cancelVendaTarget.partes) {
+        await setVendaCancelada(parte.id, true, cancelVendaMotivo);
+      }
 
-      const vendaOrder = getVendaOrder(cancelVendaTarget);
+      const vendaOrder = getVendaOrder(cancelVendaTarget.principal);
       if (vendaOrder && vendaOrder.status !== 'canceled' && updateOrderStatus) {
         const ok = await updateOrderStatus(vendaOrder.id, 'canceled');
         if (ok === false) {
@@ -437,10 +450,10 @@ export function CaixaTab({
             duration: 8000,
           });
         } else {
-          toast({ title: 'Venda cancelada por completo', description: `"${cancelVendaTarget.titulo}" saiu do caixa e o pedido foi cancelado (estoque devolvido).` });
+          toast({ title: 'Venda cancelada por completo', description: `"${cancelVendaTarget.principal.titulo}" saiu do caixa e o pedido foi cancelado (estoque devolvido).` });
         }
       } else {
-        toast({ title: 'Venda cancelada no caixa', description: `"${cancelVendaTarget.titulo}" não soma mais no fechamento.` });
+        toast({ title: 'Venda cancelada no caixa', description: `"${cancelVendaTarget.principal.titulo}" não soma mais no fechamento.` });
       }
 
       setCancelVendaTarget(null);
@@ -452,17 +465,20 @@ export function CaixaTab({
     }
   };
 
-  const reativarVenda = async (lanc: LancamentoCaixa) => {
+  const reativarVenda = async (linha: LinhaCaixa) => {
     if (!can(permissions, 'actions.caixa.cancelarVenda')) {
       showPermissionRevokedToast();
       return;
     }
     try {
-      await setVendaCancelada(lanc.id, false);
+      // Espelha o cancelamento: reativa todas as partes da venda.
+      for (const parte of linha.partes) {
+        await setVendaCancelada(parte.id, false);
+      }
 
       // Espelho do cancelamento: volta o pedido para finalizado (re-abate estoque;
       // contagem de cliente é idempotente; 'delivered' não dispara WhatsApp).
-      const vendaOrder = getVendaOrder(lanc);
+      const vendaOrder = getVendaOrder(linha.principal);
       if (vendaOrder && vendaOrder.status === 'canceled' && updateOrderStatus) {
         const ok = await updateOrderStatus(vendaOrder.id, 'delivered');
         if (ok === false) {
@@ -475,7 +491,7 @@ export function CaixaTab({
           return;
         }
       }
-      toast({ title: 'Venda reativada', description: `"${lanc.titulo}" voltou a somar no caixa.` });
+      toast({ title: 'Venda reativada', description: `"${linha.principal.titulo}" voltou a somar no caixa.` });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao reativar venda', description: err.message });
     }
@@ -1138,9 +1154,12 @@ export function CaixaTab({
                       <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Nenhum lançamento encontrado.</TableCell>
                     </TableRow>
                   ) : (
-                    paginatedLancamentos.map((lanc) => {
-                      const isNeg = lanc.valor < 0;
-                      const isPos = lanc.valor > 0 && (lanc.tipo === 'venda' || lanc.tipo === 'suprimento');
+                    paginatedLancamentos.map((linha) => {
+                      const lanc = linha.principal;
+                      // Valor da LINHA: numa venda dividida é a soma das partes.
+                      const isMultiplo = linha.partes.length > 1;
+                      const isNeg = linha.valor < 0;
+                      const isPos = linha.valor > 0 && (lanc.tipo === 'venda' || lanc.tipo === 'suprimento');
                       const date = lanc.data?.toDate ? lanc.data.toDate().toLocaleString('pt-BR') : '';
 
                       const badgeMap: Record<string, string> = {
@@ -1163,16 +1182,16 @@ export function CaixaTab({
 
                       const vendaOrder = getVendaOrder(lanc);
                       const isExpandable = !!vendaOrder;
-                      const isOpen = expandedVendaId === lanc.id;
+                      const isOpen = expandedVendaId === linha.key;
                       const isCanceled = !!lanc.canceled;
                       // Só vendas do caixa ABERTO podem ser canceladas/reativadas
                       // (caixa fechado já tem totalFechamento gravado).
                       const podeCancelar = lanc.tipo === 'venda' && caixaAtual?.status === 'aberto' && caixaAtual?.id === caixaAberto?.id;
 
                       return (
-                        <React.Fragment key={lanc.id}>
+                        <React.Fragment key={linha.key}>
                           <TableRow
-                            onClick={isExpandable ? () => setExpandedVendaId(isOpen ? null : lanc.id) : undefined}
+                            onClick={isExpandable ? () => setExpandedVendaId(isOpen ? null : linha.key) : undefined}
                             className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''} ${isCanceled ? 'opacity-70 bg-rose-50/40' : ''}`}
                           >
                             <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">
@@ -1189,9 +1208,13 @@ export function CaixaTab({
                               {lanc.titulo}
                             </TableCell>
                             <TableCell className={`font-bold whitespace-nowrap ${isCanceled ? 'text-slate-400 line-through' : isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
-                              {isNeg ? '-' : ''}{brl(Math.abs(lanc.valor))}
+                              {isNeg ? '-' : ''}{brl(Math.abs(linha.valor))}
                             </TableCell>
-                            <TableCell className={`uppercase text-xs font-bold text-muted-foreground ${isCanceled ? 'line-through' : ''}`}>{lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento}</TableCell>
+                            <TableCell className={`uppercase text-xs font-bold text-muted-foreground ${isCanceled ? 'line-through' : ''}`}>
+                              {isMultiplo
+                                ? <span className="text-blue-600">Múltiplos <span className="text-[10px] font-bold text-blue-400">({linha.partes.length})</span></span>
+                                : (lanc.formaPagamento === 'conta_casa' ? 'Prazo' : lanc.formaPagamento)}
+                            </TableCell>
                             <TableCell>
                               {isCanceled ? (
                                 <Badge className="bg-rose-100 text-rose-700 border-rose-300 border text-[10px] uppercase font-bold">Cancelada</Badge>
@@ -1212,8 +1235,8 @@ export function CaixaTab({
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
-                                    title="Reativar venda (volta a somar no caixa)"
-                                    onClick={(e) => { e.stopPropagation(); reativarVenda(lanc); }}
+                                    title={isMultiplo ? 'Reativar venda (todas as formas de pagamento)' : 'Reativar venda (volta a somar no caixa)'}
+                                    onClick={(e) => { e.stopPropagation(); reativarVenda(linha); }}
                                   >
                                     <RotateCcw className="h-4 w-4" />
                                   </Button>
@@ -1222,8 +1245,8 @@ export function CaixaTab({
                                     variant="ghost"
                                     size="icon"
                                     className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                    title="Cancelar venda (não soma no fechamento)"
-                                    onClick={(e) => { e.stopPropagation(); openCancelarVendaModal(lanc); }}
+                                    title={isMultiplo ? 'Cancelar venda (todas as formas de pagamento)' : 'Cancelar venda (não soma no fechamento)'}
+                                    onClick={(e) => { e.stopPropagation(); openCancelarVendaModal(linha); }}
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
@@ -1235,7 +1258,7 @@ export function CaixaTab({
                           {isExpandable && isOpen && (
                             <TableRow className="hover:bg-transparent border-b-0">
                               <TableCell colSpan={7} className="p-0 pl-6 pr-6 pb-2">
-                                <VendaDetalhe order={vendaOrder} lanc={lanc} />
+                                <VendaDetalhe order={vendaOrder} lanc={lanc} partes={linha.partes} />
                               </TableCell>
                             </TableRow>
                           )}
@@ -1352,7 +1375,7 @@ export function CaixaTab({
             <DialogTitle className="text-rose-600">Cancelar venda</DialogTitle>
             <DialogDescription>
               {(() => {
-                const linkedOrder = cancelVendaTarget ? getVendaOrder(cancelVendaTarget) : null;
+                const linkedOrder = cancelVendaTarget ? getVendaOrder(cancelVendaTarget.principal) : null;
                 if (linkedOrder && linkedOrder.status !== 'canceled') {
                   return (
                     <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. O pedido <strong>#{String(linkedOrder.id).substring(0, 5)}</strong> também será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>
@@ -1366,10 +1389,28 @@ export function CaixaTab({
           </DialogHeader>
           {cancelVendaTarget && (
             <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-              <p className="font-semibold text-slate-700">{cancelVendaTarget.titulo}</p>
+              <p className="font-semibold text-slate-700">{cancelVendaTarget.principal.titulo}</p>
               <p className="text-muted-foreground">
-                {brl(Math.abs(cancelVendaTarget.valor || 0))} · {(cancelVendaTarget.formaPagamento === 'conta_casa' ? 'Prazo' : cancelVendaTarget.formaPagamento || '').toUpperCase()}
+                {brl(Math.abs(cancelVendaTarget.valor || 0))}
+                {cancelVendaTarget.partes.length === 1 && ` · ${(cancelVendaTarget.principal.formaPagamento === 'conta_casa' ? 'Prazo' : cancelVendaTarget.principal.formaPagamento || '').toUpperCase()}`}
               </p>
+              {/* Venda dividida: mostra o que será cancelado junto, para o
+                  operador não achar que só uma das formas está saindo. */}
+              {cancelVendaTarget.partes.length > 1 && (
+                <div className="mt-2 border-t pt-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Cancela as {cancelVendaTarget.partes.length} formas de pagamento:
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {cancelVendaTarget.partes.map((p) => (
+                      <li key={p.id} className="flex justify-between text-slate-600">
+                        <span className="uppercase text-xs font-semibold">{p.formaPagamento === 'conta_casa' ? 'Prazo' : p.formaPagamento}</span>
+                        <span className="tabular-nums">{brl(Math.abs(p.valor || 0))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
           <div className="space-y-2">
@@ -2306,8 +2347,10 @@ export function CaixaTab({
 
 // ─── Componente SummaryCard ───
 // Painel de detalhes de uma venda (itens do pedido), aberto ao clicar na linha.
-function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
+function VendaDetalhe({ order, lanc, partes }: { order: any; lanc: LancamentoCaixa; partes: LancamentoCaixa[] }) {
   const orderType: string = order?.orderType || 'pickup';
+  // Venda dividida: a expansão mostra os itens UMA vez e detalha o pagamento.
+  const isMultiplo = partes.length > 1;
 
   const tipoMeta: Record<string, { label: string; Icon: any }> = {
     delivery: { label: 'Delivery', Icon: Bike },
@@ -2332,7 +2375,9 @@ function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
   const feeToMotoboy = order?.payDeliveryToMotoboy === true;
   const fee = feeToMotoboy ? 0 : (Number(order?.deliveryFee) || 0);
   const isDelivery = orderType === 'delivery';
-  const total = Number(lanc.valor) || subtotal + fee;
+  // Soma as partes: numa venda dividida, nenhuma sozinha é o total.
+  const valorPago = partes.reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  const total = valorPago || subtotal + fee;
   const desconto = Math.max(0, subtotal + fee - total);
   const totalItens = items.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
 
@@ -2369,7 +2414,11 @@ function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
             </p>
           </div>
         </div>
-        {pgto && (
+        {isMultiplo ? (
+          <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+            Múltiplos · {partes.length} formas
+          </span>
+        ) : pgto && (
           <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${pgto.className}`}>
             {pgto.label}
           </span>
@@ -2440,6 +2489,24 @@ function VendaDetalhe({ order, lanc }: { order: any; lanc: LancamentoCaixa }) {
           <span className="text-[13px] font-bold text-slate-800">Total da venda</span>
           <span className="text-[15px] font-black text-emerald-600 tabular-nums">{brl(total)}</span>
         </div>
+
+        {/* Como o total foi dividido — é o que a linha "Múltiplos" esconde. */}
+        {isMultiplo && (
+          <div className="mt-2.5 rounded-lg border border-blue-200 bg-white/70 px-3 py-2">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Pago em {partes.length} formas</p>
+            <ul className="space-y-0.5">
+              {partes.map((p) => {
+                const meta = pagamentoMeta[(p.formaPagamento || '').toLowerCase()];
+                return (
+                  <li key={p.id} className="flex items-center justify-between">
+                    <span className="text-[12px] font-semibold text-slate-600">{meta?.label || p.formaPagamento}</span>
+                    <span className="text-[12.5px] font-bold text-slate-700 tabular-nums">{brl(Math.abs(p.valor || 0))}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
