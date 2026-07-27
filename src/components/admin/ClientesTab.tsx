@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
+import { nameDocId } from '@/lib/customers/customer-sync';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
@@ -345,9 +346,37 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
-  const isFormValid = formTipoPessoa === 'juridica'
+  // Máscara do celular: o número é digitado com DDD e guardado só em dígitos,
+  // igual ao cadastro rápido do PDV — é o que faz os dois cadastros baterem.
+  const handleChangeCelular = (val: string) => {
+    const raw = val.replace(/\D/g, '').slice(0, 11);
+    let masked = raw;
+    if (raw.length > 2) masked = `(${raw.substring(0, 2)}) ${raw.substring(2)}`;
+    if (raw.length > 7) masked = `(${raw.substring(0, 2)}) ${raw.substring(2, 7)}-${raw.substring(7, 11)}`;
+    setFormCelular(masked);
+  };
+
+  // O celular é a ÚNICA chave que liga este cadastro ao pedido do app, ao Prazo
+  // e às Campanhas. Sem ele o cliente vira um cadastro solto: a venda a prazo no
+  // PDV não acha ninguém e abre um cadastro rápido novo, partindo o histórico
+  // em dois. Por isso ele é obrigatório aqui.
+  const celularDigits = normalizeCreditPhone(formCelular);
+  const isCelularValid = celularDigits.length === 10 || celularDigits.length === 11;
+  const isFormValid = (formTipoPessoa === 'juridica'
     ? !!formRazaoSocial.trim()
-    : !!formNome.trim();
+    : !!formNome.trim()) && isCelularValid;
+
+  /** Procura quem já usa esse número na loja (aceita as variações de formato). */
+  const findClienteByCelular = async (phone: string) => {
+    if (!phone) return null;
+    const variants = getPhoneVariants(phone).slice(0, 30);
+    const snap = await getDocs(query(
+      collection(db, 'clientes'),
+      where('ownerId', '==', user.uid),
+      where('celular', 'in', variants),
+    ));
+    return snap.empty ? null : snap.docs[0];
+  };
 
   const handleSave = async () => {
     if (!db || !user || !isFormValid) return;
@@ -378,37 +407,38 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         creditPayDay: Number(formCreditPayDay) || 0,
       };
 
+      // Quem já usa esse número: no cadastro novo vira atualização do mesmo
+      // cliente; na edição impede partir o histórico em dois cadastros.
+      const jaCadastrado = await findClienteByCelular(data.celular);
+
       if (editingCliente?.id) {
+        if (jaCadastrado && jaCadastrado.id !== editingCliente.id) {
+          toast({
+            variant: 'destructive',
+            title: 'Esse celular já é de outro cliente',
+            description: `"${jaCadastrado.data().nome || 'Sem nome'}" já está cadastrado com esse número. Use o cadastro dele — senão as compras e o Prazo ficam divididos em dois clientes.`,
+          });
+          return;
+        }
         await updateDoc(doc(db, 'clientes', editingCliente.id), data);
         toast({ title: 'Cliente atualizado!' });
       } else {
-        // Busca híbrida para novos registros para evitar duplicados se o celular já existir
-        let docId = doc(collection(db, 'clientes')).id;
-        let isExisting = false;
+        const isExisting = !!jaCadastrado;
+        const docId = jaCadastrado ? jaCadastrado.id : `${user.uid}_${data.celular}`;
 
-        if (data.celular) {
-          const variants = getPhoneVariants(data.celular);
-          const q = query(collection(db, 'clientes'), where('ownerId', '==', user.uid), where('celular', 'in', variants));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            docId = snap.docs[0].id;
-            isExisting = true;
-          } else {
-            docId = `${user.uid}_${data.celular}`;
-          }
-        }
-
-        const newDoc = doc(db, 'clientes', docId);
-        await setDoc(newDoc, {
-          ...data,
-          id: docId,
+        // Os zeros (saldo do Prazo, nº de pedidos, ticket) só valem para um
+        // cadastro NOVO. Reaproveitando um cliente que já existe eles apagariam
+        // a dívida em aberto e o histórico de compras dele.
+        const inicial = isExisting ? {} : {
           totalPedidos: 0,
           totalPontos: 0,
           ticketMedio: 0,
           creditBalance: 0,
           clienteDesde: new Date().toLocaleDateString('pt-BR'),
           ultimoPedido: '',
-        }, { merge: true });
+        };
+
+        await setDoc(doc(db, 'clientes', docId), { ...data, id: docId, ...inicial }, { merge: true });
         toast({ title: isExisting ? 'Cliente atualizado (já cadastrado)!' : 'Cliente cadastrado!' });
       }
       setEditingCliente(null);
@@ -582,8 +612,10 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         const nome = (cols[nameIdx] || '').trim();
         if (!nome) continue;
 
+        // Id previsível também sem telefone: reimportar a mesma planilha
+        // atualiza o cliente em vez de criar uma cópia dele.
         const normalizedPhone = normalizeCreditPhone(cols[phoneIdx] || '');
-        const docId = normalizedPhone ? `${user.uid}_${normalizedPhone}` : doc(collection(db, 'clientes')).id;
+        const docId = normalizedPhone ? `${user.uid}_${normalizedPhone}` : nameDocId(user.uid, nome);
         const ref = doc(db, 'clientes', docId);
         batch.set(ref, {
           id: docId,
@@ -851,8 +883,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                       <Input value={formNome} onChange={(e) => setFormNome(e.target.value)} placeholder="Ex: João da Silva" className="bg-slate-50/50 h-7 text-xs px-2" />
                     </div>
                     <div className="space-y-0.5">
-                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
-                      <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular *</Label>
+                      <Input value={formCelular} onChange={(e) => handleChangeCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
                     </div>
                     <div className="space-y-0.5">
                       <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nascimento</Label>
@@ -886,13 +918,23 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                       <Input value={formInscricaoEstadual} onChange={(e) => setFormInscricaoEstadual(e.target.value)} placeholder="Isento / nº" className="bg-slate-50/50 h-7 text-xs px-2" />
                     </div>
                     <div className="space-y-0.5">
-                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular</Label>
-                      <Input value={formCelular} onChange={(e) => setFormCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Celular *</Label>
+                      <Input value={formCelular} onChange={(e) => handleChangeCelular(e.target.value)} placeholder="(00) 00000-0000" className="bg-slate-50/50 h-7 text-xs px-2" />
                     </div>
                   </div>
                 </div>
               </TabsContent>
             </Tabs>
+
+            {formCelular.trim() && !isCelularValid && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Celular incompleto — digite com o DDD, ex.: (16) 99999-9999.
+              </p>
+            )}
+            <p className="text-[11px] text-slate-500 leading-snug">
+              O celular é o que liga este cadastro ao cliente no app de pedidos e à conta do Prazo.
+              Sem ele, uma compra a prazo no PDV não encontra o cliente e acaba criando um cadastro separado.
+            </p>
 
             {/* Endereço */}
             <div className="space-y-1.5">

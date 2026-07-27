@@ -43,6 +43,27 @@ export interface SyncResult {
 
 const ANON_NAMES = new Set(['cliente balcao', 'cliente balcão', 'cliente', '']);
 
+// Marcas de acento soltas depois do NFD (montado assim para não deixar
+// caractere invisível no código-fonte).
+const COMBINING_MARKS = new RegExp('[\\u0300-\\u036f]', 'g');
+
+/**
+ * Id determinístico para o cliente SEM telefone (venda de balcão só com nome).
+ * Sem isso o id era aleatório: duas sincronizações do mesmo pedido rodando ao
+ * mesmo tempo (dois PCs, ou criação + entrega) liam "não existe" juntas e cada
+ * uma criava um cadastro novo — foi assim que um mesmo nome virou 4 clientes.
+ */
+export function nameDocId(ownerId: string, nome: string) {
+  const slug = nome
+    .normalize('NFD')
+    .replace(COMBINING_MARKS, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return `${ownerId}_n_${slug}`;
+}
+
 /** Extrai o endereço estruturado do pedido (campos planos ou objeto address). */
 function extractAddress(order: any) {
   const a = order?.address && typeof order.address === 'object' ? order.address : {};
@@ -85,7 +106,9 @@ export async function syncCustomerFromOrder(
 
   const snap = await getDocs(q);
   const isNew = snap.empty;
-  const customerId = !isNew ? snap.docs[0].id : (phone ? `${ownerId}_${phone}` : doc(clientesRef).id);
+  const customerId = !isNew
+    ? snap.docs[0].id
+    : (phone ? `${ownerId}_${phone}` : nameDocId(ownerId, nome));
   const existing: any = isNew ? {} : snap.docs[0].data();
   const clientRef = doc(db, 'clientes', customerId);
 
