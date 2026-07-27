@@ -3,6 +3,11 @@ import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
 import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage, setWapiAutoRead } from '@/lib/wapi/wapi.service';
 import {
+  getLiveConnectedPhone,
+  isConnectedEvent,
+  isDisconnectedEvent,
+} from '@/lib/wapi/connection-events';
+import {
   buildStoreLink,
   formatWorkingHours,
   getStoreOpenState,
@@ -43,57 +48,6 @@ function getConnectedPhone(payload: any) {
   return getWapiConnectedPhone(payload);
 }
 
-function stateValues(payload: any, event: string) {
-  return [
-    event,
-    payload?.status,
-    payload?.state,
-    payload?.connectionStatus,
-    payload?.instanceStatus,
-    payload?.connected,
-    payload?.isConnected,
-    payload?.smartphoneConnected,
-    payload?.instance?.status,
-    payload?.instance?.instanceStatus,
-    payload?.instance?.connected,
-    payload?.data?.status,
-    payload?.data?.instanceStatus,
-    payload?.data?.connected,
-    payload?.data?.isConnected,
-    payload?.data?.instance?.status,
-    payload?.data?.instance?.connected,
-  ];
-}
-
-function normalizedStateValues(payload: any, event: string) {
-  return stateValues(payload, event).map((value) => {
-    if (typeof value === 'boolean') return value ? 'connected' : 'disconnected';
-    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  });
-}
-
-function stateTokens(payload: any, event: string) {
-  return stateValues(payload, event).flatMap((value) => {
-    if (typeof value === 'boolean') return [value ? 'connected' : 'disconnected'];
-    return String(value || '')
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter(Boolean);
-  });
-}
-
-// Eventos que realmente indicam mudanca de conexao
-const CONNECTION_EVENTS = new Set([
-  'status_change', 'connection_update', 'connection_status',
-  'disconnected', 'disconnect', 'logout', 'loggedout',
-  'connected', 'open', 'ready',
-  'qr_code', 'qrcode',
-]);
-
-function isConnectionEvent(event: string) {
-  const normalized = String(event || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  return CONNECTION_EVENTS.has(normalized) || normalized.includes('status') || normalized.includes('connect');
-}
 
 function normalizePhone(phone: string) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -394,24 +348,6 @@ function extractIncomingMessage(payload: any, event: string, hook?: string) {
   };
 }
 
-function isDisconnectedEvent(payload: any, event: string) {
-  // Ignora eventos de mensagem/delivery para decisoes de conexao
-  if (!isConnectionEvent(event)) return false;
-
-  const states = normalizedStateValues(payload, event);
-  if (states.some((state) => state === 'not_connected' || state === 'false')) return true;
-
-  const tokens = stateTokens(payload, event);
-  return tokens.some((token) => ['disconnected', 'disconnect', 'logout', 'loggedout', 'offline'].includes(token));
-}
-
-function isConnectedEvent(payload: any, event: string) {
-  if (!isConnectionEvent(event)) return false;
-  if (isDisconnectedEvent(payload, event)) return false;
-  const tokens = stateTokens(payload, event);
-  return tokens.some((token) => ['connected', 'connect', 'open', 'online', 'ready'].includes(token));
-}
-
 function buildAutoReply(params: {
   storeProfile: any;
   empresaId: string;
@@ -612,25 +548,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, persisted: false, autoReplySent: false });
   }
 
-  let empresaId = empresaIdFromUrl;
-  let adminRef = empresaId ? adminDb.collection('roles_admin').doc(empresaId) : null;
+  let empresaId = '';
+  let adminRef: FirebaseFirestore.DocumentReference | null = null;
+  let integration: any = null;
 
-  if (instanceId) {
+  // A loja indicada na URL do webhook tem prioridade, desde que ela realmente
+  // use esta instancia. A busca por instanceId com `.limit(1)` escolhia sempre a
+  // primeira loja na ordem do indice: com duas lojas apontando para a mesma
+  // instancia (ja aconteceu em producao), a segunda ficava permanentemente muda.
+  if (empresaIdFromUrl) {
+    const ref = adminDb.collection('roles_admin').doc(empresaIdFromUrl);
+    const data = (await ref.get()).data()?.whatsappIntegration;
+    if (data && (!instanceId || data.wapiInstanceId === instanceId)) {
+      adminRef = ref;
+      empresaId = empresaIdFromUrl;
+      integration = data;
+    }
+  }
+
+  if (!adminRef && instanceId) {
     const snap = await adminDb
       .collection('roles_admin')
       .where('whatsappIntegration.wapiInstanceId', '==', instanceId)
-      .limit(1)
+      .limit(2)
       .get();
 
+    if (snap.size > 1) {
+      console.warn('[W-API webhook] Instancia usada por mais de uma loja; evento atribuido a primeira:', {
+        instanceId,
+        lojas: snap.docs.map((doc) => doc.id),
+      });
+    }
     if (!snap.empty) {
       adminRef = snap.docs[0].ref;
       empresaId = snap.docs[0].id;
+      integration = snap.docs[0].data()?.whatsappIntegration;
     }
   }
 
   if (adminRef && webhookAuth.present) {
-    const adminSnap = await adminRef.get();
-    const integration = adminSnap.data()?.whatsappIntegration;
     let tokenMatches = false;
 
     try {
@@ -643,6 +599,7 @@ export async function POST(request: Request) {
       console.warn('[W-API webhook] Ignorando atualizacao por token divergente:', { event, instanceId, empresaId });
       adminRef = null;
       empresaId = '';
+      integration = null;
     }
   }
 
@@ -654,50 +611,59 @@ export async function POST(request: Request) {
     empresaId,
     payload,
     createdAt: now,
+    // Basta ligar a politica de TTL neste campo (console do Firestore) para a
+    // colecao parar de crescer sozinha: sao alguns milhares de documentos por
+    // dia, com o payload inteiro de cada mensagem.
+    expireAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
 
   let integrationUpdated = false;
-  const connected = isConnectedEvent(payload, event);
-  const disconnected = isDisconnectedEvent(payload, event);
+  const connected = isConnectedEvent(payload, event, hook);
+  const disconnected = isDisconnectedEvent(payload, event, hook);
+  const livePhone = disconnected ? '' : getLiveConnectedPhone(payload);
 
-  console.log('[W-API webhook] processando:', { event, instanceId, empresaId, connected, disconnected, isConnEvt: isConnectionEvent(event) });
+  console.log('[W-API webhook] processando:', { event, hook, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
 
-  if (adminRef && (connected || disconnected)) {
-    const patch: Record<string, unknown> = {
-      'whatsappIntegration.updatedAt': now,
-      'whatsappIntegration.lastStatusAt': now,
-    };
+  if (adminRef && integration && (connected || disconnected || livePhone)) {
+    const patch: Record<string, unknown> = {};
 
-    if (connected) {
-      patch['whatsappIntegration.connected'] = true;
-      patch['whatsappIntegration.status'] = 'connected';
-      patch['whatsappIntegration.numeroWhatsapp'] = getConnectedPhone(payload);
-      patch['whatsappIntegration.qrCode'] = '';
-      patch['whatsappIntegration.lastError'] = '';
-    } else if (disconnected) {
-      // Antes de marcar como desconectado, verifica se realmente estava conectado
-      // para evitar falsos positivos de eventos transitórios
-      const currentDoc = await adminRef.get();
-      const currentIntegration = currentDoc.data()?.whatsappIntegration;
-      if (currentIntegration?.connected) {
+    if (disconnected) {
+      // So marca desconectado quem estava conectado, para nao reagir a eventos
+      // transitorios repetidos.
+      if (integration.connected) {
         console.log('[W-API webhook] Marcando como desconectado:', { event, instanceId, empresaId });
         patch['whatsappIntegration.connected'] = false;
         patch['whatsappIntegration.status'] = 'disconnected';
-      } else {
-        console.log('[W-API webhook] Ignorando disconnect - ja estava desconectado:', { event, instanceId, empresaId });
+      }
+    } else if (connected || livePhone) {
+      const phone = livePhone || getConnectedPhone(payload) || integration.numeroWhatsapp || '';
+      // `livePhone` chega junto de TODA mensagem, entao so gravamos quando algo
+      // realmente mudou — senao seria uma escrita no Firestore por mensagem
+      // recebida (milhares por dia).
+      if (!integration.connected || (phone && integration.numeroWhatsapp !== phone)) {
+        patch['whatsappIntegration.connected'] = true;
+        patch['whatsappIntegration.status'] = 'connected';
+        patch['whatsappIntegration.numeroWhatsapp'] = phone;
+        patch['whatsappIntegration.qrCode'] = '';
+        patch['whatsappIntegration.lastError'] = '';
       }
     }
 
-    try {
-      await adminRef.update(patch);
-      integrationUpdated = true;
-    } catch (error) {
-      console.warn('[W-API webhook] Evento persistido, mas integracao nao foi atualizada:', {
-        event,
-        instanceId,
-        empresaId,
-        error,
-      });
+    if (Object.keys(patch).length > 0) {
+      patch['whatsappIntegration.updatedAt'] = now;
+      patch['whatsappIntegration.lastStatusAt'] = now;
+
+      try {
+        await adminRef.update(patch);
+        integrationUpdated = true;
+      } catch (error) {
+        console.warn('[W-API webhook] Evento persistido, mas integracao nao foi atualizada:', {
+          event,
+          instanceId,
+          empresaId,
+          error,
+        });
+      }
     }
   }
 

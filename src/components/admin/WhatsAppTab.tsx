@@ -56,9 +56,15 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'storeClosed',
 ];
 
-const QR_CODE_REFRESH_INTERVAL_MS = 12000;
-const CONNECTED_STATUS_REFRESH_INTERVAL_MS = 15000;
-const DISCONNECTED_STATUS_REFRESH_INTERVAL_MS = 8000;
+// O QR Code do W-API (/instance/qr-code) NAO e uma leitura: e a acao de parear
+// um aparelho. Pedir QR em laco enquanto a loja aparece como desconectada
+// derruba a sessao que estava de pe no celular — era exatamente por isso que o
+// WhatsApp caia sempre que alguem abria esta tela. Agora o pareamento so comeca
+// quando o dono pede, e para sozinho depois de alguns minutos.
+const QR_CODE_REFRESH_INTERVAL_MS = 25000;
+const QR_CODE_MAX_REFRESHES = 8;
+const CONNECTED_STATUS_REFRESH_INTERVAL_MS = 20000;
+const DISCONNECTED_STATUS_REFRESH_INTERVAL_MS = 15000;
 
 type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'disconnected' | 'error';
 
@@ -113,6 +119,9 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [testPhone, setTestPhone] = useState('');
+  const [pairing, setPairing] = useState(false);
+  const [qrAttempts, setQrAttempts] = useState(0);
+  const [checkFailed, setCheckFailed] = useState('');
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
   const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
@@ -152,19 +161,22 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
     try {
       const data = await apiFetch(`/wapi/integration/${empresaId}`);
+      setCheckFailed('');
       if (data.integration?.tokenConfigured) {
         setIntegration(data.integration);
-        if (data.integration.qrCode) setQrCode(data.integration.qrCode);
         return true;
       }
 
+      // O servidor respondeu e disse, explicitamente, que nao ha integracao.
       setIntegration(null);
       setQrCode('');
       return false;
-    } catch {
-      // Sem dados salvos; mostra tela de criacao
-      setIntegration(null);
-      setQrCode('');
+    } catch (error: any) {
+      // Falha de rede, sessao ou Firestore NAO significa que a loja perdeu a
+      // conexao. Zerar a tela aqui fazia o dono ver "WhatsApp nao conectado" com
+      // a credencial intacta no banco — e clicar em Desconectar, que ai sim
+      // apagava tudo de verdade. Preserva o que estiver na tela e avisa.
+      setCheckFailed(error?.message || 'Nao consegui verificar a conexao agora.');
       return false;
     } finally {
       setInitialLoading(false);
@@ -178,14 +190,16 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     try {
       const data = await apiFetch(`/wapi/status/${empresaId}`);
       setIntegration(data.integration);
-      if (data.integration?.qrCode) setQrCode(data.integration.qrCode);
+      setCheckFailed('');
     } catch (error: any) {
       // Se falhar a checagem ao vivo, NAO apaga a integracao salva
       if (!/ainda nao configurado/i.test(error.message)) {
+        setCheckFailed(error?.message || 'Nao consegui verificar a conexao agora.');
         if (!silent) toast({ variant: 'destructive', title: 'Erro no WhatsApp', description: error.message });
       } else {
         // Realmente nao tem integracao configurada
         setIntegration(null);
+        setQrCode('');
       }
     } finally {
       if (!silent) setLoadingStatus(false);
@@ -225,16 +239,32 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     return () => clearInterval(timer);
   }, [integration?.wapiInstanceId, integration?.connected, loadStatus]);
 
+  // Conectou: encerra o pareamento e joga o QR fora.
   useEffect(() => {
-    if (!integration || integration.connected || qrCode) return;
-    refreshQrCode(true);
-  }, [integration?.wapiInstanceId, integration?.connected, qrCode, refreshQrCode]);
+    if (!integration?.connected) return;
+    setPairing(false);
+    setQrAttempts(0);
+    setQrCode('');
+  }, [integration?.connected]);
 
+  // Renova o QR só enquanto o dono estiver de fato parenado um aparelho, e por
+  // tempo limitado. Nunca em segundo plano: ver a página não pode derrubar a
+  // conexão de quem está trabalhando.
   useEffect(() => {
-    if (!integration || integration.connected) return;
-    const timer = setInterval(() => refreshQrCode(true), QR_CODE_REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [integration?.wapiInstanceId, integration?.connected, refreshQrCode]);
+    if (!pairing || !integration || integration.connected) return;
+    if (qrAttempts >= QR_CODE_MAX_REFRESHES) return;
+    const timer = setTimeout(() => {
+      setQrAttempts((attempts) => attempts + 1);
+      refreshQrCode(true);
+    }, QR_CODE_REFRESH_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [pairing, qrAttempts, integration?.wapiInstanceId, integration?.connected, refreshQrCode]);
+
+  function startPairing() {
+    setQrAttempts(0);
+    setPairing(true);
+    refreshQrCode(false);
+  }
 
   async function linkInstance(wapiInstanceId: string, token: string) {
     setLoading(true);
@@ -244,8 +274,19 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         body: JSON.stringify({ empresaId, instanceName: storeName, wapiInstanceId, token }),
       });
       setIntegration(data.integration);
-      setQrCode(data.qrCode || data.integration?.qrCode || '');
-      toast({ title: 'WhatsApp vinculado', description: 'A conexao foi vinculada a esta loja com sucesso.' });
+      setCheckFailed('');
+      const nextQrCode = data.qrCode || data.integration?.qrCode || '';
+      setQrCode(nextQrCode);
+      if (!data.integration?.connected) {
+        setQrAttempts(0);
+        setPairing(true);
+      }
+      toast({
+        title: 'WhatsApp vinculado',
+        description: data.integration?.connected
+          ? 'A conexao foi vinculada e ja esta ativa.'
+          : 'Conexao vinculada. Escaneie o QR Code para ativar.',
+      });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
     } finally {
@@ -263,6 +304,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       });
       setIntegration(null);
       setQrCode('');
+      setPairing(false);
+      setQrAttempts(0);
       toast({ title: 'WhatsApp desconectado', description: 'Clique em Conectar WhatsApp para conectar novamente.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao desconectar', description: error.message });
@@ -344,6 +387,20 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         </div>
       </div>
 
+      {checkFailed && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <p className="font-bold">Nao consegui verificar a conexao agora</p>
+            <p className="mt-0.5 text-amber-800">
+              Isto e uma falha de comunicacao momentanea — a conexao do WhatsApp da loja continua
+              salva e funcionando. Nao e preciso desconectar nem cadastrar nada de novo.
+            </p>
+            <p className="mt-1 text-[11px] text-amber-700/80">{checkFailed}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:w-[520px]">
         <Button
           type="button"
@@ -406,7 +463,14 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                   />
 
                   {!isConnected ? (
-                    <QrSection qrCode={qrCode} status={status} />
+                    <QrSection
+                      qrCode={qrCode}
+                      status={status}
+                      pairing={pairing}
+                      loading={loading}
+                      exhausted={qrAttempts >= QR_CODE_MAX_REFRESHES}
+                      onStartPairing={startPairing}
+                    />
                   ) : (
                     <ConnectedCard numero={integration.numeroWhatsapp} />
                   )}
@@ -805,12 +869,48 @@ function InfoGrid({
   );
 }
 
-function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationStatus }) {
+function QrSection({
+  qrCode,
+  status,
+  pairing,
+  loading,
+  exhausted,
+  onStartPairing,
+}: {
+  qrCode: string;
+  status?: IntegrationStatus;
+  pairing: boolean;
+  loading: boolean;
+  exhausted: boolean;
+  onStartPairing: () => void;
+}) {
   return (
     <div className="rounded-2xl border bg-gradient-to-br from-white via-emerald-50/30 to-white p-6 flex flex-col items-center justify-center min-h-[360px] relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.08),transparent_70%)] pointer-events-none" />
 
-      {qrCode ? (
+      {!pairing ? (
+        <div className="relative text-center max-w-sm">
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-emerald-100 flex items-center justify-center mb-3">
+            <Smartphone className="h-7 w-7 text-emerald-700" />
+          </div>
+          <p className="font-black text-slate-900">Conectar o celular da loja</p>
+          <p className="text-sm text-slate-600 mt-1.5">
+            Gere o QR Code so quando o celular estiver na mao para escanear. Gerar o codigo
+            desconecta qualquer aparelho que ja esteja ligado nesta conexao.
+          </p>
+          <Button
+            onClick={onStartPairing}
+            disabled={loading}
+            className="mt-5 rounded-full h-11 px-6 bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
+            Gerar QR Code
+          </Button>
+          {status === 'error' && (
+            <p className="text-xs text-red-700 mt-3">Houve um erro na ultima conexao.</p>
+          )}
+        </div>
+      ) : qrCode ? (
         <div className="relative flex flex-col items-center">
           <div className="relative">
             <div className="absolute inset-0 rounded-2xl bg-emerald-400/20 blur-xl" />
@@ -830,7 +930,22 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
               <li><span className="font-bold text-emerald-700">2.</span> Toque em <strong>Configuracoes &gt; Aparelhos conectados</strong></li>
               <li><span className="font-bold text-emerald-700">3.</span> Selecione <strong>Conectar um aparelho</strong> e aponte para o codigo</li>
             </ol>
-            <p className="text-[11px] text-slate-500 mt-2">A tela acompanha a conexao automaticamente.</p>
+            <p className="text-[11px] text-slate-500 mt-2">
+              {exhausted
+                ? 'O codigo expirou. Clique em Gerar novo QR Code quando estiver pronto.'
+                : 'A tela acompanha a conexao automaticamente.'}
+            </p>
+            {exhausted && (
+              <Button
+                onClick={onStartPairing}
+                disabled={loading}
+                variant="outline"
+                className="mt-3 rounded-full h-9"
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                Gerar novo QR Code
+              </Button>
+            )}
           </div>
         </div>
       ) : (
@@ -840,8 +955,12 @@ function QrSection({ qrCode, status }: { qrCode: string; status?: IntegrationSta
           </div>
           <p className="font-bold text-slate-900">QR Code indisponivel no momento</p>
           <p className="text-sm text-slate-600 mt-1">
-            {status === 'error' ? 'Houve um erro na conexao.' : 'A tela atualiza o codigo automaticamente.'}
+            {status === 'error' ? 'Houve um erro na conexao.' : 'Tente gerar o codigo de novo em instantes.'}
           </p>
+          <Button onClick={onStartPairing} disabled={loading} variant="outline" className="mt-4 rounded-full h-9">
+            <QrCode className="h-4 w-4 mr-2" />
+            Gerar QR Code
+          </Button>
         </div>
       )}
     </div>

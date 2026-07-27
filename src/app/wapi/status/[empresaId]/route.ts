@@ -1,6 +1,6 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
 import { getWebhookUrl, ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
-import { configureWapiWebhooks, getWapiConnectedPhone, getWapiStatus, isWapiConnectedStatus } from '@/lib/wapi/wapi.service';
+import { configureWapiWebhooks, getWapiConnectedPhone, getWapiStatus, hasExplicitWapiConnectionState, isWapiConnectedStatus } from '@/lib/wapi/wapi.service';
 import { patchWhatsAppIntegration, sanitizeIntegration, statusFromWapi } from '@/lib/wapi/integration-store';
 
 export const runtime = 'nodejs';
@@ -21,8 +21,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
 
       try {
         rawStatus = await getWapiStatus(integration.wapiInstanceId, token);
-        connected = isWapiConnectedStatus(rawStatus);
-        connectedPhone = getWapiConnectedPhone(rawStatus) || integration.numeroWhatsapp || '';
+        const livePhone = getWapiConnectedPhone(rawStatus);
+
+        // Só rebaixa para "desconectado" quando a W-API AFIRMA isso. Se a
+        // resposta vier num formato que não reconhecemos, mantemos o que já
+        // sabíamos (os webhooks de mensagem provam a conexão o tempo todo) —
+        // antes, um formato inesperado zerava o estado a cada 15s e jogava a
+        // tela no laço de QR Code, que é o que derrubava o WhatsApp.
+        if (isWapiConnectedStatus(rawStatus) || livePhone) connected = true;
+        else if (hasExplicitWapiConnectionState(rawStatus)) connected = false;
+        else connected = integration.connected;
+
+        connectedPhone = livePhone || integration.numeroWhatsapp || '';
       } catch (wapiError: any) {
         // Se a W-API nao respondeu, mantemos o status salvo em vez de marcar como desconectado
         console.warn('[W-API status] Falha ao consultar status ao vivo, mantendo estado salvo:', wapiError?.message);
@@ -33,11 +43,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
         return ok({ integration: sanitizeIntegration(updated), raw: null, wapiError: wapiError?.message });
       }
 
-      try {
-        const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
-        webhookConfigured = !webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
-      } catch (webhookError: any) {
-        console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
+      // Reconfigurar os 5 webhooks a CADA consulta de status significava ~24
+      // chamadas por minuto na W-API para cada aba aberta, sem nenhum motivo: a
+      // URL so muda quando o dominio ou o token mudam. So refaz quando mudou.
+      if (integration.webhookUrl === webhookUrl) {
+        webhookConfigured = true;
+      } else {
+        try {
+          const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
+          webhookConfigured = !webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
+        } catch (webhookError: any) {
+          console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
+        }
       }
 
       const updated = await patchWhatsAppIntegration(empresaId, {

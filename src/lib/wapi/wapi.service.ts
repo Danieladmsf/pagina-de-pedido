@@ -254,6 +254,32 @@ export function isWapiConnectedStatus(response: WapiStatusResponse | any) {
   return false;
 }
 
+/**
+ * A resposta traz ALGUM campo de conexao reconhecido? Serve para separar
+ * "a W-API afirmou que caiu" de "a W-API respondeu num formato que nao
+ * conhecemos" — o segundo caso nao pode marcar a loja como desconectada, senao
+ * o app fica preso em "aguardando conexao" com o WhatsApp funcionando (o
+ * formato muda conforme o plano LITE/PRO e ja mudou antes).
+ */
+export function hasExplicitWapiConnectionState(response: WapiStatusResponse | any) {
+  if (typeof response === 'string') return response.trim().length > 0;
+  if (!response || typeof response !== 'object') return false;
+
+  const sources = [response, response.instance, response.data, response.data?.instance].filter(
+    (src) => src && typeof src === 'object',
+  );
+
+  return sources.some((src) => (
+    src.connected !== undefined ||
+    src.isConnected !== undefined ||
+    src.smartphoneConnected !== undefined ||
+    src.status !== undefined ||
+    src.state !== undefined ||
+    src.connectionStatus !== undefined ||
+    src.instanceStatus !== undefined
+  ));
+}
+
 function normalizePhoneCandidate(value: unknown) {
   if (typeof value !== 'string' && typeof value !== 'number') return '';
   const raw = String(value || '').trim();

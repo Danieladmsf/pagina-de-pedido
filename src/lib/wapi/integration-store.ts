@@ -73,6 +73,25 @@ export async function getWhatsAppIntegrationAdmin(empresaId: string) {
   return (snap.data()?.[INTEGRATION_FIELD] || null) as WhatsAppIntegration | null;
 }
 
+/**
+ * Outra loja ja usa esta instancia? Duas lojas na mesma instancia quebram o
+ * webhook: a busca por `wapiInstanceId` resolve sempre para a mesma loja e a
+ * outra nunca recebe nada, alem das duas ficarem disputando a URL do webhook
+ * (e o `wt`) na W-API. Retorna o empresaId da outra loja, ou null.
+ */
+export async function findStoreUsingWapiInstance(instanceId: string, exceptEmpresaId: string) {
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb || !instanceId) return null;
+
+  const snap = await adminDb
+    .collection(ADMIN_COLLECTION)
+    .where(`${INTEGRATION_FIELD}.wapiInstanceId`, '==', instanceId)
+    .limit(5)
+    .get();
+
+  return snap.docs.find((doc) => doc.id !== exceptEmpresaId)?.id || null;
+}
+
 export async function saveWhatsAppIntegration(empresaId: string, data: WhatsAppIntegration, idToken: string) {
   await patchFirestoreDocumentFields(
     `${ADMIN_COLLECTION}/${empresaId}`,
