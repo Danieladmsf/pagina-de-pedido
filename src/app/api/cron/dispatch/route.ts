@@ -3,7 +3,7 @@ import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { getReceiver, enqueueDispatch } from '@/lib/campanhas/qstash';
 import { requireIntegrationService } from '@/app/wapi/_lib';
 import { sendWapiImageMessage, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
-import { renderMessage, randomDelayMs } from '@/lib/campanhas/audience';
+import { renderMessage, randomDelayMs, normalizeCampaignPhone } from '@/lib/campanhas/audience';
 import type { ScheduledCampaign } from '@/lib/campanhas/types';
 
 export const runtime = 'nodejs';
@@ -23,19 +23,6 @@ const MAX_RESULTS = 200;
 const COLL = 'scheduled_campaigns';
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const firstName = (nome?: string) => (nome || '').trim().split(/\s+/)[0] || 'Cliente';
-/**
- * Telefone no formato da w-api (país + DDD + número, só dígitos). O "55" da
- * frente só é código do país quando o número fica com 12-13 dígitos: sem essa
- * checagem, quem tem DDD 55 (Santa Maria, Uruguaiana e região) era tratado como
- * se já tivesse o país e a mensagem saía para um número errado. Mesma regra do
- * CartDrawer e do normalizeCreditPhone.
- */
-function normalizePhone(phone: string) {
-  const d = String(phone || '').replace(/\D/g, '');
-  if (!d) return '';
-  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return d;
-  return `55${d}`;
-}
 
 export async function POST(request: Request) {
   // 1) Autenticidade: a requisição PRECISA vir assinada pelo QStash.
@@ -98,7 +85,7 @@ export async function POST(request: Request) {
     while (cursor < recipients.length) {
       const r = recipients[cursor];
       await ref.update({ currentId: r.id });
-      const phone = normalizePhone(r.celular);
+      const phone = normalizeCampaignPhone(r.celular);
       const rendered = renderMessage(campaign.message || '', {
         primeiro_nome: firstName(r.nome),
         nome: (r.nome || '').trim() || 'Cliente',

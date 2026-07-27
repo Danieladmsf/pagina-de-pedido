@@ -1,6 +1,7 @@
 import { withAuth, requireEmpresa, ok } from '@/app/wapi/_lib';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { enqueueDispatch } from '@/lib/campanhas/qstash';
+import { dedupeRecipientsByPhone } from '@/lib/campanhas/audience';
 import type { CampaignRecipient, ScheduledCampaign } from '@/lib/campanhas/types';
 
 export const runtime = 'nodejs';
@@ -19,9 +20,13 @@ export async function POST(request: Request) {
     const db = getOptionalAdminDb();
     if (!db) return ok({ error: 'Servico indisponivel (Admin nao configurado).' }, 500);
 
-    const recipients: CampaignRecipient[] = (Array.isArray(body.recipients) ? body.recipients : [])
+    const selecionados: CampaignRecipient[] = (Array.isArray(body.recipients) ? body.recipients : [])
       .map((r: any) => ({ id: String(r?.id || ''), nome: String(r?.nome || ''), celular: String(r?.celular || '') }))
       .filter((r: CampaignRecipient) => r.id && r.celular);
+
+    // Um número = uma mensagem (ver dedupeRecipientsByPhone).
+    const recipients = dedupeRecipientsByPhone(selecionados);
+    const repetidos = selecionados.length - recipients.length;
 
     const message = String(body.message || '');
     const imageUrl = body.imageUrl ? String(body.imageUrl) : null;
@@ -66,6 +71,6 @@ export async function POST(request: Request) {
       return ok({ error: 'Nao foi possivel agendar o disparo (QStash).' }, 502);
     }
 
-    return ok({ id: ref.id });
+    return ok({ id: ref.id, recipients: recipients.length, repetidos });
   });
 }

@@ -3,7 +3,7 @@
  * Funções puras (sem React, sem rede) — fáceis de testar e reaproveitar quando
  * ligarmos o disparo real pela w-api.
  */
-import type { AudienceId, AudiencePreset, CampaignDraft, MessageToken } from './types';
+import type { AudienceId, AudiencePreset, CampaignDraft, CampaignRecipient, MessageToken } from './types';
 
 /** Cliente (subset) usado para resolver públicos. */
 export interface ClientLike {
@@ -80,6 +80,45 @@ export function estimateMinutes(audienceCount: number, delaySeconds: number): nu
 /** Telefone com WhatsApp plausível (>= 10 dígitos). */
 export function hasValidWhatsapp(c: ClientLike): boolean {
   return (c.celular || '').replace(/\D/g, '').length >= 10;
+}
+
+/**
+ * Telefone no formato que a w-api recebe (país + DDD + número, só dígitos) —
+ * e, por tabela, a chave que identifica a PESSOA num disparo: é por ela que o
+ * mesmo número cadastrado duas vezes vira um envio só.
+ *
+ * O "55" da frente só é código do país quando o número fica com 12-13 dígitos:
+ * sem essa checagem, quem tem DDD 55 (Santa Maria, Uruguaiana e região) seria
+ * tratado como se já tivesse o país e a mensagem sairia para o número errado.
+ * Mesma regra do CartDrawer e do normalizeCreditPhone.
+ */
+export function normalizeCampaignPhone(phone?: string): string {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (!d) return '';
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return d;
+  return `55${d}`;
+}
+
+/**
+ * Um número = uma mensagem. O mesmo cliente cadastrado duas vezes (troca de
+ * nome, pedido pelo balcão + delivery) faria a pessoa receber a campanha
+ * repetida, às vezes em sequência — ruim para ela e para o anti-bloqueio.
+ *
+ * Vence o primeiro da lista; se ele estiver sem nome e o repetido tiver, o nome
+ * é aproveitado (senão o `{primeiro_nome}` cairia em "Cliente"). Só junta quem
+ * dá no MESMO número normalizado: "(11) 3333-4444" e "(11) 93333-4444" seguem
+ * sendo dois contatos, porque adivinhar o nono dígito casaria fixo com celular.
+ */
+export function dedupeRecipientsByPhone(recipients: CampaignRecipient[]): CampaignRecipient[] {
+  const porTelefone = new Map<string, CampaignRecipient>();
+  for (const r of recipients) {
+    const chave = normalizeCampaignPhone(r.celular);
+    if (!chave) continue;
+    const atual = porTelefone.get(chave);
+    if (!atual) porTelefone.set(chave, { ...r });
+    else if (!atual.nome.trim() && r.nome.trim()) atual.nome = r.nome;
+  }
+  return [...porTelefone.values()];
 }
 
 /** Converte "DD/MM/AAAA"(+hora) ou ISO em timestamp; vazio/inválido = 0. */

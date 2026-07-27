@@ -21,7 +21,7 @@ import {
   ListPlus, Trash2, Bookmark, MoreVertical, Repeat,
 } from 'lucide-react';
 import {
-  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth,
+  AUDIENCE_PRESETS, MESSAGE_TOKENS, EMPTY_DRAFT, renderMessage, estimateMinutes, resolveAudience, hasValidWhatsapp, parseDateBR, ordersPerMonth, normalizeCampaignPhone,
   DELAY_MIN_SECONDS, DELAY_MAX_SECONDS, DELAY_AVG_SECONDS,
   type ClientLike,
 } from '@/lib/campanhas/audience';
@@ -128,8 +128,20 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     const done = Math.min(live?.cursor || 0, live?.recipients?.length || 0);
     for (let i = 0; i < done; i++) m[live!.recipients[i].id] = 'sent';
     (live?.results || []).forEach((r) => { m[r.id] = r.status; });
+    // Cadastros repetidos não viram destinatário (um número = uma mensagem), mas
+    // a linha deles tem que acender junto: o status vai pelo telefone.
+    const porTelefone: Record<string, 'sent' | 'failed'> = {};
+    (live?.recipients || []).forEach((r) => {
+      const status = m[r.id];
+      if (status) porTelefone[normalizeCampaignPhone(r.celular)] = status;
+    });
+    clients.forEach((c) => {
+      if (m[c.id]) return;
+      const status = porTelefone[normalizeCampaignPhone(c.celular)];
+      if (status) m[c.id] = status;
+    });
     return m;
-  }, [live]);
+  }, [live, clients]);
   const liveTotal = live?.recipients?.length || 0;
   const livePct = liveTotal > 0 ? Math.round((((live?.sent || 0) + (live?.failed || 0)) / liveTotal) * 100) : 0;
 
@@ -411,7 +423,15 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
       }
       setDismissedId(null);
       setConfirmOpen(false);
-      toast({ title: 'Disparo iniciado', description: 'Roda no servidor — pode fechar a aba.' });
+      // O servidor junta cadastros com o mesmo número num envio só — avisa quando
+      // isso mudou a conta, senão o lojista estranha o total do painel.
+      const repetidos = Number(data.repetidos) || 0;
+      toast({
+        title: 'Disparo iniciado',
+        description: repetidos > 0
+          ? `${repetidos} cadastro(s) com número repetido entraram uma vez só — ninguém recebe a mensagem duplicada. Roda no servidor, pode fechar a aba.`
+          : 'Roda no servidor — pode fechar a aba.',
+      });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Erro ao disparar', description: e?.message || 'Falha ao iniciar.' });
     } finally {
