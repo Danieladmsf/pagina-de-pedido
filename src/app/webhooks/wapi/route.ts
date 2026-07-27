@@ -19,6 +19,9 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/** Intervalo minimo entre dois carimbos de `lastWebhookAt` (12 escritas/hora). */
+const WEBHOOK_HEARTBEAT_MS = 5 * 60 * 1000;
+
 function isAuthorized(request: Request) {
   const expected = process.env.WAPI_WEBHOOK_SECRET;
   if (!expected) return true;
@@ -624,7 +627,7 @@ export async function POST(request: Request) {
 
   console.log('[W-API webhook] processando:', { event, hook, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
 
-  if (adminRef && integration && (connected || disconnected || livePhone)) {
+  if (adminRef && integration) {
     const patch: Record<string, unknown> = {};
 
     if (disconnected) {
@@ -647,6 +650,16 @@ export async function POST(request: Request) {
         patch['whatsappIntegration.qrCode'] = '';
         patch['whatsappIntegration.lastError'] = '';
       }
+    }
+
+    // Prova de vida do REGISTRO do webhook — coisa diferente da conexao do
+    // celular. Se o evento chegou ate aqui, os PUTs de webhook estao de pe na
+    // W-API. O poll de status usa este carimbo para decidir se precisa refazer o
+    // registro (ver /wapi/status). Gravado no maximo a cada WEBHOOK_HEARTBEAT_MS:
+    // sem a trava seria uma escrita no Firestore por mensagem recebida.
+    const ultimoCarimbo = Date.parse(integration.lastWebhookAt || '') || 0;
+    if (Date.now() - ultimoCarimbo > WEBHOOK_HEARTBEAT_MS) {
+      patch['whatsappIntegration.lastWebhookAt'] = now;
     }
 
     if (Object.keys(patch).length > 0) {

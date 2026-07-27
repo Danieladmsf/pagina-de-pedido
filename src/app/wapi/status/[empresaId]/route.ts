@@ -6,6 +6,14 @@ import { patchWhatsAppIntegration, sanitizeIntegration, statusFromWapi } from '@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * Tempo que uma loja CONECTADA pode passar sem nenhum webhook antes de o
+ * registro virar suspeito. O carimbo vem do proprio handler do webhook
+ * (`lastWebhookAt`), que ja le o documento da integracao — nao custa consulta
+ * extra nem indice novo.
+ */
+const WEBHOOK_SILENCE_MS = 30 * 60 * 1000;
+
 export async function GET(request: Request, { params }: { params: Promise<{ empresaId: string }> }) {
   return withAuth(request, async (user) => {
     try {
@@ -45,23 +53,47 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
 
       // Reconfigurar os 5 webhooks a CADA consulta de status significava ~24
       // chamadas por minuto na W-API para cada aba aberta, sem nenhum motivo: a
-      // URL so muda quando o dominio ou o token mudam. So refaz quando mudou.
-      if (integration.webhookUrl === webhookUrl) {
-        webhookConfigured = true;
-      } else {
+      // URL so muda quando o dominio ou o token mudam. So refaz quando mudou —
+      // ou quando o registro parece ter caido (silencio abaixo).
+      const agora = Date.now();
+      const ultimoEvento = Date.parse(integration.lastWebhookAt || '') || 0;
+
+      // Loja CONECTADA que passou do limite sem receber um unico webhook: ou o
+      // registro caiu do lado da W-API, ou nunca chegou a existir. Refazer os 5
+      // PUTs e barato; ficar mudo sem ninguem perceber nao e. Desconectada nao
+      // conta — silencio ali e esperado, re-registrar seria ruido puro.
+      const mudaDemais = connected && agora - ultimoEvento > WEBHOOK_SILENCE_MS;
+      const precisaRegistrar = integration.webhookUrl !== webhookUrl || mudaDemais;
+
+      // Registro OK de verdade = os 5 endpoints aceitos. `configureWapiWebhooks`
+      // usa Promise.allSettled e nao lanca em falha parcial, entao sem esta
+      // distincao um 429 da W-API deixava o registro pela metade e ainda assim
+      // gravava a URL como boa — e a condicao acima nunca mais tentava de novo.
+      let registroConfirmado = !precisaRegistrar;
+
+      if (precisaRegistrar) {
         try {
           const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
+          registroConfirmado = webhookResult.failed.length === 0;
           webhookConfigured = !webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
         } catch (webhookError: any) {
           console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
         }
+      } else {
+        webhookConfigured = true;
       }
 
       const updated = await patchWhatsAppIntegration(empresaId, {
         connected,
         status: statusFromWapi(connected),
         numeroWhatsapp: connectedPhone,
-        webhookUrl,
+        // So grava a URL como registrada quando ela FOI registrada: em falha
+        // parcial o campo segue diferente e o proximo poll tenta de novo.
+        ...(registroConfirmado ? { webhookUrl } : {}),
+        // Carimbo novo depois de TENTAR re-registrar por silencio (deu certo ou
+        // nao): reinicia o relogio e serve de backoff — a retentativa volta em
+        // 30 min, em vez de a cada 15s enquanto o silencio durar.
+        ...(mudaDemais ? { lastWebhookAt: new Date().toISOString() } : {}),
         lastError: '',
         lastStatusAt: new Date().toISOString(),
       }, user.idToken);

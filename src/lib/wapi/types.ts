@@ -14,6 +14,13 @@ export interface WhatsAppIntegration {
   numeroWhatsapp?: string;
   qrCode?: string;
   webhookUrl?: string;
+  /**
+   * Ultimo webhook recebido desta instancia (ISO). Prova que o REGISTRO do
+   * webhook esta de pe — nao confundir com `connected`, que e o celular. O
+   * handler carimba no maximo a cada 5 min; o poll de status usa para saber se
+   * precisa refazer o registro na W-API.
+   */
+  lastWebhookAt?: string;
   lastError?: string;
   lastStatusAt?: string;
   createdAt: string;
