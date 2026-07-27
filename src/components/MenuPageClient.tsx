@@ -25,6 +25,8 @@ import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
+import { ORDER_LINK_PARAM, resolveOrderLink } from '@/lib/order-link';
+import { OrderChoiceDialog } from '@/components/menu/OrderChoiceDialog';
 
 function promoDateToMillis(value: any) {
   if (!value) return NaN;
@@ -113,6 +115,10 @@ export function MenuPageClient({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [now, setNow] = useState(() => new Date());
+
+  // Tela de escolha do link de pedidos (só para quem entra pelo link da loja)
+  const [orderChoiceOpen, setOrderChoiceOpen] = useState(false);
+  const orderChoiceShownRef = useRef(false);
 
   // "Pop" discreto no carrinho flutuante toda vez que um item é adicionado
   const [cartBump, setCartBump] = useState(0);
@@ -400,6 +406,28 @@ export function MenuPageClient({
   const heroThemeBackground = theme.bgPattern || `linear-gradient(135deg, ${theme.colors.bg} 0%, ${theme.colors.surface} 100%)`;
 
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
+
+  // O ?pedir=1 só entra no link quando o dono escolhe "Tela de escolha" em
+  // Mensagens automáticas — quem abre o app pelo favorito cai direto no
+  // cardápio. Espera o perfil chegar para saber quais cards a loja oferece.
+  useEffect(() => {
+    if (orderChoiceShownRef.current) return;
+    if (searchParams.get(ORDER_LINK_PARAM) !== '1' || !storeProfile) return;
+    if (resolveOrderLink(storeProfile).mode !== 'choice') return;
+    orderChoiceShownRef.current = true;
+    setOrderChoiceOpen(true);
+  }, [searchParams, storeProfile]);
+
+  // Ao fechar, tira o parâmetro da barra de endereço: recarregar a página (ou
+  // voltar para ela) não reabre a tela de escolha.
+  const closeOrderChoice = useCallback((open: boolean) => {
+    setOrderChoiceOpen(open);
+    if (open || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(ORDER_LINK_PARAM)) return;
+    url.searchParams.delete(ORDER_LINK_PARAM);
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     document.title = storeDisplayName ? `${storeDisplayName} - Cardápio Digital` : 'Cardápio Digital';
@@ -1535,6 +1563,18 @@ export function MenuPageClient({
           </nav>
         </SheetContent>
       </Sheet>
+
+      {/* Tela de escolha de quem chegou pelo link de pedidos da loja */}
+      {orderChoiceOpen && (
+        <OrderChoiceDialog
+          open={orderChoiceOpen}
+          onOpenChange={closeOrderChoice}
+          storeProfile={storeProfile}
+          storeSlug={storeSlug}
+          theme={theme}
+          isStoreOpen={isStoreOpenRightNow.isOpen}
+        />
+      )}
 
       <Toaster />
     </div>

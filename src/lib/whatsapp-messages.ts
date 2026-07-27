@@ -1,3 +1,5 @@
+import { buildOrderLinkPath } from './order-link';
+
 export type WhatsAppMessageKey =
   | 'firstContact'
   | 'orderReceived'
@@ -86,7 +88,10 @@ export function buildStoreLink(storeProfile: any, ownerId: string, origin?: stri
   const baseOrigin = (origin || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'loja';
   const slugId = storeProfile?.shortSlug || ownerId;
-  const path = `/${slugifyStoreName(storeName)}-${slugId}`;
+  const basePath = `/${slugifyStoreName(storeName)}-${slugId}`;
+  // O destino do link é escolhido pelo dono em Mensagens automáticas (cardápio
+  // direto, tela de escolha ou encomendas) — ver lib/order-link.
+  const path = buildOrderLinkPath(basePath, storeProfile);
   return baseOrigin ? `${baseOrigin}${path}` : path;
 }
 
