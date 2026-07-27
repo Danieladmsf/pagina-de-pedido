@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
+import { normalizeCreditPhone, getPhoneVariants, formatBrazilPhone } from '@/lib/customer-credit';
 import { nameDocId } from '@/lib/customers/customer-sync';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { brl, normalizeSearch } from '@/lib/utils';
@@ -268,9 +268,13 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     let result = [...clientes];
     if (searchTerm.trim()) {
       const term = normalizeSearch(searchTerm);
+      // O celular é guardado só em dígitos, então procurar por "(16) 99999-9999"
+      // também tem que achar. Compara os dois só pelos números.
+      const termDigits = searchTerm.replace(/\D/g, '');
       result = result.filter(c =>
         normalizeSearch(c.nome).includes(term) ||
         normalizeSearch(c.celular).includes(term) ||
+        (!!termDigits && (c.celular || '').replace(/\D/g, '').includes(termDigits)) ||
         normalizeSearch(c.bairro).includes(term) ||
         normalizeSearch(c.cidade).includes(term)
       );
@@ -314,7 +318,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const openEditForm = (c: Cliente) => {
     setFormTipoPessoa(c.tipoPessoa === 'juridica' ? 'juridica' : 'fisica');
     setFormNome(c.nome || '');
-    setFormCelular(c.celular || '');
+    setFormCelular(formatBrazilPhone(normalizeCreditPhone(c.celular || '')) || c.celular || '');
     setFormNascimento(c.dataNascimento || '');
     setFormCnpj(c.cnpj || '');
     setFormRazaoSocial(c.razaoSocial || '');
@@ -799,7 +803,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{c.celular || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{formatBrazilPhone(normalizeCreditPhone(c.celular || '')) || c.celular || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.bairro || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{c.cidade || '-'}</TableCell>
                     <TableCell className="text-center">
@@ -1075,7 +1079,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                   <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <div>
                     <p className="text-xs text-muted-foreground">Celular</p>
-                    <p className="font-semibold text-sm">{viewingCliente.celular || '-'}</p>
+                    <p className="font-semibold text-sm">{formatBrazilPhone(normalizeCreditPhone(viewingCliente.celular || '')) || viewingCliente.celular || '-'}</p>
                   </div>
                 </div>
                 {viewingCliente.tipoPessoa === 'juridica' ? (
