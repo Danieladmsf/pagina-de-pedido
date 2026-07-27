@@ -119,9 +119,14 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const liveActive = live?.status === 'running' || live?.status === 'scheduled';
   // Painel some quando dispensado (Concluir) ou quando não há campanha relevante.
   const showLivePanel = !!live && live.id !== dismissedId;
-  // Mapa id→status p/ animar cada linha da lista.
+  // Mapa id→status p/ animar cada linha da lista. Enviado = tudo que o cursor já
+  // passou; o servidor só grava as FALHAS (guardar cada envio inflava o documento
+  // até estourar o limite do Firestore em bases grandes). Campanhas antigas, que
+  // gravavam a lista inteira, continuam sendo lidas pelo mesmo caminho.
   const liveDone = useMemo(() => {
     const m: Record<string, 'sent' | 'failed'> = {};
+    const done = Math.min(live?.cursor || 0, live?.recipients?.length || 0);
+    for (let i = 0; i < done; i++) m[live!.recipients[i].id] = 'sent';
     (live?.results || []).forEach((r) => { m[r.id] = r.status; });
     return m;
   }, [live]);

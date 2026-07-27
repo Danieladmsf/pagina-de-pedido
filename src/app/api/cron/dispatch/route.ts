@@ -14,14 +14,27 @@ export const maxDuration = 300;
 const MAX_PER_CHUNK = 6;       // envios por entrega
 const BUDGET_MS = 90_000;      // teto de trabalho por entrega
 const LOCK_TTL_MS = 120_000;   // > BUDGET — destrava sozinho se a função morrer
+// Só as FALHAS ficam no doc (o "enviado" sai do cursor). Guardar todo envio fazia
+// o documento crescer com a campanha e estourar o limite de 1 MiB do Firestore em
+// bases grandes — aí o update falhava, o QStash reentregava e o mesmo lote era
+// disparado de novo. Teto extra para o caso patológico (tudo falhando).
+const MAX_RESULTS = 200;
 
 const COLL = 'scheduled_campaigns';
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const firstName = (nome?: string) => (nome || '').trim().split(/\s+/)[0] || 'Cliente';
+/**
+ * Telefone no formato da w-api (país + DDD + número, só dígitos). O "55" da
+ * frente só é código do país quando o número fica com 12-13 dígitos: sem essa
+ * checagem, quem tem DDD 55 (Santa Maria, Uruguaiana e região) era tratado como
+ * se já tivesse o país e a mensagem saía para um número errado. Mesma regra do
+ * CartDrawer e do normalizeCreditPhone.
+ */
 function normalizePhone(phone: string) {
   const d = String(phone || '').replace(/\D/g, '');
   if (!d) return '';
-  return d.startsWith('55') ? d : `55${d}`;
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return d;
+  return `55${d}`;
 }
 
 export async function POST(request: Request) {
@@ -80,8 +93,9 @@ export async function POST(request: Request) {
   const results = Array.isArray(campaign.results) ? [...campaign.results] : [];
   const startedAt = Date.now();
   let n = 0;
+  let nextDelayMs = 0; // intervalo que ainda falta cumprir quando o chunk fecha
   try {
-    while (cursor < recipients.length && n < MAX_PER_CHUNK && Date.now() - startedAt < BUDGET_MS) {
+    while (cursor < recipients.length) {
       const r = recipients[cursor];
       await ref.update({ currentId: r.id });
       const phone = normalizePhone(r.celular);
@@ -101,14 +115,32 @@ export async function POST(request: Request) {
         } else {
           await sendWapiTextMessage(integration.wapiInstanceId, token, { phone, message: rendered, delayMessage: 1 });
         }
-        sent++; results.push({ id: r.id, status: 'sent' });
+        sent++;
       } catch (sendErr: any) {
-        failed++; results.push({ id: r.id, status: 'failed', reason: sendErr?.message || 'falha' });
+        failed++;
+        if (results.length < MAX_RESULTS) {
+          results.push({ id: r.id, status: 'failed', reason: String(sendErr?.message || 'falha').slice(0, 120) });
+        }
       }
 
       cursor++; n++;
-      await ref.update({ cursor, sent, failed, results, updatedAt: new Date().toISOString() }); // idempotência: antes do sleep
-      if (cursor < recipients.length && n < MAX_PER_CHUNK) await sleep(randomDelayMs(campaign.delayMin, campaign.delayMax));
+      // Idempotência: cursor gravado ANTES de dormir. O lockedAt é renovado a cada
+      // envio para o lock nunca vencer com a função ainda viva (senão uma reentrega
+      // do QStash começava um segundo worker no mesmo cursor = mensagem duplicada).
+      await ref.update({
+        cursor, sent, failed, results,
+        lockedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      if (cursor >= recipients.length) break;
+      // Espaçamento anti-bloqueio. Se o chunk continua, dorme aqui; se está
+      // fechando (teto de envios ou de tempo), o intervalo sorteado vai como
+      // `delay` da próxima entrega do QStash — senão a 1ª mensagem do próximo
+      // chunk sairia colada na última deste, em rajada.
+      nextDelayMs = randomDelayMs(campaign.delayMin, campaign.delayMax);
+      if (n >= MAX_PER_CHUNK || Date.now() - startedAt + nextDelayMs >= BUDGET_MS) break;
+      await sleep(nextDelayMs);
     }
   } catch (loopErr) {
     // Erro inesperado: libera o lock e deixa o QStash reentregar (cursor já salvo).
@@ -124,7 +156,9 @@ export async function POST(request: Request) {
 
   await ref.update({ currentId: null, lockedAt: null, updatedAt: new Date().toISOString() });
   try {
-    const messageId = await enqueueDispatch(campaignId, 0, request);
+    // O intervalo entre a última mensagem deste chunk e a primeira do próximo é
+    // o `delay` da entrega (o sleep não roda no fim do chunk).
+    const messageId = await enqueueDispatch(campaignId, Math.max(1, Math.round(nextDelayMs / 1000)), request);
     await ref.update({ lastQstashMessageId: messageId });
   } catch (enqErr) {
     // Se o re-enqueue falhar, devolve 500 → o QStash reentrega esta mesma mensagem.
