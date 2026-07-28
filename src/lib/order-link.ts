@@ -28,9 +28,11 @@ export const DEFAULT_ORDER_LINK: OrderLinkConfig = {
 // cliente use (o app), depois a encomenda e por último o atendimento humano.
 export const ORDER_LINK_CARD_ORDER: OrderLinkCardId[] = ['menu', 'encomendas', 'whatsapp'];
 
+// Titulo de cada card. Fonte unica: o cliente e o dono (nos checkboxes do
+// admin) tem que ler exatamente o mesmo nome.
 export const ORDER_LINK_CARD_LABELS: Record<OrderLinkCardId, string> = {
-  menu: 'Fazer pedido pelo app',
-  encomendas: 'Fazer uma encomenda',
+  menu: 'Delivery',
+  encomendas: 'Encomendas',
   whatsapp: 'Falar no WhatsApp',
 };
 

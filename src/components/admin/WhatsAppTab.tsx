@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
+  ORDER_LINK_CARD_LABELS,
   getOrderLinkConfig,
   getOrderLinkCards,
   storeHasEncomendas,
@@ -622,10 +623,11 @@ const ORDER_LINK_MODES: { id: OrderLinkMode; title: string; desc: string }[] = [
   { id: 'encomendas', title: 'Encomendas direto', desc: 'Vai direto para a pagina de encomendas.' },
 ];
 
-const ORDER_LINK_CARD_META: Record<OrderLinkCardId, { title: string; desc: string; icon: React.ElementType }> = {
-  menu: { title: 'Fazer pedido pelo app', desc: 'Fecha a tela e mostra o cardapio.', icon: ShoppingBag },
-  encomendas: { title: 'Fazer uma encomenda', desc: 'Leva para a pagina de encomendas.', icon: CakeSlice },
-  whatsapp: { title: 'Falar no WhatsApp', desc: 'Abre uma conversa com o numero da loja.', icon: MessageCircle },
+// O nome de cada card vem do ORDER_LINK_CARD_LABELS: e o mesmo que o cliente le.
+const ORDER_LINK_CARD_META: Record<OrderLinkCardId, { desc: string; icon: React.ElementType }> = {
+  menu: { desc: 'Fecha a tela e mostra o cardapio.', icon: ShoppingBag },
+  encomendas: { desc: 'Leva para a pagina de encomendas.', icon: CakeSlice },
+  whatsapp: { desc: 'Abre uma conversa com o numero da loja.', icon: MessageCircle },
 };
 
 // Configuracao do link que a loja manda para o cliente. Fica aqui, junto das
@@ -762,7 +764,7 @@ function OrderLinkSection({
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-slate-800">{meta.title}</span>
+                      <span className="block text-sm font-bold text-slate-800">{ORDER_LINK_CARD_LABELS[id]}</span>
                       <span className="block text-xs text-slate-500">{blocked ? blockedHint : meta.desc}</span>
                     </span>
                   </label>

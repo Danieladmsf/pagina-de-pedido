@@ -5,7 +5,7 @@ import Link from 'next/link';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CakeSlice, ChevronRight, ShoppingBag, X } from 'lucide-react';
 import { themeToCssVars, type ThemePreset } from '@/lib/themes';
-import { getOrderLinkCards, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
+import { ORDER_LINK_CARD_LABELS, getOrderLinkCards, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
 
 // Tela de escolha do "link de pedidos": aparece quando o cliente entra pelo link
 // que a loja mandou e o dono configurou "Tela de escolha" em Mensagens
@@ -22,10 +22,11 @@ function WhatsAppGlyph({ className }: { className?: string }) {
   );
 }
 
-const CARD_COPY: Record<OrderLinkCardId, { title: string; subtitle: string }> = {
-  menu: { title: 'Fazer pedido pelo app', subtitle: 'Monte seu pedido pelo cardápio' },
-  encomendas: { title: 'Fazer uma encomenda', subtitle: 'Bolos e doces com data marcada' },
-  whatsapp: { title: 'Falar no WhatsApp', subtitle: 'Tire dúvidas com a nossa equipe' },
+// O titulo vem do ORDER_LINK_CARD_LABELS (mesmo nome que o dono ve no admin).
+const CARD_SUBTITLE: Record<OrderLinkCardId, string> = {
+  menu: 'Peça agora e receba em casa',
+  encomendas: 'Agende sua encomenda e retire',
+  whatsapp: 'Tire dúvidas com a nossa equipe',
 };
 
 export function OrderChoiceDialog({
@@ -52,7 +53,6 @@ export function OrderChoiceDialog({
     'group relative flex w-full items-center gap-3.5 rounded-2xl border border-black/[0.07] bg-white p-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition-all hover:-translate-y-px hover:border-primary/35 hover:shadow-[0_8px_20px_-8px_rgba(16,24,40,0.22)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0';
 
   function renderInner(id: OrderLinkCardId) {
-    const copy = CARD_COPY[id];
     return (
       <>
         <span
@@ -69,8 +69,8 @@ export function OrderChoiceDialog({
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold leading-tight text-slate-900">{copy.title}</span>
-          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{copy.subtitle}</span>
+          <span className="block text-[15px] font-bold leading-tight text-slate-900">{ORDER_LINK_CARD_LABELS[id]}</span>
+          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{CARD_SUBTITLE[id]}</span>
         </span>
 
         <ChevronRight className="h-[18px] w-[18px] shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none" />
