@@ -5,7 +5,7 @@ import Link from 'next/link';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CakeSlice, ChevronRight, ShoppingBag, X } from 'lucide-react';
 import { themeToCssVars, type ThemePreset } from '@/lib/themes';
-import { ORDER_LINK_CARD_LABELS, getOrderLinkCards, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
+import { ORDER_LINK_CARD_LABELS, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
 
 // Tela de escolha do "link de pedidos": aparece quando o cliente entra pelo link
 // que a loja mandou e o dono configurou "Tela de escolha" em Mensagens
@@ -31,6 +31,7 @@ const CARD_SUBTITLE: Record<OrderLinkCardId, string> = {
 
 export function OrderChoiceDialog({
   open,
+  cards,
   onOpenChange,
   storeProfile,
   storeSlug,
@@ -38,13 +39,14 @@ export function OrderChoiceDialog({
   isStoreOpen,
 }: {
   open: boolean;
+  /** Quais opções mostrar — vem do proprio link (?pedir=de). */
+  cards: OrderLinkCardId[];
   onOpenChange: (open: boolean) => void;
   storeProfile: any;
   storeSlug?: string;
   theme: ThemePreset;
   isStoreOpen: boolean;
 }) {
-  const cards = getOrderLinkCards(storeProfile);
   const storeName = storeProfile?.general?.name || 'nossa loja';
   const logoUrl = storeProfile?.general?.logoUrl || '';
   const whatsappUrl = `https://wa.me/${storeWhatsappDigits(storeProfile)}?text=${encodeURIComponent('Olá! Gostaria de fazer um pedido.')}`;

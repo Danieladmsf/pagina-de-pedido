@@ -25,7 +25,7 @@ import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
-import { ORDER_LINK_PARAM, resolveOrderLink } from '@/lib/order-link';
+import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
 import { OrderChoiceDialog } from '@/components/menu/OrderChoiceDialog';
 
 function promoDateToMillis(value: any) {
@@ -117,7 +117,7 @@ export function MenuPageClient({
   const [now, setNow] = useState(() => new Date());
 
   // Tela de escolha do link de pedidos (só para quem entra pelo link da loja)
-  const [orderChoiceOpen, setOrderChoiceOpen] = useState(false);
+  const [orderChoiceCards, setOrderChoiceCards] = useState<OrderLinkCardId[]>([]);
   const orderChoiceShownRef = useRef(false);
 
   // "Pop" discreto no carrinho flutuante toda vez que um item é adicionado
@@ -407,21 +407,21 @@ export function MenuPageClient({
 
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
 
-  // O ?pedir=1 só entra no link quando o dono escolhe "Tela de escolha" em
-  // Mensagens automáticas — quem abre o app pelo favorito cai direto no
-  // cardápio. Espera o perfil chegar para saber quais cards a loja oferece.
+  // O ?pedir=xx carrega QUAIS opções mostrar, e só existe nos links que a loja
+  // espalha — quem abre o app pelo favorito cai direto no cardápio. Espera o
+  // perfil chegar para conferir se a loja ainda oferece cada opção.
   useEffect(() => {
-    if (orderChoiceShownRef.current) return;
-    if (searchParams.get(ORDER_LINK_PARAM) !== '1' || !storeProfile) return;
-    if (resolveOrderLink(storeProfile).mode !== 'choice') return;
+    if (orderChoiceShownRef.current || !storeProfile) return;
+    const cards = resolveCardsFromParam(searchParams.get(ORDER_LINK_PARAM), storeProfile);
+    if (cards.length < 2) return;
     orderChoiceShownRef.current = true;
-    setOrderChoiceOpen(true);
+    setOrderChoiceCards(cards);
   }, [searchParams, storeProfile]);
 
   // Ao fechar, tira o parâmetro da barra de endereço: recarregar a página (ou
   // voltar para ela) não reabre a tela de escolha.
   const closeOrderChoice = useCallback((open: boolean) => {
-    setOrderChoiceOpen(open);
+    if (!open) setOrderChoiceCards([]);
     if (open || typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     if (!url.searchParams.has(ORDER_LINK_PARAM)) return;
@@ -1565,9 +1565,10 @@ export function MenuPageClient({
       </Sheet>
 
       {/* Tela de escolha de quem chegou pelo link de pedidos da loja */}
-      {orderChoiceOpen && (
+      {orderChoiceCards.length >= 2 && (
         <OrderChoiceDialog
-          open={orderChoiceOpen}
+          open
+          cards={orderChoiceCards}
           onOpenChange={closeOrderChoice}
           storeProfile={storeProfile}
           storeSlug={storeSlug}

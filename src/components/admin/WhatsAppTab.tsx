@@ -24,21 +24,21 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  ORDER_LINK_CARD_LABELS,
-  getOrderLinkConfig,
-  getOrderLinkCards,
+  ORDER_LINK_CARD_SHORT,
+  buildOrderLinkPathForCode,
+  getAvailableVariants,
+  getMessageVariantCode,
+  getVariantByCode,
   storeHasEncomendas,
   storeWhatsappDigits,
   type OrderLinkCardId,
-  type OrderLinkConfig,
-  type OrderLinkMode,
+  type OrderLinkVariant,
 } from '@/lib/order-link';
 import { revalidateStorePages } from '@/lib/revalidate-store';
 import {
@@ -139,26 +139,32 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [qrAttempts, setQrAttempts] = useState(0);
   const [checkFailed, setCheckFailed] = useState('');
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
-  const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens'>('conexao');
+  const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens' | 'links'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
   const [savingMessages, setSavingMessages] = useState(false);
-  const [orderLink, setOrderLink] = useState<OrderLinkConfig>(() => getOrderLinkConfig(storeProfile));
+  const [messageVariant, setMessageVariant] = useState<string>(() => getMessageVariantCode(storeProfile));
   const [savingOrderLink, setSavingOrderLink] = useState(false);
 
   const empresaId = user?.uid || '';
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || user?.displayName || 'Minha loja';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // Prévia ao vivo: o link mostrado ja reflete a escolha da tela, mesmo antes de
-  // salvar (o buildStoreLink le o destino de storeProfile.orderLink).
-  const previewProfile = React.useMemo(() => ({ ...(storeProfile || {}), orderLink }), [storeProfile, orderLink]);
-  const storeLink = empresaId && typeof window !== 'undefined' ? buildStoreLink(previewProfile, empresaId, window.location.origin) : '';
+  // Endereco da loja SEM variante nenhuma: e a base que a tela de links usa pra
+  // montar cada endereco (?pedir=de, /encomendas, ...).
+  const baseStoreLink = empresaId ? buildStoreLink({ ...(storeProfile || {}), orderLink: null }, empresaId, origin) : '';
+
+  // Previa ao vivo do {link} das mensagens: ja reflete a variante marcada, mesmo
+  // antes de salvar.
+  const storeLink = empresaId
+    ? buildStoreLink({ ...(storeProfile || {}), orderLink: { messageVariant } }, empresaId, origin)
+    : '';
 
   useEffect(() => {
     setMessageTemplates(getWhatsAppMessages(storeProfile?.whatsappMessages));
   }, [storeProfile?.whatsappMessages]);
 
   useEffect(() => {
-    setOrderLink(getOrderLinkConfig(storeProfile));
+    setMessageVariant(getMessageVariantCode(storeProfile));
   }, [storeProfile?.orderLink]);
 
   async function apiFetch(path: string, options: RequestInit = {}) {
@@ -389,11 +395,11 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     setSavingOrderLink(true);
     try {
       await setDoc(doc(db, 'store_profiles', empresaId), {
-        orderLink,
+        orderLink: { messageVariant },
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       revalidateStorePages(empresaId);
-      toast({ title: 'Link salvo', description: 'Os proximos links enviados ja abrem essa opcao.' });
+      toast({ title: 'Link salvo', description: 'As proximas mensagens automaticas ja usam esse link.' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Erro ao salvar o link', description: error.message || 'Falha ao salvar.' });
     } finally {
@@ -448,48 +454,49 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         </div>
       )}
 
-      <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:w-[520px]">
-        <Button
-          type="button"
-          variant={activeSection === 'conexao' ? 'default' : 'ghost'}
-          onClick={() => setActiveSection('conexao')}
-          className={`rounded-xl h-11 px-2 text-xs sm:text-sm whitespace-normal leading-tight ${activeSection === 'conexao' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-        >
-          <Wifi className="h-4 w-4 mr-2" />
-          Conexao
-        </Button>
-        <Button
-          type="button"
-          variant={activeSection === 'mensagens' ? 'default' : 'ghost'}
-          onClick={() => setActiveSection('mensagens')}
-          className={`rounded-xl h-11 px-2 text-xs sm:text-sm whitespace-normal leading-tight ${activeSection === 'mensagens' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-        >
-          <MessageCircle className="h-4 w-4 mr-2" />
-          Mensagens automaticas
-        </Button>
+      {/* Um assunto por secao. Recurso novo entra numa secao existente ou ganha
+          a sua — nunca empilhado no fim de uma que ja esta cheia. */}
+      <div className="grid w-full grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:w-[720px]">
+        {([
+          { id: 'conexao', label: 'Conexao', icon: Wifi },
+          { id: 'mensagens', label: 'Mensagens automaticas', icon: MessageCircle },
+          { id: 'links', label: 'Links de pedido', icon: Link2 },
+        ] as const).map((section) => (
+          <Button
+            key={section.id}
+            type="button"
+            variant={activeSection === section.id ? 'default' : 'ghost'}
+            onClick={() => setActiveSection(section.id)}
+            className={`rounded-xl h-11 px-2 text-xs sm:text-sm whitespace-normal leading-tight ${activeSection === section.id ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+          >
+            <section.icon className="h-4 w-4 mr-2 shrink-0" />
+            {section.label}
+          </Button>
+        ))}
       </div>
 
-      {activeSection === 'mensagens' ? (
-        <div className="space-y-5">
-          <OrderLinkSection
-            config={orderLink}
-            setConfig={setOrderLink}
-            onSave={saveOrderLink}
-            saving={savingOrderLink}
-            storeLink={storeLink}
-            storeProfile={storeProfile}
-          />
-          <MessageTemplatesSection
-            templates={messageTemplates}
-            setTemplates={setMessageTemplates}
-            onSave={saveMessageTemplates}
-            saving={savingMessages}
-            storeLink={storeLink}
-            storeName={storeName}
-            workingHours={storeProfile?.workingHours}
-            storeProfile={storeProfile}
-          />
-        </div>
+      {activeSection === 'links' ? (
+        <OrderLinksSection
+          messageVariant={messageVariant}
+          setMessageVariant={setMessageVariant}
+          onSave={saveOrderLink}
+          saving={savingOrderLink}
+          baseStoreLink={baseStoreLink}
+          storeProfile={storeProfile}
+        />
+      ) : activeSection === 'mensagens' ? (
+        <MessageTemplatesSection
+          templates={messageTemplates}
+          setTemplates={setMessageTemplates}
+          onSave={saveMessageTemplates}
+          saving={savingMessages}
+          storeLink={storeLink}
+          storeName={storeName}
+          workingHours={storeProfile?.workingHours}
+          storeProfile={storeProfile}
+          messageVariant={messageVariant}
+          onManageLinks={() => setActiveSection('links')}
+        />
       ) : initialLoading ? (
         <LoadingState />
       ) : (
@@ -617,60 +624,158 @@ function ConnectionSupportActions({
   );
 }
 
-const ORDER_LINK_MODES: { id: OrderLinkMode; title: string; desc: string }[] = [
-  { id: 'menu', title: 'Cardapio direto', desc: 'O cliente ja cai no cardapio para montar o pedido.' },
-  { id: 'choice', title: 'Tela de escolha', desc: 'Abre uma tela perguntando o que ele quer fazer.' },
-  { id: 'encomendas', title: 'Encomendas direto', desc: 'Vai direto para a pagina de encomendas.' },
-];
-
-// O nome de cada card vem do ORDER_LINK_CARD_LABELS: e o mesmo que o cliente le.
-const ORDER_LINK_CARD_META: Record<OrderLinkCardId, { desc: string; icon: React.ElementType }> = {
-  menu: { desc: 'Fecha a tela e mostra o cardapio.', icon: ShoppingBag },
-  encomendas: { desc: 'Leva para a pagina de encomendas.', icon: CakeSlice },
-  whatsapp: { desc: 'Abre uma conversa com o numero da loja.', icon: MessageCircle },
+const ORDER_LINK_CARD_ICONS: Record<OrderLinkCardId, React.ElementType> = {
+  menu: ShoppingBag,
+  encomendas: CakeSlice,
+  whatsapp: MessageCircle,
 };
 
-// Configuracao do link que a loja manda para o cliente. Fica aqui, junto das
-// mensagens automaticas, porque e o mesmo {link} que elas usam.
-function OrderLinkSection({
-  config,
-  setConfig,
-  onSave,
-  saving,
-  storeLink,
-  storeProfile,
+// Uma linha da lista: o nome da combinacao, o que ela abre, onde colar e o
+// endereco pronto para copiar. O radio marca qual delas entra nas mensagens
+// automaticas — as outras a loja usa copiando e colando onde quiser.
+function OrderLinkVariantRow({
+  variant,
+  url,
+  selected,
+  onSelect,
 }: {
-  config: OrderLinkConfig;
-  setConfig: React.Dispatch<React.SetStateAction<OrderLinkConfig>>;
-  onSave: () => void;
-  saving: boolean;
-  storeLink: string;
-  storeProfile?: any;
+  variant: OrderLinkVariant;
+  url: string;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
-  // O que esta loja tem como oferecer: encomendas so existem na confeitaria e o
-  // WhatsApp so aparece se houver um numero no Perfil da loja.
-  const isConfeitaria = (storeProfile?.theme || storeProfile?.general?.theme) === 'confeitaria';
-  const hasEncomendas = storeHasEncomendas(storeProfile);
-  const hasWhatsapp = Boolean(storeWhatsappDigits(storeProfile));
-  const availableCards = getOrderLinkCards({ ...(storeProfile || {}), orderLink: config });
-  const modes = ORDER_LINK_MODES.filter((mode) => mode.id !== 'encomendas' || hasEncomendas);
-
-  function toggleCard(id: OrderLinkCardId, checked: boolean) {
-    setConfig((prev) => ({ ...prev, cards: { ...prev.cards, [id]: checked } }));
-  }
-
-  async function copyLink() {
-    if (!storeLink) return;
+  async function copyUrl() {
     try {
-      await navigator.clipboard.writeText(storeLink);
+      await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
       toast({ variant: 'destructive', title: 'Nao consegui copiar', description: 'Copie o endereco manualmente.' });
     }
+  }
+
+  return (
+    <div
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+        selected
+          ? 'border-emerald-500 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-500/20'
+          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+            selected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
+          }`}
+        >
+          <Check className="h-3 w-3" strokeWidth={3} />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className={`text-sm font-black ${selected ? 'text-emerald-900' : 'text-slate-800'}`}>{variant.title}</p>
+            {selected && (
+              <span className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
+                Usado nas mensagens
+              </span>
+            )}
+          </div>
+
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {variant.cards.map((id) => {
+              const Icon = ORDER_LINK_CARD_ICONS[id];
+              return (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600"
+                >
+                  <Icon className="h-3 w-3" />
+                  {ORDER_LINK_CARD_SHORT[id]}
+                </span>
+              );
+            })}
+          </div>
+
+          <p className="mt-2 text-xs leading-snug text-slate-600">{variant.opens}</p>
+          <p className="mt-1 text-xs leading-snug text-slate-500">
+            <span className="font-bold text-slate-600">Ideal para:</span> {variant.goodFor}
+          </p>
+
+          <div className="mt-2.5 flex flex-col gap-2 sm:flex-row" onClick={(event) => event.stopPropagation()}>
+            <Input value={url} readOnly onFocus={(e) => e.target.select()} className="h-9 rounded-xl bg-white font-mono text-[11px]" />
+            <Button type="button" variant="outline" onClick={copyUrl} className="h-9 shrink-0 rounded-xl">
+              {copied ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
+              {copied ? 'Copiado' : 'Copiar'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Secao "Links de pedido": lista todas as combinacoes que a loja consegue
+// oferecer. O dono copia a que combina com o lugar onde vai colar, e marca uma
+// para entrar no {link} das mensagens automaticas.
+function OrderLinksSection({
+  messageVariant,
+  setMessageVariant,
+  onSave,
+  saving,
+  baseStoreLink,
+  storeProfile,
+}: {
+  messageVariant: string;
+  setMessageVariant: (code: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  baseStoreLink: string;
+  storeProfile?: any;
+}) {
+  const variants = getAvailableVariants(storeProfile);
+  const diretos = variants.filter((variant) => variant.cards.length === 1);
+  const comEscolha = variants.filter((variant) => variant.cards.length > 1);
+
+  const hasEncomendas = storeHasEncomendas(storeProfile);
+  const hasWhatsapp = Boolean(storeWhatsappDigits(storeProfile));
+
+  function urlFor(variant: OrderLinkVariant) {
+    if (!baseStoreLink) return 'Link ainda indisponivel';
+    return buildOrderLinkPathForCode(baseStoreLink, variant.code, storeProfile);
+  }
+
+  function renderGroup(title: string, hint: string, list: OrderLinkVariant[]) {
+    if (list.length === 0) return null;
+    return (
+      <div className="space-y-2.5">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</p>
+          <p className="text-xs text-slate-500">{hint}</p>
+        </div>
+        {list.map((variant) => (
+          <OrderLinkVariantRow
+            key={variant.code}
+            variant={variant}
+            url={urlFor(variant)}
+            selected={messageVariant === variant.code}
+            onSelect={() => setMessageVariant(variant.code)}
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -680,10 +785,11 @@ function OrderLinkSection({
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <Link2 className="h-5 w-5 text-emerald-600" />
-              Link de pedidos
+              Links de pedido
             </CardTitle>
-            <p className="text-xs text-slate-500 mt-1 max-w-xl">
-              E o endereco que vai nas mensagens automaticas e nas campanhas. Escolha o que ele abre quando o cliente toca.
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+              Todos levam para a sua loja, mas cada um abre uma coisa diferente. Copie o que combina
+              com o lugar onde voce vai colar e marque qual deles entra nas mensagens automaticas.
             </p>
           </div>
           <Button
@@ -693,110 +799,40 @@ function OrderLinkSection({
             className="rounded-full h-9 bg-emerald-600 hover:bg-emerald-700 shrink-0"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Salvar link
+            Salvar escolha
           </Button>
         </div>
       </CardHeader>
 
-      <CardContent className="p-5 md:p-6 space-y-5">
-        <div className={`grid grid-cols-1 gap-3 ${modes.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-          {modes.map((mode) => {
-            const active = config.mode === mode.id;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setConfig((prev) => ({ ...prev, mode: mode.id }))}
-                className={`relative rounded-2xl border p-4 text-left transition-all ${
-                  active
-                    ? 'border-emerald-500 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-500/20'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
-                }`}
-              >
-                <span
-                  className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
-                    active ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
-                  }`}
-                >
-                  <Check className="h-3 w-3" strokeWidth={3} />
-                </span>
-                <p className={`pr-7 text-sm font-black ${active ? 'text-emerald-900' : 'text-slate-800'}`}>{mode.title}</p>
-                <p className="mt-1 text-xs leading-snug text-slate-500">{mode.desc}</p>
-              </button>
-            );
-          })}
+      <CardContent className="p-5 md:p-6 space-y-6">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+          <p className="text-xs leading-relaxed text-emerald-900">
+            <span className="font-black">Por que mais de um link?</span> Quando a mensagem sai pelo
+            WhatsApp, oferecer &quot;falar no WhatsApp&quot; e redundante — o cliente ja esta falando
+            com voce. Ja num post ou na bio do Instagram, essa opcao faz falta.
+          </p>
         </div>
 
-        {config.mode === 'choice' && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Opcoes que o cliente ve</p>
-              <p className="text-xs text-slate-500 mt-0.5">Desmarque o que a loja nao quer oferecer nessa tela.</p>
-            </div>
+        {renderGroup('Abre direto', 'Sem perguntar nada: o cliente ja cai no lugar.', diretos)}
+        {renderGroup('Tela de escolha', 'O cliente escolhe entre as opcoes ao abrir.', comEscolha)}
 
-            <div className="space-y-2">
-              {(['menu', 'encomendas', 'whatsapp'] as OrderLinkCardId[]).map((id) => {
-                // Encomendas so aparece na modalidade confeitaria.
-                if (id === 'encomendas' && !isConfeitaria) return null;
-
-                const meta = ORDER_LINK_CARD_META[id];
-                const Icon = meta.icon;
-                const blocked =
-                  (id === 'encomendas' && !hasEncomendas) || (id === 'whatsapp' && !hasWhatsapp);
-                const blockedHint =
-                  id === 'encomendas'
-                    ? 'Ligue as encomendas na aba Encomendas para usar esta opcao.'
-                    : 'Cadastre o WhatsApp da loja em Perfil da loja para usar esta opcao.';
-
-                return (
-                  <label
-                    key={id}
-                    className={`flex items-center gap-3 rounded-xl border bg-white p-3 transition-colors ${
-                      blocked ? 'border-slate-200 opacity-60' : 'border-slate-200 hover:border-emerald-300 cursor-pointer'
-                    }`}
-                  >
-                    <Checkbox
-                      checked={config.cards[id] && !blocked}
-                      disabled={blocked}
-                      onCheckedChange={(checked) => toggleCard(id, checked === true)}
-                    />
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-slate-800">{ORDER_LINK_CARD_LABELS[id]}</span>
-                      <span className="block text-xs text-slate-500">{blocked ? blockedHint : meta.desc}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-
-            {availableCards.length < 2 && (
-              <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
-                Uma tela de escolha precisa de pelo menos duas opcoes. Com menos que isso, o link volta a abrir o cardapio direto.
+        {(!hasEncomendas || !hasWhatsapp) && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-1.5">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Links que ainda nao aparecem</p>
+            {!hasEncomendas && (
+              <p className="text-xs text-slate-600">
+                <span className="font-bold">Encomendas:</span> disponivel para lojas de confeitaria com
+                as encomendas ligadas na aba Encomendas.
+              </p>
+            )}
+            {!hasWhatsapp && (
+              <p className="text-xs text-slate-600">
+                <span className="font-bold">Falar no WhatsApp:</span> cadastre o WhatsApp da loja em
+                Perfil da loja para liberar.
               </p>
             )}
           </div>
         )}
-
-        <div className="rounded-2xl border bg-slate-50/70 p-4">
-          <Label className="text-xs font-bold text-slate-700">Endereco que o cliente recebe</Label>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <Input value={storeLink || 'Link ainda indisponivel'} readOnly className="rounded-xl bg-white font-mono text-xs" />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={copyLink}
-              disabled={!storeLink}
-              className="rounded-xl h-10 shrink-0"
-            >
-              {copied ? <Check className="h-4 w-4 mr-2 text-emerald-600" /> : <Copy className="h-4 w-4 mr-2" />}
-              {copied ? 'Copiado' : 'Copiar'}
-            </Button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
@@ -811,6 +847,8 @@ function MessageTemplatesSection({
   storeName,
   workingHours,
   storeProfile,
+  messageVariant,
+  onManageLinks,
 }: {
   templates: WhatsAppMessageTemplates;
   setTemplates: React.Dispatch<React.SetStateAction<WhatsAppMessageTemplates>>;
@@ -820,6 +858,8 @@ function MessageTemplatesSection({
   storeName: string;
   workingHours?: any[];
   storeProfile?: any;
+  messageVariant: string;
+  onManageLinks: () => void;
 }) {
   const pixKeySample = (storeProfile?.creditPixKey || '').trim();
   const pixNameSample = (storeProfile?.creditPixName || '').trim();
@@ -884,9 +924,23 @@ function MessageTemplatesSection({
         </CardHeader>
         <CardContent className="p-5 md:p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1.3fr] gap-3 rounded-2xl border bg-slate-50/70 p-4">
+            {/* Resumo, nao um segundo painel: quem manda no link e a secao
+                "Links de pedido". Aqui so mostra o que esta valendo. */}
             <div>
               <Label className="text-xs font-bold text-slate-700">Endereco que entra no {'{link}'}</Label>
               <Input value={storeLink || 'Link ainda indisponivel'} readOnly className="mt-2 rounded-xl bg-white font-mono text-xs" />
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-[11px] text-slate-500">
+                  Abre: <span className="font-bold text-slate-700">{getVariantByCode(messageVariant)?.title || 'Delivery'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onManageLinks}
+                  className="text-[11px] font-bold text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+                >
+                  Trocar em Links de pedido
+                </button>
+              </div>
             </div>
             <div>
               <Label className="text-xs font-bold text-slate-700">Horario usado na mensagem de fechado</Label>
