@@ -11,7 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
-import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote } from 'lucide-react';
+import { saldoAReceber, valorRecebido } from '@/lib/encomendas/pagamento';
+import { buildEncomendaConfig } from '@/lib/encomendas/config';
+import { ensureBrandFontsLoaded } from '@/lib/themes';
+import { EncomendaWizard, type EncomendaCriada } from '@/components/encomendas/EncomendaWizard';
+import { FechamentoModal } from '@/components/admin/fechamento/FechamentoModal';
+import { useFechamento } from '@/components/admin/fechamento/useFechamento';
+import { resolveFormasPagamento } from '@/components/admin/fechamento/payment-methods';
+import { registrarPagamentoSplits, resolveContaCasa } from '@/lib/payments';
+import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote, Plus } from 'lucide-react';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { brl } from '@/lib/utils';
@@ -64,6 +72,26 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const [filter, setFilter] = useState<'todas' | EncomendaStatus>('todas');
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
   const [lancandoId, setLancandoId] = useState<string | null>(null);
+  const [novaAberta, setNovaAberta] = useState(false);
+  // Encomenda que está sendo entregue: abre o mesmo fechamento dos pedidos.
+  const [entregando, setEntregando] = useState<(Encomenda & { id: string }) | null>(null);
+  const [finalizandoEntrega, setFinalizandoEntrega] = useState(false);
+
+  const config = useMemo(() => buildEncomendaConfig(storeProfile), [storeProfile]);
+  // Prazo fica de fora da criação (lá é dinheiro entrando na hora); na entrega
+  // ele vale, e o fechamento centralizado já sabe lançar a dívida.
+  const formasBalcao = useMemo(
+    () => resolveFormasPagamento(storeProfile).filter((f) => f.id !== 'conta_casa'),
+    [storeProfile],
+  );
+
+  const saldoEntrega = entregando ? saldoAReceber(entregando) : 0;
+  const fechamento = useFechamento({
+    subtotal: saldoEntrega,
+    formasPagamento: resolveFormasPagamento(storeProfile),
+    allowAdjustments: false,
+    allowPrazo: allowSignal,
+  });
 
   const encomendasQuery = useMemoFirebase(() => {
     if (!db || !ownerId) return null;
@@ -98,7 +126,11 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         valor: enc.sinal,
         formaPagamento: 'pix',
       });
-      await updateDoc(doc(db, 'encomendas', enc.id), { sinalLancado: true });
+      await updateDoc(doc(db, 'encomendas', enc.id), {
+        sinalLancado: true,
+        // `valorPago` é o que diz quanto ainda falta na entrega.
+        valorPago: valorRecebido(enc) + enc.sinal,
+      });
       toast({ title: 'Sinal lançado no caixa', description: `${brl(enc.sinal)} (PIX) — Encomenda ${enc.id.substring(0, 5)}.` });
       return true;
     } catch (err) {
@@ -115,8 +147,29 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
       notifyPermissionRemoved();
       return;
     }
+    // Entregar com dinheiro a receber abre o fechamento (igual ao Delivery). É
+    // o que faltava: antes o saldo da encomenda simplesmente nunca entrava.
+    // Com o caixa fechado a entrega acontece do mesmo jeito (a cliente está lá
+    // na porta), mas o recebimento fica pendente no card — inventar que o
+    // dinheiro entrou seria pior do que a pendência.
+    const falta = saldoAReceber(enc);
+    const podeReceber = can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal');
+    if (status === 'entregue' && falta > 0 && podeReceber && caixaAberto && registrarLancamento) {
+      fechamento.reset();
+      setEntregando(enc);
+      return;
+    }
     try {
       await updateDoc(doc(db, 'encomendas', enc.id), { status });
+      if (status === 'entregue' && falta > 0) {
+        toast({
+          variant: 'destructive',
+          title: `Falta receber ${brl(falta)}`,
+          description: caixaAberto
+            ? 'Use o botão "Receber" no card da encomenda.'
+            : 'O caixa está fechado. Abra o caixa e use "Receber" no card da encomenda.',
+        });
+      }
       // Confirmar = sinal pago → registra no caixa (se ainda não registrado).
       if (status === 'confirmada' && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
         await lancarSinal(enc);
@@ -124,6 +177,98 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     } catch (err) {
       console.error('[encomendas] erro ao atualizar status:', err);
       toast({ variant: 'destructive', title: 'Erro ao atualizar status' });
+    }
+  }
+
+  /**
+   * Encomenda nova tirada no balcão: o formulário já gravou o documento, aqui
+   * entra o dinheiro no caixa e sai o cupom para a cliente.
+   */
+  async function encomendaCriadaNoBalcao({ id, enc, pago }: EncomendaCriada) {
+    setNovaAberta(false);
+    toast({ title: 'Encomenda registrada!', description: `${enc.customerName} · ${brl(enc.total)} · retirada ${formatDateBR(enc.delivery?.date)}.` });
+
+    // O formulário só deixa receber com o caixa aberto, então aqui é lançar.
+    if (pago.valor > 0 && registrarLancamento) {
+      try {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: `Encomenda ${id.substring(0, 5)} - Entrada (${enc.customerName})`,
+          valor: pago.valor,
+          formaPagamento: pago.forma,
+        });
+      } catch (err) {
+        console.error('[encomendas] erro ao lançar a entrada no caixa:', err);
+        toast({ variant: 'destructive', title: 'Erro ao lançar no caixa', description: 'A encomenda foi salva; lance a entrada pelo card.' });
+      }
+    }
+
+    if (can(permissionsRef.current, 'actions.encomendas_pedidos.reimprimir')) {
+      printEncomendaReceipt({ enc: { ...enc, id }, storeInfo: storeProfile });
+    }
+  }
+
+  /** Fechamento da entrega: recebe o que falta e marca como entregue. */
+  async function confirmarEntrega() {
+    if (!entregando) return;
+    if (!can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
+      notifyPermissionRemoved();
+      return;
+    }
+    if (!caixaAberto || !registrarLancamento) {
+      toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa para receber o valor da entrega.' });
+      return;
+    }
+    setFinalizandoEntrega(true);
+    try {
+      const { splitsToProcess, finalTotal } = fechamento.buildCheckout();
+
+      const contaCasa = await resolveContaCasa(db, {
+        splits: splitsToProcess,
+        ownerId,
+        phone: entregando.customerPhone || '',
+        includePending: false,
+      });
+      if (contaCasa.kind === 'register') {
+        toast({
+          variant: 'destructive',
+          title: 'Cliente sem cadastro no Prazo',
+          description: 'Cadastre a cliente na aba Clientes (com telefone) para fechar esta encomenda no Prazo.',
+        });
+        return;
+      }
+      if (contaCasa.kind === 'blocked') {
+        toast({ variant: 'destructive', title: 'Prazo bloqueado', description: contaCasa.message });
+        return;
+      }
+
+      // Dinheiro primeiro, status depois: se a gravação do caixa falhar, a
+      // encomenda continua "pronta" e a operadora tenta de novo.
+      await registrarPagamentoSplits(db, {
+        splits: splitsToProcess,
+        contaCasaCustomerId: contaCasa.kind === 'ok' ? contaCasa.customerId : null,
+        registrarLancamento,
+        caixaAberto,
+        tituloVenda: `Encomenda ${entregando.id.substring(0, 5)} - Entrega (${entregando.customerName})`,
+        tituloPrazo: `Encomenda ${entregando.id.substring(0, 5)} - Entrega (${entregando.customerName}) (Prazo)`,
+        creditDescription: `Encomenda ${entregando.id.substring(0, 5)}`,
+        channel: 'encomenda',
+        onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Prazo: cliente não encontrado para lançar a dívida.' }),
+      });
+
+      await updateDoc(doc(db, 'encomendas', entregando.id), {
+        status: 'entregue',
+        valorPago: valorRecebido(entregando) + finalTotal,
+      });
+
+      toast({ title: 'Encomenda entregue!', description: `${brl(finalTotal)} recebidos na entrega.` });
+      setEntregando(null);
+      fechamento.reset();
+    } catch (err: any) {
+      console.error('[encomendas] erro ao fechar a entrega:', err);
+      toast({ variant: 'destructive', title: 'Erro ao fechar a entrega', description: err?.message || 'Tente novamente.' });
+    } finally {
+      setFinalizandoEntrega(false);
     }
   }
 
@@ -148,6 +293,14 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-xl font-bold"><Package className="h-6 w-6 text-primary" /> Pedidos de encomenda</h2>
+          {allowEdit && (
+            <Button
+              onClick={() => { ensureBrandFontsLoaded(); setNovaAberta(true); }}
+              className="gap-1.5"
+            >
+              <Plus className="h-4 w-4" /> Nova encomenda
+            </Button>
+          )}
         </div>
 
         {/* Filtro por status */}
@@ -181,15 +334,56 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
                 onPrint={() => reprint(e)}
                 allowStatus={allowStatus}
                 allowEdit={allowEdit}
-                canLancarSinal={allowSignal && !!registrarLancamento}
+                canLancarSinal={allowSignal && !!registrarLancamento && caixaAberto}
                 allowReprint={allowReprint}
                 lancando={lancandoId === e.id}
                 onLancarSinal={() => lancarSinal(e)}
+                onReceber={() => { fechamento.reset(); setEntregando(e); }}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Nova encomenda pelo balcão: o MESMO formulário do link público, em
+          modo balcão (sem WhatsApp, já confirmada, com o que a cliente pagou). */}
+      <Dialog open={novaAberta} onOpenChange={(open) => { if (!open) setNovaAberta(false); }}>
+        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Nova encomenda</DialogTitle>
+          </DialogHeader>
+          <div className="encomendas-confeitaria">
+            <EncomendaWizard
+              config={config}
+              storeId={ownerId}
+              mode="balcao"
+              caixaAberto={caixaAberto && !!registrarLancamento}
+              formasPagamento={formasBalcao}
+              onHome={() => setNovaAberta(false)}
+              onCreated={encomendaCriadaNoBalcao}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Entrega: mesmo modal de pagamento dos pedidos, já com o que falta. */}
+      <FechamentoModal
+        open={!!entregando}
+        onOpenChange={(open) => { if (!open) { setEntregando(null); fechamento.reset(); } }}
+        fechamento={fechamento}
+        title="Receber na entrega"
+        subtitle={entregando ? `Encomenda ${entregando.id.substring(0, 5)} · ${entregando.customerName}` : undefined}
+        confirmLabel="✅ Receber e entregar"
+        caixaAberto={caixaAberto}
+        isSubmitting={finalizandoEntrega}
+        prazoCustomer={{ name: entregando?.customerName, phone: entregando?.customerPhone }}
+        warnings={entregando && valorRecebido(entregando) > 0 ? (
+          <span className="mt-1 block text-emerald-600">
+            Já recebido nesta encomenda: {brl(valorRecebido(entregando))} de {brl(entregando.total)}.
+          </span>
+        ) : undefined}
+        onConfirm={confirmarEntrega}
+      />
 
       {editing && (
         <EditEncomendaDialog
@@ -202,6 +396,14 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
             setEditing(null);
             if (status === 'confirmada' && (edited.status || 'orcamento') !== 'confirmada' && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
               void lancarSinal(edited);
+              return;
+            }
+            // Marcar "Entregue" pela tela de edição é a mesma entrega do card:
+            // se ainda falta receber, o fechamento tem que abrir igual.
+            if (status === 'entregue' && saldoAReceber(edited) > 0
+              && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
+              fechamento.reset();
+              setEntregando({ ...edited, status });
             }
           }}
         />
@@ -210,7 +412,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   );
 }
 
-function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, canLancarSinal, allowReprint, lancando, onLancarSinal }: {
+function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, canLancarSinal, allowReprint, lancando, onLancarSinal, onReceber }: {
   enc: Encomenda & { id: string };
   onStatus: (s: EncomendaStatus) => void;
   onEdit: () => void;
@@ -221,6 +423,7 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, ca
   allowReprint: boolean;
   lancando: boolean;
   onLancarSinal: () => void;
+  onReceber: () => void;
 }) {
   const status = (enc.status || 'orcamento') as EncomendaStatus;
   const items = itemsSummary(enc);
@@ -228,6 +431,9 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, ca
   // tem sinal e ainda não foi registrado (ex.: caixa estava fechado na hora).
   const sinalPendente = canLancarSinal && !enc.sinalLancado && enc.sinal > 0 &&
     !['orcamento', 'cancelada'].includes(status);
+  const recebido = valorRecebido(enc);
+  const falta = saldoAReceber(enc);
+  const receberPendente = canLancarSinal && falta > 0 && ['pronta', 'entregue'].includes(status);
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -244,8 +450,15 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, ca
         </div>
         <div className="text-right">
           <p className="text-lg font-bold text-primary">{brl(enc.total)}</p>
-          <p className="text-xs text-muted-foreground">Sinal {brl(enc.sinal)} · saldo {brl(enc.saldo)}</p>
-          {enc.sinalLancado && <p className="text-[11px] font-semibold text-emerald-600">Sinal lançado no caixa ✓</p>}
+          {/* O que interessa no dia a dia é quanto já entrou e quanto falta —
+              não a metade combinada no orçamento. */}
+          <p className="text-xs text-muted-foreground">
+            Recebido {brl(recebido)}
+            {falta > 0 ? <> · falta <span className="font-semibold text-amber-600">{brl(falta)}</span></> : null}
+          </p>
+          {falta === 0
+            ? <p className="text-[11px] font-semibold text-emerald-600">Pago por inteiro ✓</p>
+            : recebido > 0 ? <p className="text-[11px] font-semibold text-emerald-600">Entrada no caixa ✓</p> : null}
         </div>
       </div>
 
@@ -275,6 +488,14 @@ function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, ca
             <Button size="sm" onClick={onLancarSinal} disabled={lancando} className="bg-emerald-600 text-white hover:bg-emerald-700">
               {lancando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Banknote className="mr-1 h-3.5 w-3.5" />}
               Lançar sinal no caixa
+            </Button>
+          )}
+          {/* O resto do dinheiro: aparece da hora que a encomenda fica pronta
+              até ela estar paga — inclusive depois de entregue com o caixa
+              fechado, que é quando o saldo costumava se perder. */}
+          {receberPendente && (
+            <Button size="sm" onClick={onReceber} className="bg-emerald-600 text-white hover:bg-emerald-700">
+              <Banknote className="mr-1 h-3.5 w-3.5" /> Receber {brl(falta)}
             </Button>
           )}
           {allowEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" /> Editar</Button>}

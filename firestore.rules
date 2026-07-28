@@ -383,8 +383,17 @@ service cloud.firestore {
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
             && operatorCanPdvAction(resource.data.ownerId,
               'encomendas_pedidos', 'mudarStatus'))
-          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sinalLancado'])
+          // Lançar a entrada no caixa: marca o sinal e soma em valorPago (o
+          // campo que diz quanto ainda falta receber na entrega).
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sinalLancado', 'valorPago'])
             && request.resource.data.sinalLancado == true
+            && operatorCanPdvAction(resource.data.ownerId,
+              'encomendas_pedidos', 'lancarSinal'))
+          // Fechamento da entrega: recebe o que falta e marca como entregue.
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'valorPago'])
+            && request.resource.data.status == 'entregue'
+            && operatorCanPdvAction(resource.data.ownerId,
+              'encomendas_pedidos', 'mudarStatus')
             && operatorCanPdvAction(resource.data.ownerId,
               'encomendas_pedidos', 'lancarSinal'))
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([

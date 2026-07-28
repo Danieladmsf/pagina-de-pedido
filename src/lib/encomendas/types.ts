@@ -84,9 +84,16 @@ export interface Encomenda {
 
   status: EncomendaStatus;
   sinalLancado?: boolean;       // sinal já registrado no caixa (trava contra lançamento duplo)
+  /**
+   * Quanto desta encomenda JÁ entrou no caixa (entrada + acertos + fechamento).
+   * É o que diz o que ainda falta receber na entrega — `saldo` é só a metade
+   * combinada lá no começo e não acompanha quem pagou o valor cheio na hora.
+   * Ausente nas encomendas antigas: leia sempre por `valorRecebido()`.
+   */
+  valorPago?: number;
   comprovanteUrl?: string;      // comprovante do PIX do sinal (upload opcional do cliente)
   orderNotes?: string;
-  source: string;               // 'encomenda_web'
+  source: string;               // 'encomenda_web' | 'balcao'
   orderDateTime: string;        // ISO local
   createdAt?: any;              // serverTimestamp()
 }
