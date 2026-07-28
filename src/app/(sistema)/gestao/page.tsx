@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -140,6 +141,12 @@ export default function GestaoPage() {
   // Estados para configuração de disponibilidade da categoria
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [isCategoryConfigModalOpen, setIsCategoryConfigModalOpen] = useState(false);
+  // Exclusão de categoria: antes apagava só a categoria e os produtos ficavam
+  // soltos (sumiam do cardápio e continuavam à venda no PDV, em "Outros").
+  const [deletingCategory, setDeletingCategory] = useState<any>(null);
+  const [deleteCategoryAction, setDeleteCategoryAction] = useState<'move' | 'wipe'>('move');
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<string>('');
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
   
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
@@ -330,6 +337,61 @@ export default function GestaoPage() {
 
 
 
+
+  /** Produtos que hoje estão numa categoria (combos também carregam categoryId). */
+  const itemsOfCategory = (categoryId?: string) =>
+    !categoryId ? [] : (items || []).filter((it: any) => it.categoryId === categoryId);
+
+  /**
+   * Exclui a categoria SEM deixar produto solto: ou move os produtos pra outra
+   * categoria, ou apaga tudo junto. O caminho antigo apagava só a categoria e o
+   * produto virava fantasma — sumia do cardápio e continuava vendável no PDV.
+   */
+  const confirmDeleteCategory = async () => {
+    if (!db || !deletingCategory) return;
+    const alvos = itemsOfCategory(deletingCategory.id);
+    // Sem outra categoria não existe "mover" — a tela já mostra só a opção de
+    // apagar junto, e aqui a regra tem que ser a mesma pra não travar.
+    const outras = (categories || []).filter((c: any) => c.id !== deletingCategory.id);
+    const movendo = alvos.length > 0 && deleteCategoryAction === 'move' && outras.length > 0;
+
+    if (movendo && !outras.some((c: any) => c.id === deleteCategoryTarget)) {
+      toast({ variant: 'destructive', title: 'Escolha para onde vão os produtos' });
+      return;
+    }
+
+    setIsDeletingCategory(true);
+    try {
+      // Firestore aceita no máximo 500 operações por lote.
+      const LOTE = 450;
+      for (let i = 0; i < alvos.length; i += LOTE) {
+        const batch = writeBatch(db);
+        alvos.slice(i, i + LOTE).forEach((it: any) => {
+          const ref = doc(db, 'menuItems', it.id);
+          if (movendo) batch.update(ref, { categoryId: deleteCategoryTarget });
+          else batch.delete(ref);
+        });
+        await batch.commit();
+      }
+      // A categoria só sai depois que os produtos estão resolvidos: se algo
+      // falhar no meio, ela continua lá e nada vira fantasma.
+      await deleteDoc(doc(db, 'categories', deletingCategory.id));
+
+      toast({
+        title: 'Categoria excluída',
+        description: alvos.length === 0
+          ? undefined
+          : movendo
+            ? `${alvos.length} ${alvos.length === 1 ? 'produto foi movido' : 'produtos foram movidos'} para ${categories?.find((c: any) => c.id === deleteCategoryTarget)?.name || 'a outra categoria'}.`
+            : `${alvos.length} ${alvos.length === 1 ? 'produto foi excluído' : 'produtos foram excluídos'} junto.`,
+      });
+      setDeletingCategory(null);
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Não deu para excluir', description: error.message });
+    } finally {
+      setIsDeletingCategory(false);
+    }
+  };
 
   const handleDragEndCategory = async (result: DropResult) => {
     if (!result.destination || !db || !categories) return;
@@ -1325,9 +1387,12 @@ export default function GestaoPage() {
                                       }} className={cat.availability?.enabled ? 'text-primary' : 'text-muted-foreground'}>
                                         <Clock className="h-4 w-4" />
                                       </Button>
-                                      <Button variant="ghost" size="icon" onClick={async () => {
-                                        if (!db) return;
-                                        if (confirm("Excluir categoria?")) await deleteDoc(doc(db, 'categories', cat.id));
+                                      <Button variant="ghost" size="icon" onClick={() => {
+                                        setDeletingCategory(cat);
+                                        setDeleteCategoryAction('move');
+                                        setDeleteCategoryTarget(
+                                          (categories || []).find((c: any) => c.id !== cat.id)?.id || ''
+                                        );
                                       }}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                       </Button>
@@ -1346,6 +1411,111 @@ export default function GestaoPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Excluir categoria: avisa quando ainda tem produtos dentro e obriga
+                a decidir o destino deles (mover ou apagar junto). */}
+            <Dialog open={!!deletingCategory} onOpenChange={(open) => { if (!open && !isDeletingCategory) setDeletingCategory(null); }}>
+              <DialogContent className="sm:max-w-md">
+                {deletingCategory && (() => {
+                  const alvos = itemsOfCategory(deletingCategory.id);
+                  const combos = alvos.filter((it: any) => it.isCombo).length;
+                  const outras = (categories || []).filter((c: any) => c.id !== deletingCategory.id);
+                  const semDestino = outras.length === 0;
+                  const acao = semDestino ? 'wipe' : deleteCategoryAction;
+                  return (
+                    <>
+                      <DialogHeader>
+                        <DialogTitle>Excluir "{deletingCategory.name}"</DialogTitle>
+                      </DialogHeader>
+
+                      {alvos.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Essa categoria está vazia. Pode excluir sem problema.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-sm">
+                            Essa categoria tem <strong>{alvos.length} {alvos.length === 1 ? 'produto' : 'produtos'}</strong>
+                            {combos > 0 && <> (sendo {combos} {combos === 1 ? 'combo' : 'combos'})</>}. O que fazer com {alvos.length === 1 ? 'ele' : 'eles'}?
+                          </p>
+
+                          {!semDestino && (
+                            <label className={`flex flex-col gap-2 rounded-lg border p-3 cursor-pointer transition ${acao === 'move' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  checked={acao === 'move'}
+                                  onChange={() => setDeleteCategoryAction('move')}
+                                  className="accent-primary"
+                                />
+                                <span className="text-sm font-medium">Mover para outra categoria</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground pl-6">
+                                Os produtos continuam à venda, só mudam de lugar no cardápio.
+                              </p>
+                              <div className="pl-6">
+                                <Select
+                                  value={deleteCategoryTarget}
+                                  onValueChange={(v) => { setDeleteCategoryAction('move'); setDeleteCategoryTarget(v); }}
+                                >
+                                  <SelectTrigger className="h-9">
+                                    <SelectValue placeholder="Escolha a categoria" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {outras.map((c: any) => (
+                                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </label>
+                          )}
+
+                          <label className={`flex flex-col gap-2 rounded-lg border p-3 cursor-pointer transition ${acao === 'wipe' ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/40'}`}>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                checked={acao === 'wipe'}
+                                onChange={() => setDeleteCategoryAction('wipe')}
+                                className="accent-destructive"
+                              />
+                              <span className="text-sm font-medium">Excluir os produtos junto</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground pl-6">
+                              {alvos.length === 1 ? 'O produto some' : 'Os produtos somem'} do cardápio e do PDV. Não tem como desfazer.
+                            </p>
+                          </label>
+
+                          {semDestino && (
+                            <p className="text-xs text-muted-foreground">
+                              Não há outra categoria para onde mover — crie uma antes se não quiser perder esses produtos.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeletingCategory(null)} disabled={isDeletingCategory}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={confirmDeleteCategory}
+                          disabled={isDeletingCategory}
+                          className={acao === 'wipe' && alvos.length > 0 ? 'bg-destructive text-white hover:bg-destructive/90' : 'bg-primary text-white'}
+                        >
+                          {isDeletingCategory && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                          {alvos.length === 0
+                            ? 'Excluir categoria'
+                            : acao === 'move'
+                              ? 'Mover e excluir categoria'
+                              : `Excluir categoria e ${alvos.length} ${alvos.length === 1 ? 'produto' : 'produtos'}`}
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  );
+                })()}
+              </DialogContent>
+            </Dialog>
             </div>
           )}
 
