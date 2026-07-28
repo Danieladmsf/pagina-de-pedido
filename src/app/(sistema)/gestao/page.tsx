@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { findUnderSuppliedProducts } from '@/lib/addon-groups';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -1573,8 +1574,39 @@ export default function GestaoPage() {
               });
               toast({ title: 'Item removido apenas deste container.' });
             };
+            /**
+             * Produtos que passariam a pedir MAIS do que conseguem oferecer se
+             * este adicional saísse do ar. Só conta o que quebra AGORA (o que já
+             * estava furado antes não vira aviso novo).
+             */
+            const impactoDeTirarAddon = (addonId: string) => {
+              const antes = new Set(
+                findUnderSuppliedProducts(items || [], addons || [], addonCategories || [])
+                  .map((p) => `${p.product.id}|${p.groupName}`)
+              );
+              return findUnderSuppliedProducts(
+                items || [], addons || [], addonCategories || [], new Set([addonId])
+              ).filter((p) => !antes.has(`${p.product.id}|${p.groupName}`));
+            };
+            /** Texto do aviso, ou '' quando nada é afetado. */
+            const avisoImpacto = (addonId: string) => {
+              const afetados = impactoDeTirarAddon(addonId);
+              if (afetados.length === 0) return '';
+              const linhas = afetados
+                .slice(0, 8)
+                .map((a) => `• ${a.product.name} — a etapa "${a.groupName}" pede ${a.configuredMin} e ficaria com ${a.available}`)
+                .join('\n');
+              const resto = afetados.length > 8 ? `\n... e mais ${afetados.length - 8}` : '';
+              return `\n\nATENÇÃO: ${afetados.length} ${afetados.length === 1 ? 'produto vai ficar' : 'produtos vão ficar'} com menos opções do que a etapa obrigatória pede:\n${linhas}${resto}\n\nEles continuam à venda, mas com menos escolhas do que você configurou.`;
+            };
             const setAddonGlobalActive = async (addon: any, active: boolean) => {
               if (!db) return;
+              // Pausar some com o adicional para o cliente igual excluir, então
+              // o aviso vale para os dois caminhos.
+              if (!active) {
+                const aviso = avisoImpacto(addon.id);
+                if (aviso && !confirm(`Pausar "${addon.name}"?${aviso}`)) return;
+              }
               await updateDoc(doc(db, 'addons', addon.id), { active });
               toast({ title: active ? 'Adicional ativado globalmente' : 'Adicional pausado globalmente' });
             };
@@ -2452,7 +2484,7 @@ export default function GestaoPage() {
                                 </Button>
                                 <Button variant="ghost" size="icon" onClick={async () => {
                                   if (!db) return;
-                                  if (confirm("Excluir adicional da lista matriz? Isso remove do banco de dados.")) await deleteDoc(doc(db, 'addons', addon.id));
+                                  if (confirm(`Excluir adicional da lista matriz? Isso remove do banco de dados.${avisoImpacto(addon.id)}`)) await deleteDoc(doc(db, 'addons', addon.id));
                                 }}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>

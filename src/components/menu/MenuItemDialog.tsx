@@ -11,6 +11,7 @@ import { ProductGallery } from '@/components/menu/ProductGallery';
 import { Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { brl } from '@/lib/utils';
+import { resolveGroup } from '@/lib/addon-groups';
 
 const checkCartStock = (
   projectedCart: any[],
@@ -183,6 +184,26 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   const getAddonQuantity = (selection: SelectedAddon[], addonId: string) =>
     selection.filter(a => a.id === addonId).length;
 
+  // Fonte ÚNICA por etapa. Antes a validação e a tela calculavam cada uma do seu
+  // jeito: a etapa sem adicional disponível sumia da tela mas continuava sendo
+  // exigida, e o botão "Adicionar" ficava morto pra sempre sem explicar nada.
+  const groupsInfo = (item.addonGroups || []).map((group, index) => {
+    // resolveGroup já aplica a regra "não exigir mais do que dá pra escolher".
+    const { availableAddons, min, max } = resolveGroup(group, allAddons, addonCategories);
+    const selectedCount = (marmitaSelections[index] || []).length;
+    return {
+      group,
+      index,
+      availableAddons,
+      min,
+      max,
+      selectedCount,
+      missing: Math.max(0, min - selectedCount),
+    };
+  });
+
+  const pendingGroup = groupsInfo.find(g => g.missing > 0);
+
   // Calcula total
   let addonsTotal = 0;
   let finalAddonsList: SelectedAddon[] = [];
@@ -207,21 +228,8 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
   const unitPrice = (Number(item.price) || 0) + addonsTotal;
   const total = unitPrice * quantity;
 
-  // Validação
-  let canAddToCart = true;
-
-  if (item.addonGroups && item.addonGroups.length > 0) {
-    for (let i = 0; i < item.addonGroups.length; i++) {
-      const g = item.addonGroups[i];
-      const selectedCount = (marmitaSelections[i] || []).length;
-      const groupCategory = getCategoryForGroup(g);
-      const minRequired = getNumericGroupValue(groupCategory ? (groupCategory.min ?? g.min) : g.min);
-      if (selectedCount < minRequired) {
-        canAddToCart = false;
-        break;
-      }
-    }
-  }
+  // Validação (mesmo cálculo da tela, via groupsInfo)
+  const canAddToCart = !pendingGroup;
 
   const handleAdd = () => {
     if (!canAddToCart) return;
@@ -349,13 +357,9 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
           )}
 
           {/* Addon Groups */}
-          {item.addonGroups && item.addonGroups.map((group, groupIndex) => {
-            const groupAddonIds = getGroupAddonIds(group);
-            const availableAddons = allAddons.filter(a => groupAddonIds.includes(a.id) && a.active !== false);
+          {groupsInfo.map(({ group, index: groupIndex, availableAddons, min, max: maxChoices, missing }) => {
             const currentSelected = marmitaSelections[groupIndex] || [];
             const usesPrice = groupUsesPrice(group);
-            const category = getCategoryForGroup(group);
-            const maxChoices = getNumericGroupValue(category ? category.max : group.max);
 
             if (availableAddons.length === 0) return null;
 
@@ -364,9 +368,15 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <Label className="text-sm font-bold text-slate-800">{group.name}</Label>
+                    {min > 0 && (
+                      <span className={`text-[10px] font-bold uppercase ${missing > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {missing > 0 ? `Faltam ${missing}` : 'Ok'}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] text-muted-foreground font-medium">
                     {currentSelected.length} {maxChoices > 0 ? `de ${maxChoices}` : ''} selecionados
+                    {min > 0 && <> · escolha {min} no mínimo</>}
                   </span>
                 </div>
                 
@@ -454,7 +464,12 @@ export function MenuItemDialog({ item, isOpen, onClose, allAddons = [], addonCat
               onClick={handleAdd}
               disabled={!isStoreOpen || !canAddToCart}
             >
-              {isStoreOpen ? (total > 0 ? `Adicionar • ${brl(total)}` : 'Adicionar') : 'Loja Fechada'}
+              {!isStoreOpen
+                ? 'Loja Fechada'
+                : pendingGroup
+                  // Diz QUAL etapa falta e quanto falta, em vez de só ficar cinza.
+                  ? `Escolha ${pendingGroup.missing} em ${pendingGroup.group.name}`
+                  : (total > 0 ? `Adicionar • ${brl(total)}` : 'Adicionar')}
             </Button>
           </div>
         </DialogFooter>
