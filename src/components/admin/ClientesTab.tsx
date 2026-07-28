@@ -124,6 +124,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [storePixKey, setStorePixKey] = useState('');
   const [storePixName, setStorePixName] = useState('');
   const [sendingWhats, setSendingWhats] = useState(false);
+  // Trava o botão enquanto lê o extrato e apaga, pra não disparar duas vezes.
+  const [deletingClienteId, setDeletingClienteId] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (!contaCasaCliente || !db) return;
@@ -453,13 +455,64 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
+  /**
+   * Exclui o cliente E o extrato do Prazo dele.
+   *
+   * O Firestore NÃO apaga subcoleção junto com o documento, então antes o
+   * extrato (`clientes/{id}/credit_transactions`) sobrevivia invisível. E como o
+   * id do cliente vem do telefone (`{uid}_{celular}`), recadastrar o mesmo
+   * número reatava o extrato antigo no cadastro novo — a dívida ressuscitava.
+   *
+   * Com saldo em aberto a exclusão é bloqueada: o extrato é a fonte de verdade
+   * do saldo, e apagar dívida sem querer é perda de dinheiro real.
+   */
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+    if (!db || deletingClienteId) return;
+    setDeletingClienteId(id);
     try {
+      const transSnap = await getDocs(collection(db, 'clientes', id, 'credit_transactions'));
+      const saldo = transSnap.docs.reduce((acc, d) => {
+        const t: any = d.data();
+        const valor = Number(t.amount) || 0;
+        return acc + (t.type === 'debit' ? valor : -valor);
+      }, 0);
+
+      if (saldo > 0.009) {
+        toast({
+          variant: 'destructive',
+          title: 'Cliente com conta em aberto',
+          description: `Ele ainda deve ${brl(saldo)} no Prazo. Receba ou acerte o extrato antes de excluir.`,
+        });
+        return;
+      }
+      if (saldo < -0.009) {
+        toast({
+          variant: 'destructive',
+          title: 'Cliente tem crédito a favor',
+          description: `Há ${brl(Math.abs(saldo))} a favor dele. Acerte o extrato antes de excluir.`,
+        });
+        return;
+      }
+
+      const aviso = transSnap.size > 0
+        ? `\n\nO extrato do Prazo (${transSnap.size} ${transSnap.size === 1 ? 'lançamento' : 'lançamentos'}, saldo zerado) será apagado junto e não tem como recuperar.`
+        : '';
+      if (!confirm(`Excluir este cliente?${aviso}`)) return;
+
+      // Extrato primeiro: se falhar no meio, o cliente continua lá e nada fica
+      // órfão. Lotes de 450 pro limite de 500 operações do Firestore.
+      const LOTE = 450;
+      for (let i = 0; i < transSnap.docs.length; i += LOTE) {
+        const batch = writeBatch(db);
+        transSnap.docs.slice(i, i + LOTE).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
       await deleteDoc(doc(db, 'clientes', id));
       toast({ title: 'Cliente excluído.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
+    } finally {
+      setDeletingClienteId(null);
     }
   };
 
@@ -824,7 +877,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)} title="Editar Cliente">
                           <Pencil className="h-3.5 w-3.5 text-amber-500" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)} title="Excluir">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)} disabled={deletingClienteId === c.id} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </Button>
                       </div>

@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { findUnderSuppliedProducts } from '@/lib/addon-groups';
+import { deleteItemWarning, deleteMenuItemWithCleanup } from '@/lib/menu-item-delete';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -1094,7 +1095,11 @@ export default function GestaoPage() {
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => {
                                 if (!db) return;
-                                if (confirm("Excluir item?")) await deleteDoc(doc(db, 'menuItems', item.id));
+                                // Sai das promoções junto, senão a promoção fica
+                                // apontando pra um produto que não existe mais.
+                                if (confirm(`Excluir "${item.name}"?${deleteItemWarning(promotions || [], item.id)}`)) {
+                                  await deleteMenuItemWithCleanup(db, item.id, promotions || []);
+                                }
                               }} title="Excluir">
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>

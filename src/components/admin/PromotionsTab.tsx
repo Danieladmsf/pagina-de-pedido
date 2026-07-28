@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { brl, normalizeSearch } from '@/lib/utils';
+import { deleteItemWarning, deleteMenuItemWithCleanup } from '@/lib/menu-item-delete';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -575,8 +576,9 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                             <Pencil className="h-3 w-3" /> Editar
                           </Button>
                           <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-red-500 hover:text-red-700" onClick={async () => {
-                            if (!db || !confirm('Excluir este combo?')) return;
-                            await deleteDoc(doc(db, 'menuItems', combo.id));
+                            // Combo é menuItem: sai das promoções junto.
+                            if (!db || !confirm(`Excluir este combo?${deleteItemWarning(promotionsRaw || [], combo.id)}`)) return;
+                            await deleteMenuItemWithCleanup(db, combo.id, promotionsRaw || []);
                             toast({ title: '🗑️ Combo excluído.' });
                           }}>
                             <Trash2 className="h-3 w-3" />
