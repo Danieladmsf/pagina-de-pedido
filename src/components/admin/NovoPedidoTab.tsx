@@ -522,6 +522,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         tituloVenda: `PDV #${shortId} - Balcão`,
         tituloPrazo: `PDV #${shortId} - Balcão (Prazo)`,
         creditDescription: `PDV #${shortId}`,
+        orderId: newOrderRef.id,
+        channel: 'balcao',
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 
@@ -1035,6 +1037,14 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         subtitle={`Balcão · ${totalItens} ${totalItens === 1 ? 'item' : 'itens'}`}
         items={cart}
         caixaAberto={caixaAberto}
+        prazoCustomer={{
+          name: customerName,
+          phone: customerPhone,
+          matched: !!selectedCustomer,
+          available: selectedCustomer && Number(selectedCustomer.creditLimit) > 0
+            ? Math.max(0, (Number(selectedCustomer.creditLimit) || 0) - (Number(selectedCustomer.creditBalance) || 0))
+            : null,
+        }}
         isSubmitting={isSubmitting}
         onConfirm={handleConfirmCheckout}
       />

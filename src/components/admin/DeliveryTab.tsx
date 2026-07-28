@@ -427,22 +427,32 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       const statusUpdated = await updateOrderStatus(paymentModalOrder.id, updates);
       if (statusUpdated === false) return;
       
-      // 2. Registrar venda no caixa (se caixa estiver aberto) ou Conta da Casa
+      // 2. Registrar venda no caixa (se aberto) e a dívida do Prazo (sempre —
+      // caixa fechado não pode apagar o que o cliente ficou devendo).
+      const shortId = paymentModalOrder.id.substring(0, 5);
+      await registrarPagamentoSplits(db, {
+        splits: splitsToProcess,
+        contaCasaCustomerId,
+        registrarLancamento,
+        caixaAberto,
+        tituloVenda: `Delivery #${shortId} - ${paymentModalOrder.customerName}`,
+        tituloPrazo: `Delivery #${shortId} - ${paymentModalOrder.customerName} (Prazo)`,
+        creditDescription: `Delivery #${shortId}`,
+        orderId: paymentModalOrder.id,
+        channel: 'delivery',
+        onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
+      });
+
       if (caixaAberto) {
-        const shortId = paymentModalOrder.id.substring(0, 5);
-        await registrarPagamentoSplits(db, {
-          splits: splitsToProcess,
-          contaCasaCustomerId,
-          registrarLancamento,
-          caixaAberto,
-          tituloVenda: `Delivery #${shortId} - ${paymentModalOrder.customerName}`,
-          tituloPrazo: `Delivery #${shortId} - ${paymentModalOrder.customerName} (Prazo)`,
-          creditDescription: `Delivery #${shortId}`,
-          onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
-        });
         toast({ title: 'Pedido finalizado!', description: splitsToProcess.length > 1 ? `Venda registrada em ${splitsToProcess.length} partes.` : `Venda registrada (${paymentString}).` });
       } else {
-        toast({ title: 'Pedido finalizado!', description: caixaAberto === false ? 'Caixa fechado - venda não registrada.' : 'Status updated.' });
+        const temPrazo = splitsToProcess.some(s => s.methodId === 'conta_casa');
+        toast({
+          title: 'Pedido finalizado!',
+          description: temPrazo
+            ? 'Caixa fechado — a venda não entrou no caixa, mas a dívida do Prazo foi lançada.'
+            : 'Caixa fechado - venda não registrada.',
+        });
       }
       setPaymentModalOrder(null);
     } catch (err: any) {
@@ -831,6 +841,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       subtitle={paymentModalOrder?.customerName ? `${paymentModalOrder.orderType === 'pickup' ? 'Retirada' : 'Delivery'} · ${paymentModalOrder.customerName}` : undefined}
       items={paymentModalOrder?.items || []}
       caixaAberto={caixaAberto}
+      prazoCustomer={{
+        name: paymentModalOrder?.customerName,
+        phone: paymentModalOrder?.customerPhone,
+      }}
       isSubmitting={isProcessing}
       onConfirm={handleConfirmPayment}
     />

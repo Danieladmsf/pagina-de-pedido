@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDoc, getDocs, writeBatch, onSnapshot, orderBy, increment } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, CheckCircle2, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { normalizeCreditPhone, getPhoneVariants, formatBrazilPhone } from '@/lib/customer-credit';
 import { nameDocId } from '@/lib/customers/customer-sync';
@@ -21,6 +21,7 @@ import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
+import { PrazoPage } from '@/components/admin/PrazoPage';
 
 interface ClientesTabProps {
   db: any;
@@ -89,13 +90,6 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-/** Logo oficial do WhatsApp (herda a cor via currentColor). */
-const WhatsAppIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-    <path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.163 5.335 5.5.001 12.057.001c3.181 0 6.167 1.24 8.413 3.488a11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.978-1.607zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.71.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-  </svg>
-);
-
 export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: ClientesTabProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -109,60 +103,13 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   const [isImporting, setIsImporting] = useState(false);
   const [editingCliente, setEditingCliente] = useState<any>(null);
   const [viewingCliente, setViewingCliente] = useState<any>(null);
-  const [contaCasaCliente, setContaCasaCliente] = useState<any>(null);
+  // Guarda só o id: o cliente em si vem sempre da lista viva, para a tela do
+  // Prazo enxergar saldo/limite novos assim que uma baixa é lançada.
+  const [prazoClienteId, setPrazoClienteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [contaCasaTransactions, setContaCasaTransactions] = useState<any[]>([]);
-  const [contaCasaLoading, setContaCasaLoading] = useState(false);
-  const [contaCasaPaymentAmount, setContaCasaPaymentAmount] = useState('');
-  const [contaCasaPaymentMethod, setContaCasaPaymentMethod] = useState('pix');
-  // Pedidos do cliente, usados para expandir cada lançamento do extrato e
-  // mostrar o que foi a venda (casados pelo prefixo do id na descrição).
-  const [contaCasaOrders, setContaCasaOrders] = useState<any[]>([]);
-  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
-  // Chave PIX da loja (store_profiles), enviada no extrato pelo WhatsApp.
-  const [storePixKey, setStorePixKey] = useState('');
-  const [storePixName, setStorePixName] = useState('');
-  const [sendingWhats, setSendingWhats] = useState(false);
   // Trava o botão enquanto lê o extrato e apaga, pra não disparar duas vezes.
   const [deletingClienteId, setDeletingClienteId] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!contaCasaCliente || !db) return;
-    setContaCasaLoading(true);
-    setExpandedTxId(null);
-    const q = query(
-      collection(db, 'clientes', contaCasaCliente.id, 'credit_transactions'),
-      orderBy('date', 'desc')
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setContaCasaTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setContaCasaLoading(false);
-    });
-    return () => unsub();
-  }, [contaCasaCliente, db]);
-
-  // Carrega os pedidos do cliente (por telefone) para casar com o extrato.
-  React.useEffect(() => {
-    if (!contaCasaCliente || !db || !user?.uid) { setContaCasaOrders([]); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const variants = getPhoneVariants(contaCasaCliente.celular || '').slice(0, 30);
-        if (variants.length === 0) { setContaCasaOrders([]); return; }
-        const snap = await getDocs(query(
-          collection(db, 'orders'),
-          where('ownerId', '==', user.uid),
-          where('customerPhone', 'in', variants),
-        ));
-        if (!cancelled) setContaCasaOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error('[ClientesTab] Erro ao carregar pedidos do cliente:', err);
-        if (!cancelled) setContaCasaOrders([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [contaCasaCliente, db, user?.uid]);
 
   // Form fields
   const [formTipoPessoa, setFormTipoPessoa] = useState<'fisica' | 'juridica'>('fisica');
@@ -193,10 +140,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       try {
         const snap = await getDoc(doc(db, 'store_profiles', user.uid));
         const data = snap.exists() ? snap.data() : {};
-
-        // Chave PIX usada no extrato enviado pelo WhatsApp ao cliente.
-        setStorePixKey(data?.creditPixKey || '');
-        setStorePixName(data?.creditPixName || '');
 
         // Bairros adicionados manualmente (com taxa) em "Taxas por Bairro"
         const manual: string[] = ((data?.customAddressRules || []) as any[])
@@ -298,6 +241,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     });
     return result;
   }, [clientes, searchTerm, filterBairro, filterCidade, sortBy, sortDir]);
+
+  const prazoCliente = prazoClienteId ? clientes.find(c => c.id === prazoClienteId) || null : null;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -516,117 +461,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
-  // Monta o extrato (lançamentos + saldo + chave PIX) e ENVIA direto pela
-  // integração W-API (mesma usada nas notificações de pedido), sem abrir o app.
-  const handleSendExtratoWhatsApp = async () => {
-    if (!contaCasaCliente || !user) return;
-    const phone = normalizeCreditPhone(contaCasaCliente.celular || '');
-    if (phone.length < 10) {
-      toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
-      return;
-    }
-    const saldo = contaCasaCliente.creditBalance || 0;
-    const SEP = '━━━━━━━━━━━━━━';
-
-    // Um bloco por lançamento: compras detalham os itens (casados ao pedido
-    // pelo prefixo do id na descrição); pagamentos viram uma linha de crédito.
-    const blocos = contaCasaTransactions.map(t => {
-      const data = new Date(t.date).toLocaleDateString('pt-BR');
-      if (t.type !== 'debit') {
-        return `${SEP}\n✅ ${data} · Pagamento recebido\n− ${brl(t.amount)}`;
-      }
-      const hasRef = (t.description || '').includes('#');
-      const ref = hasRef ? (t.description || '').replace(/^.*#/, '').trim() : '';
-      const titulo = hasRef ? `Pedido #${ref}` : (t.description || 'Compra');
-      const matchedOrder = ref ? contaCasaOrders.find((o: any) => o.id?.startsWith(ref)) : null;
-      const itens = (matchedOrder?.items || []).map((it: any) => {
-        const add = (it.addons?.length > 0) ? ` (${it.addons.map((a: any) => a.name).join(', ')})` : '';
-        return `${it.quantity}x ${it.name}${add}`;
-      });
-      let bloco = `${SEP}\n🛒 ${data} · ${titulo}`;
-      if (itens.length > 0) bloco += `\n${itens.join('\n')}`;
-      bloco += `\nSubtotal: ${brl(t.amount)}`;
-      return bloco;
-    });
-
-    let msg = `🧾 *EXTRATO DA SUA CONTA*\n`;
-    if (contaCasaCliente.nome) msg += `\n👤 *${contaCasaCliente.nome}*\n`;
-    if (blocos.length > 0) msg += `\n${blocos.join('\n')}\n${SEP}\n`;
-    msg += `\n💰 *SALDO DEVEDOR: ${brl(saldo)}*`;
-    if (storePixKey || storePixName) {
-      msg += `\n\n📲 *Pague via PIX*`;
-      if (storePixKey) msg += `\n🔑 ${storePixKey}`;
-      if (storePixName) msg += `\n🏦 ${storePixName}`;
-    }
-    msg += `\n\nEnvie o comprovante por aqui após o pagamento 🙏`;
-
-    setSendingWhats(true);
-    try {
-      const token = await user.getIdToken();
-      const res = await fetch('/wapi/send-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ empresaId: user.uid, phone, message: msg, type: 'credit_statement' }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || data?.error) {
-        throw new Error(data?.error || 'A integração do WhatsApp recusou o envio.');
-      }
-      toast({ title: 'Extrato enviado no WhatsApp!' });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Não foi possível enviar', description: err?.message || 'Falha ao enviar pelo WhatsApp.' });
-    } finally {
-      setSendingWhats(false);
-    }
-  };
-
-  const handleReceivePayment = async () => {
-    if (!contaCasaCliente || !db || !user) return;
-    const amount = Number(contaCasaPaymentAmount.replace(',', '.'));
-    if (isNaN(amount) || amount <= 0) {
-      toast({ variant: 'destructive', title: 'Valor inválido' });
-      return;
-    }
-    
-    if (caixaAberto === false) {
-       toast({ variant: 'destructive', title: 'Erro', description: 'Caixa fechado. Não é possível registrar o recebimento no sistema financeiro.' });
-       return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const transRef = doc(collection(db, 'clientes', contaCasaCliente.id, 'credit_transactions'));
-      await setDoc(transRef, {
-        id: transRef.id,
-        type: 'credit',
-        amount: amount,
-        date: new Date().toISOString(),
-        description: 'Pagamento de Dívida / Acerto'
-      });
-      
-      await updateDoc(doc(db, 'clientes', contaCasaCliente.id), {
-        creditBalance: increment(-amount)
-      });
-      
-      if (registrarLancamento) {
-        await registrarLancamento({
-          tipo: 'venda',
-          titulo: `Acerto Conta da Casa - ${contaCasaCliente.nome}`,
-          valor: amount,
-          formaPagamento: contaCasaPaymentMethod
-        });
-      }
-      
-      toast({ title: 'Pagamento registrado com sucesso!' });
-      setContaCasaPaymentAmount('');
-      setContaCasaCliente((prev: any) => ({ ...prev, creditBalance: Math.max(0, (prev.creditBalance || 0) - amount) }));
-    } catch (err: any) {
-       toast({ variant: 'destructive', title: 'Erro', description: err.message });
-    } finally {
-       setIsSubmitting(false);
-    }
-  };
-
   // ─── CSV Import ───
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -739,6 +573,24 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
   if (isLoading) {
     return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  // A gestão do Prazo é uma TELA, não um modal: ocupa a aba inteira e volta
+  // para a lista pelo botão do cabeçalho. O cliente vem da lista viva, então
+  // saldo e limite se atualizam sozinhos depois de cada lançamento.
+  if (prazoCliente) {
+    return (
+      <PrazoPage
+        key={prazoCliente.id}
+        db={db}
+        user={user}
+        cliente={prazoCliente}
+        caixaAberto={caixaAberto}
+        registrarLancamento={registrarLancamento}
+        onBack={() => setPrazoClienteId(null)}
+        onEditCliente={(c) => { setPrazoClienteId(null); openEditForm(c); }}
+      />
+    );
   }
 
   return (
@@ -868,7 +720,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                     <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
                     <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setContaCasaCliente(c); }} title="Conta da Casa (Fiado)">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setPrazoClienteId(c.id); }} title="Abrir o Prazo (conta do cliente)">
                           <Receipt className="h-3.5 w-3.5 text-indigo-500" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)} title="Ver Detalhes">
@@ -1210,11 +1062,11 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                   <Button 
                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold" 
                     onClick={() => {
-                      setContaCasaCliente(viewingCliente);
+                      setPrazoClienteId(viewingCliente.id);
                       setViewingCliente(null);
                     }}
                   >
-                    <Receipt className="w-4 h-4 mr-2" /> Gerenciar Conta da Casa
+                    <Receipt className="w-4 h-4 mr-2" /> Abrir conta do Prazo
                   </Button>
                 </div>
               )}
@@ -1226,139 +1078,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               <Pencil className="h-4 w-4 mr-2" /> Editar
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Modal: Conta da Casa (Gerenciamento) ─── */}
-      <Dialog open={contaCasaCliente !== null} onOpenChange={(open) => { if (!open) setContaCasaCliente(null); }}>
-        <DialogContent className="sm:max-w-[420px] max-h-[85vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden">
-          <DialogHeader className="px-4 py-2.5 border-b bg-slate-50">
-            <DialogTitle className="flex items-center gap-2 text-sm text-indigo-700">
-              <Receipt className="h-4 w-4" /> Prazo — {contaCasaCliente?.nome}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 px-4 py-3 rounded-lg text-center shadow-sm">
-              <p className="text-[10px] text-indigo-200 font-medium">Saldo Devedor</p>
-              <p className="text-2xl font-black text-white">{brl((contaCasaCliente?.creditBalance || 0))}</p>
-              <button
-                type="button"
-                onClick={handleSendExtratoWhatsApp}
-                disabled={sendingWhats}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#1ebe5b] disabled:opacity-60"
-              >
-                {sendingWhats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
-                {sendingWhats ? 'Enviando…' : 'Enviar extrato no WhatsApp'}
-              </button>
-            </div>
-            
-            <div className="border rounded-lg p-2.5 space-y-2 bg-white">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Registrar Pagamento</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px] text-slate-500">Valor (R$)</Label>
-                  <CurrencyInput 
-                    className="h-8 text-sm bg-white"
-                    placeholder="0,00" 
-                    value={Number(contaCasaPaymentAmount.replace(',', '.')) || 0}
-                    onChange={(val) => setContaCasaPaymentAmount(val.toString())}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-slate-500">Forma</Label>
-                  <select 
-                    className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={contaCasaPaymentMethod}
-                    onChange={(e) => setContaCasaPaymentMethod(e.target.value)}
-                  >
-                    <option value="pix">PIX</option>
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="debito">Débito</option>
-                    <option value="credito">Crédito</option>
-                  </select>
-                </div>
-              </div>
-              <Button 
-                size="sm"
-                className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" 
-                onClick={handleReceivePayment}
-                disabled={isSubmitting || !contaCasaPaymentAmount}
-              >
-                {isSubmitting ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1.5" />}
-                Dar Baixa
-              </Button>
-            </div>
-
-            <div className="border rounded-lg overflow-hidden bg-white">
-              <div className="px-2.5 py-1.5 border-b bg-slate-50 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Extrato</span>
-                <span className="text-[9px] text-slate-400">{contaCasaTransactions.length} registro(s)</span>
-              </div>
-              {contaCasaLoading ? (
-                <div className="p-4 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-indigo-500" /></div>
-              ) : contaCasaTransactions.length === 0 ? (
-                <div className="p-4 text-center text-[11px] text-slate-400">Nenhuma transa\u00e7\u00e3o.</div>
-              ) : (
-                <div className="divide-y max-h-48 overflow-y-auto custom-scrollbar">
-                  {contaCasaTransactions.map(t => {
-                    const hasRef = (t.description || '').includes('#');
-                    const descId = hasRef ? (t.description || '').replace(/^.*#/, '').trim() : '';
-                    const matchedOrder = descId ? contaCasaOrders.find((o: any) => o.id?.startsWith(descId)) : null;
-                    const canExpand = !!(matchedOrder && (matchedOrder.items || []).length > 0);
-                    const isExpanded = expandedTxId === t.id;
-                    return (
-                      <div key={t.id}>
-                        <div
-                          className={`px-2.5 py-1.5 flex items-center justify-between hover:bg-slate-50 ${canExpand ? 'cursor-pointer' : ''}`}
-                          onClick={canExpand ? () => setExpandedTxId(isExpanded ? null : t.id) : undefined}
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {canExpand && (
-                              <ChevronDown className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold text-slate-700 truncate">{t.description || (t.type === 'debit' ? 'Compra' : 'Pagamento')}</p>
-                              <p className="text-[9px] text-slate-400">{new Date(t.date).toLocaleString('pt-BR')}</p>
-                            </div>
-                          </div>
-                          <div className={`text-[11px] font-black shrink-0 ${t.type === 'debit' ? 'text-red-500' : 'text-emerald-600'}`}>
-                            {t.type === 'debit' ? '+' : '-'} {brl((t.amount || 0))}
-                          </div>
-                        </div>
-                        {isExpanded && matchedOrder && (
-                          <div className="px-2.5 pb-2 bg-slate-50/70">
-                            <div className="rounded-md border bg-white px-2 py-1.5 space-y-0.5">
-                              {(matchedOrder.items || []).map((it: any, i: number) => (
-                                <div key={i} className="flex justify-between gap-2 text-[10px] text-slate-600">
-                                  <span className="min-w-0">{it.quantity}x {it.name}{(it.addons?.length > 0) ? ` (${it.addons.map((a: any) => a.name).join(', ')})` : ''}</span>
-                                  <span className="shrink-0 text-slate-400">{brl(((it.unitPrice || 0) * (it.quantity || 1)))}</span>
-                                </div>
-                              ))}
-                              {matchedOrder.deliveryFee > 0 && matchedOrder.payDeliveryToMotoboy !== true && (
-                                <div className="flex justify-between border-t border-dashed border-slate-200 pt-0.5 mt-0.5 text-[10px] text-slate-400">
-                                  <span>Frete</span>
-                                  <span>{brl((matchedOrder.deliveryFee || 0))}</span>
-                                </div>
-                              )}
-                              {typeof matchedOrder.totalAmount === 'number' && (
-                                <div className="flex justify-between border-t border-slate-200 pt-0.5 mt-0.5 text-[10px] font-bold text-slate-600">
-                                  <span>Total do pedido</span>
-                                  <span>{brl(matchedOrder.totalAmount)}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="px-4 py-2 border-t flex justify-end">
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setContaCasaCliente(null)}>Fechar</Button>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

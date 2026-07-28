@@ -20,6 +20,19 @@ interface FechamentoModalProps {
   warnings?: React.ReactNode;
   /** Itens para o resumo recolhível (opcional). */
   items?: any[];
+  /**
+   * Quem vai ficar devendo se o pagamento for no Prazo. O botão "Prazo" existe
+   * em todo fechamento, e sem isto o operador só descobria em qual conta a
+   * dívida caiu (ou que precisava cadastrar alguém) DEPOIS de confirmar.
+   */
+  prazoCustomer?: {
+    name?: string;
+    phone?: string;
+    /** Cadastro já localizado nesta tela (busca/seleção). */
+    matched?: boolean;
+    /** Quanto ainda cabe no limite, quando conhecido. */
+    available?: number | null;
+  };
   isSubmitting?: boolean;
   onConfirm: () => void;
 }
@@ -46,6 +59,7 @@ export function FechamentoModal({
   caixaAberto = true,
   warnings,
   items,
+  prazoCustomer,
   isSubmitting = false,
   onConfirm,
 }: FechamentoModalProps) {
@@ -206,6 +220,34 @@ export function FechamentoModal({
     </>
   );
 
+  // Em qual conta a dívida vai cair. Telefone é a chave do Prazo: sem ele o
+  // fechamento não tem onde lançar e vai parar no cadastro rápido.
+  const prazoPhoneDigits = (prazoCustomer?.phone || '').replace(/\D/g, '');
+  const prazoTemTelefone = prazoPhoneDigits.length >= 10;
+  const avisoPrazo = !f.prazoInvolved ? null : (
+    <div className={`rounded-xl border px-3 py-2 text-[12px] leading-snug ${
+      prazoTemTelefone ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-rose-200 bg-rose-50 text-rose-700'
+    }`}>
+      {prazoTemTelefone ? (
+        <>
+          <span className="font-bold">📝 A dívida vai para {prazoCustomer?.name?.trim() || 'o cadastro do telefone'} </span>
+          <span className="font-semibold">{prazoCustomer?.phone}</span>
+          {prazoCustomer?.matched && typeof prazoCustomer.available === 'number' && (
+            <span className="block text-[11px]">Disponível no limite: <span className="font-bold">{brl(prazoCustomer.available)}</span></span>
+          )}
+          {!prazoCustomer?.matched && (
+            <span className="block text-[11px]">Se não houver cadastro com esse número, o sistema pede o cadastro ao confirmar.</span>
+          )}
+        </>
+      ) : (
+        <>
+          <span className="font-bold">⚠️ Nenhum cliente informado.</span>
+          <span className="block text-[11px]">Prazo precisa de um cliente com telefone. Ao confirmar, o sistema abre o cadastro rápido para saber de quem é a dívida.</span>
+        </>
+      )}
+    </div>
+  );
+
   const confirmDisabled = isSubmitting || (
     f.isSplitMode
       ? (f.paymentSplits.length === 0 && !f.selectedPayment) || (!f.isFullyPaid && !f.selectedPayment)
@@ -263,6 +305,7 @@ export function FechamentoModal({
           <div className={`space-y-3 md:col-start-2 md:row-start-1 ${spanPagamento}`}>
             {rotulo(f.isSplitMode ? 'Pagamento dividido' : 'Como vai pagar', Wallet)}
             {f.isSplitMode ? pagamentoDividido : pagamentoSimples}
+            {avisoPrazo}
           </div>
 
           {/* 3 · Totais — esquerda */}

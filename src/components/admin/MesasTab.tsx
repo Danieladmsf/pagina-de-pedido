@@ -862,6 +862,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         tituloVenda: `Mesa ${selectedTable} - Finalizada`,
         tituloPrazo: `Mesa ${selectedTable} - Finalizada (Prazo)`,
         creditDescription: `Mesa ${selectedTable}`,
+        orderId: activeOrderId,
+        channel: 'mesa',
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 
@@ -1357,6 +1359,14 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         subtitle={`Mesa ${selectedTable ?? ''}`}
         items={cart}
         caixaAberto={caixaAberto}
+        prazoCustomer={{
+          name: customerName,
+          phone: customerPhone,
+          matched: !!creditCustomer,
+          available: creditCustomer && Number(creditCustomer.creditLimit) > 0
+            ? Math.max(0, (Number(creditCustomer.creditLimit) || 0) - (Number(creditCustomer.creditBalance) || 0))
+            : null,
+        }}
         isSubmitting={isSubmitting}
         onConfirm={handleConfirmCheckout}
         confirmLabel="✅ Encerrar Mesa"

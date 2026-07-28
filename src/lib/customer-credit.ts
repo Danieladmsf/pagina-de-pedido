@@ -86,7 +86,8 @@ async function getDebtSince(db: any, clienteId: string): Promise<Date | null> {
 
 // Vencimento da dívida: o próximo "dia de pagamento" depois da compra.
 // Comprou até o dia X -> vence no dia X do mesmo mês; depois -> mês seguinte.
-const dueDateFor = (debtSince: Date, payDay: number) => {
+// Exportado para a tela do Prazo mostrar a MESMA data que bloqueia a venda.
+export const dueDateFor = (debtSince: Date, payDay: number) => {
   const monthOffset = debtSince.getDate() <= payDay ? 0 : 1;
   const year = debtSince.getFullYear();
   const month = debtSince.getMonth() + monthOffset;

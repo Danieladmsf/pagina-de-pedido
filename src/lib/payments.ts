@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, doc, increment, writeBatch } from 'firebase/firestore';
 import { validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
 
 // Centraliza o pós-fechamento financeiro que era copiado em NovoPedidoTab,
@@ -82,9 +82,19 @@ export async function resolveContaCasa(
  *  - em "conta_casa": grava o débito em credit_transactions, incrementa o
  *    creditBalance do cliente e registra a forma "conta_casa" no caixa (Prazo);
  *  - nas demais formas: registra a venda no caixa.
- * Tudo fica gated em `caixaAberto` (Delivery pode estar com caixa fechado);
- * nos canais que exigem caixa aberto para chegar aqui, o gate é inócuo.
- * A aba fornece apenas os títulos e a descrição do débito.
+ * A aba fornece apenas os títulos, a descrição do débito e o pedido de origem.
+ *
+ * DUAS REGRAS QUE VALEM DINHEIRO:
+ *
+ * 1. O débito do Prazo NÃO depende do caixa. Antes a função inteira saía fora
+ *    quando o caixa estava fechado — no Delivery dava para finalizar um pedido
+ *    "no Prazo", o pedido ia para entregue e a dívida simplesmente não existia.
+ *    Só o LANÇAMENTO NO CAIXA depende do caixa aberto; a dívida do cliente é
+ *    registrada sempre.
+ *
+ * 2. Débito e saldo entram na MESMA escrita (batch). Eram duas idas separadas:
+ *    quando a segunda falhava, o extrato e o `creditBalance` do cadastro
+ *    ficavam com valores diferentes e ninguém percebia.
  */
 export async function registrarPagamentoSplits(
   db: any,
@@ -96,6 +106,10 @@ export async function registrarPagamentoSplits(
     tituloVenda: string;
     tituloPrazo: string;
     creditDescription: string;
+    /** Pedido que originou a dívida — vira o vínculo firme do extrato. */
+    orderId?: string;
+    /** 'balcao' | 'mesa' | 'delivery' — de onde veio a venda. */
+    channel?: string;
     onContaCasaSemCliente?: () => void;
   }
 ): Promise<void> {
@@ -107,37 +121,43 @@ export async function registrarPagamentoSplits(
     tituloVenda,
     tituloPrazo,
     creditDescription,
+    orderId,
+    channel,
     onContaCasaSemCliente,
   } = params;
 
-  if (!caixaAberto) return;
-
   for (const split of splits) {
     if (split.methodId === 'conta_casa') {
-      if (contaCasaCustomerId) {
-        const newTrans = doc(collection(db, 'clientes', contaCasaCustomerId, 'credit_transactions'));
-        await setDoc(newTrans, {
-          id: newTrans.id,
-          type: 'debit',
-          amount: split.amount,
-          date: new Date().toISOString(),
-          description: creditDescription,
-        });
-        await updateDoc(doc(db, 'clientes', contaCasaCustomerId), { creditBalance: increment(split.amount) });
-        // Registra também no caixa (forma "Prazo") para aparecer na lista e
-        // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
-        if (registrarLancamento) {
-          await registrarLancamento({
-            tipo: 'venda',
-            titulo: tituloPrazo,
-            valor: split.amount,
-            formaPagamento: 'conta_casa',
-          });
-        }
-      } else {
+      if (!contaCasaCustomerId) {
         onContaCasaSemCliente?.();
+        continue;
       }
-    } else if (registrarLancamento) {
+
+      const newTrans = doc(collection(db, 'clientes', contaCasaCustomerId, 'credit_transactions'));
+      const batch = writeBatch(db);
+      batch.set(newTrans, {
+        id: newTrans.id,
+        type: 'debit',
+        amount: split.amount,
+        date: new Date().toISOString(),
+        description: creditDescription,
+        ...(orderId ? { orderId } : {}),
+        ...(channel ? { channel } : {}),
+      });
+      batch.update(doc(db, 'clientes', contaCasaCustomerId), { creditBalance: increment(split.amount) });
+      await batch.commit();
+
+      // Registra também no caixa (forma "Prazo") para aparecer na lista e
+      // participar do fechamento/conferência. Não entra no dinheiro da gaveta.
+      if (caixaAberto && registrarLancamento) {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: tituloPrazo,
+          valor: split.amount,
+          formaPagamento: 'conta_casa',
+        });
+      }
+    } else if (caixaAberto && registrarLancamento) {
       await registrarLancamento({
         tipo: 'venda',
         titulo: tituloVenda,
