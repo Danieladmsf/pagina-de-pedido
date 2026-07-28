@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { findUnderSuppliedProducts } from '@/lib/addon-groups';
-import { deleteItemWarning, deleteMenuItemWithCleanup } from '@/lib/menu-item-delete';
+import { deleteItemWarning, deleteMenuItemWithCleanup, promotionUpdatesForRemovedItems } from '@/lib/menu-item-delete';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -366,6 +366,22 @@ export default function GestaoPage() {
     try {
       // Firestore aceita no máximo 500 operações por lote.
       const LOTE = 450;
+
+      // Apagando os produtos junto, eles também precisam sair das promoções —
+      // senão a exclusão em massa recria as referências mortas que a lixeira de
+      // um produto só já evita. Promoções primeiro: nenhum estado intermediário
+      // aponta pra produto inexistente.
+      if (!movendo && alvos.length > 0) {
+        const updates = promotionUpdatesForRemovedItems(
+          promotions || [], new Set(alvos.map((it: any) => it.id))
+        );
+        for (let i = 0; i < updates.length; i += LOTE) {
+          const batch = writeBatch(db);
+          updates.slice(i, i + LOTE).forEach((u) => batch.update(doc(db, 'promotions', u.id), { items: u.items }));
+          await batch.commit();
+        }
+      }
+
       for (let i = 0; i < alvos.length; i += LOTE) {
         const batch = writeBatch(db);
         alvos.slice(i, i + LOTE).forEach((it: any) => {

@@ -18,7 +18,7 @@ vi.mock('firebase/firestore', () => ({
   writeBatch: () => batchMock,
 }));
 
-const { promotionsUsingItem, deleteItemWarning, deleteMenuItemWithCleanup } = await import('./menu-item-delete');
+const { promotionsUsingItem, deleteItemWarning, deleteMenuItemWithCleanup, promotionUpdatesForRemovedItems } = await import('./menu-item-delete');
 
 const promocoes = [
   { id: 'promo1', name: 'Terça Maluca', items: [{ menuItemId: 'x' }, { menuItemId: 'y' }] },
@@ -58,6 +58,32 @@ describe('deleteItemWarning', () => {
     const aviso = deleteItemWarning(promocoes, 'x');
     expect(aviso).toContain('1 promoção');
     expect(aviso).not.toContain('promoções');
+  });
+});
+
+/**
+ * Regressão pega no teste de navegador: excluir a CATEGORIA com "apagar os
+ * produtos junto" apagava vários menuItems de uma vez por batch e deixava as
+ * promoções apontando pro vazio — recriando exatamente o bug que a lixeira de
+ * um produto só já evitava. Os dois caminhos têm que usar esta função.
+ */
+describe('promotionUpdatesForRemovedItems (exclusão em massa)', () => {
+  it('remove vários produtos de uma vez, mantendo o resto', () => {
+    const updates = promotionUpdatesForRemovedItems(promocoes, new Set(['x', 'y']));
+    expect(updates).toEqual([
+      { id: 'promo1', items: [] },
+      { id: 'promo2', items: [] },
+    ]);
+  });
+
+  it('só mexe nas promoções realmente afetadas', () => {
+    expect(promotionUpdatesForRemovedItems(promocoes, new Set(['x']))).toEqual([
+      { id: 'promo1', items: [{ menuItemId: 'y' }] },
+    ]);
+  });
+
+  it('não devolve nada quando nenhum produto removido estava em promoção', () => {
+    expect(promotionUpdatesForRemovedItems(promocoes, new Set(['zzz']))).toEqual([]);
   });
 });
 

@@ -17,15 +17,31 @@ export function promotionsUsingItem(promotions: any[], itemId: string): any[] {
   );
 }
 
+/**
+ * Como cada promoção fica DEPOIS de remover um conjunto de produtos.
+ * Usado tanto na exclusão de um produto só quanto na exclusão em massa pela
+ * categoria — se só o caminho de um produto limpasse, apagar a categoria
+ * inteira recriaria as referências mortas.
+ */
+export function promotionUpdatesForRemovedItems(
+  promotions: any[],
+  itemIds: Set<string>,
+): Array<{ id: string; items: any[] }> {
+  const updates: Array<{ id: string; items: any[] }> = [];
+  for (const promo of promotions || []) {
+    const items = Array.isArray(promo?.items) ? promo.items : [];
+    if (!items.some((i: any) => itemIds.has(i?.menuItemId))) continue;
+    updates.push({ id: promo.id, items: items.filter((i: any) => !itemIds.has(i?.menuItemId)) });
+  }
+  return updates;
+}
+
 /** Apaga o produto e, no mesmo batch, tira ele de todas as promoções. */
 export async function deleteMenuItemWithCleanup(db: any, itemId: string, promotions: any[]): Promise<void> {
   const batch = writeBatch(db);
   batch.delete(doc(db, 'menuItems', itemId));
-  for (const promo of promotionsUsingItem(promotions, itemId)) {
-    const restantes = (Array.isArray(promo.items) ? promo.items : []).filter(
-      (i: any) => i?.menuItemId !== itemId
-    );
-    batch.update(doc(db, 'promotions', promo.id), { items: restantes });
+  for (const u of promotionUpdatesForRemovedItems(promotions, new Set([itemId]))) {
+    batch.update(doc(db, 'promotions', u.id), { items: u.items });
   }
   await batch.commit();
 }
