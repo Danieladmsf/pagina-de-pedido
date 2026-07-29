@@ -322,6 +322,22 @@ service cloud.firestore {
           && request.resource.data.stockQuantity < resource.data.stockQuantity);
     }
 
+    // Histórico de movimentação de estoque (entrada/saída/ajuste manual).
+    // É um livro de registro: nasce e nunca muda — sem update, sem delete, nem
+    // para o dono. Venda NÃO é gravada aqui (a tela deriva dos pedidos), então
+    // o cliente anônimo do cardápio não precisa de escrita nesta coleção.
+    match /stock_movements/{movementId} {
+      allow get, list: if isOwnerOf(resource.data.ownerId)
+        || (isActiveOperator() && operatorData().ownerId == resource.data.ownerId);
+      allow create: if (isOwnerOf(request.resource.data.ownerId)
+          || operatorCanAdjustInventory(request.resource.data.ownerId))
+        && request.resource.data.delta is number
+        && request.resource.data.stockAfter is number
+        && request.resource.data.stockAfter >= 0
+        && request.resource.data.itemId is string;
+      allow update, delete: if false;
+    }
+
     match /addons/{addonId} {
       allow get, list: if true;
       allow create, update, delete: if isAdmin() && (

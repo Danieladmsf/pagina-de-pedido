@@ -257,6 +257,8 @@ export function getRetaguardaPermissionForTab(tabId: string): RetaguardaPermissi
   const byTabId: Record<string, RetaguardaPermissionKey> = {
     dashboard: 'dashboard',
     produtos: 'produtos',
+    // Estoque anda junto de Produtos: quem cuida do cadastro cuida da contagem.
+    estoque: 'produtos',
     categorias: 'categorias',
     addons: 'adicionais',
     clientes: 'clientes',

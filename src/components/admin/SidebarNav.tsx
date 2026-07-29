@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Box,
+  Boxes,
   Tag,
   PlusCircle,
   Users,
@@ -52,6 +53,7 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'produtos', label: 'Produtos', icon: Box },
+    { id: 'estoque', label: 'Estoque', icon: Boxes },
     { id: 'categorias', label: 'Categorias', icon: Tag },
     { id: 'addons', label: 'Adicionais', icon: PlusCircle },
     { id: 'clientes', label: 'Clientes', icon: Users },

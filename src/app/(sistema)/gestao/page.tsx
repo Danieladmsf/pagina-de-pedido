@@ -29,6 +29,7 @@ import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
 import { PromotionsTab } from '@/components/admin/PromotionsTab';
+import { EstoqueTab } from '@/components/admin/EstoqueTab';
 import { CampanhasTab } from '@/components/campanhas/CampanhasTab';
 import { EncomendasAdminTab } from '@/components/admin/EncomendasAdminTab';
 import { FreelanceTab } from '@/components/admin/FreelanceTab';
@@ -37,7 +38,6 @@ import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
-import { normalizeStockInput } from '@/lib/inventory';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
@@ -54,6 +54,7 @@ import { UsuariosTab } from '@/components/admin/UsuariosTab';
 const GESTAO_TAB_ORDER = [
   'dashboard',
   'produtos',
+  'estoque',
   'categorias',
   'addons',
   'clientes',
@@ -824,9 +825,25 @@ export default function GestaoPage() {
         )}
 
 
+        {activeTab === 'estoque' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+              <EstoqueTab
+                db={db}
+                ownerId={ownerId}
+                items={items}
+                orders={ordersRaw}
+                userName={operatorName || actorName || ''}
+                storeName={storeProfile?.general?.name || ''}
+                enableInventory={!!storeProfile?.general?.enableInventory}
+              />
+            </div>
+          </div>
+        )}
+
         {activeTab === 'promocoes' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <PromotionsTab 
+            <PromotionsTab
               db={db} user={user} items={items || []} categories={categories || []} 
               setEditingCombo={(combo) => {
                 setEditingCombo(combo);
@@ -1016,21 +1033,25 @@ export default function GestaoPage() {
                             {item.saleUnit === 'kg' ? (
                               <span className="text-xs text-slate-400">por kg</span>
                             ) : (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="1"
-                                className="w-20 text-center mx-auto h-8 text-sm"
-                                value={item.stockQuantity ?? ''}
-                                placeholder="∞"
-                                onChange={async (e) => {
-                                  if (!db) return;
-                                  // Vazio = ilimitado; número sempre inteiro >= 0.
-                                  await updateDoc(doc(db, 'menuItems', item.id), {
-                                    stockQuantity: normalizeStockInput(e.target.value)
-                                  });
-                                }}
-                              />
+                              // Somente leitura de propósito. Editar o total aqui obrigava a
+                              // dona a somar de cabeça em cima de um número que muda com as
+                              // vendas ("tem 15, saiu mais 15, ponho 30") — e a conta nascia
+                              // errada se entrasse pedido no meio. A alteração agora é por
+                              // entrada/saída na aba Estoque, onde quem soma é o sistema.
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleTabChange('estoque'); }}
+                                title="Movimentar na aba Estoque"
+                                className={`mx-auto flex h-8 w-20 items-center justify-center rounded-md border text-sm font-semibold transition-colors hover:bg-slate-50 ${
+                                  typeof item.stockQuantity !== 'number'
+                                    ? 'border-slate-200 text-slate-400'
+                                    : item.stockQuantity <= 0
+                                      ? 'border-red-200 bg-red-50 text-red-600'
+                                      : 'border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {typeof item.stockQuantity === 'number' ? item.stockQuantity : '∞'}
+                              </button>
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
