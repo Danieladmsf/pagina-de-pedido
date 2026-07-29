@@ -6,13 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImage } from '@/lib/upload';
 import { buildEncomendaConfig } from '@/lib/encomendas/config';
 import { type EncomendaContent, mergeContent } from '@/lib/encomendas/content';
+import { type DayHours, DAY_ORDER, DAY_SHORT, fromStoreWorkingHours } from '@/lib/encomendas/schedule';
 import { Landing } from '@/components/encomendas/Landing';
 import { revalidateStorePages } from '@/lib/revalidate-store';
-import { Loader2, ImageIcon, Upload, ExternalLink, Save, Type, Clock } from 'lucide-react';
+import { Loader2, ImageIcon, Upload, ExternalLink, Save, Type, Clock, Copy as CopyIcon } from 'lucide-react';
 
 type FieldDef = { key: keyof EncomendaContent; label: string; multiline?: boolean; hint?: string };
 const TEXT_FIELDS: FieldDef[] = [
@@ -29,13 +31,21 @@ const TEXT_FIELDS: FieldDef[] = [
   { key: 'ctaSubtitle', label: 'Subtítulo da faixa final', multiline: true, hint: 'Use {sinal} para inserir o percentual do sinal.' },
 ];
 
-// As duas linhas do bloco "Horário" (rodapé da landing) moram FORA de `content`,
-// em encomendas.daysLabel/hours — que é de onde buildEncomendaConfig lê e o wizard
-// reaproveita o daysLabel. Os defaults saem do próprio config para não duplicar.
-type Schedule = { daysLabel: string; hours: string };
+// O bloco "Horário" (rodapé da landing) mora FORA de `content`, direto em
+// encomendas.* — que é de onde buildEncomendaConfig lê e o wizard reaproveita o
+// daysLabel. Os defaults saem do próprio config para não duplicar.
+type Schedule = { scheduleMode: 'text' | 'week'; daysLabel: string; hours: string; weekHours: DayHours[] };
 function readSchedule(storeProfile: any): Schedule {
   const c = buildEncomendaConfig(storeProfile);
-  return { daysLabel: c.daysLabel, hours: c.hours };
+  // No modo 'week' o daysLabel do config é derivado; aqui o input de texto livre
+  // precisa do valor CRU, senão trocar de modo sobrescreve o que o lojista digitou.
+  const raw = storeProfile?.encomendas?.daysLabel;
+  return {
+    scheduleMode: c.scheduleMode,
+    daysLabel: typeof raw === 'string' && raw ? raw : (c.scheduleMode === 'text' ? c.daysLabel : 'Terça a Sábado'),
+    hours: c.hours,
+    weekHours: c.weekHours,
+  };
 }
 
 export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any; storeProfile: any }) {
@@ -56,15 +66,30 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
     setDirty(true);
   };
 
-  const setSched = (key: keyof Schedule, value: string) => {
+  const setSched = <K extends keyof Schedule>(key: K, value: Schedule[K]) => {
     setSchedule((prev) => ({ ...prev, [key]: value }));
     setDirty(true);
   };
 
-  // Config "ao vivo": base do storeProfile + o conteúdo sendo editado (para a prévia).
+  const setDay = (index: number, patch: Partial<DayHours>) => {
+    setSchedule((prev) => ({
+      ...prev,
+      weekHours: prev.weekHours.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+    }));
+    setDirty(true);
+  };
+
+  // Horário fixo da semana do perfil da loja, se já estiver preenchido lá.
+  const storeWeek = useMemo(() => fromStoreWorkingHours(storeProfile?.workingHours), [storeProfile?.workingHours]);
+
+  // Config "ao vivo": o que está sendo editado passa pelo MESMO buildEncomendaConfig
+  // da página real, então a prévia deriva tudo (inclusive o daysLabel) igualzinho.
   const liveConfig = useMemo(() => {
-    const base = buildEncomendaConfig(storeProfile);
-    return { ...base, content, logoUrl: content.logoUrl || base.logoUrl, ...schedule };
+    const base = buildEncomendaConfig({
+      ...storeProfile,
+      encomendas: { ...(storeProfile?.encomendas || {}), ...schedule, content },
+    });
+    return { ...base, content, logoUrl: content.logoUrl || base.logoUrl };
   }, [storeProfile, content, schedule]);
 
   const shareUrl = useMemo(() => {
@@ -118,17 +143,61 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
 
         <div className="rounded-xl border bg-card p-4">
           <p className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground"><Clock className="h-4 w-4" /> Horário</p>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Dias de funcionamento</Label>
-              <Input value={schedule.daysLabel} onChange={(e) => setSched('daysLabel', e.target.value)} placeholder="Ex.: Terça a Sábado" />
+
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-2.5">
+            <div>
+              <p className="text-xs font-semibold">Separar por dia da semana</p>
+              <p className="text-[11px] text-muted-foreground">Cada dia com seu horário, em vez de duas linhas de texto.</p>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Horário de atendimento</Label>
-              <Input value={schedule.hours} onChange={(e) => setSched('hours', e.target.value)} placeholder="Ex.: 09h às 18h" />
-            </div>
-            <p className="text-[11px] text-muted-foreground">São as duas linhas do bloco "Horário", no rodapé da página. Os dias também aparecem na hora de escolher a data do pedido.</p>
+            <Switch
+              checked={schedule.scheduleMode === 'week'}
+              onCheckedChange={(on) => setSched('scheduleMode', on ? 'week' : 'text')}
+            />
           </div>
+
+          {schedule.scheduleMode === 'week' ? (
+            <div className="space-y-2">
+              {storeWeek && (
+                <Button type="button" variant="outline" size="sm" className="w-full text-xs"
+                  onClick={() => setSched('weekHours', storeWeek)}>
+                  <CopyIcon className="mr-1.5 h-3.5 w-3.5" /> Copiar o horário da loja
+                </Button>
+              )}
+              <div className="space-y-1">
+                {DAY_ORDER.map((d) => {
+                  const day = schedule.weekHours[d];
+                  return (
+                    <div key={d} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${day.closed ? 'bg-muted/40' : 'bg-background'}`}>
+                      <span className="w-8 shrink-0 text-xs font-semibold">{DAY_SHORT[d]}</span>
+                      <Switch checked={!day.closed} onCheckedChange={(on) => setDay(d, { closed: !on })} className="scale-75" />
+                      {day.closed ? (
+                        <span className="flex-1 text-right text-[11px] text-muted-foreground">Fechado</span>
+                      ) : (
+                        <div className="flex flex-1 items-center justify-end gap-1">
+                          <Input type="time" value={day.open} onChange={(e) => setDay(d, { open: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
+                          <span className="text-xs text-muted-foreground">às</span>
+                          <Input type="time" value={day.close} onChange={(e) => setDay(d, { close: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Dias seguidos com o mesmo horário aparecem juntos na página ("Ter a Sáb"). Isso é só o que o cliente lê — quem libera ou bloqueia a data do pedido são os dias marcados na configuração acima.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Dias de funcionamento</Label>
+                <Input value={schedule.daysLabel} onChange={(e) => setSched('daysLabel', e.target.value)} placeholder="Ex.: Terça a Sábado" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Horário de atendimento</Label>
+                <Input value={schedule.hours} onChange={(e) => setSched('hours', e.target.value)} placeholder="Ex.: 09h às 18h" />
+              </div>
+              <p className="text-[11px] text-muted-foreground">São as duas linhas do bloco "Horário", no rodapé da página. Os dias também aparecem na hora de escolher a data do pedido.</p>
+            </div>
+          )}
         </div>
       </div>
 

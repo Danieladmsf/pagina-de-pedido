@@ -1,4 +1,5 @@
 import type { EncomendaConfig } from '@/lib/encomendas/config';
+import { formatWeekSchedule } from '@/lib/encomendas/schedule';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight, CalendarClock, MapPin, HeartHandshake, Sparkles, Store, ShieldCheck,
@@ -193,8 +194,19 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-gold">Horário</p>
             <ul className="mt-3 space-y-1.5 text-sm text-foreground/80">
-              <li>{config.daysLabel}</li>
-              <li>{config.hours}</li>
+              {config.scheduleMode === 'week' ? (
+                formatWeekSchedule(config.weekHours).map((r) => (
+                  <li key={r.days} className="flex items-baseline justify-between gap-4 max-w-[16rem]">
+                    <span>{r.days}</span>
+                    <span className={r.hours === 'Fechado' ? 'text-muted-foreground' : ''}>{r.hours}</span>
+                  </li>
+                ))
+              ) : (
+                <>
+                  <li>{config.daysLabel}</li>
+                  <li>{config.hours}</li>
+                </>
+              )}
             </ul>
             <button onClick={onStart} className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline">
               Fazer encomenda online <ArrowRight className="h-3.5 w-3.5" />
