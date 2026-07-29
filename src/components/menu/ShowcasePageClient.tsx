@@ -16,6 +16,8 @@ import { useStoreMenuData } from '@/hooks/useStoreMenuData';
 import { themeToCssVars } from '@/lib/themes';
 import { applyPromoPrice, itemNeedsCustomization } from '@/lib/cart';
 import { brl } from '@/lib/utils';
+import { checkCartStock, isOutOfStock } from '@/lib/inventory';
+import { useToast } from '@/hooks/use-toast';
 
 type ShowcaseMode = 'combos' | 'promocoes' | 'ofertas';
 
@@ -79,6 +81,9 @@ export function ShowcasePageClient({
     isVisibleForCustomerMenu,
   } = data;
 
+  const { toast } = useToast();
+  const inventoryOn = !!storeProfile?.general?.enableInventory;
+
   const isCombos = mode === 'combos';
   const isOfertas = mode === 'ofertas';
   const homeHref = `/${storeSlug ?? ''}${urlParam ? `?s=${urlParam}` : ''}`;
@@ -103,8 +108,15 @@ export function ShowcasePageClient({
       setSelectedItem(effectiveItem);
       return;
     }
+    // Sem esta trava o "+" desta página punha no carrinho produto já esgotado
+    // (o erro só aparecia lá na frente, ao fechar o pedido).
+    const check = checkCartStock([...cart, { ...effectiveItem, quantity: 1 }], items || [], inventoryOn);
+    if (!check.allowed) {
+      toast({ title: 'Estoque insuficiente', description: check.message, variant: 'destructive' });
+      return;
+    }
     addToCart(effectiveItem, 1, { addons: [], notes: '' });
-  }, [addToCart, promoItemsMap]);
+  }, [addToCart, promoItemsMap, cart, items, inventoryOn, toast]);
 
   const openCart = () => {
     const cartBtn = document.querySelector('[data-cart-trigger]') as HTMLElement | null;
@@ -187,12 +199,13 @@ export function ShowcasePageClient({
               const discountPct = originalPrice > 0 ? Math.round((1 - displayPrice / originalPrice) * 100) : 0;
               const savings = originalPrice > displayPrice ? originalPrice - displayPrice : 0;
               const qtyInCart = cart.filter((i: any) => i.id === item.id).reduce((s: number, i: any) => s + i.quantity, 0);
+              const outOfStock = isOutOfStock(item, { enableInventory: inventoryOn, allItems: items || [] });
 
               return (
                 <Card
                   key={item.id}
-                  onClick={() => setSelectedItem(applyPromoPrice(item, promoItemsMap))}
-                  className={`group flex cursor-pointer flex-col overflow-hidden rounded-2xl border-none bg-white shadow-md transition-all hover:shadow-2xl md:rounded-3xl ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
+                  onClick={() => { if (!outOfStock) setSelectedItem(applyPromoPrice(item, promoItemsMap)); }}
+                  className={`group flex cursor-pointer flex-col overflow-hidden rounded-2xl border-none bg-white shadow-md transition-all hover:shadow-2xl md:rounded-3xl ${outOfStock ? 'opacity-60 grayscale-[0.5]' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
                 >
                   <ProductGallery
                     images={item.images}
@@ -220,6 +233,13 @@ export function ShowcasePageClient({
                         {qtyInCart} no carrinho
                       </Badge>
                     )}
+                    {outOfStock && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                        <span className="rounded-full bg-slate-900/85 px-3 py-1 text-xs font-black uppercase tracking-wider text-white shadow-lg">
+                          Esgotado
+                        </span>
+                      </div>
+                    )}
                   </ProductGallery>
 
                   <CardContent className="flex flex-1 flex-col p-4 md:p-5">
@@ -242,10 +262,11 @@ export function ShowcasePageClient({
 
                     <button
                       onClick={(e) => handleAddClick(e, item)}
-                      className="mt-auto flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+                      disabled={outOfStock}
+                      className={`mt-auto flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-white transition-all ${outOfStock ? 'cursor-not-allowed bg-slate-300' : 'bg-primary hover:brightness-110 active:scale-[0.98]'}`}
                     >
                       <Plus className="h-4 w-4" />
-                      {itemNeedsCustomization(item) ? 'Ver opções' : 'Adicionar'}
+                      {outOfStock ? 'Esgotado' : itemNeedsCustomization(item) ? 'Ver opções' : 'Adicionar'}
                     </button>
                   </CardContent>
                 </Card>

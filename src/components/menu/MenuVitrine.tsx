@@ -4,6 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { Flame, Sparkles } from 'lucide-react';
 import { brl, cn } from '@/lib/utils';
+import { isOutOfStock } from '@/lib/inventory';
 import {
   Carousel,
   CarouselContent,
@@ -19,6 +20,7 @@ interface MenuVitrineProps {
   comboEmoji: string;
   isVisible: (item: any) => boolean;
   onSelectItem: (item: any) => void;
+  enableInventory?: boolean;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -33,14 +35,22 @@ function shuffle<T>(arr: T[]): T[] {
  * painel de TV de fast-food. Mistura aleatoriamente combos, promoções e
  * produtos normais (com foto). Tocar num slide abre o produto.
  */
-export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSelectItem }: MenuVitrineProps) {
+export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSelectItem, enableInventory = false }: MenuVitrineProps) {
   const [api, setApi] = React.useState<CarouselApi>();
   const [current, setCurrent] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
 
   const slideCandidates = React.useMemo(() => {
+    // Esgotado NÃO entra na vitrine: aqui é anúncio, não catálogo. Deixar o
+    // produto girando como "DESTAQUE" depois de acabar fazia o cliente pedir o
+    // que não existia mais, e a dona tinha que desligar o produto na mão só
+    // para tirá-lo daqui.
     const pool = (items || []).filter(
-      (it) => it.isAvailable !== false && isVisible(it) && (it.imageUrl || (it.images && it.images.length))
+      (it) =>
+        it.isAvailable !== false &&
+        isVisible(it) &&
+        (it.imageUrl || (it.images && it.images.length)) &&
+        !isOutOfStock(it, { enableInventory, allItems: items || [] })
     );
     const combos = pool.filter((it) => it.isCombo);
     const promos = pool.filter((it) => !it.isCombo && promoItemsMap[it.id]);
@@ -55,7 +65,7 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
     const fillers = needed > 0 ? normals.slice(0, needed) : [];
     return [...offers, ...fillers].slice(0, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, promoItemsMap]);
+  }, [items, promoItemsMap, enableInventory]);
 
   // A primeira renderizacao precisa ser deterministica para que o HTML do
   // servidor seja igual ao do navegador. O embaralhamento acontece somente

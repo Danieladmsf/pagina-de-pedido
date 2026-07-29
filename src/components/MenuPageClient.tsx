@@ -1129,6 +1129,7 @@ export function MenuPageClient({
           comboEmoji={comboEmoji}
           isVisible={isVisibleForCustomerMenu}
           onSelectItem={(item) => setSelectedItem(applyPromoPrice(item, promoItemsMap))}
+          enableInventory={storeProfile?.general?.enableInventory || false}
         />
       )}
       {groupedItems.map((group) => (
