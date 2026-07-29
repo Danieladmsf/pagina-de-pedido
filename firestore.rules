@@ -396,10 +396,14 @@ service cloud.firestore {
               'encomendas_pedidos', 'mudarStatus')
             && operatorCanPdvAction(resource.data.ownerId,
               'encomendas_pedidos', 'lancarSinal'))
+          // Editar o pedido: contato, entrega, ITENS e os valores que eles
+          // recalculam. `valorPago`/`sinalLancado` ficam de fora de propósito —
+          // dizer quanto já entrou é do fluxo de caixa, não da edição.
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                'delivery', 'orderNotes', 'customerName', 'customerPhone', 'status'])
-            && request.resource.data.diff(resource.data).affectedKeys().hasAny([
-                'delivery', 'orderNotes', 'customerName', 'customerPhone'])
+                'delivery', 'orderNotes', 'customerName', 'customerPhone', 'customerBirthDate',
+                'isEmpresa', 'products', 'bolo', 'especialItems', 'tortasItems', 'docinhosItems',
+                'subtotal', 'deliveryFee', 'total', 'sinalPercent', 'sinal', 'saldo',
+                'comprovanteUrl', 'source', 'status'])
             && operatorCanPdvAction(resource.data.ownerId,
               'encomendas_pedidos', 'editarEncomenda')
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,12 +15,14 @@ import type { Encomenda } from '@/lib/encomendas/types';
 import {
   calcularTotais,
   montarEncomenda,
+  selecaoDaEncomenda,
   selecaoVazia,
   skuTotal,
   type Qmap,
   type SelecaoEncomenda,
 } from '@/lib/encomendas/pricing';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
+import { valorRecebido } from '@/lib/encomendas/pagamento';
 
 export type EncomendaBalcaoResult = {
   id: string;
@@ -36,6 +38,8 @@ interface Props {
   config: EncomendaConfig;
   caixaAberto: boolean;
   formasPagamento: { id: string; label: string; icon?: string }[];
+  /** Quando vem preenchido, a tela EDITA esta encomenda em vez de criar uma. */
+  encomenda?: (Encomenda & { id: string }) | null;
   onCancel: () => void;
   onSaved: (result: EncomendaBalcaoResult) => void | Promise<void>;
 }
@@ -161,27 +165,46 @@ function GrupoItens({ lista, mapa, onMapa }: { lista: SkuOption[]; mapa: Qmap; o
  * quem preenche está com a cliente na frente. O preço vem inteiro de
  * lib/encomendas/pricing, o mesmo que a página pública usa.
  */
-export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, formasPagamento, onCancel, onSaved }: Props) {
+export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, formasPagamento, encomenda, onCancel, onSaved }: Props) {
   const { toast } = useToast();
   const cat = config.catalog;
   const porKg = (cat.cakes || []).length > 0;
+  const editando = !!encomenda;
 
-  const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [nascimento, setNascimento] = useState('');
+  const [nome, setNome] = useState(encomenda?.customerName || '');
+  const [telefone, setTelefone] = useState(mascaraTelefone(encomenda?.customerPhone || ''));
+  const [nascimento, setNascimento] = useState(encomenda?.customerBirthDate || '');
 
-  const [sel, setSel] = useState<SelecaoEncomenda>(selecaoVazia());
-  const [data, setData] = useState('');
-  const [hora, setHora] = useState('');
-  const [tipoEntrega, setTipoEntrega] = useState<'retirada' | 'delivery'>('retirada');
-  const [rua, setRua] = useState('');
-  const [numero, setNumero] = useState('');
-  const [complemento, setComplemento] = useState('');
-  const [bairro, setBairro] = useState('');
-  const [cidade, setCidade] = useState(config.city || '');
-  const [taxa, setTaxa] = useState('');
+  const [sel, setSel] = useState<SelecaoEncomenda>(
+    () => (encomenda ? selecaoDaEncomenda(cat, encomenda) : selecaoVazia()),
+  );
+  const [data, setData] = useState(encomenda?.delivery?.date || '');
+  const [hora, setHora] = useState(encomenda?.delivery?.time || '');
+  const [tipoEntrega, setTipoEntrega] = useState<'retirada' | 'delivery'>(
+    encomenda?.delivery?.type === 'delivery' ? 'delivery' : 'retirada',
+  );
+  const [rua, setRua] = useState(encomenda?.delivery?.street || '');
+  const [numero, setNumero] = useState(encomenda?.delivery?.number || '');
+  const [complemento, setComplemento] = useState(encomenda?.delivery?.complement || '');
+  const [bairro, setBairro] = useState(encomenda?.delivery?.neighborhood || '');
+  const [cidade, setCidade] = useState(encomenda?.delivery?.city || config.city || '');
+  const [taxa, setTaxa] = useState(encomenda?.deliveryFee ? String(encomenda.deliveryFee) : '');
   const [calculandoTaxa, setCalculandoTaxa] = useState(false);
-  const [observacao, setObservacao] = useState('');
+  const [observacao, setObservacao] = useState(encomenda?.orderNotes || '');
+
+  /**
+   * Total gravado que a tela NÃO consegue reproduzir com o catálogo de hoje —
+   * acontece quando um sabor/adicional foi renomeado ou apagado depois do
+   * pedido. Salvar assim rebaixaria o valor no silêncio, então a tela avisa.
+   */
+  const [totalOriginalDivergente] = useState(() => {
+    if (!encomenda) return 0;
+    const inicial = calcularTotais(cat, selecaoDaEncomenda(cat, encomenda), {
+      deliveryFee: encomenda.deliveryFee || 0,
+      sinalPercent: config.sinalPercent,
+    });
+    return Math.abs(inicial.total - (encomenda.total || 0)) > 0.009 ? (encomenda.total || 0) : 0;
+  });
 
   const [pagoOpcao, setPagoOpcao] = useState<'nada' | 'sinal' | 'total' | 'outro'>('sinal');
   const [pagoOutro, setPagoOutro] = useState('');
@@ -210,7 +233,9 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
     [cat, sel, deliveryFee, config.sinalPercent],
   );
 
-  const pagoValor = !caixaAberto ? 0
+  // Na edição não se recebe dinheiro: quem cobra é o botão "Receber" do card,
+  // que sabe o saldo atualizado e passa pelo fechamento (com Prazo, split etc.).
+  const pagoValor = editando || !caixaAberto ? 0
     : pagoOpcao === 'nada' ? 0
     : pagoOpcao === 'sinal' ? totais.sinal
     : pagoOpcao === 'total' ? totais.total
@@ -266,12 +291,14 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
     if (!podeSalvar || salvando || !db || !user?.uid) return;
     setSalvando(true);
     try {
-      const id = gerarId();
+      const id = encomenda?.id || gerarId();
       // customerUid = quem está gravando: é o que as regras aceitam tanto do
       // dono quanto do operador (a página pública usa o uid anônimo do cliente).
       const enc = montarEncomenda({
         id,
-        customerUid: user.uid,
+        // Na edição o dono do documento não muda (o público criou com o uid
+        // anônimo do cliente; reescrever isso tiraria a encomenda do app dele).
+        customerUid: encomenda?.customerUid || user.uid,
         ownerId,
         cliente: { nome, telefone, nascimento },
         sel,
@@ -288,18 +315,29 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
           city: cidade,
           feeStatus: deliveryFee > 0 ? 'calculada' : 'a_combinar',
         },
-        status: 'confirmada',
-        source: 'balcao',
+        status: encomenda?.status || 'confirmada',
+        source: encomenda?.source || 'balcao',
         orderNotes: observacao,
-        valorPago: pagoValor,
-        createdAt: serverTimestamp(),
+        // Coisas que o cliente mandou e esta tela não edita: reescrever sem
+        // elas apagaria o comprovante do PIX e os dados da plaquinha.
+        comprovanteUrl: encomenda?.comprovanteUrl,
+        plate: encomenda?.bolo?.plate,
+        valorPago: encomenda ? valorRecebido(encomenda) : pagoValor,
+        createdAt: encomenda?.createdAt ?? serverTimestamp(),
       });
 
-      await setDoc(doc(collection(db, 'encomendas'), id), {
-        ...enc,
-        // Só está "lançado" o que entrou agora; o resto o card cobra depois.
-        sinalLancado: pagoValor > 0,
-      });
+      if (encomenda) {
+        // Edição: reescreve o pedido, mas NÃO toca no que é histórico —
+        // quando entrou, quanto já foi recebido e o comprovante do cliente.
+        const { id: _id, customerUid: _uid, createdAt: _criado, orderDateTime: _quando, valorPago: _pago, ...conteudo } = enc as any;
+        await updateDoc(doc(db, 'encomendas', id), conteudo);
+      } else {
+        await setDoc(doc(collection(db, 'encomendas'), id), {
+          ...enc,
+          // Só está "lançado" o que entrou agora; o resto o card cobra depois.
+          sinalLancado: pagoValor > 0,
+        });
+      }
       await onSaved({ id, enc, pago: { valor: pagoValor, forma: pagoForma } });
     } catch (err: any) {
       console.error('[encomendas] erro ao salvar a encomenda do balcão:', err);
@@ -326,11 +364,26 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar para as encomendas
         </button>
-        <h1 className="text-2xl font-black tracking-tight text-slate-800">Nova encomenda</h1>
+        <h1 className="text-2xl font-black tracking-tight text-slate-800">
+          {editando ? `Editar encomenda #${encomenda!.id.substring(0, 5)}` : 'Nova encomenda'}
+        </h1>
         <p className="text-sm font-medium text-muted-foreground">
-          Pedido tirado no balcão — os preços são os mesmos do link de encomendas.
+          {editando
+            ? 'Pode incluir ou tirar itens — o total é recalculado e o que já foi pago continua valendo.'
+            : 'Pedido tirado no balcão — os preços são os mesmos do link de encomendas.'}
         </p>
       </header>
+
+      {totalOriginalDivergente > 0 && (
+        <div className="mx-2 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+          <p className="font-bold">O catálogo mudou depois deste pedido.</p>
+          <p>
+            A encomenda foi fechada em <span className="font-bold">{brl(totalOriginalDivergente)}</span> e, com os produtos de hoje,
+            a tela remonta <span className="font-bold">{brl(totais.total)}</span> — algum sabor ou adicional foi renomeado ou apagado.
+            Confira o pedido antes de salvar; se salvar assim, vale o valor novo.
+          </p>
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 gap-4 px-2 lg:grid-cols-[1fr_340px]">
         {/* Formulário */}
@@ -584,8 +637,24 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
             </div>
           </Bloco>
 
-          <Bloco icone={Wallet} titulo="Pagamento agora">
-            {!caixaAberto ? (
+          <Bloco icone={Wallet} titulo={editando ? 'Pagamento' : 'Pagamento agora'}>
+            {editando ? (
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Já pago</span>
+                  <span className="font-bold tabular-nums text-emerald-700">{brl(valorRecebido(encomenda!))}</span>
+                </div>
+                <div className="flex justify-between border-t border-dashed pt-1.5">
+                  <span className="text-slate-500">Falta com o novo total</span>
+                  <span className="font-bold tabular-nums text-amber-600">
+                    {brl(Math.max(0, totais.total - valorRecebido(encomenda!)))}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  O recebimento continua no botão <span className="font-semibold">Receber</span> do card, com o saldo já atualizado.
+                </p>
+              </div>
+            ) : !caixaAberto ? (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                 Caixa fechado — a encomenda é salva, mas nada entra no caixa agora. Abra o caixa e use o botão de receber no card dela.
               </p>
@@ -649,7 +718,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
             className="h-11 w-full bg-emerald-600 text-sm font-bold text-white hover:bg-emerald-700"
           >
             {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Salvar encomenda
+            {editando ? 'Salvar alterações' : 'Salvar encomenda'}
           </Button>
           {!podeSalvar && (
             <p className="-mt-1 text-center text-[11px] text-slate-400">

@@ -5,9 +5,6 @@ import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
@@ -228,6 +225,19 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     }
   }
 
+  /** Voltou da edição: só avisa. Dinheiro não se mexe aqui. */
+  async function encomendaEditada({ id, enc }: EncomendaBalcaoResult) {
+    setEditing(null);
+    setSelecionadaId(id);
+    const falta = Math.max(0, enc.total - valorRecebido(enc));
+    toast({
+      title: 'Encomenda atualizada!',
+      description: falta > 0
+        ? `Novo total ${brl(enc.total)} · falta receber ${brl(falta)}. Reimprima o cupom se já tinha entregue um.`
+        : `Novo total ${brl(enc.total)} · já está paga. Reimprima o cupom se já tinha entregue um.`,
+    });
+  }
+
   /** Fechamento da entrega: recebe o que falta e marca como entregue. */
   async function confirmarEntrega() {
     if (!entregando) return;
@@ -308,20 +318,23 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     printEncomendaReceipt({ enc, storeInfo: storeProfile });
   }
 
-  // Nova encomenda ocupa a aba inteira (é uma TELA da Retaguarda, não um modal
-  // com o formulário do cliente espremido dentro).
-  if (novaAberta) {
+  // Criar e EDITAR usam a mesma tela cheia: no balcão, "editar" quase sempre é
+  // a cliente pedindo para incluir ou tirar item — coisa que o antigo modal de
+  // edição leve não fazia.
+  if (novaAberta || editing) {
     return (
       <div className="flex-1 overflow-hidden px-4 md:px-6">
         <EncomendaBalcaoPage
+          key={editing?.id || 'nova'}
           db={db}
           user={user}
           ownerId={ownerId}
           config={config}
           caixaAberto={caixaAberto && !!registrarLancamento}
           formasPagamento={formasBalcao}
-          onCancel={() => setNovaAberta(false)}
-          onSaved={encomendaCriadaNoBalcao}
+          encomenda={editing}
+          onCancel={() => { setNovaAberta(false); setEditing(null); }}
+          onSaved={editing ? encomendaEditada : encomendaCriadaNoBalcao}
         />
       </div>
     );
@@ -431,30 +444,6 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         ) : undefined}
         onConfirm={confirmarEntrega}
       />
-
-      {editing && (
-        <EditEncomendaDialog
-          db={db}
-          enc={editing}
-          permissions={permissions}
-          onClose={() => setEditing(null)}
-          onSaved={(status) => {
-            const edited = editing;
-            setEditing(null);
-            if (status === 'confirmada' && (edited.status || 'orcamento') !== 'confirmada' && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
-              void lancarSinal(edited);
-              return;
-            }
-            // Marcar "Entregue" pela tela de edição é a mesma entrega do card:
-            // se ainda falta receber, o fechamento tem que abrir igual.
-            if (status === 'entregue' && saldoAReceber(edited) > 0
-              && can(permissionsRef.current, 'actions.encomendas_pedidos.lancarSinal')) {
-              fechamento.reset();
-              setEntregando({ ...edited, status });
-            }
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -708,105 +697,3 @@ function EncomendaDetalhe({ enc, allowStatus, allowEdit, allowReprint, canLancar
   );
 }
 
-
-// Edição LEVE: status, entrega (data/hora/forma), observação e contato.
-// Itens e valores permanecem como o cliente enviou.
-function EditEncomendaDialog({ db, enc, permissions, onClose, onSaved }: {
-  db: any; enc: Encomenda & { id: string }; permissions: PdvPermissions; onClose: () => void; onSaved: (status: EncomendaStatus) => void;
-}) {
-  const { toast } = useToast();
-  const allowEdit = can(permissions, 'actions.encomendas_pedidos.editarEncomenda');
-  const allowStatus = can(permissions, 'actions.encomendas_pedidos.mudarStatus');
-  const [status, setStatus] = useState<EncomendaStatus>((enc.status || 'orcamento') as EncomendaStatus);
-  const [date, setDate] = useState(enc.delivery?.date || '');
-  const [time, setTime] = useState(enc.delivery?.time || '');
-  const [type, setType] = useState<'retirada' | 'delivery' | ''>(enc.delivery?.type || '');
-  const [notes, setNotes] = useState(enc.orderNotes || '');
-  const [name, setName] = useState(enc.customerName || '');
-  const [phone, setPhone] = useState(enc.customerPhone || '');
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!can(permissions, 'actions.encomendas_pedidos.editarEncomenda')) {
-      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
-      return;
-    }
-    const statusChanged = status !== (enc.status || 'orcamento');
-    if (statusChanged && !can(permissions, 'actions.encomendas_pedidos.mudarStatus')) {
-      toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
-      return;
-    }
-    setSaving(true);
-    try {
-      const patch: any = {
-        // Espalha o delivery existente para não clobberar endereço/bairro/taxa
-        // gravados pelo wizard (street/neighborhood/feeStatus...).
-        delivery: { ...(enc.delivery || {}), date, time, type },
-        orderNotes: notes,
-        customerName: name,
-        customerPhone: phone.replace(/\D/g, ''),
-      };
-      if (statusChanged) patch.status = status;
-      await updateDoc(doc(db, 'encomendas', enc.id), patch);
-      toast({ title: 'Encomenda atualizada' });
-      onSaved(status);
-    } catch (err) {
-      console.error('[encomendas] erro ao editar:', err);
-      toast({ variant: 'destructive', title: 'Erro ao salvar', description: 'Tente novamente.' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Editar encomenda #{enc.id}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {allowStatus && <div className="space-y-1.5">
-              <Label className="text-sm">Status</Label>
-              <select disabled={!allowEdit} value={status} onChange={(e) => setStatus(e.target.value as EncomendaStatus)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
-              </select>
-            </div>}
-            <div className="space-y-1.5">
-              <Label className="text-sm">Forma</Label>
-              <select disabled={!allowEdit} value={type} onChange={(e) => setType(e.target.value as any)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                <option value="retirada">Retirada no local</option>
-                <option value="delivery">Entrega</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Data de entrega</Label>
-              <Input disabled={!allowEdit} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Horário</Label>
-              <Input disabled={!allowEdit} value={time} onChange={(e) => setTime(e.target.value)} placeholder="14:00" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Cliente</Label>
-              <Input disabled={!allowEdit} value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">WhatsApp</Label>
-              <Input disabled={!allowEdit} value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">Observação</Label>
-            <Textarea disabled={!allowEdit} value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-          </div>
-          <p className="text-xs text-muted-foreground">Itens e valores não são alterados aqui — apenas dados do pedido/entrega.</p>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Salvar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

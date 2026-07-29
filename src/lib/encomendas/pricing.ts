@@ -130,6 +130,46 @@ export function resolverBolo(cat: EncomendaCatalog, sel: SelecaoEncomenda): Bolo
   return { porKg, flavor, weight, size, filling, cover, extras, pesoKg, total };
 }
 
+/**
+ * Caminho de volta: documento gravado → seleção editável.
+ *
+ * O doc guarda NOME ("Floresta negra"), não id — então sabor, recheio,
+ * cobertura e adicionais são reencontrados pelo nome no catálogo atual. Se a
+ * loja renomeou ou apagou um item depois do pedido, ele não casa e volta
+ * vazio; por isso a tela de edição compara o total recalculado com o total
+ * gravado e avisa em vez de salvar um bolo mais barato em silêncio.
+ */
+export function selecaoDaEncomenda(cat: EncomendaCatalog, enc: Encomenda): SelecaoEncomenda {
+  const porNome = (list: { id: string; name: string }[] | undefined, nome?: string) =>
+    (nome ? (list || []).find((x) => x.name === nome)?.id : '') || '';
+
+  const bolo = enc.bolo;
+  const qmap = (linhas?: EncomendaLineItem[]): Qmap =>
+    (linhas || []).reduce((acc, l) => { acc[l.id] = l.qty; return acc; }, {} as Qmap);
+
+  return {
+    products: [...((enc.products || []) as ProductKind[])],
+    bolo: {
+      // Fluxo por kg: `sizeId` guarda o id do PESO.
+      flavorId: porNome(cat.cakes, bolo?.flavor || bolo?.filling),
+      weightId: (cat.cakeWeights || []).some((w) => w.id === bolo?.sizeId) ? bolo?.sizeId : '',
+      shape: bolo?.shape || '',
+      dough: bolo?.dough || '',
+      extraIds: (bolo?.extras || [])
+        .map((x) => porNome(cat.cakeExtras, x.name))
+        .filter(Boolean),
+      // Fluxo antigo.
+      sizeId: cat.cakeSizes.some((s) => s.id === bolo?.sizeId) ? bolo?.sizeId : '',
+      fillingId: porNome(cat.cakeFillings, bolo?.filling),
+      coverId: porNome(cat.cakeCovers, bolo?.cover),
+      plateOn: bolo?.plate?.on === true,
+    },
+    especial: qmap(enc.especialItems),
+    tortas: qmap(enc.tortasItems),
+    docinhos: qmap(enc.docinhosItems),
+  };
+}
+
 export type TotaisEncomenda = {
   bolo: BoloResolvido;
   especialLines: EncomendaLineItem[];

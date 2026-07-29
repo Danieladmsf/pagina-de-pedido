@@ -3,8 +3,10 @@ import { DEFAULT_CATALOG, type EncomendaCatalog } from './catalog';
 import {
   calcularTotais,
   linhasDe,
+  montarEncomenda,
   precoDoAdicional,
   resolverBolo,
+  selecaoDaEncomenda,
   selecaoVazia,
   skuTotal,
 } from './pricing';
@@ -87,6 +89,58 @@ describe('resolverBolo (por kg)', () => {
 
   it('bolo fora da seleção não entra na conta', () => {
     expect(resolverBolo(cat, { ...selBolo(), products: [] }).total).toBe(0);
+  });
+});
+
+describe('selecaoDaEncomenda (abrir para editar)', () => {
+  const sel = {
+    ...selecaoVazia(),
+    products: ['bolo' as const, 'tortas' as const],
+    bolo: { flavorId: 'ninho', weightId: '3kg', shape: 'quadrado', dough: 'Massa branca (baunilha)', extraIds: ['topper', 'ganache'] },
+    tortas: { banoffe: 2 },
+  };
+  const totais = calcularTotais(cat, sel, { sinalPercent: 50 });
+  const enc = montarEncomenda({
+    id: 'X1', customerUid: 'u', ownerId: 'o',
+    cliente: { nome: 'Ana', telefone: '16999998888' },
+    sel, totais, sinalPercent: 50,
+    entrega: { date: '2026-08-02', time: '15:00', type: 'retirada' },
+    status: 'confirmada', source: 'balcao',
+  });
+
+  it('reabre exatamente o que foi escolhido (ida e volta)', () => {
+    const volta = selecaoDaEncomenda(cat, enc);
+    expect(volta.products).toEqual(['bolo', 'tortas']);
+    expect(volta.bolo.flavorId).toBe('ninho');
+    expect(volta.bolo.weightId).toBe('3kg');
+    expect(volta.bolo.shape).toBe('quadrado');
+    expect(volta.bolo.dough).toBe('Massa branca (baunilha)');
+    expect(volta.bolo.extraIds).toEqual(['topper', 'ganache']);
+    expect(volta.tortas).toEqual({ banoffe: 2 });
+  });
+
+  it('o total recalculado da volta bate com o gravado', () => {
+    const volta = selecaoDaEncomenda(cat, enc);
+    expect(calcularTotais(cat, volta, { sinalPercent: 50 }).total).toBe(enc.total);
+  });
+
+  it('item apagado do catálogo volta vazio (a tela avisa pela diferença de total)', () => {
+    const catSemSabor = { ...cat, cakes: cat.cakes.filter((c) => c.id !== 'ninho') };
+    const volta = selecaoDaEncomenda(catSemSabor, enc);
+    expect(volta.bolo.flavorId).toBe('');
+    expect(calcularTotais(catSemSabor, volta, { sinalPercent: 50 }).total).not.toBe(enc.total);
+  });
+
+  it('encomenda do modelo antigo volta com tamanho/recheio/cobertura', () => {
+    const antiga: any = {
+      products: ['bolo'],
+      bolo: { sizeId: 'M', size: 'M', dough: 'Massa branca', filling: 'Brigadeiro cremoso', cover: 'Naked (sem laterais)', plate: { on: true }, total: 200 },
+      especialItems: [], tortasItems: [], docinhosItems: [],
+    };
+    const volta = selecaoDaEncomenda(DEFAULT_CATALOG, antiga);
+    expect(volta.bolo.sizeId).toBe('M');
+    expect(volta.bolo.plateOn).toBe(true);
+    expect(volta.bolo.weightId).toBe('');
   });
 });
 
