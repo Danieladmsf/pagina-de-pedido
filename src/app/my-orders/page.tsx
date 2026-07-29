@@ -426,10 +426,19 @@ export default function MyOrdersPage() {
                 <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 text-[10px]">Cliente VIP</Badge>
               </div>
               <div className="text-center py-2">
-                <p className="text-indigo-100 text-[11px]">Saldo Devedor</p>
-                <p className="text-3xl font-black">{brl((contaCasaInfo.creditBalance || 0))}</p>
+                {/* Saldo negativo é crédito do cliente na loja, não dívida — e
+                    conta quitada não pede PIX. */}
+                <p className="text-indigo-100 text-[11px]">
+                  {(contaCasaInfo.creditBalance || 0) < -0.009 ? 'Crédito a favor' : 'Saldo Devedor'}
+                </p>
+                <p className="text-3xl font-black">
+                  {brl(Math.abs(contaCasaInfo.creditBalance || 0))}
+                </p>
+                {(contaCasaInfo.creditBalance || 0) < -0.009 && (
+                  <p className="text-[10px] text-indigo-100 mt-0.5">Vira desconto na sua próxima compra</p>
+                )}
               </div>
-              {(contaCasaStore?.creditPixKey || contaCasaStore?.creditPixName) && (
+              {(contaCasaInfo.creditBalance || 0) > 0.009 && (contaCasaStore?.creditPixKey || contaCasaStore?.creditPixName) && (
                 <div className="bg-white/10 p-2.5 rounded-lg border border-white/20 space-y-1.5 mt-2">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-100"><QrCode className="h-3 w-3" /> Pague via PIX</div>
                   {contaCasaStore.creditPixKey && (

@@ -63,6 +63,10 @@ export function buildExtratoPrazoHtml(opts: ExtratoPrazoData): string {
   const { storeInfo, cliente, rows, saldo, vencimento, pixKey, pixName } = opts;
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
   const agora = new Date();
+  // Saldo negativo é crédito do cliente, não dívida: o papel não pode entregar
+  // "Saldo devedor -R$ 96,00" nem pedir PIX de uma conta já quitada.
+  const temDivida = saldo > 0.009;
+  const creditoAFavor = saldo < -0.009 ? -saldo : 0;
 
   const lancamentos = rows.map(({ tx, order }) => {
     const isDebit = tx.type === 'debit';
@@ -100,11 +104,12 @@ export function buildExtratoPrazoHtml(opts: ExtratoPrazoData): string {
       <p class="sep">${SEP_DASH}</p>
       ${lancamentos || '<div class="section" style="text-align:center;">Nenhum lancamento no periodo.</div>'}
       <div class="saldo">
-        <div class="label">Saldo devedor</div>
-        <div class="valor">${brl(saldo)}</div>
-        ${vencimento ? `<div class="label" style="margin-top:2px;">${esc(vencimento)}</div>` : ''}
+        <div class="label">${temDivida ? 'Saldo devedor' : (creditoAFavor > 0 ? 'Credito a favor' : 'Conta quitada')}</div>
+        <div class="valor">${brl(creditoAFavor > 0 ? creditoAFavor : saldo)}</div>
+        ${temDivida && vencimento ? `<div class="label" style="margin-top:2px;">${esc(vencimento)}</div>` : ''}
+        ${creditoAFavor > 0 ? '<div class="label" style="margin-top:2px;">A loja deve este valor</div>' : ''}
       </div>
-      ${(pixKey || pixName) ? `
+      ${(temDivida && (pixKey || pixName)) ? `
       <div class="pix">
         <div class="bold">Pague via PIX</div>
         ${pixKey ? `<div>Chave: ${esc(pixKey)}</div>` : ''}

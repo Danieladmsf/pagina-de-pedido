@@ -204,6 +204,14 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const payDay = Number(cliente?.creditPayDay) || 0;
   const disponivel = limite > 0 ? Math.max(0, limite - saldo) : 0;
   const prazoAtivo = isCreditEnabled(cliente);
+  const primeiroNome = (cliente?.nome || 'cliente').trim().split(' ')[0] || 'cliente';
+
+  // Saldo negativo NÃO é dívida: é dinheiro a favor do cliente (pagamento
+  // lançado duas vezes ou acima da conta). Enquanto isso aparecia como
+  // "Saldo devedor -R$ 24,00", o dono lançava de novo o número que estava na
+  // tela e a conta afundava (-24, -48, -96). Aqui os dois lados ficam com
+  // nome, cor e texto diferentes.
+  const creditoAFavor = saldo < -0.009 ? -saldo : 0;
 
   // Saldo do cadastro x saldo do extrato: divergência é sinal de gravação pela
   // metade (o débito entrou e o increment falhou, ou o contrário).
@@ -291,6 +299,36 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     if (caixaAberto === false) {
       toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa para registrar o recebimento.' });
       return;
+    }
+
+    // Conta sem dívida não aceita baixa. Sem esta trava, cada nova baixa virava
+    // crédito a favor do cliente — foi assim que uma dívida de R$ 24 já paga
+    // acumulou R$ 96 de pagamentos e R$ 96 de PIX que nunca entrou no caixa.
+    if (saldo <= 0.009) {
+      toast({
+        variant: 'destructive',
+        title: 'Não há dívida para abater',
+        description: creditoAFavor > 0
+          ? `A conta de ${primeiroNome} está quitada e ainda sobram ${brl(creditoAFavor)} a favor dela. Lançar pagamento agora só aumentaria esse crédito.`
+          : `A conta de ${primeiroNome} já está quitada.`,
+      });
+      return;
+    }
+
+    // Mesmo valor recebido há poucos minutos é quase sempre a mesma baixa
+    // lançada de novo, porque a primeira "não pareceu" ter funcionado.
+    const repetido = transactions.find((tx) => tx.type === 'credit'
+      && Math.abs((Number(tx.amount) || 0) - amount) < 0.009
+      && Date.now() - Date.parse(tx.date || '') < 15 * 60 * 1000);
+    if (repetido) {
+      const hora = new Date(repetido.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      if (!confirm(`Você já recebeu ${brl(amount)} de ${primeiroNome} hoje às ${hora}.\n\nLançar de novo soma os dois pagamentos na conta dela. Continuar?`)) return;
+    }
+
+    // Receber mais do que a dívida pode ser adiantamento, mas nunca em silêncio.
+    if (amount > saldo + 0.009) {
+      const sobra = amount - saldo;
+      if (!confirm(`${primeiroNome} deve ${brl(saldo)} e você está lançando ${brl(amount)}.\n\nVão sobrar ${brl(sobra)} de crédito a favor dela, que viram desconto nas próximas compras.\n\nLançar assim mesmo?`)) return;
     }
 
     setIsSubmitting(true);
@@ -456,16 +494,23 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     let msg = '🧾 *EXTRATO DA SUA CONTA*\n';
     if (cliente?.nome) msg += `\n👤 *${cliente.nome}*\n`;
     if (blocos.length > 0) msg += `\n${blocos.join('\n')}\n${SEP}\n`;
-    msg += `\n💰 *SALDO DEVEDOR: ${brl(saldo)}*`;
-    if (vencimento) msg += `\n🗓️ ${vencimento.texto}`;
-    const pixKey = storeProfile?.creditPixKey || '';
-    const pixName = storeProfile?.creditPixName || '';
-    if (pixKey || pixName) {
-      msg += '\n\n📲 *Pague via PIX*';
-      if (pixKey) msg += `\n🔑 ${pixKey}`;
-      if (pixName) msg += `\n🏦 ${pixName}`;
+    // Conta quitada (ou com crédito sobrando) não pede pagamento nem manda PIX.
+    if (creditoAFavor > 0) {
+      msg += `\n✅ *CONTA QUITADA*\n💚 Crédito a favor: *${brl(creditoAFavor)}* — vira desconto na próxima compra`;
+    } else if (saldo <= 0.009) {
+      msg += '\n✅ *CONTA QUITADA* — nada a pagar 🙌';
+    } else {
+      msg += `\n💰 *SALDO DEVEDOR: ${brl(saldo)}*`;
+      if (vencimento) msg += `\n🗓️ ${vencimento.texto}`;
+      const pixKey = storeProfile?.creditPixKey || '';
+      const pixName = storeProfile?.creditPixName || '';
+      if (pixKey || pixName) {
+        msg += '\n\n📲 *Pague via PIX*';
+        if (pixKey) msg += `\n🔑 ${pixKey}`;
+        if (pixName) msg += `\n🏦 ${pixName}`;
+      }
+      msg += '\n\nEnvie o comprovante por aqui após o pagamento 🙏';
     }
-    msg += '\n\nEnvie o comprovante por aqui após o pagamento 🙏';
 
     setSendingWhats(true);
     try {
@@ -560,11 +605,13 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
         <KpiCard
           icon={Wallet}
           tone={saldo > 0.009 ? 'rose' : 'emerald'}
-          label="Saldo devedor"
-          value={brl(saldo)}
-          hint={vencimento
-            ? <span className={vencimento.vencida ? 'font-bold text-rose-600' : 'text-amber-600'}>{vencimento.texto}</span>
-            : (saldo > 0.009 ? 'Sem dia de pagamento definido' : 'Conta quitada')}
+          label={creditoAFavor > 0 ? 'Crédito a favor' : 'Saldo devedor'}
+          value={brl(creditoAFavor > 0 ? creditoAFavor : saldo)}
+          hint={creditoAFavor > 0
+            ? <span className="font-bold text-emerald-700">A loja deve este valor a ela</span>
+            : (vencimento
+              ? <span className={vencimento.vencida ? 'font-bold text-rose-600' : 'text-amber-600'}>{vencimento.texto}</span>
+              : (saldo > 0.009 ? 'Sem dia de pagamento definido' : 'Conta quitada'))}
         />
         <KpiCard
           icon={TrendingUp}
@@ -595,6 +642,17 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           hint={totals.lastPurchaseAt ? `Última compra em ${totals.lastPurchaseAt.toLocaleDateString('pt-BR')}` : 'Sem compras a prazo'}
         />
       </div>
+
+      {creditoAFavor > 0 && (
+        <div className="mx-2 shrink-0 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900">
+          <p className="font-bold">Conta quitada, com {brl(creditoAFavor)} sobrando a favor de {primeiroNome}.</p>
+          <p className="text-emerald-800">
+            Acontece quando um pagamento é lançado duas vezes ou acima da dívida. Esse valor vai virar
+            desconto na próxima compra a prazo. Se foi engano, use o estorno (↺) na linha do pagamento
+            errado — o lançamento original continua no extrato.
+          </p>
+        </div>
+      )}
 
       {divergencia && (
         <div className="mx-2 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5">
