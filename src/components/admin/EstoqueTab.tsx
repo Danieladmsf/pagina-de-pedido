@@ -56,8 +56,15 @@ const PERIODS = [
   { id: '7', label: 'Últimos 7 dias' },
   { id: '30', label: 'Últimos 30 dias' },
   { id: '90', label: 'Últimos 90 dias' },
+  { id: 'custom', label: 'Período personalizado' },
   { id: 'all', label: 'Tudo' },
 ];
+
+/** Data no formato do <input type="date"> usando o fuso LOCAL (toISOString joga pra UTC e vira o dia). */
+function toInputDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 /** Data de um pedido, tolerando o histórico antigo do PDV (que não tem createdAt). */
 function orderDate(order: any): Date | null {
@@ -79,6 +86,8 @@ export function EstoqueTab({
   const [view, setView] = useState<'produtos' | 'historico'>('produtos');
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState('30');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [historyItemId, setHistoryItemId] = useState('all');
 
   // Movimentação em edição (null = modal fechado)
@@ -123,14 +132,42 @@ export function EstoqueTab({
     });
   }, [items, search]);
 
+  /** Intervalo escolhido. `to` inclui o dia inteiro (até 23:59:59). */
+  const range = useMemo(() => {
+    if (period === 'all') return { from: null as Date | null, to: null as Date | null };
+    if (period === 'custom') {
+      return {
+        from: customFrom ? new Date(`${customFrom}T00:00:00`) : null,
+        to: customTo ? new Date(`${customTo}T23:59:59.999`) : null,
+      };
+    }
+    return { from: new Date(Date.now() - Number(period) * 86400000), to: null as Date | null };
+  }, [period, customFrom, customTo]);
+
+  const inRange = React.useCallback(
+    (date: Date | null) => {
+      if (!date) return true; // sem data conhecida: não esconde o lançamento
+      if (range.from && date < range.from) return false;
+      if (range.to && date > range.to) return false;
+      return true;
+    },
+    [range],
+  );
+
+  const periodLabel = useMemo(() => {
+    if (period !== 'custom') return PERIODS.find((p) => p.id === period)?.label || '';
+    const de = customFrom ? new Date(`${customFrom}T00:00:00`).toLocaleDateString('pt-BR') : 'início';
+    const ate = customTo ? new Date(`${customTo}T00:00:00`).toLocaleDateString('pt-BR') : 'hoje';
+    return `${de} a ${ate}`;
+  }, [period, customFrom, customTo]);
+
   /** Histórico = ajustes manuais + vendas derivadas dos pedidos. */
   const history = useMemo<HistoryRow[]>(() => {
-    const cutoff = period === 'all' ? null : new Date(Date.now() - Number(period) * 86400000);
     const rows: HistoryRow[] = [];
 
     for (const m of movements || []) {
       const date = (m as any).createdAt?.toDate?.() ?? null;
-      if (cutoff && date && date < cutoff) continue;
+      if (!inRange(date)) continue;
       rows.push({
         id: m.id,
         date,
@@ -150,7 +187,7 @@ export function EstoqueTab({
       if (order?.status === 'canceled') continue;
       const reserved = order?.stockDeductedItems || {};
       const date = orderDate(order);
-      if (cutoff && date && date < cutoff) continue;
+      if (!inRange(date)) continue;
       for (const [itemId, qtd] of Object.entries(reserved)) {
         const n = Number(qtd) || 0;
         if (n <= 0) continue;
@@ -171,7 +208,7 @@ export function EstoqueTab({
 
     const filtered = historyItemId === 'all' ? rows : rows.filter((r) => r.itemId === historyItemId);
     return filtered.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
-  }, [movements, orders, items, period, historyItemId]);
+  }, [movements, orders, items, inRange, historyItemId]);
 
   const preview = useMemo(() => {
     if (!pending) return null;
@@ -184,6 +221,15 @@ export function EstoqueTab({
       return null;
     }
   }, [pending, qty]);
+
+  /** Ao entrar no personalizado, já chega com os últimos 30 dias preenchidos. */
+  const handlePeriodChange = (value: string) => {
+    if (value === 'custom' && !customFrom && !customTo) {
+      setCustomFrom(toInputDate(new Date(Date.now() - 30 * 86400000)));
+      setCustomTo(toInputDate(new Date()));
+    }
+    setPeriod(value);
+  };
 
   const openMovement = (item: any, type: StockMovementType) => {
     setPending({ item, type });
@@ -229,8 +275,10 @@ export function EstoqueTab({
       toast({ title: 'Nada para exportar', description: 'Não há movimentação no período escolhido.' });
       return;
     }
-    const hoje = new Date().toISOString().slice(0, 10);
-    downloadCsv(`estoque-${hoje}.csv`, buildMovementsCsv(history, storeName));
+    const sufixo = period === 'custom' && customFrom && customTo
+      ? `${customFrom}_a_${customTo}`
+      : toInputDate(new Date());
+    downloadCsv(`estoque-${sufixo}.csv`, buildMovementsCsv(history, storeName, periodLabel));
   };
 
   const stockBadge = (item: any) => {
@@ -316,12 +364,27 @@ export function EstoqueTab({
                 ))}
               </SelectContent>
             </Select>
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <Select value={period} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PERIODS.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
               </SelectContent>
             </Select>
+            {period === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="date" value={customFrom} max={customTo || undefined}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  aria-label="Data inicial" className="h-10 w-[150px]"
+                />
+                <span className="text-xs text-muted-foreground">até</span>
+                <Input
+                  type="date" value={customTo} min={customFrom || undefined}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  aria-label="Data final" className="h-10 w-[150px]"
+                />
+              </div>
+            )}
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <Download className="h-4 w-4" /> Exportar
             </Button>

@@ -188,7 +188,7 @@ function csvLine(cells: unknown[]): string {
 }
 
 /** Histórico em planilha, na ordem em que aconteceu. */
-export function buildMovementsCsv(rows: HistoryRow[], storeName = ''): string {
+export function buildMovementsCsv(rows: HistoryRow[], storeName = '', periodLabel = ''): string {
   const now = new Date();
   const entradas = rows.filter((r) => r.delta > 0).reduce((s, r) => s + r.delta, 0);
   const saidas = rows.filter((r) => r.delta < 0).reduce((s, r) => s + r.delta, 0);
@@ -196,6 +196,7 @@ export function buildMovementsCsv(rows: HistoryRow[], storeName = ''): string {
   const lines = [
     csvLine(['Movimentação de estoque']),
     csvLine(['Loja', storeName]),
+    csvLine(['Período', periodLabel]),
     csvLine(['Gerado em', `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`]),
     csvLine(['Lançamentos', rows.length]),
     csvLine(['Total que entrou', entradas]),

@@ -153,6 +153,11 @@ describe('buildMovementsCsv', () => {
     expect(csv).toContain('"quebrou; refiz"');
   });
 
+  it('registra o periodo exportado no cabecalho', () => {
+    const csv = buildMovementsCsv(rows, 'Loja', '01/07/2026 a 31/07/2026');
+    expect(csv).toContain('Período;01/07/2026 a 31/07/2026');
+  });
+
   it('aguenta lista vazia', () => {
     expect(() => buildMovementsCsv([], 'Loja')).not.toThrow();
   });
