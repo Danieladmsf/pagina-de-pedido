@@ -15,7 +15,13 @@ import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { uploadFileToApp } from '@/lib/upload';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { useToast } from '@/hooks/use-toast';
-import type { Encomenda, EncomendaLineItem } from '@/lib/encomendas/types';
+import type { Encomenda } from '@/lib/encomendas/types';
+import {
+  calcularTotais,
+  montarEncomenda,
+  precoDoAdicional,
+  type SelecaoEncomenda,
+} from '@/lib/encomendas/pricing';
 import {
   ArrowLeft, ArrowRight, Gift, Copy, MapPin, Store, Bike, Upload,
   CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2, Trash2,
@@ -67,41 +73,9 @@ function groupSkus<T extends { group?: string }>(list: T[]): { group: string; it
   return out;
 }
 
-/** O que o balcão devolve para a aba do PDV lançar no caixa e imprimir. */
-export type EncomendaCriada = {
-  id: string;
-  enc: Encomenda;
-  pago: { valor: number; forma: string };
-};
-
-const FORMAS_BALCAO_PADRAO = [
-  { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-  { id: 'pix', label: 'Pix', icon: '📱' },
-  { id: 'debito', label: 'Débito', icon: '💳' },
-  { id: 'credito', label: 'Crédito', icon: '💳' },
-];
-
-export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', caixaAberto = true, onCreated, formasPagamento = FORMAS_BALCAO_PADRAO }: {
-  config: EncomendaConfig;
-  storeId: string;
-  onHome: () => void;
-  /** Formas de pagamento da loja (só usadas no balcão). */
-  formasPagamento?: { id: string; label: string; icon?: string }[];
-  /**
-   * 'cliente' = link público (termina no WhatsApp, status orçamento).
-   * 'balcao'  = a própria loja lançando a encomenda: sem comprovante de PIX,
-   * já nasce confirmada e pergunta quanto a cliente pagou agora.
-   */
-  mode?: 'cliente' | 'balcao';
-  /** Balcão: com o caixa fechado não há como receber nada agora. */
-  caixaAberto?: boolean;
-  onCreated?: (result: EncomendaCriada) => void | Promise<void>;
-}) {
-  // App Firebase isolado do cardápio (auth anônimo), igual ao CartDrawer. Vale
-  // também no balcão: as regras aceitam a criação por quem assina o documento,
-  // e assim o formulário é literalmente o mesmo nos dois lugares.
+export function EncomendaWizard({ config, storeId, onHome }: { config: EncomendaConfig; storeId: string; onHome: () => void }) {
+  // App Firebase isolado do cardápio (auth anônimo), igual ao CartDrawer.
   const { firebaseApp, firestore: db, auth } = useCustomerFirebase();
-  const isBalcao = mode === 'balcao';
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
@@ -143,17 +117,10 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
   const [compUrl, setCompUrl] = useState('');
   const [compName, setCompName] = useState('');
   const [compUploading, setCompUploading] = useState(false);
-  // Balcão: quanto a cliente está pagando AGORA (e como).
-  const [pagoOpcao, setPagoOpcao] = useState<'nada' | 'sinal' | 'total' | 'outro'>('sinal');
-  const [pagoOutro, setPagoOutro] = useState('');
-  const [pagoForma, setPagoForma] = useState('pix');
 
   // Reconhece o cliente pelo cadastro salvo no navegador (o MESMO do app de delivery:
   // customer_profile / customer_phone). Preenche sem sobrescrever o que já foi digitado.
-  // No balcão isso não vale: o navegador é o da LOJA, e puxaria o cadastro de
-  // quem pediu por último naquele computador.
   useEffect(() => {
-    if (isBalcao) return;
     try {
       let prof: any = {};
       const s = localStorage.getItem('customer_profile');
@@ -276,37 +243,36 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
   const safeIdx = Math.min(stepIdx, total - 1);
   const step = steps[safeIdx];
 
-  const sizeObj = CAKE_SIZES.find((x) => x.id === cakeSize);
-  const fillObj = CAKE_FILLINGS.find((x) => x.id === cakeFilling);
-  const coverObj = CAKE_COVERS.find((x) => x.id === cakeCover);
-  // Fluxo simples: base = fixo (Baby) OU preço/kg × peso; SEMPRE soma embalagem
-  // (Baby e 1kg têm R$16). Adicionais: fixos ou "a cada 2 kg" (ceil(peso/2)).
-  const flavorObj = CAKES.find((x) => x.id === cakeFlavor);
-  const weightObj = CAKE_WEIGHTS.find((x) => x.id === cakeWeight);
-  const weightKg = weightObj?.kg || 1; // Baby (sem kg) conta como 1 bloco de 2 kg
-  const extraPrice = (x: { price: number; per?: string }) => (x.per === '2kg' ? x.price * Math.ceil(weightKg / 2) : x.price);
-  const selectedExtras = SIMPLE_CAKE ? CAKE_EXTRAS.filter((x) => cakeExtrasSel.has(x.id)) : [];
-  const extrasTotal = selectedExtras.reduce((acc, x) => acc + extraPrice(x), 0);
-  const simpleBoloBase = weightObj
-    ? (weightObj.fixedPrice != null ? weightObj.fixedPrice : (flavorObj ? flavorObj.pricePerKg * (weightObj.kg || 0) : 0)) + (weightObj.packaging || 0)
-    : 0;
-  const simpleBoloTotal = simpleBoloBase + extrasTotal;
-  const boloTotal = !has('bolo') ? 0
-    : SIMPLE_CAKE ? simpleBoloTotal
-    : (sizeObj ? sizeObj.basePrice + (fillObj?.price || 0) + (coverObj?.price || 0) + (plateOn ? PLATE_PRICE : 0) : 0);
-  const sumQ = (map: Qmap, list: { id: string; price: number; priceCento?: number; price50?: number }[]) =>
-    list.reduce((acc, it) => acc + skuTotal(it, map[it.id] || 0), 0);
-  const especialTotal = has('especial') ? sumQ(especial, ESPECIAL_ITEMS) : 0;
-  const tortasTotal = has('tortas') ? sumQ(tortas, TORTAS) : 0;
-  const docinhosTotal = has('docinhos') ? sumQ(docinhos, DOCINHOS) : 0;
-  const subtotal = boloTotal + especialTotal + tortasTotal + docinhosTotal;
   // Taxa de entrega: mesma API do cardápio e do PDV (/api/delivery-fee), com o
   // MESMO payload (ver CartDrawer/NovoPedidoTab — memória delivery-fee-two-entry-points).
   // Se a API não resolver (sem regras, endereço não casou), fica "a combinar" (null)
   // e não infla o total exibido ao cliente.
   const feeKnown = delType === 'delivery' && dynamicFee !== null;
   const deliveryFee = feeKnown ? (dynamicFee as number) : 0;
-  const grandTotal = subtotal + deliveryFee;
+
+  // TODO o dinheiro sai de lib/encomendas/pricing — o mesmo módulo que a tela
+  // de balcão da Retaguarda usa. Aqui só se escolhe; quem soma é o módulo.
+  const selecao: SelecaoEncomenda = useMemo(() => ({
+    products: Array.from(products),
+    bolo: {
+      flavorId: cakeFlavor, weightId: cakeWeight, shape: cakeShape, dough: cakeDough,
+      extraIds: Array.from(cakeExtrasSel),
+      sizeId: cakeSize, fillingId: cakeFilling, coverId: cakeCover, plateOn,
+    },
+    especial, tortas, docinhos,
+  }), [products, cakeFlavor, cakeWeight, cakeShape, cakeDough, cakeExtrasSel, cakeSize, cakeFilling, cakeCover, plateOn, especial, tortas, docinhos]);
+
+  const totais = useMemo(
+    () => calcularTotais(cat, selecao, { deliveryFee, sinalPercent: config.sinalPercent }),
+    [cat, selecao, deliveryFee, config.sinalPercent],
+  );
+
+  const { flavor: flavorObj, weight: weightObj, size: sizeObj, filling: fillObj, cover: coverObj, pesoKg: weightKg } = totais.bolo;
+  const extraPrice = (x: { price: number; per?: 'unidade' | '2kg' }) => precoDoAdicional(x, weightKg);
+  const selectedExtras = totais.bolo.extras;
+  const boloTotal = totais.bolo.total;
+  const subtotal = totais.subtotal;
+  const grandTotal = totais.total;
 
   const calculateDeliveryFee = useCallback(async (nbOverride?: string) => {
     const nb = nbOverride ?? neighborhood;
@@ -330,24 +296,8 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
       setCalculatingFee(false);
     }
   }, [config.storeAddress, config.deliveryFeeRules, config.customAddressRules, street, number, neighborhood, city]);
-  const sinal = Math.round(grandTotal * config.sinalPercent) / 100;
-  const saldo = grandTotal - sinal;
-  // Balcão: quanto entra no caixa agora. "Outro valor" nunca passa do total —
-  // troco de encomenda não existe, o que sobra viraria saldo negativo. Com o
-  // caixa fechado nada pode ser recebido: a encomenda fica registrada e o card
-  // continua oferecendo "Lançar sinal no caixa" depois.
-  const pagoValor = !isBalcao || !caixaAberto ? 0
-    : pagoOpcao === 'nada' ? 0
-    : pagoOpcao === 'sinal' ? sinal
-    : pagoOpcao === 'total' ? grandTotal
-    : Math.max(0, Math.min(grandTotal, Number((pagoOutro || '').replace(',', '.')) || 0));
-
-  // Itens resolvidos (id/nome/preço) — reaproveitados no doc persistido.
-  const toLines = (map: Qmap, list: { id: string; name: string; price: number; priceCento?: number; price50?: number }[]): EncomendaLineItem[] =>
-    list.filter((x) => (map[x.id] || 0) > 0).map((x) => { const total = skuTotal(x, map[x.id]); return { id: x.id, name: x.name, qty: map[x.id], unitPrice: map[x.id] ? total / map[x.id] : x.price, total }; });
-  const especialLines = has('especial') ? toLines(especial, ESPECIAL_ITEMS) : [];
-  const tortasLines = has('tortas') ? toLines(tortas, TORTAS) : [];
-  const docinhosLines = has('docinhos') ? toLines(docinhos, DOCINHOS) : [];
+  const sinal = totais.sinal;
+  const saldo = totais.saldo;
 
   const canNext = (() => {
     switch (step.id) {
@@ -396,7 +346,7 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
       if (weightObj) L.push(`   - Peso: ${weightObj.label}`);
       if (cakeShape) L.push(`   - Formato: ${cakeShape}`);
       if (cakeDough) L.push(`   - Massa: ${cakeDough}`);
-      selectedExtras.forEach((x) => L.push(`   - ${x.name}: ${brl(extraPrice(x))}`));
+      selectedExtras.forEach((x) => L.push(`   - ${x.name}: ${brl(x.price)}`));
       L.push(`   Subtotal bolo: ${brl(boloTotal)}`);
     } else if (has('bolo') && sizeObj) {
       L.push('', '*Bolo personalizado*');
@@ -436,107 +386,31 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
     return L.join('\n');
   }
 
-  function buildEncomendaDoc(id: string, customerUid: string): Encomenda {
-    return {
-      id,
-      customerUid,
-      ownerId: storeId,
-      customerName: name.trim(),
-      customerPhone: phone.replace(/\D/g, ''),
-      customerBirthDate: birthday || '',
-      isEmpresa,
-      products: Array.from(products),
-      bolo: !has('bolo') ? null : (SIMPLE_CAKE ? {
-        sizeId: weightObj?.id || '',
-        size: weightObj?.label || '',
-        dough: cakeDough || '',
-        filling: flavorObj?.name || '',
-        cover: '',
-        plate: { on: false },
-        total: boloTotal,
-        flavor: flavorObj?.name || '',
-        weight: weightObj?.label || '',
-        shape: cakeShape || '',
-        pricePerKg: flavorObj?.pricePerKg,
-        kg: weightObj?.kg,
-        extras: selectedExtras.map((x) => ({ name: x.name, price: extraPrice(x) })),
-      } : (sizeObj ? {
-        sizeId: sizeObj.id,
-        size: sizeObj.label,
-        dough: cakeDough,
-        filling: fillObj?.name || '',
-        cover: coverObj?.name || '',
-        plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes, imageUrl: plateImageUrl },
-        total: boloTotal,
-      } : null)),
-      especialItems: especialLines,
-      tortasItems: tortasLines,
-      docinhosItems: docinhosLines,
-      delivery: {
-        date: delDate,
-        time: delTime,
-        type: delType,
-        ...(delType === 'delivery' ? {
-          street, number, complement, neighborhood, city,
-          feeStatus: feeKnown ? 'calculada' as const : 'a_combinar' as const,
-        } : {}),
-      },
-      subtotal,
-      deliveryFee,
-      total: grandTotal,
-      sinalPercent: config.sinalPercent,
-      sinal,
-      saldo,
-      status: 'orcamento',
-      comprovanteUrl: compUrl || '',
-      orderNotes: orderNotes || '',
-      source: 'encomenda_web',
-      orderDateTime: new Date().toISOString(),
-      createdAt: serverTimestamp(),
-    };
-  }
-
-  /**
-   * Balcão: grava a encomenda já confirmada e devolve para a aba do PDV lançar
-   * no caixa. Sem WhatsApp e sem gravar o cadastro no navegador — quem está na
-   * frente da tela é a loja, não a cliente.
-   */
-  async function finalizarBalcao() {
-    if (!db || !auth || !storeId) {
-      toast({ variant: 'destructive', title: 'Sem conexão', description: 'Não consegui salvar a encomenda agora.' });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const user = await ensureAuthenticated(auth);
-      const id = genEncomendaId();
-      const enc: Encomenda = {
-        ...buildEncomendaDoc(id, user.uid),
-        // Encomenda tirada no balcão já está fechada com a cliente.
-        status: 'confirmada',
-        source: 'balcao',
-        valorPago: pagoValor,
-        // O sinal só está "lançado" se alguma coisa entrou agora; senão a aba
-        // continua oferecendo o botão de lançar depois.
-        sinalLancado: pagoValor > 0,
-      };
-      await setDoc(doc(collection(db, 'encomendas'), id), enc);
-      await onCreated?.({ id, enc, pago: { valor: pagoValor, forma: pagoForma } });
-    } catch (err: any) {
-      console.error('[encomendas] falha ao registrar no balcão:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Não consegui salvar a encomenda',
-        description: err?.message || 'Tente de novo em alguns segundos.',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const buildEncomendaDoc = (id: string, customerUid: string): Encomenda => montarEncomenda({
+    id,
+    customerUid,
+    ownerId: storeId,
+    cliente: { nome: name, telefone: phone, nascimento: birthday },
+    sel: selecao,
+    totais,
+    sinalPercent: config.sinalPercent,
+    entrega: {
+      date: delDate,
+      time: delTime,
+      type: delType,
+      street, number, complement, neighborhood, city,
+      feeStatus: feeKnown ? 'calculada' : 'a_combinar',
+    },
+    plate: { on: plateOn, name: plate.name, age: plate.age, theme: plate.theme, notes: plate.notes, imageUrl: plateImageUrl },
+    status: 'orcamento',
+    source: 'encomenda_web',
+    orderNotes,
+    comprovanteUrl: compUrl,
+    createdAt: serverTimestamp(),
+  });
 
   async function finalizar() {
     if (submitting) return;
-    if (isBalcao) return finalizarBalcao();
     const msg = encodeURIComponent(buildWhatsappMessage());
     const base = config.whatsappDigits ? `https://wa.me/${config.whatsappDigits}` : 'https://wa.me/';
     const waUrl = `${base}?text=${msg}`;
@@ -579,13 +453,11 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
   }
 
   return (
-    // No balcão o formulário vive dentro de um modal do PDV: sem altura de tela
-    // cheia e sem o vão da barra fixa de subtotal.
-    <div className={cn('mx-auto flex max-w-2xl flex-col px-3 sm:px-4 pt-5', isBalcao ? 'pb-4' : 'min-h-screen pb-32')}>
+    <div className="mx-auto flex min-h-screen max-w-2xl flex-col px-3 sm:px-4 pb-32 pt-5">
       <header className="mb-5 flex flex-col items-center gap-3">
         <div className="flex w-full items-center justify-between">
           <button onClick={onHome} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-            {isBalcao ? <><ArrowLeft className="h-4 w-4" /> Cancelar</> : <><Home className="h-4 w-4" /> Início</>}
+            <Home className="h-4 w-4" /> Início
           </button>
           <div className="flex items-center gap-2 text-primary">
             <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-base">
@@ -604,12 +476,12 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
       <main className="flex-1">
         <div className="rounded-3xl border border-border bg-card/70 p-5 sm:p-7 shadow-soft backdrop-blur">
           {step.id === 'contato' && (
-            <Section title={isBalcao ? 'Dados da cliente' : 'Vamos começar com seus dados.'}>
+            <Section title="Vamos começar com seus dados.">
               <Field label="Telefone (WhatsApp)" required>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(00) 90000-0000" inputMode="tel" />
               </Field>
               <Field label="Nome e sobrenome" required>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={isBalcao ? 'Nome de quem está encomendando' : 'Como podemos te chamar?'} />
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Como podemos te chamar?" />
               </Field>
               <Field label={<span className="flex items-center gap-1.5"><Gift className="h-4 w-4 text-primary" /> Data de aniversário <span className="font-normal text-muted-foreground">(opcional)</span></span>}>
                 <Input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
@@ -620,7 +492,7 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
 
           {step.id === 'produtos' && (
             <Section
-              title={isBalcao ? 'O que a cliente quer encomendar?' : 'O que você quer encomendar?'}
+              title="O que você quer encomendar?"
               subtitle="Pode combinar bolo, tortas, docinhos e o especial da casa no mesmo pedido."
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -968,7 +840,7 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
 
           {step.id === 'resumo' && (
             <ResumoStep config={config} name={name} phone={phone} products={products} sizeObj={sizeObj} cakeDough={cakeDough}
-              simpleCake={SIMPLE_CAKE} flavorObj={flavorObj} weightObj={weightObj} cakeShape={cakeShape} extras={selectedExtras.map((x) => ({ name: x.name, price: extraPrice(x) }))}
+              simpleCake={SIMPLE_CAKE} flavorObj={flavorObj} weightObj={weightObj} cakeShape={cakeShape} extras={selectedExtras}
               fillObj={fillObj} coverObj={coverObj} plateOn={plateOn} plate={plate}
               especial={especial} tortas={tortas} docinhos={docinhos}
               delDate={delDate} delTime={delTime} delType={delType}
@@ -976,14 +848,6 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
               delNeighborhood={[neighborhood, city].filter(Boolean).join(' · ')}
               boloTotal={boloTotal} deliveryFee={deliveryFee} feeKnown={feeKnown} grandTotal={grandTotal} sinal={sinal} saldo={saldo}
               orderNotes={orderNotes} setOrderNotes={setOrderNotes}
-              balcao={!isBalcao ? null : {
-                opcao: pagoOpcao, setOpcao: setPagoOpcao,
-                outro: pagoOutro, setOutro: setPagoOutro,
-                forma: pagoForma, setForma: setPagoForma,
-                valor: pagoValor,
-                formas: formasPagamento,
-                caixaAberto,
-              }}
               compUrl={compUrl} compName={compName} compUploading={compUploading}
               onClearComp={() => { setCompUrl(''); setCompName(''); }}
               onComprovante={async (file: File) => {
@@ -1003,18 +867,17 @@ export function EncomendaWizard({ config, storeId, onHome, mode = 'cliente', cai
           </Button>
           {step.id !== 'resumo' ? (
             <Button onClick={next} disabled={!canNext} size="lg" className="rounded-full px-7 shadow-soft">
-              {step.id === 'entrega' ? (isBalcao ? 'Revisar' : 'Revisar & pagar') : 'Continuar'} <ArrowRight className="ml-1.5 h-4 w-4" />
+              {step.id === 'entrega' ? 'Revisar & pagar' : 'Continuar'} <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           ) : (
             <Button onClick={finalizar} disabled={submitting} size="lg" className="rounded-full bg-[#1c1c1c] px-7 text-white hover:bg-black">
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : isBalcao ? <Check className="mr-2 h-4 w-4" /> : <MessageCircle className="mr-2 h-4 w-4" />}
-              {isBalcao ? 'Salvar encomenda' : 'Enviar no WhatsApp'}
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />} Enviar no WhatsApp
             </Button>
           )}
         </div>
       </main>
 
-      {showSubtotalBar && !isBalcao && (
+      {showSubtotalBar && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/90 backdrop-blur">
           <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3">
             <span className="text-sm font-medium text-muted-foreground">Subtotal parcial</span>
@@ -1123,7 +986,7 @@ function ResumoStep(props: any) {
     simpleCake, flavorObj, weightObj, cakeShape, extras,
     especial, tortas, docinhos, delDate, delTime, delType, delAddress, delNeighborhood,
     boloTotal, deliveryFee, feeKnown, grandTotal, sinal, saldo, orderNotes, setOrderNotes,
-    compUrl, compName, compUploading, onComprovante, onClearComp, balcao } = props;
+    compUrl, compName, compUploading, onComprovante, onClearComp } = props;
   const cat = config.catalog;
   const tortasLabel = cat.products.find((p: any) => p.kind === 'tortas')?.title || 'Tortas';
   const docinhosLabel = cat.products.find((p: any) => p.kind === 'docinhos')?.title || 'Docinhos';
@@ -1133,10 +996,7 @@ function ResumoStep(props: any) {
 
   return (
     <div className="space-y-5">
-      <StepHeader
-        title="Resumo do pedido"
-        subtitle={balcao ? 'Confira com a cliente antes de salvar.' : `Confira tudo antes de enviar para ${config.name}.`}
-      />
+      <StepHeader title="Resumo do pedido" subtitle={`Confira tudo antes de enviar para ${config.name}.`} />
       <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
         <Row label="Cliente" value={name} />
         <Row label="WhatsApp" value={phone} />
@@ -1189,133 +1049,33 @@ function ResumoStep(props: any) {
         <Textarea value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} placeholder="Alergias, decoração, recados especiais..." rows={3} />
       </div>
 
-      {balcao ? (
-        <PagamentoBalcao {...balcao} sinal={sinal} grandTotal={grandTotal} />
-      ) : (
-        <>
-          <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#9d164c] p-5 text-white shadow-soft">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-white/70">Pagamento PIX</p>
-            <p className="mt-1 font-display text-2xl font-bold">Entrada de {brl(sinal)}</p>
-            <p className="text-sm text-white/80">Sinal de {config.sinalPercent}% · saldo de {brl(saldo)} na entrega</p>
-            {config.pixKey && (
-              <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/15 px-3 py-2.5">
-                <span className="truncate font-mono text-sm">{config.pixKey}</span>
-                <button onClick={copy} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-white">
-                  <Copy className="h-3.5 w-3.5" /> {copied ? 'Copiado!' : 'Copiar'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <p className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-foreground"><Upload className="h-4 w-4" /> Anexar comprovante do PIX <span className="font-normal text-muted-foreground">(opcional)</span></p>
-            <FileUploadBox
-              accept="image/*,application/pdf"
-              uploading={compUploading}
-              previewUrl={compName?.toLowerCase().endsWith('.pdf') ? '' : compUrl}
-              fileName={compName}
-              label="Selecionar arquivo (até 5MB)"
-              hint="JPG, PNG, WEBP ou PDF · agiliza a confirmação 💛"
-              onClear={onClearComp}
-              onFile={onComprovante}
-            />
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * Balcão: o que a cliente está pagando NESTE momento. É aqui que a encomenda
- * deixa de ser "sempre 50% de entrada" — quem paga tudo na hora, ou paga um
- * valor quebrado, entra no caixa pelo que realmente deu.
- */
-function PagamentoBalcao({ opcao, setOpcao, outro, setOutro, forma, setForma, valor, formas, caixaAberto, sinal, grandTotal }: {
-  opcao: 'nada' | 'sinal' | 'total' | 'outro';
-  setOpcao: (v: 'nada' | 'sinal' | 'total' | 'outro') => void;
-  outro: string;
-  setOutro: (v: string) => void;
-  forma: string;
-  setForma: (v: string) => void;
-  valor: number;
-  formas: { id: string; label: string; icon?: string }[];
-  caixaAberto: boolean;
-  sinal: number;
-  grandTotal: number;
-}) {
-  const falta = Math.max(0, grandTotal - valor);
-
-  if (!caixaAberto) {
-    return (
-      <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
-        <p className="text-sm font-bold text-amber-900">Caixa fechado</p>
-        <p className="mt-0.5 text-xs text-amber-800">
-          A encomenda vai ser salva normalmente, mas nada entra no caixa agora. Abra o caixa e use
-          <span className="font-semibold"> “Lançar sinal no caixa”</span> no card dela.
-        </p>
-      </div>
-    );
-  }
-  const opcoes: { id: 'nada' | 'sinal' | 'total' | 'outro'; titulo: string; sub: string }[] = [
-    { id: 'nada', titulo: 'Nada agora', sub: 'paga tudo depois' },
-    { id: 'sinal', titulo: brl(sinal), sub: 'entrada combinada' },
-    { id: 'total', titulo: brl(grandTotal), sub: 'valor cheio' },
-    { id: 'outro', titulo: 'Outro valor', sub: 'quanto ela deu' },
-  ];
-
-  return (
-    <div className="space-y-3 rounded-2xl border-2 border-primary/30 bg-secondary/30 p-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Quanto a cliente está pagando agora</p>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {opcoes.map((o) => (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => setOpcao(o.id)}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all ${opcao === o.id ? 'border-primary bg-card ring-2 ring-primary/15' : 'border-border bg-card/60 hover:border-primary/40'}`}
-          >
-            <p className="font-display text-base font-bold leading-tight text-foreground">{o.titulo}</p>
-            <p className="text-[11px] text-muted-foreground">{o.sub}</p>
-          </button>
-        ))}
-      </div>
-
-      {opcao === 'outro' && (
-        <Input
-          autoFocus
-          inputMode="decimal"
-          value={outro}
-          onChange={(e) => setOutro(e.target.value.replace(/[^0-9.,]/g, ''))}
-          placeholder={`Valor recebido (até ${brl(grandTotal)})`}
-        />
-      )}
-
-      {valor > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {formas.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setForma(f.id)}
-              className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition ${forma === f.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/40'}`}
-            >
-              {f.icon ? `${f.icon} ` : ''}{f.label}
-            </button>
-          ))}
+        <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#9d164c] p-5 text-white shadow-soft">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-white/70">Pagamento PIX</p>
+          <p className="mt-1 font-display text-2xl font-bold">Entrada de {brl(sinal)}</p>
+          <p className="text-sm text-white/80">Sinal de {config.sinalPercent}% · saldo de {brl(saldo)} na entrega</p>
+          {config.pixKey && (
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-white/15 px-3 py-2.5">
+              <span className="truncate font-mono text-sm">{config.pixKey}</span>
+              <button onClick={copy} className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-white">
+                <Copy className="h-3.5 w-3.5" /> {copied ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
+          )}
         </div>
-      )}
 
-      <div className="flex items-center justify-between border-t border-dashed border-border pt-2.5 text-sm">
-        <span className="text-muted-foreground">Entra no caixa agora</span>
-        <span className="font-display text-lg font-bold text-primary">{brl(valor)}</span>
-      </div>
-      {falta > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Faltam <span className="font-bold text-foreground">{brl(falta)}</span> — o sistema pede esse valor quando você marcar a encomenda como <span className="font-semibold">Entregue</span>.
-        </p>
-      )}
+        <div>
+          <p className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-foreground"><Upload className="h-4 w-4" /> Anexar comprovante do PIX <span className="font-normal text-muted-foreground">(opcional)</span></p>
+          <FileUploadBox
+            accept="image/*,application/pdf"
+            uploading={compUploading}
+            previewUrl={compName?.toLowerCase().endsWith('.pdf') ? '' : compUrl}
+            fileName={compName}
+            label="Selecionar arquivo (até 5MB)"
+            hint="JPG, PNG, WEBP ou PDF · agiliza a confirmação 💛"
+            onClear={onClearComp}
+            onFile={onComprovante}
+          />
+        </div>
     </div>
   );
 }

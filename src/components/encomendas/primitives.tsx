@@ -125,16 +125,11 @@ export function QuantityStepper({ value, onChange, min = 0, step = 1, sequence }
 export const CENTO_SEQ = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000];
 // Total de um SKU: por unidade (qty × price) OU "por cento" (quando tem priceCento):
 // as 50 usam price50 (ou metade do cento); cada 100 usa priceCento.
-export function skuTotal(sku: { price: number; priceCento?: number; price50?: number }, qty: number): number {
-  if (typeof sku.priceCento === 'number') {
-    if (qty <= 0) return 0;
-    // Só 50 SOZINHO cobra o preço das 50 (mais caro). Acima disso, a sobra de 50 é
-    // PROPORCIONAL (metade do cento) — ex.: 150 = cento (140) + meio cento (70) = 210.
-    if (qty === 50) return typeof sku.price50 === 'number' ? sku.price50 : Math.round(sku.priceCento / 2);
-    return Math.floor(qty / 100) * sku.priceCento + (qty % 100 === 50 ? sku.priceCento / 2 : 0);
-  }
-  return qty * sku.price;
-}
+// Preço por quantidade: implementação única em lib/encomendas/pricing (a tela
+// do balcão usa o mesmo). Re-exportado aqui só porque a página pública importa
+// tudo do primitives.
+import { skuTotal } from '@/lib/encomendas/pricing';
+export { skuTotal };
 
 export function SkuRow({ name, desc, price, qty, onQty, step = 1, minQty = 0, image, priceCento, price50 }: { name: string; desc?: string; price: number; qty: number; onQty: (v: number) => void; step?: number; minQty?: number; image?: string; priceCento?: number; price50?: number; }) {
   return (

@@ -13,8 +13,7 @@ import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encome
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { saldoAReceber, valorRecebido } from '@/lib/encomendas/pagamento';
 import { buildEncomendaConfig } from '@/lib/encomendas/config';
-import { ensureBrandFontsLoaded } from '@/lib/themes';
-import { EncomendaWizard, type EncomendaCriada } from '@/components/encomendas/EncomendaWizard';
+import { EncomendaBalcaoPage, type EncomendaBalcaoResult } from '@/components/admin/EncomendaBalcaoPage';
 import { FechamentoModal } from '@/components/admin/fechamento/FechamentoModal';
 import { useFechamento } from '@/components/admin/fechamento/useFechamento';
 import { resolveFormasPagamento } from '@/components/admin/fechamento/payment-methods';
@@ -184,7 +183,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
    * Encomenda nova tirada no balcão: o formulário já gravou o documento, aqui
    * entra o dinheiro no caixa e sai o cupom para a cliente.
    */
-  async function encomendaCriadaNoBalcao({ id, enc, pago }: EncomendaCriada) {
+  async function encomendaCriadaNoBalcao({ id, enc, pago }: EncomendaBalcaoResult) {
     setNovaAberta(false);
     toast({ title: 'Encomenda registrada!', description: `${enc.customerName} · ${brl(enc.total)} · retirada ${formatDateBR(enc.delivery?.date)}.` });
 
@@ -288,6 +287,25 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     printEncomendaReceipt({ enc, storeInfo: storeProfile });
   }
 
+  // Nova encomenda ocupa a aba inteira (é uma TELA da Retaguarda, não um modal
+  // com o formulário do cliente espremido dentro).
+  if (novaAberta) {
+    return (
+      <div className="flex-1 overflow-hidden px-4 md:px-6">
+        <EncomendaBalcaoPage
+          db={db}
+          user={user}
+          ownerId={ownerId}
+          config={config}
+          caixaAberto={caixaAberto && !!registrarLancamento}
+          formasPagamento={formasBalcao}
+          onCancel={() => setNovaAberta(false)}
+          onSaved={encomendaCriadaNoBalcao}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
       <div className="mx-auto max-w-4xl space-y-4">
@@ -295,7 +313,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
           <h2 className="flex items-center gap-2 text-xl font-bold"><Package className="h-6 w-6 text-primary" /> Pedidos de encomenda</h2>
           {allowEdit && (
             <Button
-              onClick={() => { ensureBrandFontsLoaded(); setNovaAberta(true); }}
+              onClick={() => setNovaAberta(true)}
               className="gap-1.5"
             >
               <Plus className="h-4 w-4" /> Nova encomenda
@@ -344,27 +362,6 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
           </div>
         )}
       </div>
-
-      {/* Nova encomenda pelo balcão: o MESMO formulário do link público, em
-          modo balcão (sem WhatsApp, já confirmada, com o que a cliente pagou). */}
-      <Dialog open={novaAberta} onOpenChange={(open) => { if (!open) setNovaAberta(false); }}>
-        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto p-0">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Nova encomenda</DialogTitle>
-          </DialogHeader>
-          <div className="encomendas-confeitaria">
-            <EncomendaWizard
-              config={config}
-              storeId={ownerId}
-              mode="balcao"
-              caixaAberto={caixaAberto && !!registrarLancamento}
-              formasPagamento={formasBalcao}
-              onHome={() => setNovaAberta(false)}
-              onCreated={encomendaCriadaNoBalcao}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Entrega: mesmo modal de pagamento dos pedidos, já com o que falta. */}
       <FechamentoModal
