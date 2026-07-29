@@ -183,7 +183,7 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
                   );
                 })}
               </div>
-              <p className="text-[11px] text-muted-foreground">Dias seguidos com o mesmo horário aparecem juntos na página ("Ter a Sáb"). Isso é só o que o cliente lê — quem libera ou bloqueia a data do pedido são os dias marcados na configuração acima.</p>
+              <p className="text-[11px] text-muted-foreground">Na página aparecem só os dias abertos, e dias seguidos com o mesmo horário saem juntos ("Ter a Sáb"). Isso é só o que o cliente lê — quem libera ou bloqueia a data do pedido são os dias marcados na configuração acima.</p>
             </div>
           ) : (
             <div className="space-y-3">

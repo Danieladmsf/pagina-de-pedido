@@ -28,6 +28,9 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
     { icon: Store, title: 'Retirada com carinho', desc: 'Aqui é só retirada: preparamos com todo carinho e você busca fresquinho, na hora combinada.' },
   ];
 
+  // Rodapé no modo "por dia": só os dias abertos, já agrupados.
+  const weekRows = config.scheduleMode === 'week' ? formatWeekSchedule(config.weekHours) : [];
+
   const Logo = () =>
     config.logoUrl ? (
       // eslint-disable-next-line @next/next/no-img-element
@@ -195,12 +198,12 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
             <p className="text-[11px] font-bold uppercase tracking-widest text-gold">Horário</p>
             <ul className="mt-3 space-y-1.5 text-sm text-foreground/80">
               {config.scheduleMode === 'week' ? (
-                formatWeekSchedule(config.weekHours).map((r) => (
+                weekRows.length ? weekRows.map((r) => (
                   <li key={r.days} className="flex items-baseline justify-between gap-4 max-w-[16rem]">
                     <span>{r.days}</span>
-                    <span className={r.hours === 'Fechado' ? 'text-muted-foreground' : ''}>{r.hours}</span>
+                    <span>{r.hours}</span>
                   </li>
-                ))
+                )) : <li className="text-muted-foreground">Sob consulta</li>
               ) : (
                 <>
                   <li>{config.daysLabel}</li>

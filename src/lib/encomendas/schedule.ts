@@ -42,9 +42,9 @@ export function formatHour(hhmm: string): string {
   return m && m !== '00' ? `${h}h${m}` : `${h}h`;
 }
 
+// Só é chamada entre dias abertos — dia fechado nem chega a virar linha.
 function sameHours(a: DayHours, b: DayHours): boolean {
-  if (a.closed !== b.closed) return false;
-  return a.closed || (a.open === b.open && a.close === b.close);
+  return a.open === b.open && a.close === b.close;
 }
 
 function runLabel(days: number[], names: string[]): string {
@@ -53,21 +53,24 @@ function runLabel(days: number[], names: string[]): string {
   return `${names[days[0]]} a ${names[days[days.length - 1]]}`;
 }
 
-// Linhas do rodapé: dias seguidos com o mesmo horário viram uma linha só.
+// Linhas do rodapé: SÓ os dias abertos (fechado não vira linha — é ruído), com
+// dias seguidos de mesmo horário agrupados. Sem nenhum dia aberto devolve [], e
+// quem exibe decide o texto de fallback.
 export function formatWeekSchedule(week: any): { days: string; hours: string }[] {
   const w = mergeWeekHours(week);
   const runs: number[][] = [];
-  for (const d of DAY_ORDER) {
+  DAY_ORDER.forEach((d, pos) => {
+    if (w[d].closed) return;
     const last = runs[runs.length - 1];
-    if (last && sameHours(w[last[last.length - 1]], w[d])) last.push(d);
+    const prev = last ? last[last.length - 1] : -1;
+    // Só emenda se for o dia IMEDIATAMENTE anterior na ordem de exibição: com
+    // buracos no meio (Seg e Qui abertos) "Seg a Qui" seria mentira.
+    if (last && DAY_ORDER.indexOf(prev) === pos - 1 && sameHours(w[prev], w[d])) last.push(d);
     else runs.push([d]);
-  }
+  });
   return runs.map((days) => {
     const h = w[days[0]];
-    return {
-      days: runLabel(days, DAY_SHORT),
-      hours: h.closed ? 'Fechado' : `${formatHour(h.open)} às ${formatHour(h.close)}`,
-    };
+    return { days: runLabel(days, DAY_SHORT), hours: `${formatHour(h.open)} às ${formatHour(h.close)}` };
   });
 }
 
