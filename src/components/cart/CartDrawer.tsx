@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { brl, detectNeighborhood, neighborhoodMatchesQuery, normalizeSearch } from '@/lib/utils';
-import { getManagedStock, getStockDemand } from '@/lib/inventory';
+import { checkCartStock, reconcileOrderStock } from '@/lib/inventory';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
-import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs, runTransaction } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
@@ -78,33 +78,6 @@ const checkCartChannelVisibility = (
     allowed: false,
     message: `"${hiddenItem.name}" não está disponível para ${getSalesChannelLabel(orderType)}.`
   };
-};
-
-const checkCartStock = (
-  projectedCart: any[],
-  menuItemsList: any[],
-  enableInventory: boolean
-): { allowed: boolean; message?: string } => {
-  if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
-
-  const demand = getStockDemand(projectedCart);
-
-  for (const [productId, reqQty] of Object.entries(demand)) {
-    const matchedProduct = menuItemsList.find(m => m.id === productId);
-    if (!matchedProduct) continue;
-
-    const rawStock = matchedProduct.stockQuantity;
-    const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-
-    if (availableStock !== null && reqQty > availableStock) {
-      return {
-        allowed: false,
-        message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
-      };
-    }
-  }
-
-  return { allowed: true };
 };
 
 const formatPhone = (val: string) => {
@@ -812,50 +785,16 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         paymentMethod: paymentMethod === 'dinheiro' && cashChange ? `Dinheiro (Troco para R$ ${Number(cashChange).toFixed(2)})` : paymentMethod,
         orderType,
         source: 'cardapio', // origem: pedido feito pelo cliente no cardápio (online)
-        stockDeducted: false,
         items: safeItems
       };
 
-      if (enableInventory) {
-        await runTransaction(db, async (transaction) => {
-          const stockDemand = getStockDemand(safeItems);
-          const stockUpdates: Array<{ itemRef: any; productId: string; quantity: number; nextStock: number }> = [];
-
-          for (const [productId, reqQty] of Object.entries(stockDemand)) {
-            const itemRef = doc(db, 'menuItems', productId);
-            const itemSnap = await transaction.get(itemRef);
-            if (!itemSnap.exists()) continue;
-
-            const itemData = itemSnap.data();
-            const currentStock = getManagedStock(itemData.stockQuantity);
-            if (currentStock === null) continue;
-
-            if (reqQty > currentStock) {
-              const error = new Error(`"${itemData.name || productId}" tem apenas ${currentStock} unidade(s) disponível(is).`);
-              (error as any).code = 'insufficient-stock';
-              throw error;
-            }
-
-            stockUpdates.push({ itemRef, productId, quantity: reqQty, nextStock: currentStock - reqQty });
-          }
-
-          const stockDeductedItems = stockUpdates.reduce<Record<string, number>>((acc, update) => {
-            acc[update.productId] = (acc[update.productId] || 0) + update.quantity;
-            return acc;
-          }, {});
-
-          transaction.set(orderRef, {
-            ...orderData,
-            stockDeducted: true,
-            stockDeductedItems
-          });
-          stockUpdates.forEach(({ itemRef, nextStock }) => {
-            transaction.update(itemRef, { stockQuantity: nextStock });
-          });
-        });
-      } else {
-        await setDoc(orderRef, orderData);
-      }
+      // Grava o pedido e abate o estoque pelo motor central (mesma transação,
+      // mesma regra do PDV). Lança InsufficientStockError se faltar.
+      await reconcileOrderStock(db, {
+        enableInventory,
+        targetItems: safeItems,
+        order: { ref: orderRef, mode: 'set', data: orderData },
+      });
 
       toast({ title: "Pedido Enviado!", description: `Pedido #${orderId} foi recebido.` });
 

@@ -8,7 +8,7 @@ import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
@@ -26,7 +26,7 @@ import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCust
 import { WeightInput } from '@/components/admin/WeightInput';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { brl, neighborhoodMatchesQuery } from '@/lib/utils';
-import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
@@ -492,6 +492,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         totalAmount: totalCobrado || 0,
         paymentMethod: paymentString || '',
         orderDateTime: new Date().toISOString(),
+        // Marca do servidor: é por ela que relatórios e filtros por data acham o
+        // pedido. Sem isso as vendas do PDV sumiam de qualquer consulta por período.
+        createdAt: serverTimestamp(),
       };
 
       // Grava o pedido e abate o estoque de forma atômica (valida e lança
@@ -597,7 +600,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
     const simpleItemInCart = cart.find(i => i.id === item.id && (!i.addons || i.addons.length === 0));
     const simpleCartItemId = simpleItemInCart ? (simpleItemInCart.cartItemId || simpleItemInCart.id) : item.id;
-    const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+    const outOfStock = isOutOfStock(item, { enableInventory: !!storeProfile?.general?.enableInventory, allItems: items || [] });
 
     return (
       <Card key={item.id} className={`overflow-hidden transition-all flex flex-col group border-slate-200 relative ${outOfStock ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-md cursor-pointer'}`} onClick={outOfStock ? undefined : () => addToCart(item)}>

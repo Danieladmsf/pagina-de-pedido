@@ -12,46 +12,7 @@ import { Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { brl } from '@/lib/utils';
 import { resolveGroup } from '@/lib/addon-groups';
-
-const checkCartStock = (
-  projectedCart: any[],
-  menuItemsList: MenuItem[],
-  enableInventory: boolean
-): { allowed: boolean; message?: string } => {
-  if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
-
-  const demand: Record<string, number> = {};
-
-  projectedCart.forEach(item => {
-    const qty = Number(item.quantity) || 0;
-    if (qty <= 0) return;
-
-    if (item.isCombo && item.comboItems) {
-      item.comboItems.forEach((ci: any) => {
-        demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-      });
-    } else {
-      demand[item.id] = (demand[item.id] || 0) + qty;
-    }
-  });
-
-  for (const [productId, reqQty] of Object.entries(demand)) {
-    const matchedProduct = menuItemsList.find(m => m.id === productId);
-    if (!matchedProduct) continue;
-
-    const rawStock = (matchedProduct as any).stockQuantity;
-    const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-
-    if (availableStock !== null && reqQty > availableStock) {
-      return {
-        allowed: false,
-        message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
-      };
-    }
-  }
-
-  return { allowed: true };
-};
+import { checkCartStock } from '@/lib/inventory';
 
 interface MenuItemDialogProps {
   item: MenuItem | null;

@@ -37,6 +37,7 @@ import { ProductModal } from '@/components/admin/ProductModal';
 import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
+import { normalizeStockInput } from '@/lib/inventory';
 import { uploadImage } from '@/lib/upload';
 import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
@@ -1017,14 +1018,16 @@ export default function GestaoPage() {
                             ) : (
                               <Input
                                 type="number"
+                                min="0"
+                                step="1"
                                 className="w-20 text-center mx-auto h-8 text-sm"
                                 value={item.stockQuantity ?? ''}
                                 placeholder="∞"
                                 onChange={async (e) => {
                                   if (!db) return;
-                                  const val = e.target.value;
+                                  // Vazio = ilimitado; número sempre inteiro >= 0.
                                   await updateDoc(doc(db, 'menuItems', item.id), {
-                                    stockQuantity: val === '' ? null : parseInt(val) || 0
+                                    stockQuantity: normalizeStockInput(e.target.value)
                                   });
                                 }}
                               />

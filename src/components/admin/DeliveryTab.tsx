@@ -20,7 +20,7 @@ import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
 import { WeightInput } from '@/components/admin/WeightInput';
 import { brl, normalizeSearch } from '@/lib/utils';
-import { reconcileOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
@@ -542,7 +542,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   const editVisibleGroups =
     editSelectedCat === 'all' || editIsSearching ? editGroupedItems : editGroupedItems.filter(g => g.id === editSelectedCat);
   const renderEditItemCard = (item: any) => {
-    const outOfStock = !!storeProfile?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+    const outOfStock = isOutOfStock(item, { enableInventory: !!storeProfile?.general?.enableInventory, allItems: items || [] });
     return (
       <button
         key={item.id}

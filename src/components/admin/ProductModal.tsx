@@ -14,6 +14,7 @@ import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 import { brl } from '@/lib/utils';
+import { normalizeStockInput } from '@/lib/inventory';
 
 interface ProductModalProps {
   db: any;
@@ -111,9 +112,14 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     const effectiveSaleUnit = isMarmita ? 'un' : saleUnit;
     const stockQuantityStr = formData.get('stockQuantity') as string;
     // Itens por peso não usam estoque por unidade — sempre sem limite (null).
-    const stockQuantity = effectiveSaleUnit === 'kg'
-      ? null
-      : (stockQuantityStr ? parseInt(stockQuantityStr, 10) : null);
+    // Vazio = ilimitado; qualquer número vira inteiro >= 0 (nunca negativo).
+    const stockQuantity = effectiveSaleUnit === 'kg' ? null : normalizeStockInput(stockQuantityStr);
+
+    // Só grava o estoque quando ele REALMENTE mudou. Sem isso, salvar o produto
+    // por outro motivo (preço, foto) regravava o número que estava na tela quando
+    // o modal abriu e desfazia as baixas das vendas ocorridas nesse meio-tempo.
+    const storedStock = editingProduct?.stockQuantity ?? null;
+    const stockUnchanged = !!editingProduct?.id && storedStock === stockQuantity;
 
     let imageUrl = editingProduct?.imageUrl || '';
     
@@ -135,11 +141,11 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         : (formData.get('description') as string || '');
       const addonGroups = buildCleanAddonGroups();
 
-      const data = {
+      const data: Record<string, any> = {
         name,
         price,
         saleUnit: effectiveSaleUnit,
-        stockQuantity,
+        ...(stockUnchanged ? {} : { stockQuantity }),
         categoryId,
         description,
         ownerId: user.uid,
@@ -318,7 +324,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
               {saleUnit !== 'kg' && (
                 <div className="col-span-4 md:col-span-2 space-y-1.5">
                   <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
-                  <Input id="stockQuantity" name="stockQuantity" type="number" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
+                  <Input id="stockQuantity" name="stockQuantity" type="number" min="0" step="1" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
                 </div>
               )}
               <div className="col-span-4 md:col-span-2 space-y-1.5">

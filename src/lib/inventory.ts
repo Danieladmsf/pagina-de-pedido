@@ -8,7 +8,9 @@ import {
 } from 'firebase/firestore';
 
 /**
- * Controle de estoque centralizado.
+ * Controle de estoque centralizado. FONTE ÚNICA — não reimplemente nada disto
+ * nos componentes: toda regra de "tem estoque?", "está esgotado?" e "abate"
+ * mora aqui.
  *
  * Modelo:
  *  - O estoque é abatido na INCLUSÃO do pedido (criação ou adição de item),
@@ -16,8 +18,8 @@ import {
  *  - Cada pedido guarda `stockDeductedItems` (mapa itemId -> qtd já reservada).
  *    Essa é a fonte da verdade: edições aplicam o DELTA entre o desejado e o já
  *    reservado, e cancelamentos restauram exatamente o que foi reservado.
- *  - Itens com estoque "não gerenciado" (stockQuantity null/inválido = ilimitado)
- *    nunca são abatidos nem rastreados.
+ *  - Só é "ilimitado" o item SEM estoque definido (null/undefined/não-número).
+ *    Número é sempre controlado — inclusive 0. **Zerou, zerou.**
  *  - A reconciliação roda dentro de uma TRANSAÇÃO Firestore (read-check-write
  *    atômico), evitando venda concorrente do mesmo último item.
  */
@@ -31,9 +33,108 @@ export interface OrderLikeItem {
   comboItems?: Array<{ itemId?: string }> | null;
 }
 
-/** Estoque "gerenciado": número finito >= 0. Caso contrário null (= ilimitado). */
+/** Produto do cardápio, na parte que interessa ao estoque. */
+export interface StockItemLike {
+  id?: string;
+  name?: string;
+  stockQuantity?: unknown;
+  isCombo?: boolean;
+  comboItems?: Array<{ itemId?: string }> | null;
+}
+
+/**
+ * Estoque "gerenciado" de um valor cru do banco.
+ *
+ * Retorna `null` SÓ quando não há controle de estoque (campo vazio/inválido).
+ * Número negativo é sujeira de dado (digitação, correção manual) e vale ZERO —
+ * jamais "ilimitado". Tratar negativo como ilimitado era o bug que fazia um
+ * produto zerado voltar a vender para sempre sem nunca abater.
+ */
 export function getManagedStock(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value < 0 ? 0 : value;
+}
+
+/**
+ * Normaliza o que o usuário digitou num campo de estoque, para GRAVAR.
+ * Vazio => null (ilimitado). Qualquer número => inteiro >= 0.
+ */
+export function normalizeStockInput(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const raw = typeof value === 'string' ? value.trim() : value;
+  if (raw === '') return null;
+  const n = Math.trunc(Number(raw));
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, n);
+}
+
+/**
+ * Estoque efetivo de um item do cardápio (null = ilimitado).
+ * Combo vale o MENOR estoque entre seus componentes; componente que não existe
+ * mais zera o combo.
+ */
+export function getEffectiveStock(item: StockItemLike | null | undefined, allItems?: StockItemLike[]): number | null {
+  if (!item) return null;
+  if (!item.isCombo) return getManagedStock(item.stockQuantity);
+
+  const parts = item.comboItems || [];
+  if (parts.length === 0) return getManagedStock(item.stockQuantity);
+
+  let min: number | null = null;
+  for (const part of parts) {
+    const matched = allItems?.find((i) => i.id === part?.itemId);
+    const stock = matched ? getManagedStock(matched.stockQuantity) : 0;
+    if (stock === null) continue; // componente ilimitado não limita o combo
+    if (min === null || stock < min) min = stock;
+  }
+  return min;
+}
+
+/** Item esgotado? (só faz sentido com o controle de estoque ligado) */
+export function isOutOfStock(
+  item: StockItemLike | null | undefined,
+  opts: { enableInventory?: boolean; allItems?: StockItemLike[] } = {},
+): boolean {
+  if (!opts.enableInventory) return false;
+  const stock = getEffectiveStock(item, opts.allItems);
+  return stock !== null && stock <= 0;
+}
+
+export interface CartStockCheck {
+  allowed: boolean;
+  message?: string;
+}
+
+/**
+ * O carrinho projetado cabe no estoque? Usado ANTES de gravar, para avisar o
+ * usuário; a validação que vale é a da transação em {@link reconcileOrderStock}.
+ */
+export function checkCartStock(
+  projectedCart: OrderLikeItem[],
+  menuItemsList: StockItemLike[] | null | undefined,
+  enableInventory: boolean,
+): CartStockCheck {
+  if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
+
+  const demand = getStockDemand(projectedCart);
+
+  for (const [productId, reqQty] of Object.entries(demand)) {
+    const matched = menuItemsList.find((m) => m.id === productId);
+    if (!matched) continue;
+
+    const available = getManagedStock(matched.stockQuantity);
+    if (available !== null && reqQty > available) {
+      return {
+        allowed: false,
+        message:
+          available === 0
+            ? `"${matched.name}" está esgotado.`
+            : `"${matched.name}" tem apenas ${available} unidade(s) disponível(is).`,
+      };
+    }
+  }
+
+  return { allowed: true };
 }
 
 /**
@@ -186,7 +287,9 @@ export async function reconcileOrderStock(
         throw new InsufficientStockError(itemId, snap.data().name || itemId, current, d);
       }
 
-      writes.push({ ref, nextStock: current - d }); // d>0 abate, d<0 devolve
+      // d>0 abate, d<0 devolve. O clamp é rede de segurança: o estoque nunca
+      // pode ficar negativo (negativo volta a valer 0 e trava a venda).
+      writes.push({ ref, nextStock: Math.max(0, current - d) });
       const reserved = (Number(next[itemId]) || 0) + d;
       if (reserved > 0) next[itemId] = reserved;
       else delete next[itemId];

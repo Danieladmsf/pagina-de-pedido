@@ -25,6 +25,7 @@ import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
+import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
 import { OrderChoiceDialog } from '@/components/menu/OrderChoiceDialog';
 
@@ -302,46 +303,6 @@ export function MenuPageClient({
   }, [activePromotions]);
 
   const hasActivePromos = Object.keys(promoItemsMap).length > 0;
-
-  const checkCartStock = useCallback((
-    projectedCart: any[],
-    menuItemsList: any[],
-    enableInventory: boolean
-  ): { allowed: boolean; message?: string } => {
-    if (!enableInventory || !menuItemsList || menuItemsList.length === 0) return { allowed: true };
-
-    const demand: Record<string, number> = {};
-
-    projectedCart.forEach(item => {
-      const qty = Number(item.quantity) || 0;
-      if (qty <= 0) return;
-
-      if (item.isCombo && item.comboItems) {
-        item.comboItems.forEach((ci: any) => {
-          demand[ci.itemId] = (demand[ci.itemId] || 0) + qty;
-        });
-      } else {
-        demand[item.id] = (demand[item.id] || 0) + qty;
-      }
-    });
-
-    for (const [productId, reqQty] of Object.entries(demand)) {
-      const matchedProduct = menuItemsList.find(m => m.id === productId);
-      if (!matchedProduct) continue;
-
-      const rawStock = matchedProduct.stockQuantity;
-      const availableStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-
-      if (availableStock !== null && reqQty > availableStock) {
-        return {
-          allowed: false,
-          message: `"${matchedProduct.name}" tem apenas ${availableStock} unidade(s) disponível(is).`
-        };
-      }
-    }
-
-    return { allowed: true };
-  }, []);
 
   const handleProductPlusClick = useCallback((event: React.MouseEvent, item: any) => {
     event.preventDefault();
@@ -1193,25 +1154,10 @@ export function MenuPageClient({
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
             {group.items.map((item) => {
-              const rawStock = item.stockQuantity;
-              let currentStock = typeof rawStock === 'number' && Number.isFinite(rawStock) && rawStock >= 0 ? rawStock : null;
-              if (item.isCombo) {
-                let minStock = Infinity;
-                const comboItemsList = item.comboItems || [];
-                for (const ci of comboItemsList) {
-                  const matched = items?.find(i => i.id === ci.itemId);
-                  if (matched) {
-                    const cStock = typeof matched.stockQuantity === 'number' && Number.isFinite(matched.stockQuantity) && matched.stockQuantity >= 0 ? matched.stockQuantity : null;
-                    if (cStock !== null && cStock < minStock) {
-                      minStock = cStock;
-                    }
-                  } else {
-                    minStock = 0; // If any required product doesn't exist, combo stock is 0
-                  }
-                }
-                currentStock = minStock === Infinity ? null : minStock;
-              }
-              const isOutOfStock = storeProfile?.general?.enableInventory && currentStock === 0;
+              // Estoque (combo = menor estoque dos componentes) pela regra única
+              // de lib/inventory: só é ilimitado quem não tem estoque definido.
+              const inventoryOn = !!storeProfile?.general?.enableInventory;
+              const outOfStock = isOutOfStock(item, { enableInventory: inventoryOn, allItems: items || [] });
               const promo = promoItemsMap[item.id];
               const isPromoItem = !!promo;
               const displayPrice = isPromoItem ? promo.promoPrice : item.price;
@@ -1225,9 +1171,9 @@ export function MenuPageClient({
               return (
                 <Card
                   key={item.id}
-                  className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all rounded-2xl bg-white flex flex-col md:rounded-3xl ${weightItem ? 'cursor-default' : 'cursor-pointer'} ${isOutOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
+                  className={`group overflow-hidden border-none shadow-md hover:shadow-2xl transition-all rounded-2xl bg-white flex flex-col md:rounded-3xl ${weightItem ? 'cursor-default' : 'cursor-pointer'} ${outOfStock ? 'opacity-60 grayscale-[0.5] pointer-events-none' : ''} ${isPromoItem ? 'ring-2 ring-orange-400/40' : ''}`}
                   onClick={() => {
-                    if (isOutOfStock || weightItem) return;
+                    if (outOfStock || weightItem) return;
                     const promo = promoItemsMap[item.id];
                     const effectiveItem = promo ? { ...item, price: promo.promoPrice } : item;
                     setSelectedItem(effectiveItem);
@@ -1265,7 +1211,7 @@ export function MenuPageClient({
                         {brl(item.price)}{weightItem ? ' /kg' : ''}
                       </Badge>
                     ) : null}
-                    {isOutOfStock && (
+                    {outOfStock && (
                       <Badge className="absolute bottom-3 right-3 bg-red-600 text-white font-bold border-none shadow-lg px-2 py-1 text-[11px] md:bottom-4 md:right-4 md:px-2.5 md:text-xs">
                         Esgotado
                       </Badge>
@@ -1341,9 +1287,9 @@ export function MenuPageClient({
                         </div>
                       ) : (
                         <Button
-                          disabled={isOutOfStock}
+                          disabled={outOfStock}
                           size="sm"
-                          className={`text-white h-11 w-11 p-0 rounded-xl shadow-md transition-all duration-150 ease-out active:scale-90 motion-reduce:transition-none ${isOutOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
+                          className={`text-white h-11 w-11 p-0 rounded-xl shadow-md transition-all duration-150 ease-out active:scale-90 motion-reduce:transition-none ${outOfStock ? 'bg-slate-300' : isPromoItem ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary hover:bg-accent'}`}
                           onClick={(event) => handleProductPlusClick(event, item)}
                           aria-label={`Adicionar ${item.name}`}
                         >

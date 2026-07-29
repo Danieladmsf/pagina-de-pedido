@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -23,7 +23,7 @@ import { useCustomerLookup } from '@/hooks/useCustomerLookup';
 import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
 import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
 import { WeightInput } from '@/components/admin/WeightInput';
-import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
+import { reconcileOrderStock, releaseOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
@@ -678,7 +678,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 totalAmount: cartTotal,
                 subtotal: cartTotal,
                 orderDateTime: new Date().toISOString(),
-                createdAt: new Date(),
+                // Hora do servidor, não do PC (relógio de máquina de loja erra).
+                createdAt: serverTimestamp(),
               },
             };
           })();
@@ -920,7 +921,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
   const renderItemCard = (item: any) => {
     const qtyInCart = cart.filter(i => i.id === item.id).reduce((sum, i) => sum + i.quantity, 0);
-    const outOfStock = !!storeInfo?.general?.enableInventory && typeof item.stockQuantity === 'number' && item.stockQuantity <= 0;
+    const outOfStock = isOutOfStock(item, { enableInventory: !!storeInfo?.general?.enableInventory, allItems: items || [] });
     return (
       <button
         key={item.id}
