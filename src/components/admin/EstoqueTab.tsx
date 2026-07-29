@@ -479,11 +479,13 @@ export function EstoqueTab({
                   onChange={(e) => setQty(e.target.value)}
                   placeholder={pending.type === 'ajuste' ? 'total' : 'quantidade'}
                 />
-                {pending.type !== 'ajuste' && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Digite só o que entrou ou saiu — a conta com as vendas o sistema faz sozinho.
-                  </p>
-                )}
+                <p className="text-[11px] text-muted-foreground">
+                  {pending.type === 'entrada'
+                    ? 'Digite só quanto entrou agora, não o total. O sistema soma ao que já tem no estoque.'
+                    : pending.type === 'saida'
+                      ? 'Digite só quanto saiu. O sistema desconta do que já tem no estoque.'
+                      : 'Use quando contar o que tem na prateleira. Aqui o número é o total, não a diferença.'}
+                </p>
               </div>
 
               {preview && (
