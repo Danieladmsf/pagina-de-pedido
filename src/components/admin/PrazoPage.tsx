@@ -159,6 +159,9 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const phoneDigits = normalizeCreditPhone(cliente?.celular || '');
+  // O celular é a única chave entre esta conta, o pedido e o cadastro. Sem ele
+  // o Prazo não pode nem ser ligado (ver handleSaveConfig).
+  const semTelefone = phoneDigits.length < 10;
 
   // ─── Dados ───
 
@@ -408,6 +411,18 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   const handleSaveConfig = async () => {
     if (!db || !cliente?.id) return;
+    // Aqui era possível ligar o Prazo de um cadastro sem celular (o formulário
+    // de Clientes já exige o número). Prazo ativo sem telefone é conta órfã: a
+    // venda a prazo procura o cliente pelo número, não acha, abre o cadastro
+    // rápido e a dívida vai para uma segunda ficha.
+    if (configEnabled && phoneDigits.length < 10) {
+      toast({
+        variant: 'destructive',
+        title: 'Falta o celular deste cliente',
+        description: 'Sem o número a venda a prazo não encontra este cadastro e a dívida acaba em outro cliente. Adicione o celular em "Cadastro" e ative o Prazo depois.',
+      });
+      return;
+    }
     setSavingConfig(true);
     try {
       await setDoc(doc(db, 'clientes', cliente.id), {
@@ -751,10 +766,28 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
                 <div className="flex items-center justify-between gap-3 rounded-lg bg-indigo-50/60 px-3 py-2">
                   <div>
                     <Label htmlFor="prazo-ativo" className="cursor-pointer text-xs font-bold text-indigo-900">Prazo ativo</Label>
-                    <p className="text-[10px] leading-tight text-indigo-700/80">Permite fechar vendas a prazo para este cliente.</p>
+                    <p className="text-[10px] leading-tight text-indigo-700/80">
+                      {semTelefone
+                        ? 'Cadastre o celular deste cliente para liberar o Prazo.'
+                        : 'Permite fechar vendas a prazo para este cliente.'}
+                    </p>
                   </div>
-                  <Switch id="prazo-ativo" checked={configEnabled} onCheckedChange={setConfigEnabled} className="scale-90 data-[state=checked]:bg-indigo-600" />
+                  <Switch
+                    id="prazo-ativo"
+                    checked={!semTelefone && configEnabled}
+                    onCheckedChange={setConfigEnabled}
+                    disabled={semTelefone}
+                    title={semTelefone ? 'Cadastre o celular do cliente para liberar o Prazo' : undefined}
+                    className="scale-90 data-[state=checked]:bg-indigo-600 disabled:opacity-40"
+                  />
                 </div>
+                {semTelefone && (
+                  <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] font-medium leading-snug text-amber-800">
+                    Sem celular a venda a prazo não acha este cadastro: o PDV abre um cadastro novo e a
+                    dívida vai para lá, separada deste histórico. Use <span className="font-bold">Cadastro</span> no
+                    topo da tela para incluir o número.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Limite (R$)</Label>

@@ -353,7 +353,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         bairro: formBairro.trim(),
         cidade: formCidade.trim(),
         ownerId: user.uid,
-        creditEnabled: formCreditEnabled,
+        // Prazo só existe com celular (ver o Switch no formulário): sem número a
+        // venda a prazo não encontra esta ficha e a dívida cai em outro cadastro.
+        creditEnabled: isCelularValid && formCreditEnabled,
         creditLimit: Number(formCreditLimit) || 0,
         creditPayDay: Number(formCreditPayDay) || 0,
       };
@@ -704,7 +706,22 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                         />
                         <span>
                           {c.nome}
-                          {c.creditEnabled && <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">Conta da Casa</Badge>}
+                          {/* Prazo ativo sem celular é cadastro órfão vindo da base
+                              antiga (hoje o formulário não deixa mais salvar assim).
+                              Fica marcado para o dono achar e completar o número. */}
+                          {c.creditEnabled && (
+                            normalizeCreditPhone(c.celular || '').length >= 10 ? (
+                              <Badge variant="secondary" className="ml-2 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">Conta da Casa</Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                title="Prazo ativo sem celular: a venda a prazo não vai achar este cadastro. Edite o cliente e inclua o número."
+                                className="ml-2 text-[10px] bg-amber-50 text-amber-700 border-amber-300"
+                              >
+                                Prazo sem celular
+                              </Badge>
+                            )
+                          )}
                         </span>
                       </div>
                     </TableCell>
@@ -920,18 +937,28 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                   <Receipt className="h-3.5 w-3.5 text-indigo-600" />
                   <div>
                     <Label className="text-xs font-bold text-indigo-900 cursor-pointer mb-0 leading-none" htmlFor="toggle-conta-casa">Ativar Prazo</Label>
-                    <p className="text-[9px] text-indigo-700/80 leading-tight mt-0.5">Permite compras a prazo no app/painel.</p>
+                    <p className="text-[9px] text-indigo-700/80 leading-tight mt-0.5">
+                      {isCelularValid
+                        ? 'Permite compras a prazo no app/painel.'
+                        : 'Preencha o celular acima para poder ativar.'}
+                    </p>
                   </div>
                 </div>
-                <Switch 
+                {/* Sem celular o Prazo não pode ser ligado: é o número que liga
+                    a venda a prazo a esta ficha. Ligado sem telefone, o PDV não
+                    acha o cliente, abre cadastro rápido e a dívida vai para uma
+                    segunda conta — o limite fica aqui e o saldo, lá. */}
+                <Switch
                   id="toggle-conta-casa"
-                  checked={formCreditEnabled} 
+                  checked={isCelularValid && formCreditEnabled}
                   onCheckedChange={setFormCreditEnabled}
-                  className="data-[state=checked]:bg-indigo-600 scale-90 shrink-0"
+                  disabled={!isCelularValid}
+                  title={isCelularValid ? undefined : 'Cadastre o celular do cliente para liberar o Prazo'}
+                  className="data-[state=checked]:bg-indigo-600 scale-90 shrink-0 disabled:opacity-40"
                 />
               </div>
 
-              {formCreditEnabled && (
+              {isCelularValid && formCreditEnabled && (
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-indigo-100/50">
                   <div className="space-y-0.5">
                     <Label className="text-[10px] text-indigo-900 font-bold uppercase">Limite de Gastos (R$)</Label>
