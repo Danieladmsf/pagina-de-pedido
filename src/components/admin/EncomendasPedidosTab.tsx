@@ -21,7 +21,9 @@ import { registrarPagamentoSplits, resolveContaCasa } from '@/lib/payments';
 import { CalendarDays, Store, Bike, MessageCircle, Printer, Pencil, Package, Loader2, MapPin, Paperclip, ImageIcon, Banknote, Plus } from 'lucide-react';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
-import { brl } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
+import { ContactAvatar } from '@/components/shared/ContactAvatar';
+import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 
 const formatDateBR = (iso?: string) => {
   if (!iso) return '—';
@@ -41,15 +43,6 @@ function waLink(phoneDigits: string) {
   const d = (phoneDigits || '').replace(/\D/g, '');
   return `https://wa.me/${d.startsWith('55') ? d : `55${d}`}`;
 }
-function itemsSummary(enc: Encomenda): string[] {
-  const out: string[] = [];
-  if (enc.bolo) out.push(`Bolo ${enc.bolo.size} · ${enc.bolo.filling}${enc.bolo.cover ? ` · ${enc.bolo.cover}` : ''}${enc.bolo.plate?.on ? ' · c/ plaquinha' : ''}`);
-  for (const l of enc.especialItems || []) out.push(`${l.qty}× ${l.name}`);
-  for (const l of enc.tortasItems || []) out.push(`${l.qty}× ${l.name}`);
-  for (const l of enc.docinhosItems || []) out.push(`${l.qty}× ${l.name}`);
-  return out;
-}
-
 export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false, permissions }: {
   db: any; user: any; storeProfile: any;
   registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
@@ -69,8 +62,11 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     title: 'Permissão removida pelo administrador',
   });
   const [filter, setFilter] = useState<'todas' | EncomendaStatus>('todas');
+  const [busca, setBusca] = useState('');
+  const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
   const [lancandoId, setLancandoId] = useState<string | null>(null);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const [novaAberta, setNovaAberta] = useState(false);
   // Encomenda que está sendo entregue: abre o mesmo fechamento dos pedidos.
   const [entregando, setEntregando] = useState<(Encomenda & { id: string }) | null>(null);
@@ -99,9 +95,32 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const { data: encomendasRaw, isLoading } = useCollection<Encomenda>(encomendasQuery);
 
   const encomendas = useMemo(() => {
-    const list = (encomendasRaw || []).slice().sort((a, b) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
-    return filter === 'todas' ? list : list.filter((e) => (e.status || 'orcamento') === filter);
-  }, [encomendasRaw, filter]);
+    let list = (encomendasRaw || []).slice().sort((a, b) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''));
+    if (filter !== 'todas') list = list.filter((e) => (e.status || 'orcamento') === filter);
+    const termo = normalizeSearch(busca.trim());
+    if (termo) {
+      const digitos = busca.replace(/\D/g, '');
+      list = list.filter((e) =>
+        normalizeSearch(e.customerName || '').includes(termo)
+        || normalizeSearch(e.id || '').includes(termo)
+        || (!!digitos && (e.customerPhone || '').replace(/\D/g, '').includes(digitos)));
+    }
+    return list;
+  }, [encomendasRaw, filter, busca]);
+
+  const selecionada = useMemo(
+    () => encomendas.find((e) => e.id === selecionadaId) || null,
+    [encomendas, selecionadaId],
+  );
+
+  // Quanto a loja ainda tem para receber no que está na lista — é o número que
+  // some quando encomenda fica pela metade.
+  const totalAReceber = useMemo(
+    () => encomendas
+      .filter((e) => (e.status || 'orcamento') !== 'cancelada')
+      .reduce((soma, e) => soma + saldoAReceber(e), 0),
+    [encomendas],
+  );
 
   // Lança o sinal (PIX) como venda no caixa aberto. Idempotente: marca
   // sinalLancado no doc e nunca lança duas vezes. Título SEM "#" de propósito —
@@ -185,6 +204,8 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
    */
   async function encomendaCriadaNoBalcao({ id, enc, pago }: EncomendaBalcaoResult) {
     setNovaAberta(false);
+    // Volta para a lista já com a encomenda nova aberta no detalhe.
+    setSelecionadaId(id);
     toast({ title: 'Encomenda registrada!', description: `${enc.customerName} · ${brl(enc.total)} · retirada ${formatDateBR(enc.delivery?.date)}.` });
 
     // O formulário só deixa receber com o caixa aberto, então aqui é lançar.
@@ -307,60 +328,89 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-xl font-bold"><Package className="h-6 w-6 text-primary" /> Pedidos de encomenda</h2>
-          {allowEdit && (
-            <Button
-              onClick={() => setNovaAberta(true)}
-              className="gap-1.5"
-            >
-              <Plus className="h-4 w-4" /> Nova encomenda
-            </Button>
-          )}
-        </div>
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4 md:p-6">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-xl font-bold"><Package className="h-6 w-6 text-primary" /> Pedidos de encomenda</h2>
+        {allowEdit && (
+          <Button onClick={() => setNovaAberta(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" /> Nova encomenda
+          </Button>
+        )}
+      </div>
 
-        {/* Filtro por status */}
-        <div className="flex flex-wrap gap-1.5">
-          {(['todas', ...ALL_STATUS] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${filter === s ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-primary/40'}`}
-            >
-              {s === 'todas' ? 'Todas' : ENCOMENDA_STATUS_LABEL[s]}
-            </button>
-          ))}
-        </div>
+      {/* Lista à esquerda, encomenda aberta à direita — mesma divisão do Delivery. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
+        <div className="flex h-full w-full flex-col gap-2 rounded-xl border bg-muted/30 p-2 md:w-1/3">
+          <Input
+            placeholder="Cliente, telefone ou nº"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="h-9 bg-white text-sm"
+          />
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 py-10 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Carregando…</div>
-        ) : encomendas.length === 0 ? (
-          <div className="rounded-xl border bg-card py-12 text-center text-muted-foreground">
-            <Package className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            <p>Nenhuma encomenda {filter === 'todas' ? 'ainda' : `com status "${ENCOMENDA_STATUS_LABEL[filter as EncomendaStatus]}"`}.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {encomendas.map((e) => (
-              <PedidoCard
-                key={e.id}
-                enc={e}
-                onStatus={(s) => changeStatus(e, s)}
-                onEdit={() => openEdit(e)}
-                onPrint={() => reprint(e)}
-                allowStatus={allowStatus}
-                allowEdit={allowEdit}
-                canLancarSinal={allowSignal && !!registrarLancamento && caixaAberto}
-                allowReprint={allowReprint}
-                lancando={lancandoId === e.id}
-                onLancarSinal={() => lancarSinal(e)}
-                onReceber={() => { fechamento.reset(); setEntregando(e); }}
-              />
+          <div className="flex flex-wrap gap-1">
+            {(['todas', ...ALL_STATUS] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition-colors ${filter === s ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-primary/40'}`}
+              >
+                {s === 'todas' ? 'Todas' : ENCOMENDA_STATUS_LABEL[s]}
+              </button>
             ))}
           </div>
-        )}
+
+          <div className="custom-scrollbar flex-1 space-y-1.5 overflow-y-auto pr-1">
+            {isLoading ? (
+              <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>
+            ) : encomendas.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                <Package className="mx-auto mb-2 h-7 w-7 opacity-40" />
+                Nenhuma encomenda {filter === 'todas' && !busca.trim() ? 'ainda' : 'com esse filtro'}.
+              </div>
+            ) : (
+              encomendas.map((e) => (
+                <EncomendaLinha
+                  key={e.id}
+                  enc={e}
+                  selecionada={selecionadaId === e.id}
+                  loadPhoto={loadPhoto}
+                  onSelecionar={() => setSelecionadaId(e.id)}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border bg-white px-3 py-2 text-xs font-bold shrink-0">
+            <span className="text-slate-500">{encomendas.length} na lista</span>
+            {totalAReceber > 0 && (
+              <span className="rounded-md bg-amber-500 px-2.5 py-1 text-white">A receber {brl(totalAReceber)}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="custom-scrollbar h-full w-full overflow-y-auto rounded-xl border bg-white p-4 shadow-sm md:w-2/3">
+          {!selecionada ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Package className="h-10 w-10 text-slate-300" />
+              <p className="text-sm">Selecione uma encomenda para ver os detalhes</p>
+            </div>
+          ) : (
+            <EncomendaDetalhe
+              enc={selecionada}
+              allowStatus={allowStatus}
+              allowEdit={allowEdit}
+              allowReprint={allowReprint}
+              canLancarSinal={allowSignal && !!registrarLancamento && caixaAberto}
+              lancando={lancandoId === selecionada.id}
+              onStatus={(s) => changeStatus(selecionada, s)}
+              onEdit={() => openEdit(selecionada)}
+              onPrint={() => reprint(selecionada)}
+              onLancarSinal={() => lancarSinal(selecionada)}
+              onReceber={() => { fechamento.reset(); setEntregando(selecionada); }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Entrega: mesmo modal de pagamento dos pedidos, já com o que falta. */}
@@ -409,123 +459,255 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   );
 }
 
-function PedidoCard({ enc, onStatus, onEdit, onPrint, allowStatus, allowEdit, canLancarSinal, allowReprint, lancando, onLancarSinal, onReceber }: {
+/** Linha da lista: o essencial para achar a encomenda e ver se falta dinheiro. */
+function EncomendaLinha({ enc, selecionada, loadPhoto, onSelecionar }: {
   enc: Encomenda & { id: string };
+  selecionada: boolean;
+  loadPhoto: (phone: string) => Promise<string | null>;
+  onSelecionar: () => void;
+}) {
+  const status = (enc.status || 'orcamento') as EncomendaStatus;
+  const falta = saldoAReceber(enc);
+  const borda = status === 'cancelada' ? 'border-l-red-500'
+    : status === 'entregue' ? 'border-l-slate-300'
+    : status === 'pronta' ? 'border-l-emerald-500'
+    : status === 'producao' ? 'border-l-purple-500'
+    : status === 'confirmada' ? 'border-l-blue-500'
+    : 'border-l-amber-500';
+
+  return (
+    <button
+      type="button"
+      onClick={onSelecionar}
+      className={`w-full rounded-r border-l-4 bg-white px-2 py-1.5 text-left transition-colors hover:bg-slate-50 ${borda} ${selecionada ? 'bg-blue-50 ring-1 ring-primary/50' : ''}`}
+    >
+      <div className="flex items-center gap-2">
+        <ContactAvatar
+          phone={enc.customerPhone || ''}
+          initials={(enc.customerName || '?').split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+          loadPhoto={loadPhoto}
+          className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-fuchsia-400 to-purple-500 text-[10px] font-bold text-white"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="whitespace-nowrap font-mono text-[10px] text-muted-foreground">#{enc.id.substring(0, 5)}</span>
+              <span className="truncate text-xs font-semibold text-slate-800">{enc.customerName}</span>
+            </div>
+            <span className="shrink-0 text-xs font-black text-slate-700">{brl(enc.total)}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className={`rounded-full border px-1.5 text-[9px] font-bold uppercase leading-4 ${STATUS_STYLE[status]}`}>
+              {ENCOMENDA_STATUS_LABEL[status]}
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {enc.delivery?.type === 'delivery' ? 'entrega' : 'retirada'} {formatDateBR(enc.delivery?.date)} {enc.delivery?.time || ''}
+            </span>
+            {falta > 0 && status !== 'cancelada' && (
+              <span className="ml-auto shrink-0 text-[10px] font-bold text-amber-600">falta {brl(falta)}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** Ordem das etapas — a trilha do detalhe segue esta sequência. */
+const TRILHA: EncomendaStatus[] = ['orcamento', 'confirmada', 'producao', 'pronta', 'entregue'];
+
+/** Encomenda aberta: etapas, dinheiro, itens e entrega. */
+function EncomendaDetalhe({ enc, allowStatus, allowEdit, allowReprint, canLancarSinal, lancando, onStatus, onEdit, onPrint, onLancarSinal, onReceber }: {
+  enc: Encomenda & { id: string };
+  allowStatus: boolean;
+  allowEdit: boolean;
+  allowReprint: boolean;
+  canLancarSinal: boolean;
+  lancando: boolean;
   onStatus: (s: EncomendaStatus) => void;
   onEdit: () => void;
   onPrint: () => void;
-  allowStatus: boolean;
-  allowEdit: boolean;
-  canLancarSinal: boolean;
-  allowReprint: boolean;
-  lancando: boolean;
   onLancarSinal: () => void;
   onReceber: () => void;
 }) {
   const status = (enc.status || 'orcamento') as EncomendaStatus;
-  const items = itemsSummary(enc);
-  // Sinal pendente de lançar no caixa: encomenda já confirmada (ou adiante),
-  // tem sinal e ainda não foi registrado (ex.: caixa estava fechado na hora).
-  const sinalPendente = canLancarSinal && !enc.sinalLancado && enc.sinal > 0 &&
-    !['orcamento', 'cancelada'].includes(status);
   const recebido = valorRecebido(enc);
   const falta = saldoAReceber(enc);
+  const etapaAtual = TRILHA.indexOf(status);
+  const cancelada = status === 'cancelada';
+  const sinalPendente = canLancarSinal && !enc.sinalLancado && enc.sinal > 0 && !['orcamento', 'cancelada'].includes(status);
   const receberPendente = canLancarSinal && falta > 0 && ['pronta', 'entregue'].includes(status);
+  const linhas = [...(enc.especialItems || []), ...(enc.tortasItems || []), ...(enc.docinhosItems || [])];
+
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-col gap-3">
+      {/* Cabeçalho */}
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-muted-foreground">#{enc.id}</span>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${STATUS_STYLE[status]}`}>{ENCOMENDA_STATUS_LABEL[status]}</span>
-            {enc.isEmpresa && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">NF-e</span>}
-          </div>
-          <p className="mt-1 font-semibold text-foreground">{enc.customerName}</p>
-          <a href={waLink(enc.customerPhone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-emerald-600 hover:underline">
+          <h2 className="text-base font-bold text-slate-800">
+            Encomenda #{enc.id.substring(0, 5)}
+            <span className="ml-1.5 font-mono text-[11px] font-normal text-muted-foreground">{enc.id}</span>
+          </h2>
+          <p className="text-sm font-semibold text-slate-700">{enc.customerName}</p>
+          <a href={waLink(enc.customerPhone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:underline">
             <MessageCircle className="h-3.5 w-3.5" /> {enc.customerPhone}
           </a>
         </div>
-        <div className="text-right">
-          <p className="text-lg font-bold text-primary">{brl(enc.total)}</p>
-          {/* O que interessa no dia a dia é quanto já entrou e quanto falta —
-              não a metade combinada no orçamento. */}
-          <p className="text-xs text-muted-foreground">
-            Recebido {brl(recebido)}
-            {falta > 0 ? <> · falta <span className="font-semibold text-amber-600">{brl(falta)}</span></> : null}
-          </p>
-          {falta === 0
-            ? <p className="text-[11px] font-semibold text-emerald-600">Pago por inteiro ✓</p>
-            : recebido > 0 ? <p className="text-[11px] font-semibold text-emerald-600">Entrada no caixa ✓</p> : null}
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {items.map((it, i) => <span key={i} className="rounded-md bg-secondary/60 px-2 py-1 text-xs text-secondary-foreground">{it}</span>)}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm">
-        <span className="flex items-center gap-3 text-muted-foreground">
-          <span className="flex items-center gap-1"><CalendarDays className="h-4 w-4" /> {formatDateBR(enc.delivery?.date)} {enc.delivery?.time}</span>
-          <span className="flex items-center gap-1">
-            {enc.delivery?.type === 'delivery' ? <><Bike className="h-4 w-4" /> Entrega</> : <><Store className="h-4 w-4" /> Retirada</>}
-          </span>
-        </span>
         <div className="flex items-center gap-2">
-          {allowStatus && (
-            <select
-              value={status}
-              onChange={(ev) => onStatus(ev.target.value as EncomendaStatus)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              title="Status"
-            >
-              {ALL_STATUS.map((s) => <option key={s} value={s}>{ENCOMENDA_STATUS_LABEL[s]}</option>)}
-            </select>
-          )}
-          {sinalPendente && (
-            <Button size="sm" onClick={onLancarSinal} disabled={lancando} className="bg-emerald-600 text-white hover:bg-emerald-700">
-              {lancando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Banknote className="mr-1 h-3.5 w-3.5" />}
-              Lançar sinal no caixa
+          {allowEdit && (
+            <Button size="icon" variant="outline" className="h-8 w-8" title="Editar" onClick={onEdit}>
+              <Pencil className="h-4 w-4 text-amber-500" />
             </Button>
           )}
-          {/* O resto do dinheiro: aparece da hora que a encomenda fica pronta
-              até ela estar paga — inclusive depois de entregue com o caixa
-              fechado, que é quando o saldo costumava se perder. */}
-          {receberPendente && (
-            <Button size="sm" onClick={onReceber} className="bg-emerald-600 text-white hover:bg-emerald-700">
-              <Banknote className="mr-1 h-3.5 w-3.5" /> Receber {brl(falta)}
+          {allowReprint && (
+            <Button size="icon" className="h-8 w-8 bg-blue-500 text-white hover:bg-blue-600" title="Reimprimir" onClick={onPrint}>
+              <Printer className="h-4 w-4" />
             </Button>
           )}
-          {allowEdit && <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="mr-1 h-3.5 w-3.5" /> Editar</Button>}
-          {allowReprint && <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-3.5 w-3.5" /> Reimprimir</Button>}
         </div>
       </div>
 
-      {(enc.comprovanteUrl || enc.bolo?.plate?.imageUrl || (enc.delivery?.type === 'delivery' && (enc.delivery?.street || enc.delivery?.neighborhood))) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          {enc.delivery?.type === 'delivery' && (enc.delivery?.street || enc.delivery?.neighborhood) && (
-            <span className="flex items-center gap-1 text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5" />
-              {[[enc.delivery.street, enc.delivery.number].filter(Boolean).join(', '), enc.delivery.neighborhood].filter(Boolean).join(' · ')}
-              {enc.delivery.feeStatus === 'a_combinar' && <span className="font-semibold text-amber-600">(taxa a combinar)</span>}
-            </span>
-          )}
-          {enc.comprovanteUrl && (
-            <a href={enc.comprovanteUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
-              <Paperclip className="h-3.5 w-3.5" /> Comprovante PIX
-            </a>
-          )}
-          {enc.bolo?.plate?.imageUrl && (
-            <a href={enc.bolo.plate.imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
-              <ImageIcon className="h-3.5 w-3.5" /> Referência da plaquinha
-            </a>
-          )}
+      {/* Trilha das etapas (clicável, igual à do Delivery) */}
+      {allowStatus && (
+        <div className="flex items-center gap-1 rounded-lg bg-slate-50 px-1 py-1.5">
+          {TRILHA.map((etapa, i) => {
+            const cumprida = !cancelada && etapaAtual >= i;
+            return (
+              <button
+                key={etapa}
+                onClick={() => onStatus(etapa)}
+                disabled={cancelada}
+                className={`flex flex-1 items-center justify-center gap-1 rounded py-1 text-[10px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${cumprida ? 'bg-teal-500 text-white' : 'border bg-white text-slate-500 hover:bg-teal-50'}`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${cumprida ? 'bg-white' : 'bg-slate-300'}`} />
+                {ENCOMENDA_STATUS_LABEL[etapa]}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => onStatus('cancelada')}
+            disabled={cancelada}
+            className={`flex items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition-colors disabled:opacity-60 ${cancelada ? 'bg-red-500 text-white' : 'border border-red-200 bg-white text-red-500 hover:bg-red-50'}`}
+            title="Cancelar encomenda"
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      {enc.orderNotes && <p className="mt-2 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground"><b>Obs.:</b> {enc.orderNotes}</p>}
+      {/* Dinheiro */}
+      <div className="rounded-xl border bg-slate-50/70 p-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex gap-5">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total</p>
+              <p className="text-xl font-black leading-tight text-slate-800">{brl(enc.total)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Recebido</p>
+              <p className="text-xl font-black leading-tight text-emerald-600">{brl(recebido)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Falta</p>
+              <p className={`text-xl font-black leading-tight ${falta > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{brl(falta)}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sinalPendente && (
+              <Button size="sm" onClick={onLancarSinal} disabled={lancando} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                {lancando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Banknote className="mr-1 h-3.5 w-3.5" />}
+                Lançar entrada {brl(enc.sinal)}
+              </Button>
+            )}
+            {receberPendente && (
+              <Button size="sm" onClick={onReceber} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                <Banknote className="mr-1 h-3.5 w-3.5" /> Receber {brl(falta)}
+              </Button>
+            )}
+          </div>
+        </div>
+        {falta === 0 && !cancelada && <p className="mt-1 text-[11px] font-semibold text-emerald-600">Paga por inteiro ✓</p>}
+      </div>
+
+      {/* Itens */}
+      <div className="rounded-xl border">
+        <p className="border-b bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Itens</p>
+        <div className="space-y-1 p-3 text-sm">
+          {enc.bolo && (
+            <div className="flex justify-between gap-3">
+              <span className="min-w-0 text-slate-700">
+                Bolo {enc.bolo.weight || enc.bolo.size}{(enc.bolo.flavor || enc.bolo.filling) ? ` · ${enc.bolo.flavor || enc.bolo.filling}` : ''}
+                <span className="block text-[11px] text-slate-400">
+                  {[enc.bolo.shape, enc.bolo.dough, enc.bolo.cover, ...(enc.bolo.extras || []).map((x) => x.name)].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              <span className="shrink-0 font-semibold tabular-nums text-slate-700">{brl(enc.bolo.total)}</span>
+            </div>
+          )}
+          {linhas.map((l) => (
+            <div key={l.id} className="flex justify-between gap-3">
+              <span className="min-w-0 truncate text-slate-700">{l.qty}× {l.name}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-slate-700">{brl(l.total)}</span>
+            </div>
+          ))}
+          {enc.deliveryFee > 0 && (
+            <div className="flex justify-between gap-3 border-t border-dashed pt-1 text-slate-500">
+              <span>Taxa de entrega</span>
+              <span className="tabular-nums">{brl(enc.deliveryFee)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Entrega */}
+      <div className="rounded-xl border">
+        <p className="border-b bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          {enc.delivery?.type === 'delivery' ? 'Entrega' : 'Retirada'}
+        </p>
+        <div className="space-y-1 p-3 text-sm text-slate-600">
+          <p className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-slate-400" />
+            <span className="font-semibold text-slate-800">{formatDateBR(enc.delivery?.date)}</span>
+            {enc.delivery?.time && <span>às {enc.delivery.time}</span>}
+            <span className="flex items-center gap-1 text-slate-400">
+              {enc.delivery?.type === 'delivery' ? <><Bike className="h-3.5 w-3.5" /> Entrega</> : <><Store className="h-3.5 w-3.5" /> Retirada</>}
+            </span>
+          </p>
+          {enc.delivery?.type === 'delivery' && (enc.delivery?.street || enc.delivery?.neighborhood) && (
+            <p className="flex items-start gap-2">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <span>
+                {[[enc.delivery.street, enc.delivery.number].filter(Boolean).join(', '), enc.delivery.complement, enc.delivery.neighborhood, enc.delivery.city].filter(Boolean).join(' · ')}
+                {enc.delivery.feeStatus === 'a_combinar' && <span className="ml-1 font-semibold text-amber-600">(taxa a combinar)</span>}
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {(enc.orderNotes || enc.comprovanteUrl || enc.bolo?.plate?.imageUrl) && (
+        <div className="space-y-2">
+          {enc.orderNotes && (
+            <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900"><b>Obs.:</b> {enc.orderNotes}</p>
+          )}
+          <div className="flex flex-wrap gap-4 text-xs">
+            {enc.comprovanteUrl && (
+              <a href={enc.comprovanteUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
+                <Paperclip className="h-3.5 w-3.5" /> Comprovante PIX
+              </a>
+            )}
+            {enc.bolo?.plate?.imageUrl && (
+              <a href={enc.bolo.plate.imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-semibold text-primary hover:underline">
+                <ImageIcon className="h-3.5 w-3.5" /> Referência da plaquinha
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // Edição LEVE: status, entrega (data/hora/forma), observação e contato.
 // Itens e valores permanecem como o cliente enviou.
