@@ -25,7 +25,6 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
   const [sinalPercent, setSinalPercent] = useState(30);
   const [pixKey, setPixKey] = useState('');
   const [minDays, setMinDays] = useState(3);
-  const [daysLabel, setDaysLabel] = useState('Terça a Sábado');
   const [weekDays, setWeekDays] = useState<number[]>([]);
   const [showInApp, setShowInApp] = useState(false);
   const [pickupOnly, setPickupOnly] = useState(false);
@@ -38,7 +37,6 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setSinalPercent(typeof e.sinalPercent === 'number' ? e.sinalPercent : 30);
     setPixKey(e.pixKey || storeProfile?.creditPixKey || '');
     setMinDays(typeof e.minDays === 'number' ? e.minDays : 3);
-    setDaysLabel(e.daysLabel || 'Terça a Sábado');
     setWeekDays(Array.isArray(e.weekDays) ? e.weekDays : []);
     setShowInApp(e.showInApp === true);
     setPickupOnly(e.pickupOnly === true);
@@ -55,7 +53,9 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setSavingCfg(true);
     try {
       await setDoc(doc(db, 'store_profiles', user.uid), {
-        encomendas: { enabled, showInApp, pickupOnly, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, daysLabel, weekDays },
+        // daysLabel/hours (o texto do bloco "Horário") são salvos pelo editor visual
+        // em "Personalizar a página" — não repetir o campo aqui.
+        encomendas: { enabled, showInApp, pickupOnly, sinalPercent: Number(sinalPercent) || 0, pixKey, minDays: Number(minDays) || 0, weekDays },
       }, { merge: true });
       revalidateStorePages(user.uid);
       toast({ title: 'Configuração salva', description: 'As encomendas usam esses valores a partir de agora.' });
@@ -130,13 +130,9 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
               <Label className="text-sm">Antecedência mínima (dias)</Label>
               <Input type="number" min={0} value={minDays} onChange={(e) => setMinDays(Number(e.target.value))} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-sm">Chave PIX (recebe o sinal)</Label>
               <Input value={pixKey} onChange={(e) => setPixKey(e.target.value)} placeholder="CPF/CNPJ, telefone, e-mail ou chave aleatória" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm">Dias de funcionamento (texto)</Label>
-              <Input value={daysLabel} onChange={(e) => setDaysLabel(e.target.value)} placeholder="Ex.: Terça a Sábado" />
             </div>
           </div>
 
@@ -155,6 +151,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
               })}
             </div>
             <p className="text-xs text-muted-foreground">A página bloqueia datas fora desses dias. Nenhum marcado = todos os dias.</p>
+            <p className="text-xs text-muted-foreground">O texto de horário que o cliente lê ("Terça a Sábado", "09h às 18h") fica logo abaixo, em <strong>Personalizar a página → Horário</strong>.</p>
           </div>
 
           <div className="flex justify-end">

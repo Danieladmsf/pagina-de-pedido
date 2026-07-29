@@ -12,7 +12,7 @@ import { buildEncomendaConfig } from '@/lib/encomendas/config';
 import { type EncomendaContent, mergeContent } from '@/lib/encomendas/content';
 import { Landing } from '@/components/encomendas/Landing';
 import { revalidateStorePages } from '@/lib/revalidate-store';
-import { Loader2, ImageIcon, Upload, ExternalLink, Save, Type } from 'lucide-react';
+import { Loader2, ImageIcon, Upload, ExternalLink, Save, Type, Clock } from 'lucide-react';
 
 type FieldDef = { key: keyof EncomendaContent; label: string; multiline?: boolean; hint?: string };
 const TEXT_FIELDS: FieldDef[] = [
@@ -29,14 +29,25 @@ const TEXT_FIELDS: FieldDef[] = [
   { key: 'ctaSubtitle', label: 'Subtítulo da faixa final', multiline: true, hint: 'Use {sinal} para inserir o percentual do sinal.' },
 ];
 
+// As duas linhas do bloco "Horário" (rodapé da landing) moram FORA de `content`,
+// em encomendas.daysLabel/hours — que é de onde buildEncomendaConfig lê e o wizard
+// reaproveita o daysLabel. Os defaults saem do próprio config para não duplicar.
+type Schedule = { daysLabel: string; hours: string };
+function readSchedule(storeProfile: any): Schedule {
+  const c = buildEncomendaConfig(storeProfile);
+  return { daysLabel: c.daysLabel, hours: c.hours };
+}
+
 export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any; storeProfile: any }) {
   const { toast } = useToast();
   const [content, setContent] = useState<EncomendaContent>(mergeContent(storeProfile?.encomendas?.content));
+  const [schedule, setSchedule] = useState<Schedule>(() => readSchedule(storeProfile));
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setContent(mergeContent(storeProfile?.encomendas?.content));
+    setSchedule(readSchedule(storeProfile));
     setDirty(false);
   }, [storeProfile]);
 
@@ -45,11 +56,16 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
     setDirty(true);
   };
 
+  const setSched = (key: keyof Schedule, value: string) => {
+    setSchedule((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  };
+
   // Config "ao vivo": base do storeProfile + o conteúdo sendo editado (para a prévia).
   const liveConfig = useMemo(() => {
     const base = buildEncomendaConfig(storeProfile);
-    return { ...base, content, logoUrl: content.logoUrl || base.logoUrl };
-  }, [storeProfile, content]);
+    return { ...base, content, logoUrl: content.logoUrl || base.logoUrl, ...schedule };
+  }, [storeProfile, content, schedule]);
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -61,7 +77,7 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
     if (!db || !user?.uid) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { content } }, { merge: true });
+      await setDoc(doc(db, 'store_profiles', user.uid), { encomendas: { content, ...schedule } }, { merge: true });
       revalidateStorePages(user.uid);
       setDirty(false);
       toast({ title: 'Página atualizada', description: 'As mudanças já valem no link público.' });
@@ -97,6 +113,21 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
                 {f.hint && <p className="text-[11px] text-muted-foreground">{f.hint}</p>}
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-4">
+          <p className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-muted-foreground"><Clock className="h-4 w-4" /> Horário</p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Dias de funcionamento</Label>
+              <Input value={schedule.daysLabel} onChange={(e) => setSched('daysLabel', e.target.value)} placeholder="Ex.: Terça a Sábado" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Horário de atendimento</Label>
+              <Input value={schedule.hours} onChange={(e) => setSched('hours', e.target.value)} placeholder="Ex.: 09h às 18h" />
+            </div>
+            <p className="text-[11px] text-muted-foreground">São as duas linhas do bloco "Horário", no rodapé da página. Os dias também aparecem na hora de escolher a data do pedido.</p>
           </div>
         </div>
       </div>
