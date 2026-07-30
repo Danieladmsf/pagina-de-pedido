@@ -12,6 +12,7 @@ import { initializeApp as initializeClientApp, deleteApp as deleteClientApp } fr
 import {
   collection,
   connectFirestoreEmulator,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -141,6 +142,14 @@ await Promise.all([
   admin.doc('campaigns/campaign-a').set({ ownerId: 'owner-a', name: 'Campanha' }),
   admin.doc('categories/category-a').set({ ownerId: 'owner-a', name: 'Categoria' }),
   admin.doc('menuItems/item-a').set({ ownerId: 'owner-a', name: 'Produto', price: 10, stockQuantity: 10 }),
+  admin.doc('stock_movements/move-a').set({
+    ownerId: 'owner-a', itemId: 'item-a', itemName: 'Produto', type: 'entrada',
+    delta: 5, stockBefore: 10, stockAfter: 15, note: 'producao', userName: 'Camila',
+  }),
+  admin.doc('stock_movements/move-b').set({
+    ownerId: 'owner-b', itemId: 'item-b', itemName: 'Outro', type: 'entrada',
+    delta: 1, stockBefore: 0, stockAfter: 1, note: '', userName: '',
+  }),
   admin.doc('store_profiles/owner-a').set({ general: { name: 'Loja A', disableDelivery: false }, isCaixaAberto: true }),
   admin.doc('store_profiles/owner-b').set({ general: { name: 'Loja B' }, isCaixaAberto: true }),
   admin.doc('orders/order-a').set({
@@ -317,6 +326,66 @@ await denied('operador não abre caixa em outra loja', setDoc(doc(caixaOperator,
 await denied('operador não lê o admin_secret da própria loja', getDoc(doc(caixaOperator, 'admin_secrets/owner-a')));
 await denied('operador B não lê pedidos da loja A', getDoc(doc(operatorB, 'orders/order-a')));
 await allowed('operador B lê o caixa da própria loja', getDoc(doc(operatorB, 'cash_registers/register-b')));
+
+// ── Histórico de estoque (stock_movements) ──
+// É um livro de registro: nasce e não muda. E o cliente anônimo do cardápio
+// NÃO pode escrever aqui — foi justamente para não abrir essa porta que a venda
+// não é gravada nesta coleção (a tela deriva as vendas dos pedidos).
+const movimento = (overrides = {}) => ({
+  ownerId: 'owner-a', itemId: 'item-a', itemName: 'Produto', type: 'entrada',
+  delta: 3, stockBefore: 10, stockAfter: 13, note: '', userName: 'teste',
+  ...overrides,
+});
+
+await allowed('owner lê a própria movimentação', getDoc(doc(owner, 'stock_movements/move-a')));
+await allowed('owner lista as movimentações da própria loja', getDocs(
+  query(collection(owner, 'stock_movements'), where('ownerId', '==', 'owner-a')),
+));
+await denied('owner não lê movimentação de outra loja', getDoc(doc(owner, 'stock_movements/move-b')));
+await denied('owner não lista movimentação de outra loja', getDocs(
+  query(collection(owner, 'stock_movements'), where('ownerId', '==', 'owner-b')),
+));
+await allowed('operador ativo lê o histórico da própria loja', getDoc(doc(statusOperator, 'stock_movements/move-a')));
+await denied('operador inativo não lê o histórico', getDoc(doc(inactiveOperator, 'stock_movements/move-a')));
+await denied('operador de outra loja não lê o histórico', getDoc(doc(operatorB, 'stock_movements/move-a')));
+await denied('cliente anônimo não lê o histórico de estoque', getDoc(doc(anonymous, 'stock_movements/move-a')));
+
+await allowed('owner registra movimentação', setDoc(doc(owner, 'stock_movements/mv-owner'), movimento()));
+await allowed('owner registra "sem controle" (stockAfter nulo)', setDoc(doc(owner, 'stock_movements/mv-null'), movimento({
+  type: 'sem_controle', delta: -10, stockAfter: null,
+})));
+await allowed('operador com permissão de estoque registra movimentação', setDoc(
+  doc(balcaoOperator, 'stock_movements/mv-operador'), movimento({ userName: 'op-balcao' }),
+));
+
+await denied('operador sem permissão de estoque não registra', setDoc(
+  doc(statusOperator, 'stock_movements/atk-mv-status'), movimento(),
+));
+await denied('CLIENTE ANÔNIMO não escreve no histórico de estoque', setDoc(
+  doc(anonymous, 'stock_movements/atk-mv-anon'), movimento(),
+));
+await denied('estranho logado não escreve no histórico', setDoc(
+  doc(stranger, 'stock_movements/atk-mv-stranger'), movimento(),
+));
+await denied('owner não registra movimentação para outra loja', setDoc(
+  doc(owner, 'stock_movements/atk-mv-cross'), movimento({ ownerId: 'owner-b' }),
+));
+await denied('não aceita estoque final negativo', setDoc(
+  doc(owner, 'stock_movements/atk-mv-neg'), movimento({ stockAfter: -5 }),
+));
+await denied('não aceita delta que não é número', setDoc(
+  doc(owner, 'stock_movements/atk-mv-delta'), movimento({ delta: 'tres' }),
+));
+await denied('não aceita movimentação sem produto', setDoc(
+  doc(owner, 'stock_movements/atk-mv-item'), movimento({ itemId: 42 }),
+));
+
+// Imutabilidade: sem isto, um lançamento errado poderia ser reescrito e o
+// histórico deixaria de servir para conferir o estoque.
+await denied('owner não altera lançamento já gravado', updateDoc(doc(owner, 'stock_movements/move-a'), { delta: 999 }));
+await denied('owner não apaga lançamento', deleteDoc(doc(owner, 'stock_movements/move-a')));
+await denied('operador não altera lançamento', updateDoc(doc(balcaoOperator, 'stock_movements/move-a'), { delta: 1 }));
+await denied('operador não apaga lançamento', deleteDoc(doc(balcaoOperator, 'stock_movements/move-a')));
 
 console.log('Firestore Rules: todos os cenários passaram.');
 

@@ -329,14 +329,18 @@ service cloud.firestore {
     match /stock_movements/{movementId} {
       allow get, list: if isOwnerOf(resource.data.ownerId)
         || (isActiveOperator() && operatorData().ownerId == resource.data.ownerId);
-      allow create: if (isOwnerOf(request.resource.data.ownerId)
-          || operatorCanAdjustInventory(request.resource.data.ownerId))
-        && request.resource.data.delta is number
+      // Formato primeiro, permissão depois: operatorCanAdjustInventory percorre
+      // 6 checagens com leitura de documento e é o que mais gasta orçamento de
+      // avaliação das rules. Conferir os campos antes faz o payload malformado
+      // cair barato, sem chegar perto do limite de expressões.
+      allow create: if request.resource.data.delta is number
         // stockAfter null = o produto passou a não ter controle de estoque.
         && (request.resource.data.stockAfter == null
           || (request.resource.data.stockAfter is number
             && request.resource.data.stockAfter >= 0))
-        && request.resource.data.itemId is string;
+        && request.resource.data.itemId is string
+        && (isOwnerOf(request.resource.data.ownerId)
+          || operatorCanAdjustInventory(request.resource.data.ownerId));
       allow update, delete: if false;
     }
 
