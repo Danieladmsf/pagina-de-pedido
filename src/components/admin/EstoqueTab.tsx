@@ -344,6 +344,31 @@ export function EstoqueTab({
         </div>
       )}
 
+      {enableInventory && resumo.semControle > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+          <div className="flex items-start gap-3">
+            <PackageSearch className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <strong>
+                {resumo.semControle === 1
+                  ? '1 produto está sem controle de estoque.'
+                  : `${resumo.semControle} produtos estão sem controle de estoque.`}
+              </strong>{' '}
+              Eles vendem sem limite e nunca aparecem como esgotados. Se for de propósito, tudo bem —
+              se não, faça uma entrada para começar a contar.
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-sky-300 bg-white text-sky-800 hover:bg-sky-100"
+            onClick={() => { setView('produtos'); setStatusFilter('sem_controle'); }}
+          >
+            Ver quais são
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4">

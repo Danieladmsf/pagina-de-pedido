@@ -14,7 +14,8 @@ import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 import { brl } from '@/lib/utils';
-import { formatStock } from '@/lib/inventory';
+import { formatStock, normalizeStockInput } from '@/lib/inventory';
+import { applyStockChange } from '@/lib/stock-movements';
 
 interface ProductModalProps {
   db: any;
@@ -160,6 +161,30 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
       } else {
         const ref = doc(collection(db, 'menuItems'));
         await setDoc(ref, { id: ref.id, ...data });
+
+        // Estoque inicial só existe na CRIAÇÃO — aqui não há valor antigo para
+        // sobrescrever, então não repete o bug de desfazer venda. Entra pelo
+        // mesmo caminho de uma reposição, para o histórico nascer completo.
+        const inicial = normalizeStockInput(formData.get('estoqueInicial'));
+        if (effectiveSaleUnit !== 'kg' && inicial !== null && inicial > 0) {
+          try {
+            await applyStockChange(db, {
+              ownerId: user.uid,
+              itemId: ref.id,
+              type: 'entrada',
+              quantity: inicial,
+              note: 'Estoque inicial',
+              userName: user.displayName || user.email || '',
+            });
+          } catch (err: any) {
+            // O produto já existe: não faz sentido derrubar a criação por isto.
+            toast({
+              variant: 'destructive',
+              title: 'Produto criado, mas sem o estoque inicial',
+              description: `Lance a entrada na aba Estoque. (${err?.message || 'erro'})`,
+            });
+          }
+        }
         toast({ title: 'Produto criado com sucesso!' });
       }
       setEditingProduct(null);
@@ -319,14 +344,23 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
               </div>
               {saleUnit !== 'kg' && (
                 <div className="col-span-4 md:col-span-2 space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
-                  {/* Só informativo: a contagem se altera na aba Estoque, por
-                      entrada/saída. Editar aqui desfazia as vendas do período
-                      em que o modal ficava aberto. */}
-                  <div className="flex h-10 items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
-                    {editingProduct?.id ? formatStock(editingProduct) : 'Sem controle'}
-                  </div>
-                  <p className="text-[10px] leading-tight text-muted-foreground">Altere na aba Estoque</p>
+                  {editingProduct?.id ? (
+                    <>
+                      {/* Na EDIÇÃO é só informativo: regravar o número aqui
+                          desfazia as vendas ocorridas com o modal aberto. */}
+                      <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
+                      <div className="flex h-10 items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                        {formatStock(editingProduct)}
+                      </div>
+                      <p className="text-[10px] leading-tight text-muted-foreground">Altere na aba Estoque</p>
+                    </>
+                  ) : (
+                    <>
+                      <Label htmlFor="estoqueInicial" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque inicial</Label>
+                      <Input id="estoqueInicial" name="estoqueInicial" type="number" min="0" step="1" placeholder="∞" />
+                      <p className="text-[10px] leading-tight text-muted-foreground">Vazio = vende sem controle</p>
+                    </>
+                  )}
                 </div>
               )}
               <div className="col-span-4 md:col-span-2 space-y-1.5">
