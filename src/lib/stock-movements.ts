@@ -22,13 +22,22 @@ import { getManagedStock } from './inventory';
  * de escrever nesta coleção.
  */
 
-export type StockMovementType = 'entrada' | 'saida' | 'ajuste' | 'sem_controle';
+/**
+ * O que pode ser LANÇADO hoje. Note que 'ajuste' (digitar o total) não está
+ * aqui: gravar um total absoluto sobrescreve as vendas que entraram entre
+ * contar e salvar — é o mesmo mecanismo que criou as unidades fantasma. Quem
+ * precisa corrigir uma contagem lança a diferença como entrada ou saída.
+ */
+export type StockMovementType = 'entrada' | 'saida' | 'sem_controle';
 
-export const MOVEMENT_LABELS: Record<StockMovementType, string> = {
+/** Inclui o tipo aposentado, porque o histórico já gravado precisa ser lido. */
+export type StockMovementKind = StockMovementType | 'ajuste';
+
+export const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
   entrada: 'Entrada',
   saida: 'Saída',
-  ajuste: 'Ajuste',
   sem_controle: 'Sem controle',
+  ajuste: 'Ajuste',
 };
 
 export interface StockMovement {
@@ -73,10 +82,12 @@ export function parseQuantity(value: unknown): number | null {
  *
  * - entrada:      soma. Em produto sem controle, a entrada INICIA o controle.
  * - saida:        subtrai, nunca abaixo de zero. Não faz sentido em produto sem controle.
- * - ajuste:       define o total (contagem física).
  * - sem_controle: desliga a contagem (volta a vender sem limite). É a única
  *                 saída desse estado — sem ela, começar a controlar um produto
  *                 por engano seria irreversível pela interface.
+ *
+ * Só existe movimento por DIFERENÇA. Não há "definir o total" de propósito:
+ * total absoluto apaga a venda que entrou entre contar e salvar.
  */
 export function computeMovement(
   type: StockMovementType,
@@ -92,17 +103,18 @@ export function computeMovement(
     throw new StockMovementError('Informe uma quantidade válida.');
   }
 
-  if (type === 'ajuste') {
-    return { stockAfter: quantity, delta: quantity - (stockBefore ?? 0) };
-  }
-
   if (type === 'entrada') {
     if (quantity === 0) throw new StockMovementError('Informe quantas unidades entraram.');
     const base = stockBefore ?? 0;
     return { stockAfter: base + quantity, delta: quantity };
   }
 
-  // saida
+  // Sem isto, um tipo antigo vindo de dado gravado (o aposentado 'ajuste', por
+  // exemplo) cairia calado na regra de saída e tiraria estoque sem querer.
+  if (type !== 'saida') {
+    throw new StockMovementError('Tipo de movimentação inválido.');
+  }
+
   if (quantity === 0) throw new StockMovementError('Informe quantas unidades saíram.');
   if (stockBefore === null) {
     throw new StockMovementError('Este produto está sem controle de estoque. Faça uma entrada ou um ajuste primeiro.');
@@ -170,7 +182,7 @@ export interface HistoryRow {
   itemId: string;
   itemName: string;
   /** 'venda' só existe no histórico (é derivada dos pedidos), nunca gravada. */
-  kind: StockMovementType | 'venda';
+  kind: StockMovementKind | 'venda';
   delta: number;
   stockBefore: number | null;
   stockAfter: number | null;

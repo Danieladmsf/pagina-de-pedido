@@ -254,10 +254,17 @@ describe('movimentação manual grava produto e histórico juntos', () => {
     expect(readAll(MOVES)).toHaveLength(1); // a saída barrada não virou histórico
   });
 
-  it('ajuste define o total contado', async () => {
-    await mover('brigadeiro', 'ajuste', 4, 'contagem do fim do dia');
+  it('corrigir contagem é lançar a DIFERENÇA, não o total', async () => {
+    // Contou 4 na prateleira e o sistema diz 10: lança a saída de 6.
+    await mover('brigadeiro', 'saida', 6, 'contagem do fim do dia');
     expect(estoque('brigadeiro')).toBe(4);
-    expect(readAll(MOVES)[0]).toMatchObject({ type: 'ajuste', delta: -6, stockAfter: 4 });
+    expect(readAll(MOVES)[0]).toMatchObject({ type: 'saida', delta: -6, stockAfter: 4 });
+  });
+
+  it('o tipo "ajuste" foi aposentado e não grava nada', async () => {
+    await expect(mover('brigadeiro', 'ajuste', 4)).rejects.toThrow(/inválido/i);
+    expect(estoque('brigadeiro')).toBe(10);
+    expect(readAll(MOVES)).toHaveLength(0);
   });
 
   it('entrada em produto sem controle inicia o controle', async () => {

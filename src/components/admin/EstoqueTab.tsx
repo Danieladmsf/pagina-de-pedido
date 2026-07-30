@@ -274,7 +274,7 @@ export function EstoqueTab({
 
   const openMovement = (item: any, type: StockMovementType) => {
     setPending({ item, type });
-    setQty(type === 'ajuste' ? String(getManagedStock(item.stockQuantity) ?? '') : '');
+    setQty('');
     setNote('');
   };
 
@@ -434,12 +434,12 @@ export function EstoqueTab({
               </button>
             ))}
             <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar produto..."
-                className="pl-9"
+                className="border-2 border-sky-400 pl-9 placeholder:text-sky-700/50 focus-visible:ring-sky-300"
               />
             </div>
           </div>
@@ -448,12 +448,12 @@ export function EstoqueTab({
             {/* Busca em vez de lista suspensa: com 78 produtos, achar um no
                 dropdown é pior do que digitar duas letras. */}
             <div className="relative w-full sm:w-56">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-500" />
               <Input
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder="Buscar produto..."
-                className="h-10 pl-9"
+                className="h-10 border-2 border-sky-400 pl-9 placeholder:text-sky-700/50 focus-visible:ring-sky-300"
               />
             </div>
             <Select value={period} onValueChange={handlePeriodChange}>
@@ -530,13 +530,17 @@ export function EstoqueTab({
                         >
                           <ArrowDownCircle className="h-3.5 w-3.5" /> Saída
                         </Button>
-                        <Button
-                          size="sm" variant="ghost" disabled={!canEdit}
-                          onClick={() => openMovement(item, 'ajuste')}
-                          className="gap-1 text-slate-600"
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" /> Ajustar
-                        </Button>
+                        {/* Única porta de saída do controle de estoque. */}
+                        {getManagedStock(item.stockQuantity) !== null && (
+                          <Button
+                            size="sm" variant="ghost" disabled={!canEdit}
+                            onClick={() => openMovement(item, 'sem_controle')}
+                            title="Deixar este produto vender sem controle de estoque"
+                            className="gap-1 text-slate-500"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" /> Não controlar
+                          </Button>
+                        )}
                       </div>
                     )}
                   </TableCell>
@@ -627,34 +631,40 @@ export function EstoqueTab({
                 <strong>{getManagedStock(pending.item.stockQuantity) ?? 'sem controle'}</strong>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="qtd">
-                  {pending.type === 'entrada' ? 'Quantas unidades entraram?'
-                    : pending.type === 'saida' ? 'Quantas unidades saíram?'
-                    : 'Qual o total contado?'}
-                </Label>
-                <Input
-                  id="qtd" type="number" min="0" step="1" autoFocus
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  placeholder={pending.type === 'ajuste' ? 'total' : 'quantidade'}
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  {pending.type === 'entrada'
-                    ? 'Digite só quanto entrou agora, não o total. O sistema soma ao que já tem no estoque.'
-                    : pending.type === 'saida'
-                      ? 'Digite só quanto saiu. O sistema desconta do que já tem no estoque.'
-                      : 'Use quando contar o que tem na prateleira. Aqui o número é o total, não a diferença.'}
-                </p>
-              </div>
-
-              {preview && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                  Vai ficar com <strong>{preview.stockAfter} unidade(s)</strong>
-                  <span className="text-muted-foreground">
-                    {' '}({preview.before ?? 'sem controle'} {preview.delta >= 0 ? '+' : '−'} {Math.abs(preview.delta)})
-                  </span>
+              {pending.type === 'sem_controle' ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Este produto passa a <strong>vender sem limite</strong>: as vendas deixam de descontar e ele
+                  nunca vai aparecer como esgotado. A contagem atual é descartada. Para voltar a controlar,
+                  basta lançar uma entrada.
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="qtd">
+                      {pending.type === 'entrada' ? 'Quantas unidades entraram?' : 'Quantas unidades saíram?'}
+                    </Label>
+                    <Input
+                      id="qtd" type="number" min="0" step="1" autoFocus
+                      value={qty}
+                      onChange={(e) => setQty(e.target.value)}
+                      placeholder="quantidade"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {pending.type === 'entrada'
+                        ? 'Digite só quanto entrou agora, não o total. O sistema soma ao que já tem no estoque.'
+                        : 'Digite só quanto saiu. O sistema desconta do que já tem no estoque.'}
+                    </p>
+                  </div>
+
+                  {preview && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                      Vai ficar com <strong>{preview.stockAfter} unidade(s)</strong>
+                      <span className="text-muted-foreground">
+                        {' '}({preview.before ?? 'sem controle'} {preview.delta >= 0 ? '+' : '−'} {Math.abs(preview.delta)})
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="space-y-1.5">
@@ -662,30 +672,21 @@ export function EstoqueTab({
                 <Textarea
                   id="obs" rows={2} value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder={pending.type === 'entrada' ? 'ex.: produção da tarde' : pending.type === 'saida' ? 'ex.: quebra, degustação' : 'ex.: contagem do fim do dia'}
+                  placeholder={pending.type === 'entrada' ? 'ex.: produção da tarde' : pending.type === 'saida' ? 'ex.: quebra, degustação' : 'ex.: não vou contar este item'}
                 />
               </div>
             </div>
           )}
 
-          {/* Única porta de saída do controle de estoque. Sem ela, começar a
-              contar um produto por engano seria irreversível pela interface. */}
-          {pending?.type === 'ajuste' && getManagedStock(pending.item.stockQuantity) !== null && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSave('sem_controle')}
-              className="w-full rounded-lg border border-dashed border-slate-200 p-2 text-xs text-muted-foreground transition-colors hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50"
-            >
-              Não quero controlar o estoque deste produto — vender sem limite
-            </button>
-          )}
-
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPending(null)} disabled={saving}>Cancelar</Button>
-            <Button onClick={() => handleSave()} disabled={saving || parseQuantity(qty) === null}>
+            <Button
+              onClick={() => handleSave()}
+              disabled={saving || (pending?.type !== 'sem_controle' && parseQuantity(qty) === null)}
+              variant={pending?.type === 'sem_controle' ? 'destructive' : 'default'}
+            >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Registrar
+              {pending?.type === 'sem_controle' ? 'Deixar sem controle' : 'Registrar'}
             </Button>
           </DialogFooter>
         </DialogContent>

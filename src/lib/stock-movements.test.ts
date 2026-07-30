@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MOVEMENT_LABELS,
   StockMovementError,
   buildMovementsCsv,
   computeMovement,
@@ -78,17 +79,23 @@ describe('computeMovement — saida', () => {
   });
 });
 
-describe('computeMovement — ajuste', () => {
-  it('define o total contado', () => {
-    expect(computeMovement('ajuste', 3, 12)).toEqual({ stockAfter: 12, delta: 9 });
+describe('"ajuste" foi aposentado', () => {
+  /**
+   * Digitar o TOTAL era o modelo antigo: sobrescreve a venda que entrou entre
+   * contar e salvar — o mesmo mecanismo das unidades fantasma. Correção de
+   * contagem agora é lançada como diferença (entrada ou saída). O tipo sobrevive
+   * só como rótulo, porque já existem lançamentos gravados com ele.
+   */
+  it('não é aceito como movimentação nova', () => {
+    expect(() => computeMovement('ajuste' as any, 3, 12)).toThrow(StockMovementError);
   });
 
-  it('ajustar para zero é permitido (foi o que ela fez no ESPETÃO)', () => {
-    expect(computeMovement('ajuste', 3, 0)).toEqual({ stockAfter: 0, delta: -3 });
+  it('não cai calado na regra de saída', () => {
+    expect(() => computeMovement('ajuste' as any, 10, 4)).toThrow(/inválido/i);
   });
 
-  it('registra a diferença quando o produto não tinha controle', () => {
-    expect(computeMovement('ajuste', null, 8)).toEqual({ stockAfter: 8, delta: 8 });
+  it('continua tendo rótulo, para o histórico antigo permanecer legível', () => {
+    expect(MOVEMENT_LABELS.ajuste).toBe('Ajuste');
   });
 });
 
@@ -114,7 +121,7 @@ describe('computeMovement — sem_controle', () => {
 describe('computeMovement — validação geral', () => {
   it('recusa quantidade negativa em qualquer tipo', () => {
     expect(() => computeMovement('entrada', 5, -1)).toThrow(StockMovementError);
-    expect(() => computeMovement('ajuste', 5, -1)).toThrow(StockMovementError);
+    expect(() => computeMovement('saida', 5, -1)).toThrow(StockMovementError);
   });
 });
 
