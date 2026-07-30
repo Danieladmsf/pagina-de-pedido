@@ -92,6 +92,25 @@ describe('computeMovement — ajuste', () => {
   });
 });
 
+describe('computeMovement — sem_controle', () => {
+  /**
+   * É a ÚNICA porta de saída do controle de estoque desde que o campo saiu do
+   * cadastro do produto. Sem ela, começar a contar um produto por engano seria
+   * irreversível pela interface.
+   */
+  it('desliga a contagem e devolve o que estava contado como saída', () => {
+    expect(computeMovement('sem_controle', 12, 0)).toEqual({ stockAfter: null, delta: -12 });
+  });
+
+  it('funciona mesmo em produto que já estava sem controle', () => {
+    expect(computeMovement('sem_controle', null, 0)).toEqual({ stockAfter: null, delta: 0 });
+  });
+
+  it('ignora a quantidade digitada', () => {
+    expect(computeMovement('sem_controle', 5, 999)).toEqual({ stockAfter: null, delta: -5 });
+  });
+});
+
 describe('computeMovement — validação geral', () => {
   it('recusa quantidade negativa em qualquer tipo', () => {
     expect(() => computeMovement('entrada', 5, -1)).toThrow(StockMovementError);

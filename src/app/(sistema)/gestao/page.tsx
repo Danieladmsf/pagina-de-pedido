@@ -954,7 +954,6 @@ export default function GestaoPage() {
                       <TableHead className="w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('price')}>
                         <div className="flex items-center">Valor {sortConfig?.key === 'price' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
-                      <TableHead className="w-[100px] text-center">Estoque</TableHead>
                       <TableHead className="w-[200px] cursor-pointer select-none hover:bg-muted/50 transition-colors" onClick={() => handleSort('categoryName')}>
                         <div className="flex items-center">Categoria {sortConfig?.key === 'categoryName' ? <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown className="ml-1 h-3 w-3 opacity-20" />}</div>
                       </TableHead>
@@ -967,7 +966,7 @@ export default function GestaoPage() {
                   <TableBody>
                     {filteredItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-sm text-muted-foreground">
+                        <TableCell colSpan={7} className="h-32 text-center text-sm text-muted-foreground">
                           Nenhum produto ou marmita encontrado nesta categoria.
                         </TableCell>
                       </TableRow>
@@ -1029,31 +1028,6 @@ export default function GestaoPage() {
                               setQuickPriceEdit({ id: item.id, name: item.name, price: item.price || 0 });
                             }}
                           >{brl((item.price || 0))}{item.saleUnit === 'kg' ? '/kg' : ''}</TableCell>
-                          <TableCell className="text-center">
-                            {item.saleUnit === 'kg' ? (
-                              <span className="text-xs text-slate-400">por kg</span>
-                            ) : (
-                              // Somente leitura de propósito. Editar o total aqui obrigava a
-                              // dona a somar de cabeça em cima de um número que muda com as
-                              // vendas ("tem 15, saiu mais 15, ponho 30") — e a conta nascia
-                              // errada se entrasse pedido no meio. A alteração agora é por
-                              // entrada/saída na aba Estoque, onde quem soma é o sistema.
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleTabChange('estoque'); }}
-                                title="Movimentar na aba Estoque"
-                                className={`mx-auto flex h-8 w-20 items-center justify-center rounded-md border text-sm font-semibold transition-colors hover:bg-slate-50 ${
-                                  typeof item.stockQuantity !== 'number'
-                                    ? 'border-slate-200 text-slate-400'
-                                    : item.stockQuantity <= 0
-                                      ? 'border-red-200 bg-red-50 text-red-600'
-                                      : 'border-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {typeof item.stockQuantity === 'number' ? item.stockQuantity : '∞'}
-                              </button>
-                            )}
-                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{catName}</TableCell>
                           <TableCell className="text-center">
                             <div className="mx-auto flex w-[160px] items-center justify-center gap-2">

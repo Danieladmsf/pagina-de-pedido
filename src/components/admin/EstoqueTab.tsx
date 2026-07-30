@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { getManagedStock } from '@/lib/inventory';
+import { getEffectiveStock, getManagedStock } from '@/lib/inventory';
 import {
   HISTORY_LABELS,
   MOVEMENT_LABELS,
@@ -85,6 +85,7 @@ export function EstoqueTab({
   const { toast } = useToast();
   const [view, setView] = useState<'produtos' | 'historico'>('produtos');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'esgotados' | 'sem_controle'>('todos');
   const [period, setPeriod] = useState('30');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -102,9 +103,18 @@ export function EstoqueTab({
   );
   const { data: movements, isLoading: loadingMovements } = useCollection(movementsQuery);
 
+  /**
+   * Combo não tem estoque próprio: o dele é o menor dos componentes, e a venda
+   * abate os componentes. Movimentar um combo gravaria um número que o sistema
+   * ignora — por isso ele aparece só para consulta.
+   */
+  const isDerived = (item: any) => !!item?.isCombo || item?.saleUnit === 'kg';
+
+  const movableItems = useMemo(() => (items || []).filter((i) => !isDerived(i)), [items]);
+
   const controlled = useMemo(
-    () => (items || []).filter((i) => getManagedStock(i.stockQuantity) !== null),
-    [items],
+    () => movableItems.filter((i) => getManagedStock(i.stockQuantity) !== null),
+    [movableItems],
   );
 
   const resumo = useMemo(() => {
@@ -112,25 +122,33 @@ export function EstoqueTab({
     const unidades = controlled.reduce((s, i) => s + (getManagedStock(i.stockQuantity) || 0), 0);
     return {
       controlados: controlled.length,
-      semControle: (items || []).length - controlled.length,
+      semControle: movableItems.length - controlled.length,
       zerados: zerados.length,
       zeradosAtivos: zerados.filter((i) => i.isAvailable !== false).length,
       unidades,
     };
-  }, [controlled, items]);
+  }, [controlled, movableItems]);
 
   const filteredItems = useMemo(() => {
     const term = removeAccents(search.trim().toLowerCase());
-    const list = (items || []).filter((i) => !term || removeAccents((i.name || '').toLowerCase()).includes(term));
-    // Esgotado primeiro: é o que precisa de ação.
+    const list = (items || []).filter((i) => {
+      if (term && !removeAccents((i.name || '').toLowerCase()).includes(term)) return false;
+      if (statusFilter === 'esgotados') return !isDerived(i) && getManagedStock(i.stockQuantity) === 0;
+      if (statusFilter === 'sem_controle') return !isDerived(i) && getManagedStock(i.stockQuantity) === null;
+      return true;
+    });
+    // Esgotado primeiro: é o que precisa de ação. Derivado (combo/kg) por último.
     return list.sort((a, b) => {
-      const sa = getManagedStock(a.stockQuantity);
-      const sb = getManagedStock(b.stockQuantity);
-      const ra = sa === null ? 2 : sa === 0 ? 0 : 1;
-      const rb = sb === null ? 2 : sb === 0 ? 0 : 1;
+      const rank = (i: any) => {
+        if (isDerived(i)) return 3;
+        const s = getManagedStock(i.stockQuantity);
+        return s === null ? 2 : s === 0 ? 0 : 1;
+      };
+      const ra = rank(a);
+      const rb = rank(b);
       return ra !== rb ? ra - rb : (a.name || '').localeCompare(b.name || '');
     });
-  }, [items, search]);
+  }, [items, search, statusFilter]);
 
   /** Intervalo escolhido. `to` inclui o dia inteiro (até 23:59:59). */
   const range = useMemo(() => {
@@ -257,9 +275,10 @@ export function EstoqueTab({
     setNote('');
   };
 
-  const handleSave = async () => {
+  const handleSave = async (override?: StockMovementType) => {
     if (!pending || !db) return;
-    const n = parseQuantity(qty);
+    const type = override ?? pending.type;
+    const n = type === 'sem_controle' ? 0 : parseQuantity(qty);
     if (n === null) {
       toast({ variant: 'destructive', title: 'Quantidade inválida', description: 'Digite um número inteiro, sem sinal de menos.' });
       return;
@@ -269,14 +288,16 @@ export function EstoqueTab({
       const res = await applyStockChange(db, {
         ownerId,
         itemId: pending.item.id,
-        type: pending.type,
+        type,
         quantity: n,
         note,
         userName,
       });
       toast({
-        title: `${MOVEMENT_LABELS[pending.type]} registrada`,
-        description: `${res.itemName}: ${res.stockBefore ?? 'sem controle'} → ${res.stockAfter} unidade(s).`,
+        title: `${MOVEMENT_LABELS[type]} registrada`,
+        description: res.stockAfter === null
+          ? `${res.itemName} passa a vender sem limite.`
+          : `${res.itemName}: ${res.stockBefore ?? 'sem controle'} → ${res.stockAfter} unidade(s).`,
       });
       setPending(null);
     } catch (err: any) {
@@ -302,7 +323,8 @@ export function EstoqueTab({
   };
 
   const stockBadge = (item: any) => {
-    const stock = getManagedStock(item.stockQuantity);
+    // Combo mostra o estoque derivado dos componentes; os demais, o próprio.
+    const stock = getEffectiveStock(item, items || []);
     if (stock === null) return <Badge variant="outline" className="text-slate-500">Sem controle</Badge>;
     if (stock === 0) return <Badge className="bg-red-500 hover:bg-red-600">Esgotado</Badge>;
     if (stock <= 3) return <Badge className="bg-amber-500 hover:bg-amber-600">{stock} un.</Badge>;
@@ -364,14 +386,34 @@ export function EstoqueTab({
         </Tabs>
 
         {view === 'produtos' ? (
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar produto..."
-              className="pl-9"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { id: 'todos', label: 'Todos' },
+              { id: 'esgotados', label: `Esgotados (${resumo.zerados})` },
+              { id: 'sem_controle', label: `Sem controle (${resumo.semControle})` },
+            ] as const).map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setStatusFilter(chip.id)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  statusFilter === chip.id
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar produto..."
+                className="pl-9"
+              />
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -431,35 +473,42 @@ export function EstoqueTab({
                 <TableRow key={item.id}>
                   <TableCell className="pl-6">
                     <div className="font-medium text-slate-800">{item.name}</div>
+                    {item.isCombo && (
+                      <span className="text-[11px] text-muted-foreground">combo · o estoque vem dos itens que o compõem</span>
+                    )}
                     {item.saleUnit === 'kg' && (
-                      <span className="text-[11px] text-muted-foreground">vendido por peso</span>
+                      <span className="text-[11px] text-muted-foreground">vendido por peso · não conta unidade</span>
                     )}
                   </TableCell>
                   <TableCell className="text-center">{stockBadge(item)}</TableCell>
                   <TableCell className="pr-6">
-                    <div className="flex justify-end gap-1.5">
-                      <Button
-                        size="sm" variant="outline" disabled={!canEdit || item.saleUnit === 'kg'}
-                        onClick={() => openMovement(item, 'entrada')}
-                        className="gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                      >
-                        <ArrowUpCircle className="h-3.5 w-3.5" /> Entrada
-                      </Button>
-                      <Button
-                        size="sm" variant="outline" disabled={!canEdit || item.saleUnit === 'kg'}
-                        onClick={() => openMovement(item, 'saida')}
-                        className="gap-1 border-red-200 text-red-700 hover:bg-red-50"
-                      >
-                        <ArrowDownCircle className="h-3.5 w-3.5" /> Saída
-                      </Button>
-                      <Button
-                        size="sm" variant="ghost" disabled={!canEdit || item.saleUnit === 'kg'}
-                        onClick={() => openMovement(item, 'ajuste')}
-                        className="gap-1 text-slate-600"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5" /> Ajustar
-                      </Button>
-                    </div>
+                    {isDerived(item) ? (
+                      <div className="text-right text-xs text-muted-foreground">Só consulta</div>
+                    ) : (
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          size="sm" variant="outline" disabled={!canEdit}
+                          onClick={() => openMovement(item, 'entrada')}
+                          className="gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        >
+                          <ArrowUpCircle className="h-3.5 w-3.5" /> Entrada
+                        </Button>
+                        <Button
+                          size="sm" variant="outline" disabled={!canEdit}
+                          onClick={() => openMovement(item, 'saida')}
+                          className="gap-1 border-red-200 text-red-700 hover:bg-red-50"
+                        >
+                          <ArrowDownCircle className="h-3.5 w-3.5" /> Saída
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost" disabled={!canEdit}
+                          onClick={() => openMovement(item, 'ajuste')}
+                          className="gap-1 text-slate-600"
+                        >
+                          <SlidersHorizontal className="h-3.5 w-3.5" /> Ajustar
+                        </Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -589,9 +638,22 @@ export function EstoqueTab({
             </div>
           )}
 
+          {/* Única porta de saída do controle de estoque. Sem ela, começar a
+              contar um produto por engano seria irreversível pela interface. */}
+          {pending?.type === 'ajuste' && getManagedStock(pending.item.stockQuantity) !== null && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => handleSave('sem_controle')}
+              className="w-full rounded-lg border border-dashed border-slate-200 p-2 text-xs text-muted-foreground transition-colors hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50"
+            >
+              Não quero controlar o estoque deste produto — vender sem limite
+            </button>
+          )}
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPending(null)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving || parseQuantity(qty) === null}>
+            <Button onClick={() => handleSave()} disabled={saving || parseQuantity(qty) === null}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Registrar
             </Button>

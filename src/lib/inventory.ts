@@ -100,6 +100,16 @@ export function isOutOfStock(
   return stock !== null && stock <= 0;
 }
 
+/**
+ * Estoque em texto, para exibição. Uma função só para todas as telas não
+ * divergirem de novo no que "sem número" significa.
+ */
+export function formatStock(item: StockItemLike | null | undefined, allItems?: StockItemLike[]): string {
+  const stock = getEffectiveStock(item, allItems);
+  if (stock === null) return 'Sem controle';
+  return stock === 0 ? 'Esgotado' : `${stock} un.`;
+}
+
 export interface CartStockCheck {
   allowed: boolean;
   message?: string;

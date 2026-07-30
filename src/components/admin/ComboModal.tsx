@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { doc, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { MenuItem, ComboItem } from '@/lib/types';
 import { brl, normalizeSearch } from '@/lib/utils';
+import { formatStock } from '@/lib/inventory';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Upload, X } from 'lucide-react';
@@ -235,7 +236,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                         onCheckedChange={() => handleToggleItem(item)}
                       />
                       <Label htmlFor={`combo-item-${item.id}`} className="flex-1 cursor-pointer font-normal text-sm">
-                        {item.name} <span className="text-muted-foreground ml-1">({brl(item.price)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'})</span>
+                        {item.name} <span className="text-muted-foreground ml-1">({brl(item.price)} · Estoque: {formatStock(item)})</span>
                       </Label>
                     </div>
                   ))}
@@ -260,7 +261,7 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
                     selectedItems.map((item) => {
                       const fullItem = items.find(i => i.id === item.itemId);
                       const stockDisplay = fullItem 
-                        ? (typeof fullItem.stockQuantity === 'number' ? `${fullItem.stockQuantity} un.` : 'Ilimitado')
+                        ? formatStock(fullItem)
                         : 'Ilimitado';
                       return (
                         <div key={item.itemId} className="flex items-center justify-between p-2 bg-white rounded border border-slate-100 shadow-sm">

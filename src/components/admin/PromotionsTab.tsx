@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { brl, normalizeSearch } from '@/lib/utils';
+import { formatStock } from '@/lib/inventory';
 import { deleteItemWarning, deleteMenuItemWithCleanup } from '@/lib/menu-item-delete';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -717,7 +718,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{item.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)} · Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'}
+                            {categoriesMap[item.categoryId] || ''} · {brl(item.price || 0)} · Estoque: {formatStock(item)}
                             {lockedInOther && <span className="text-red-500 font-bold ml-1">• Já em "{lockedInOther}"</span>}
                           </p>
                         </div>
@@ -758,7 +759,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                           <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
                             <span>Original: {brl(fi.originalPrice)}</span>
                             <span className="text-slate-300">•</span>
-                            <span>Estoque: {typeof item.stockQuantity === 'number' ? `${item.stockQuantity} un.` : 'Ilimitado'}</span>
+                            <span>Estoque: {formatStock(item)}</span>
                             {discountPct > 0 && (
                               <>
                                 <span className="text-slate-300">•</span>

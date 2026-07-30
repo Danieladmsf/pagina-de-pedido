@@ -332,8 +332,10 @@ service cloud.firestore {
       allow create: if (isOwnerOf(request.resource.data.ownerId)
           || operatorCanAdjustInventory(request.resource.data.ownerId))
         && request.resource.data.delta is number
-        && request.resource.data.stockAfter is number
-        && request.resource.data.stockAfter >= 0
+        // stockAfter null = o produto passou a não ter controle de estoque.
+        && (request.resource.data.stockAfter == null
+          || (request.resource.data.stockAfter is number
+            && request.resource.data.stockAfter >= 0))
         && request.resource.data.itemId is string;
       allow update, delete: if false;
     }

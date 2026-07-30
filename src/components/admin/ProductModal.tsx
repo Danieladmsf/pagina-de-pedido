@@ -14,7 +14,7 @@ import Image from 'next/image';
 import { uploadImage } from '@/lib/upload';
 import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 import { brl } from '@/lib/utils';
-import { normalizeStockInput } from '@/lib/inventory';
+import { formatStock } from '@/lib/inventory';
 
 interface ProductModalProps {
   db: any;
@@ -110,16 +110,12 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     const price = parseFloat(priceStr) || 0;
     
     const effectiveSaleUnit = isMarmita ? 'un' : saleUnit;
-    const stockQuantityStr = formData.get('stockQuantity') as string;
-    // Itens por peso não usam estoque por unidade — sempre sem limite (null).
-    // Vazio = ilimitado; qualquer número vira inteiro >= 0 (nunca negativo).
-    const stockQuantity = effectiveSaleUnit === 'kg' ? null : normalizeStockInput(stockQuantityStr);
 
-    // Só grava o estoque quando ele REALMENTE mudou. Sem isso, salvar o produto
-    // por outro motivo (preço, foto) regravava o número que estava na tela quando
-    // o modal abriu e desfazia as baixas das vendas ocorridas nesse meio-tempo.
-    const storedStock = editingProduct?.stockQuantity ?? null;
-    const stockUnchanged = !!editingProduct?.id && storedStock === stockQuantity;
+    // Esta tela NÃO mexe em estoque — a contagem vive só na aba Estoque, por
+    // entrada/saída. A única exceção é regra de dado, não edição: item vendido
+    // por peso não tem estoque por unidade, então zera o controle ao virar kg
+    // (senão ficaria preso a um número velho que ninguém mais consegue mudar).
+    const clearStockForKg = effectiveSaleUnit === 'kg' && editingProduct?.stockQuantity != null;
 
     let imageUrl = editingProduct?.imageUrl || '';
     
@@ -145,7 +141,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         name,
         price,
         saleUnit: effectiveSaleUnit,
-        ...(stockUnchanged ? {} : { stockQuantity }),
+        ...(clearStockForKg ? { stockQuantity: null } : {}),
         categoryId,
         description,
         ownerId: user.uid,
@@ -323,8 +319,14 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
               </div>
               {saleUnit !== 'kg' && (
                 <div className="col-span-4 md:col-span-2 space-y-1.5">
-                  <Label htmlFor="stockQuantity" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
-                  <Input id="stockQuantity" name="stockQuantity" type="number" min="0" step="1" defaultValue={editingProduct?.stockQuantity ?? ''} placeholder="∞" />
+                  <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Estoque</Label>
+                  {/* Só informativo: a contagem se altera na aba Estoque, por
+                      entrada/saída. Editar aqui desfazia as vendas do período
+                      em que o modal ficava aberto. */}
+                  <div className="flex h-10 items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                    {editingProduct?.id ? formatStock(editingProduct) : 'Sem controle'}
+                  </div>
+                  <p className="text-[10px] leading-tight text-muted-foreground">Altere na aba Estoque</p>
                 </div>
               )}
               <div className="col-span-4 md:col-span-2 space-y-1.5">

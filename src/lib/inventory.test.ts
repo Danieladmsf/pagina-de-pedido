@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkCartStock,
   computeStockDelta,
+  formatStock,
   getEffectiveStock,
   getManagedStock,
   getStockDemand,
@@ -92,6 +93,27 @@ describe('getEffectiveStock (combo)', () => {
   it('componente com estoque negativo zera o combo', () => {
     const combo = { id: 'c4', isCombo: true, comboItems: [{ itemId: 'refri' }, { itemId: 'furado' }] };
     expect(getEffectiveStock(combo, items)).toBe(0);
+  });
+});
+
+describe('formatStock', () => {
+  it('fala a mesma língua em todas as telas', () => {
+    expect(formatStock({ id: 'a', stockQuantity: 7 })).toBe('7 un.');
+    expect(formatStock({ id: 'a', stockQuantity: 0 })).toBe('Esgotado');
+    expect(formatStock({ id: 'a', stockQuantity: null })).toBe('Sem controle');
+  });
+
+  it('negativo aparece como esgotado, não como sem controle', () => {
+    expect(formatStock({ id: 'a', stockQuantity: -2 })).toBe('Esgotado');
+  });
+
+  it('combo mostra o estoque derivado dos componentes', () => {
+    const all = [
+      { id: 'x', stockQuantity: 9 },
+      { id: 'y', stockQuantity: 2 },
+    ];
+    const combo = { id: 'c', isCombo: true, comboItems: [{ itemId: 'x' }, { itemId: 'y' }] };
+    expect(formatStock(combo, all)).toBe('2 un.');
   });
 });
 

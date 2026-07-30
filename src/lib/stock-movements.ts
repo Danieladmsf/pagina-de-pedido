@@ -22,12 +22,13 @@ import { getManagedStock } from './inventory';
  * de escrever nesta coleção.
  */
 
-export type StockMovementType = 'entrada' | 'saida' | 'ajuste';
+export type StockMovementType = 'entrada' | 'saida' | 'ajuste' | 'sem_controle';
 
 export const MOVEMENT_LABELS: Record<StockMovementType, string> = {
   entrada: 'Entrada',
   saida: 'Saída',
   ajuste: 'Ajuste',
+  sem_controle: 'Sem controle',
 };
 
 export interface StockMovement {
@@ -40,7 +41,8 @@ export interface StockMovement {
   delta: number;
   /** null = o produto não tinha controle de estoque antes. */
   stockBefore: number | null;
-  stockAfter: number;
+  /** null = passou a não ter controle de estoque. */
+  stockAfter: number | null;
   note: string;
   userName: string;
   createdAt?: any;
@@ -69,15 +71,23 @@ export function parseQuantity(value: unknown): number | null {
  * Calcula o resultado de uma movimentação. Puro — a transação usa isto e os
  * testes cobrem as regras sem precisar do Firestore.
  *
- * - entrada: soma. Em produto sem controle, a entrada INICIA o controle.
- * - saida:   subtrai, nunca abaixo de zero. Não faz sentido em produto sem controle.
- * - ajuste:  define o total (contagem física).
+ * - entrada:      soma. Em produto sem controle, a entrada INICIA o controle.
+ * - saida:        subtrai, nunca abaixo de zero. Não faz sentido em produto sem controle.
+ * - ajuste:       define o total (contagem física).
+ * - sem_controle: desliga a contagem (volta a vender sem limite). É a única
+ *                 saída desse estado — sem ela, começar a controlar um produto
+ *                 por engano seria irreversível pela interface.
  */
 export function computeMovement(
   type: StockMovementType,
   stockBefore: number | null,
   quantity: number,
-): { stockAfter: number; delta: number } {
+): { stockAfter: number | null; delta: number } {
+  if (type === 'sem_controle') {
+    // `-(0)` em JS é -0, que vazaria como "-0" no histórico e no CSV.
+    return { stockAfter: null, delta: stockBefore ? -stockBefore : 0 };
+  }
+
   if (!Number.isFinite(quantity) || quantity < 0) {
     throw new StockMovementError('Informe uma quantidade válida.');
   }
