@@ -144,6 +144,14 @@ export function EstoqueTab({
     return { from: new Date(Date.now() - Number(period) * 86400000), to: null as Date | null };
   }, [period, customFrom, customTo]);
 
+  // Os campos de data ficam SEMPRE na tela: num preset eles mostram o intervalo
+  // equivalente (para ela enxergar o que está filtrando), e mexer em qualquer um
+  // deles passa para personalizado.
+  const shownFrom = period === 'custom'
+    ? customFrom
+    : period === 'all' ? '' : toInputDate(new Date(Date.now() - Number(period) * 86400000));
+  const shownTo = period === 'custom' ? customTo : period === 'all' ? '' : toInputDate(new Date());
+
   const inRange = React.useCallback(
     (date: Date | null) => {
       if (!date) return true; // sem data conhecida: não esconde o lançamento
@@ -222,13 +230,25 @@ export function EstoqueTab({
     }
   }, [pending, qty]);
 
-  /** Ao entrar no personalizado, já chega com os últimos 30 dias preenchidos. */
+  /** Ao escolher personalizado, herda o intervalo que já estava sendo mostrado. */
   const handlePeriodChange = (value: string) => {
-    if (value === 'custom' && !customFrom && !customTo) {
-      setCustomFrom(toInputDate(new Date(Date.now() - 30 * 86400000)));
-      setCustomTo(toInputDate(new Date()));
+    if (value === 'custom') {
+      setCustomFrom(shownFrom || toInputDate(new Date(Date.now() - 30 * 86400000)));
+      setCustomTo(shownTo || toInputDate(new Date()));
     }
     setPeriod(value);
+  };
+
+  /** Mexer numa das datas vira personalizado, preservando a outra ponta. */
+  const handleDateChange = (which: 'from' | 'to', value: string) => {
+    if (period !== 'custom') {
+      setCustomFrom(which === 'from' ? value : shownFrom);
+      setCustomTo(which === 'to' ? value : shownTo);
+      setPeriod('custom');
+      return;
+    }
+    if (which === 'from') setCustomFrom(value);
+    else setCustomTo(value);
   };
 
   const openMovement = (item: any, type: StockMovementType) => {
@@ -370,21 +390,19 @@ export function EstoqueTab({
                 {PERIODS.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            {period === 'custom' && (
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="date" value={customFrom} max={customTo || undefined}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  aria-label="Data inicial" className="h-10 w-[150px]"
-                />
-                <span className="text-xs text-muted-foreground">até</span>
-                <Input
-                  type="date" value={customTo} min={customFrom || undefined}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  aria-label="Data final" className="h-10 w-[150px]"
-                />
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date" value={shownFrom} max={shownTo || undefined}
+                onChange={(e) => handleDateChange('from', e.target.value)}
+                aria-label="Data inicial" className="h-10 w-[150px]"
+              />
+              <span className="text-xs text-muted-foreground">até</span>
+              <Input
+                type="date" value={shownTo} min={shownFrom || undefined}
+                onChange={(e) => handleDateChange('to', e.target.value)}
+                aria-label="Data final" className="h-10 w-[150px]"
+              />
+            </div>
             <Button variant="outline" onClick={handleExport} className="gap-1.5">
               <Download className="h-4 w-4" /> Exportar
             </Button>
