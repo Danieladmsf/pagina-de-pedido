@@ -9,6 +9,7 @@ import {
   Download,
   Loader2,
   PackageSearch,
+  PowerOff,
   Search,
   TriangleAlert,
 } from 'lucide-react';
@@ -21,7 +22,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -492,14 +492,13 @@ export function EstoqueTab({
               <TableRow>
                 <TableHead className="pl-6">Produto</TableHead>
                 <TableHead className="w-[140px] text-center">Estoque</TableHead>
-                <TableHead className="w-[150px] text-center">Controlar</TableHead>
-                <TableHead className="w-[240px] pr-6 text-right">Movimentar</TableHead>
+                <TableHead className="w-[280px] pr-6 text-right">Movimentar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="h-32 text-center text-sm text-muted-foreground">
                     Nenhum produto encontrado.
                   </TableCell>
                 </TableRow>
@@ -515,37 +514,21 @@ export function EstoqueTab({
                     )}
                   </TableCell>
                   <TableCell className="text-center">{stockBadge(item)}</TableCell>
-                  <TableCell className="text-center">
-                    {isDerived(item) ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : (
-                      // Interruptor mostra o ESTADO, não a ação. Um botão escrito
-                      // "Não controlar" ao lado de um selo "Sem controle" parecia
-                      // estado quebrado, e não deixava claro como voltar atrás.
-                      <div className="flex items-center justify-center gap-2">
-                        <Switch
-                          checked={controlado(item)}
-                          disabled={!canEdit}
-                          onCheckedChange={(ligar) => openMovement(item, ligar ? 'entrada' : 'sem_controle')}
-                          aria-label={`Controlar estoque de ${item.name}`}
-                        />
-                        <span className={`text-xs font-medium ${controlado(item) ? 'text-emerald-700' : 'text-slate-400'}`}>
-                          {controlado(item) ? 'Controlando' : 'Desligado'}
-                        </span>
-                      </div>
-                    )}
-                  </TableCell>
                   <TableCell className="pr-6">
                     {isDerived(item) ? (
                       <div className="text-right text-xs text-muted-foreground">Só consulta</div>
                     ) : (
                       <div className="flex justify-end gap-1.5">
+                        {/* Em produto sem contagem, a Entrada é justamente o que
+                            liga o controle — então o botão diz isso, em vez de
+                            existir um interruptor separado fazendo o mesmo. */}
                         <Button
                           size="sm" variant="outline" disabled={!canEdit}
                           onClick={() => openMovement(item, 'entrada')}
                           className="gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                         >
-                          <ArrowUpCircle className="h-3.5 w-3.5" /> Entrada
+                          <ArrowUpCircle className="h-3.5 w-3.5" />
+                          {controlado(item) ? 'Entrada' : 'Controlar'}
                         </Button>
                         <Button
                           size="sm" variant="outline"
@@ -556,6 +539,19 @@ export function EstoqueTab({
                         >
                           <ArrowDownCircle className="h-3.5 w-3.5" /> Saída
                         </Button>
+                        {/* Único caminho para sair da contagem. Discreto: e uma
+                            acao rara, mas sem ela o produto fica preso contado. */}
+                        {controlado(item) && (
+                          <Button
+                            size="sm" variant="ghost" disabled={!canEdit}
+                            onClick={() => openMovement(item, 'sem_controle')}
+                            title="Parar de contar o estoque deste produto"
+                            aria-label={`Parar de contar o estoque de ${item.name}`}
+                            className="px-2 text-slate-400 hover:text-slate-700"
+                          >
+                            <PowerOff className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </TableCell>
