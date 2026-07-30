@@ -10,7 +10,6 @@ import {
   Loader2,
   PackageSearch,
   Search,
-  SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react';
 
@@ -22,6 +21,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -109,6 +109,9 @@ export function EstoqueTab({
    * ignora — por isso ele aparece só para consulta.
    */
   const isDerived = (item: any) => !!item?.isCombo || item?.saleUnit === 'kg';
+
+  /** Este produto está tendo o estoque contado? */
+  const controlado = (item: any) => getManagedStock(item?.stockQuantity) !== null;
 
   const movableItems = useMemo(() => (items || []).filter((i) => !isDerived(i)), [items]);
 
@@ -489,13 +492,14 @@ export function EstoqueTab({
               <TableRow>
                 <TableHead className="pl-6">Produto</TableHead>
                 <TableHead className="w-[140px] text-center">Estoque</TableHead>
-                <TableHead className="w-[320px] pr-6 text-right">Movimentar</TableHead>
+                <TableHead className="w-[150px] text-center">Controlar</TableHead>
+                <TableHead className="w-[240px] pr-6 text-right">Movimentar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="h-32 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
                     Nenhum produto encontrado.
                   </TableCell>
                 </TableRow>
@@ -511,6 +515,26 @@ export function EstoqueTab({
                     )}
                   </TableCell>
                   <TableCell className="text-center">{stockBadge(item)}</TableCell>
+                  <TableCell className="text-center">
+                    {isDerived(item) ? (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    ) : (
+                      // Interruptor mostra o ESTADO, não a ação. Um botão escrito
+                      // "Não controlar" ao lado de um selo "Sem controle" parecia
+                      // estado quebrado, e não deixava claro como voltar atrás.
+                      <div className="flex items-center justify-center gap-2">
+                        <Switch
+                          checked={controlado(item)}
+                          disabled={!canEdit}
+                          onCheckedChange={(ligar) => openMovement(item, ligar ? 'entrada' : 'sem_controle')}
+                          aria-label={`Controlar estoque de ${item.name}`}
+                        />
+                        <span className={`text-xs font-medium ${controlado(item) ? 'text-emerald-700' : 'text-slate-400'}`}>
+                          {controlado(item) ? 'Controlando' : 'Desligado'}
+                        </span>
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="pr-6">
                     {isDerived(item) ? (
                       <div className="text-right text-xs text-muted-foreground">Só consulta</div>
@@ -524,23 +548,14 @@ export function EstoqueTab({
                           <ArrowUpCircle className="h-3.5 w-3.5" /> Entrada
                         </Button>
                         <Button
-                          size="sm" variant="outline" disabled={!canEdit}
+                          size="sm" variant="outline"
+                          disabled={!canEdit || !controlado(item)}
+                          title={controlado(item) ? undefined : 'Sem controle: não há estoque de onde tirar'}
                           onClick={() => openMovement(item, 'saida')}
                           className="gap-1 border-red-200 text-red-700 hover:bg-red-50"
                         >
                           <ArrowDownCircle className="h-3.5 w-3.5" /> Saída
                         </Button>
-                        {/* Única porta de saída do controle de estoque. */}
-                        {getManagedStock(item.stockQuantity) !== null && (
-                          <Button
-                            size="sm" variant="ghost" disabled={!canEdit}
-                            onClick={() => openMovement(item, 'sem_controle')}
-                            title="Deixar este produto vender sem controle de estoque"
-                            className="gap-1 text-slate-500"
-                          >
-                            <SlidersHorizontal className="h-3.5 w-3.5" /> Não controlar
-                          </Button>
-                        )}
                       </div>
                     )}
                   </TableCell>
@@ -620,7 +635,9 @@ export function EstoqueTab({
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>
-              {pending ? `${MOVEMENT_LABELS[pending.type]} — ${pending.item.name}` : ''}
+              {pending
+                ? `${pending.type === 'entrada' && !controlado(pending.item) ? 'Começar a controlar' : MOVEMENT_LABELS[pending.type]} — ${pending.item.name}`
+                : ''}
             </DialogTitle>
           </DialogHeader>
 
@@ -641,7 +658,11 @@ export function EstoqueTab({
                 <>
                   <div className="space-y-1.5">
                     <Label htmlFor="qtd">
-                      {pending.type === 'entrada' ? 'Quantas unidades entraram?' : 'Quantas unidades saíram?'}
+                      {pending.type !== 'entrada'
+                        ? 'Quantas unidades saíram?'
+                        : controlado(pending.item)
+                          ? 'Quantas unidades entraram?'
+                          : 'Quantas unidades você tem agora?'}
                     </Label>
                     <Input
                       id="qtd" type="number" min="0" step="1" autoFocus
@@ -650,9 +671,11 @@ export function EstoqueTab({
                       placeholder="quantidade"
                     />
                     <p className="text-[11px] text-muted-foreground">
-                      {pending.type === 'entrada'
-                        ? 'Digite só quanto entrou agora, não o total. O sistema soma ao que já tem no estoque.'
-                        : 'Digite só quanto saiu. O sistema desconta do que já tem no estoque.'}
+                      {pending.type !== 'entrada'
+                        ? 'Digite só quanto saiu. O sistema desconta do que já tem no estoque.'
+                        : controlado(pending.item)
+                          ? 'Digite só quanto entrou agora, não o total. O sistema soma ao que já tem no estoque.'
+                          : 'A partir daqui este produto passa a ser contado, e as vendas vão descontar.'}
                     </p>
                   </div>
 

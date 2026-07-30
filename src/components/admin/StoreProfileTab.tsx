@@ -614,24 +614,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
               </div>
             </section>
 
-            {/* SEÇÃO EXTRA — Controle de Estoque */}
-            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-blue-500/15 border border-indigo-500/20 flex items-center justify-center">
-                    <ShoppingBag className="h-5 w-5 text-indigo-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-slate-800">Controle de Estoque</h2>
-                    <p className="text-xs text-muted-foreground">Exibir quantidade disponível e bloquear vendas de produtos esgotados.</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={formData.enableInventory}
-                  onCheckedChange={(checked) => setFormData({ ...formData, enableInventory: checked })}
-                />
-              </header>
-            </section>
+            {/* O controle de estoque tinha DOIS interruptores nesta mesma tela,
+                ligados no mesmo campo — parecia duas configurações diferentes.
+                Ficou só o de baixo, que explica o que acontece ao ligar. */}
 
             {/* SEÇÃO 4 — Endereço */}
             <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
