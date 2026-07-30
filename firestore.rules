@@ -46,17 +46,47 @@ service cloud.firestore {
       return operatorData().get('permissions', {}).get('pdv', {});
     }
 
+    // As checagens abaixo recebem o bloco de permissões JÁ RESOLVIDO em vez de
+    // chamar operatorPdvPermissions() de novo a cada linha. Cada chamada dessa
+    // relê o documento do operador, e as regras de pedido encadeiam dezenas
+    // delas — era o que estourava o limite de 1000 expressões das rules.
+    // O `&&` garante que a leitura só acontece depois de isOperatorOf passar.
+    function pdvAllowsTab(pdv, tab) {
+      return pdv.get('enabled', false) == true
+        && pdv.get('tabs', {}).get(tab, false) == true;
+    }
+
+    function pdvAllowsAction(pdv, group, action) {
+      return pdvAllowsTab(pdv, group)
+        && pdv.get('actions', {}).get(group, {}).get(action, false) == true;
+    }
+
+    // O documento do operador é lido UMA vez e desce por parâmetro. Antes cada
+    // checagem o relia três vezes (duas em isOperatorOf, uma nas permissões);
+    // multiplicado pelas dezenas de checagens das regras de pedido, era isso
+    // que estourava o orçamento de avaliação.
+    function operatorDocMatches(d, ownerId) {
+      return d.active == true && d.ownerId == ownerId;
+    }
+
+    function pdvOf(d) {
+      return d.get('permissions', {}).get('pdv', {});
+    }
+
+    function operatorTabOk(d, ownerId, tab) {
+      return operatorDocMatches(d, ownerId) && pdvAllowsTab(pdvOf(d), tab);
+    }
+
+    function operatorActionOk(d, ownerId, group, action) {
+      return operatorDocMatches(d, ownerId) && pdvAllowsAction(pdvOf(d), group, action);
+    }
+
     function operatorCanPdvTab(ownerId, tab) {
-      return isOperatorOf(ownerId)
-        && operatorPdvPermissions().get('enabled', false) == true
-        && operatorPdvPermissions().get('tabs', {}).get(tab, false) == true;
+      return isOperator() && operatorTabOk(operatorData(), ownerId, tab);
     }
 
     function operatorCanPdvAction(ownerId, group, action) {
-      return isOperatorOf(ownerId)
-        && operatorPdvPermissions().get('enabled', false) == true
-        && operatorPdvPermissions().get('tabs', {}).get(group, false) == true
-        && operatorPdvPermissions().get('actions', {}).get(group, {}).get(action, false) == true;
+      return isOperator() && operatorActionOk(operatorData(), ownerId, group, action);
     }
 
     function operatorCanPdvGlobal(ownerId, control) {
@@ -93,15 +123,22 @@ service cloud.firestore {
       );
     }
 
+    // Oito capacidades diferentes mexem em estoque. Resolvendo as permissões uma
+    // única vez, em vez de oito, o custo desta função cai na mesma proporção.
+    function pdvAllowsInventory(pdv) {
+      return pdvAllowsAction(pdv, 'delivery', 'finalizarPedido')
+        || pdvAllowsAction(pdv, 'delivery', 'editarItens')
+        || pdvAllowsAction(pdv, 'delivery', 'cancelarPedido')
+        || pdvAllowsAction(pdv, 'novo_pedido', 'finalizarVenda')
+        || pdvAllowsAction(pdv, 'mesas', 'lancarItens')
+        || pdvAllowsAction(pdv, 'mesas', 'fecharComanda')
+        || pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')
+        || pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline');
+    }
+
     function operatorCanAdjustInventory(ownerId) {
-      return operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
-        || operatorCanPdvAction(ownerId, 'delivery', 'editarItens')
-        || operatorCanPdvAction(ownerId, 'delivery', 'cancelarPedido')
-        || operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda')
-        || operatorCanPdvAction(ownerId, 'mesas', 'lancarItens')
-        || operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
-        || operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
-        || operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline');
+      return isOperator() && operatorDocMatches(operatorData(), ownerId)
+        && pdvAllowsInventory(pdvOf(operatorData()));
     }
 
     function operatorCanOperateCash(ownerId) {
@@ -114,105 +151,125 @@ service cloud.firestore {
         || operatorCanPdvAction(ownerId, 'encomendas_pedidos', 'lancarSinal');
     }
 
-    function operatorCanUpdateDeliveryOrder(ownerId) {
+    function operatorCanUpdateDeliveryOrder(pdv) {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let nextStatus = request.resource.data.get('status', resource.data.get('status', ''));
       return resource.data.get('orderType', '') in ['delivery', 'pickup'] && (
         (nextStatus == 'canceled'
           && changed.hasOnly(['status', 'stockDeducted', 'stockDeductedItems'])
-          && operatorCanPdvAction(ownerId, 'delivery', 'cancelarPedido'))
+          && pdvAllowsAction(pdv, 'delivery', 'cancelarPedido'))
         || (nextStatus == 'delivered'
           && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
             'payDeliveryToMotoboy', 'totalAmount', 'stockDeducted', 'stockDeductedItems'])
-          && operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+          && pdvAllowsAction(pdv, 'delivery', 'finalizarPedido')
           && ((request.resource.data.get('discount', 0)
                 == resource.data.get('discount', 0)
               && request.resource.data.get('surcharge', 0)
                 == resource.data.get('surcharge', 0))
-            || operatorCanPdvAction(ownerId, 'delivery', 'descontoAcrescimo')))
+            || pdvAllowsAction(pdv, 'delivery', 'descontoAcrescimo')))
         || (changed.hasOnly(['items', 'subtotal', 'totalAmount',
               'stockDeducted', 'stockDeductedItems'])
           && changed.hasAny(['items', 'subtotal', 'totalAmount'])
-          && operatorCanPdvAction(ownerId, 'delivery', 'editarItens'))
+          && pdvAllowsAction(pdv, 'delivery', 'editarItens'))
         || (nextStatus != 'delivered' && nextStatus != 'canceled'
           && changed.hasOnly(['status', 'motoboyId', 'orderType'])
-          && operatorCanPdvAction(ownerId, 'delivery', 'mudarStatus'))
+          && pdvAllowsAction(pdv, 'delivery', 'mudarStatus'))
         || (changed.hasOnly(['stockDeducted', 'stockDeductedItems'])
-          && operatorCanAdjustInventory(ownerId))
+          && pdvAllowsInventory(pdv))
         || (changed.hasOnly(['customerCounted'])
           && request.resource.data.customerCounted == true
-          && (operatorCanPdvAction(ownerId, 'delivery', 'finalizarPedido')
+          && (pdvAllowsAction(pdv, 'delivery', 'finalizarPedido')
             || (resource.data.get('source', '') == 'pdv'
-              && operatorCanPdvAction(ownerId, 'novo_pedido', 'finalizarVenda'))))
+              && pdvAllowsAction(pdv, 'novo_pedido', 'finalizarVenda'))))
         || (changed.hasOnly(['receivedMessageSent', 'pixProofMessageSent',
               'outForDeliveryMessageSent', 'canceledMessageSent'])
-          && operatorCanPdvTab(ownerId, 'delivery'))
+          && pdvAllowsTab(pdv, 'delivery'))
       );
     }
 
-    function operatorCanUpdateTableOrder(ownerId) {
+    function operatorCanUpdateTableOrder(pdv) {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let nextStatus = request.resource.data.get('status', resource.data.get('status', ''));
       return resource.data.get('orderType', '') == 'dine_in' && (
         (nextStatus == 'canceled'
           && changed.hasOnly(['status', 'items', 'subtotal', 'totalAmount',
             'stockDeducted', 'stockDeductedItems'])
-          && (operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+          && (pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')
             || (resource.data.get('source', '') != 'pdv'
               && resource.data.get('accepted', false) != true
-              && operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline'))))
+              && pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline'))))
         || (nextStatus == 'delivered'
           && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
             'subtotal', 'totalAmount', 'customerName', 'customerPhone',
             'stockDeducted', 'stockDeductedItems'])
-          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda')
+          && pdvAllowsAction(pdv, 'mesas', 'fecharComanda')
           && ((request.resource.data.get('discount', 0)
                 == resource.data.get('discount', 0)
               && request.resource.data.get('surcharge', 0)
                 == resource.data.get('surcharge', 0))
-            || operatorCanPdvAction(ownerId, 'mesas', 'descontoAcrescimo'))
+            || pdvAllowsAction(pdv, 'mesas', 'descontoAcrescimo'))
           && (!usesContaCasa(request.resource.data)
-            || operatorCanPdvAction(ownerId, 'mesas', 'vendaPrazo')))
+            || pdvAllowsAction(pdv, 'mesas', 'vendaPrazo')))
         || (changed.hasOnly(['items', 'subtotal', 'totalAmount',
               'customerName', 'customerPhone', 'stockDeducted', 'stockDeductedItems'])
           && changed.hasAny(['items', 'subtotal', 'totalAmount'])
-          && operatorCanPdvAction(ownerId, 'mesas', 'lancarItens')
+          && pdvAllowsAction(pdv, 'mesas', 'lancarItens')
           && (!changed.hasAny(['customerName', 'customerPhone'])
-            || operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')))
+            || pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')))
         || (changed.hasOnly(['customerName', 'customerPhone'])
-          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa'))
+          && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa'))
         || (changed.hasOnly(['tableNumber', 'accepted'])
           && changed.hasAny(['tableNumber'])
-          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa')
+          && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')
           && ((resource.data.get('source', '') == 'pdv'
                 || resource.data.get('accepted', false) == true)
-            || operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline')))
+            || pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline')))
         || (changed.hasOnly(['accepted'])
           && request.resource.data.accepted == true
-          && operatorCanPdvAction(ownerId, 'mesas', 'aceitarPedidoOnline'))
+          && pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline'))
         || (changed.hasOnly(['status'])
           && nextStatus == 'awaiting_payment'
-          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda'))
+          && pdvAllowsAction(pdv, 'mesas', 'fecharComanda'))
         || (changed.hasOnly(['status'])
           && nextStatus == 'pending'
-          && operatorCanPdvAction(ownerId, 'mesas', 'gerenciarMesa'))
+          && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa'))
         || (changed.hasOnly(['stockDeducted', 'stockDeductedItems'])
-          && operatorCanAdjustInventory(ownerId))
+          && pdvAllowsInventory(pdv))
         || (changed.hasOnly(['customerCounted'])
           && request.resource.data.customerCounted == true
-          && operatorCanPdvAction(ownerId, 'mesas', 'fecharComanda'))
+          && pdvAllowsAction(pdv, 'mesas', 'fecharComanda'))
         || (changed.hasOnly(['receivedMessageSent', 'pixProofMessageSent',
               'outForDeliveryMessageSent', 'canceledMessageSent'])
-          && operatorCanPdvTab(ownerId, 'mesas'))
+          && pdvAllowsTab(pdv, 'mesas'))
       );
     }
 
+    // Ponto de entrada: identifica o operador e resolve as permissões UMA vez;
+    // as ~25 checagens abaixo trabalham em cima do resultado, sem reconsultar.
     function operatorCanUpdateOrder(ownerId) {
-      return isOperatorOf(ownerId)
+      return isOperator() && operatorUpdateOrderOk(operatorData(), ownerId);
+    }
+
+    function operatorUpdateOrderOk(d, ownerId) {
+      return operatorDocMatches(d, ownerId)
         && !usesContaCasa(resource.data)
         && !usesContaCasa(request.resource.data)
-        && (operatorCanUpdateDeliveryOrder(ownerId)
-          || operatorCanUpdateTableOrder(ownerId));
+        && (operatorCanUpdateDeliveryOrder(pdvOf(d))
+          || operatorCanUpdateTableOrder(pdvOf(d)));
+    }
+
+    /** Uma família por vez (delivery/retirada ou mesa), para dividir o custo. */
+    function operatorCanUpdateOrderFamily(ownerId, ehDelivery) {
+      return isOperator() && operatorUpdateFamilyOk(operatorData(), ownerId, ehDelivery);
+    }
+
+    function operatorUpdateFamilyOk(d, ownerId, ehDelivery) {
+      return operatorDocMatches(d, ownerId)
+        && !usesContaCasa(resource.data)
+        && !usesContaCasa(request.resource.data)
+        && (ehDelivery
+          ? operatorCanUpdateDeliveryOrder(pdvOf(d))
+          : operatorCanUpdateTableOrder(pdvOf(d)));
     }
 
     function cashRegisterOwner(registerId) {
@@ -374,8 +431,13 @@ service cloud.firestore {
         isOwnerOf(resource.data.ownerId) ||
         operatorCanReadOrders(resource.data.ownerId)
       );
-      allow update: if isOwnerOf(resource.data.ownerId)
-        || operatorCanUpdateOrder(resource.data.ownerId);
+      // Separado em três declarações em vez de um `||` só. Cada `allow` é
+      // avaliado por si, então as ~25 checagens de delivery e as de mesa não se
+      // somam no mesmo orçamento de expressões — que é o que vinha estourando o
+      // limite de 1000 e abortando a avaliação no meio.
+      allow update: if isOwnerOf(resource.data.ownerId);
+      allow update: if operatorCanUpdateOrderFamily(resource.data.ownerId, true);
+      allow update: if operatorCanUpdateOrderFamily(resource.data.ownerId, false);
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
         isOwnerOf(request.resource.data.ownerId) ||

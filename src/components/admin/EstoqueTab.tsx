@@ -89,7 +89,7 @@ export function EstoqueTab({
   const [period, setPeriod] = useState('30');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [historyItemId, setHistoryItemId] = useState('all');
+  const [historySearch, setHistorySearch] = useState('');
 
   // Movimentação em edição (null = modal fechado)
   const [pending, setPending] = useState<{ item: any; type: StockMovementType } | null>(null);
@@ -232,9 +232,12 @@ export function EstoqueTab({
       }
     }
 
-    const filtered = historyItemId === 'all' ? rows : rows.filter((r) => r.itemId === historyItemId);
+    const termo = removeAccents(historySearch.trim().toLowerCase());
+    const filtered = termo
+      ? rows.filter((r) => removeAccents((r.itemName || '').toLowerCase()).includes(termo))
+      : rows;
     return filtered.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
-  }, [movements, orders, items, inRange, historyItemId]);
+  }, [movements, orders, items, inRange, historySearch]);
 
   const preview = useMemo(() => {
     if (!pending) return null;
@@ -442,15 +445,17 @@ export function EstoqueTab({
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={historyItemId} onValueChange={setHistoryItemId}>
-              <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os produtos</SelectItem>
-                {controlled.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Busca em vez de lista suspensa: com 78 produtos, achar um no
+                dropdown é pior do que digitar duas letras. */}
+            <div className="relative w-full sm:w-56">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder="Buscar produto..."
+                className="h-10 pl-9"
+              />
+            </div>
             <Select value={period} onValueChange={handlePeriodChange}>
               <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
               <SelectContent>
