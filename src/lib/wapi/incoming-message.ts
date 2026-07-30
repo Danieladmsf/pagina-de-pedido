@@ -13,7 +13,18 @@
  */
 
 export type IncomingMessage = {
+  /**
+   * Telefone real do cliente. Vem VAZIO quando o contato nao esta salvo na
+   * agenda da loja: nesse caso a W-API so entrega o @lid, e o WhatsApp nao
+   * deixa converter LID em telefone (e privacidade, por design).
+   */
   phone: string;
+  /**
+   * Para onde responder — o telefone ou `"<lid>@lid"`. Nunca vazio. A W-API
+   * aceita o @lid no lugar do telefone no campo `phone` do envio, entao da pra
+   * responder um contato novo sem nunca saber o numero dele.
+   */
+  address: string;
   text: string;
   timestamp: number;
 };
@@ -120,6 +131,35 @@ function hasBlockedMessageType(payload: any, data: any, eventName: string) {
     type === 'gp2' ||
     type === 'notification'
   );
+}
+
+/**
+ * Acha o @lid do remetente. So serve de endereco quando NAO veio telefone: o
+ * numero de verdade e sempre preferido, porque e ele que casa com o cadastro
+ * do cliente no resto do sistema.
+ */
+function extractSenderLid(payload: any, data: any) {
+  const candidates = [
+    payload?.sender?.senderLid,
+    data?.sender?.senderLid,
+    payload?.sender?.lid,
+    data?.sender?.lid,
+    payload?.senderLid,
+    data?.senderLid,
+    // Em conversa 1:1 o chat e o proprio contato, entao o chat.id serve de
+    // ultimo recurso. Grupo e status ja foram barrados muito antes daqui.
+    payload?.chat?.id,
+    data?.chat?.id,
+  ];
+
+  for (const candidate of candidates) {
+    const value = firstString(candidate).toLowerCase();
+    if (!value.endsWith('@lid')) continue;
+    const digits = value.slice(0, -'@lid'.length).replace(/\D/g, '');
+    if (digits.length >= 8 && digits.length <= 20) return `${digits}@lid`;
+  }
+
+  return '';
 }
 
 function isReceivedWebhook(event: string, hook?: string) {
@@ -306,8 +346,15 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
 
   const phone = normalizePhone(rawPhone);
   // So numero BR plausivel: 55 + DDD + 8-9 digitos = 12-13. LIDs numericos
-  // (13-15 digitos) passam de 15 com o prefixo 55 e ficam de fora.
-  if (phone.length < 12 || phone.length > 13) return null;
+  // (13-15 digitos) passam de 15 com o prefixo 55 e ficam de fora — o que cai
+  // aqui NAO e telefone, e tratar como se fosse manda mensagem pra estranho.
+  const hasPhone = phone.length >= 12 && phone.length <= 13;
+
+  // Contato novo, fora da agenda da loja: a W-API entrega so o @lid, sem
+  // telefone nenhum. Antes a mensagem morria aqui — era justamente o cliente
+  // novo que clicou no link da loja e mandou "oi" que ficava sem resposta.
+  const lid = hasPhone ? '' : extractSenderLid(payload, data);
+  if (!hasPhone && !lid) return null;
 
   const timestamp = Number(
     firstString(
@@ -321,7 +368,8 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
   );
 
   return {
-    phone,
+    phone: hasPhone ? phone : '',
+    address: hasPhone ? phone : lid,
     text,
     timestamp,
   };

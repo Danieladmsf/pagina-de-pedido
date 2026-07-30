@@ -130,7 +130,9 @@ async function maybeSendAutoReply(params: {
   now: string;
 }) {
   const incoming = extractIncomingMessage(params.payload, params.event, params.hook);
-  if (!incoming?.phone) return false;
+  // `address` e o telefone quando ele veio, senao o "<lid>@lid" — contato fora
+  // da agenda da loja chega so com LID, e a W-API aceita ele no lugar do numero.
+  if (!incoming?.address) return false;
 
   // Proteção contra sincronização de histórico: 
   // Se a mensagem for mais velha que 5 minutos, ignorar para não responder mensagens antigas.
@@ -138,7 +140,7 @@ async function maybeSendAutoReply(params: {
     const msgTimeMs = incoming.timestamp > 9999999999 ? incoming.timestamp : incoming.timestamp * 1000;
     const nowMs = Date.now();
     if (nowMs - msgTimeMs > 5 * 60 * 1000) {
-      console.log('[W-API webhook] Ignorando mensagem antiga (sincronização de histórico):', { phone: incoming.phone, ageMs: nowMs - msgTimeMs });
+      console.log('[W-API webhook] Ignorando mensagem antiga (sincronização de histórico):', { address: incoming.address, ageMs: nowMs - msgTimeMs });
       return false;
     }
   }
@@ -149,7 +151,10 @@ async function maybeSendAutoReply(params: {
 
   const storeSnap = await params.adminDb.collection('store_profiles').doc(params.empresaId).get();
   const storeProfile = storeSnap.exists ? storeSnap.data() : {};
-  const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.phone}`);
+  // Chaveado por `address`: para quem tem telefone o id do doc continua
+  // exatamente o mesmo de antes, entao o historico de quem ja foi saudado
+  // segue valendo. Contato so-LID ganha doc proprio.
+  const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.address}`);
 
   // Claim atomico ANTES do envio (mesmo padrao do whatsapp_send_claims):
   // decidir e gravar o carimbo na mesma transacao faz webhooks concorrentes
@@ -182,6 +187,7 @@ async function maybeSendAutoReply(params: {
     txn.set(contactRef, {
       empresaId: params.empresaId,
       phone: incoming.phone,
+      address: incoming.address,
       ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
       lastInboundAt: params.now,
       updatedAt: params.now,
@@ -200,13 +206,13 @@ async function maybeSendAutoReply(params: {
   try {
     result = reply.imageUrl
       ? await sendWapiImageMessage(integration.wapiInstanceId, token, {
-          phone: incoming.phone,
+          phone: incoming.address,
           image: reply.imageUrl,
           caption: reply.message,
           delayMessage: 2,
         })
       : await sendWapiTextMessage(integration.wapiInstanceId, token, {
-          phone: incoming.phone,
+          phone: incoming.address,
           message: reply.message,
           delayMessage: 2,
         });
@@ -218,6 +224,7 @@ async function maybeSendAutoReply(params: {
   await params.adminDb.collection('whatsapp_auto_replies').add({
     empresaId: params.empresaId,
     phone: incoming.phone,
+    address: incoming.address,
     type: reply.type,
     message: reply.message.slice(0, 500),
     providerMessageId: result?.messageId || result?.insertedId || '',

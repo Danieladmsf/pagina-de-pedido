@@ -125,6 +125,39 @@ const DM_NORMAL = {
 
 const RESPOSTA_DA_LOJA = { ...DM_NORMAL, fromMe: true };
 
+/**
+ * Contato NOVO, fora da agenda da loja: a W-API nao entrega telefone nenhum,
+ * so o @lid, e `pushName` vem vazio. Era o "oi" que ficava sem resposta.
+ */
+const CONTATO_NOVO_SO_LID = {
+  event: 'webhookReceived',
+  instanceId: 'LITE-8NDQT1-UWX43P',
+  connectedPhone: '5516993638485',
+  isGroup: false,
+  fromMe: false,
+  chat: { id: '14113715548383@lid' },
+  sender: { id: '14113715548383', senderLid: '14113715548383@lid', pushName: '' },
+  moment: 1785362270,
+  msgContent: { conversation: 'Oi' },
+};
+
+/** Mesmo caso, vindo de quem clicou no link wa.me da loja. */
+const CONTATO_NOVO_DO_LINK = {
+  event: 'webhookReceived',
+  instanceId: 'LITE-8NDQT1-UWX43P',
+  isGroup: false,
+  fromMe: false,
+  chat: { id: '172842436059186@lid' },
+  sender: { id: '172842436059186', senderLid: '172842436059186@lid', pushName: '' },
+  moment: 1785434899,
+  msgContent: {
+    extendedTextMessage: {
+      text: 'Boa tarde',
+      contextInfo: { entryPointConversionSource: 'click_to_chat_link', entryPointConversionDelaySeconds: 5 },
+    },
+  },
+};
+
 describe('extractIncomingMessage', () => {
   describe('responde a quem comenta o status da loja', () => {
     it('aceita a DM que cita um status (contextInfo.remoteJID = status@broadcast)', () => {
@@ -185,10 +218,48 @@ describe('extractIncomingMessage', () => {
       expect(extractIncomingMessage(DM_NORMAL, 'webhookStatus', 'message-status')).toBeNull();
     });
 
-    it('ignora remetente sem telefone (so LID)', () => {
-      const soLid = { ...DM_NORMAL, chat: { id: '172842436059186@lid' }, sender: { id: '172842436059186' } };
+    it('ignora quem nao tem nem telefone nem LID', () => {
+      const semNada = { ...DM_NORMAL, chat: { id: '' }, sender: { id: '172842436059186' } };
 
-      expect(extractIncomingMessage(soLid, 'webhookReceived', 'received')).toBeNull();
+      expect(extractIncomingMessage(semNada, 'webhookReceived', 'received')).toBeNull();
+    });
+  });
+
+  describe('contato novo, fora da agenda (so @lid)', () => {
+    it('responde pelo @lid quando a W-API nao entrega telefone', () => {
+      const incoming = extractIncomingMessage(CONTATO_NOVO_SO_LID, 'webhookReceived', 'received');
+
+      expect(incoming).not.toBeNull();
+      expect(incoming?.text).toBe('Oi');
+      expect(incoming?.address).toBe('14113715548383@lid');
+      // Sem telefone de verdade: LID nao converte em numero (privacidade do
+      // WhatsApp). Fingir que 55+LID e um telefone mandaria a mensagem pra um
+      // estranho qualquer.
+      expect(incoming?.phone).toBe('');
+    });
+
+    it('responde quem chegou pelo link wa.me da loja', () => {
+      const incoming = extractIncomingMessage(CONTATO_NOVO_DO_LINK, 'webhookReceived', 'received');
+
+      expect(incoming?.address).toBe('172842436059186@lid');
+      expect(incoming?.text).toBe('Boa tarde');
+    });
+
+    it('nunca troca um telefone conhecido pelo LID', () => {
+      const incoming = extractIncomingMessage(DM_NORMAL, 'webhookReceived', 'received');
+
+      // chat.id de DM_NORMAL e "16956547674162@lid", mas sender.id tem o numero
+      expect(incoming?.address).toBe('5516991017726');
+      expect(incoming?.phone).toBe('5516991017726');
+    });
+
+    it('nao usa o LID de um story como endereco', () => {
+      expect(extractIncomingMessage(STORY_DE_CONTATO, 'webhookReceived', 'received')).toBeNull();
+      expect(extractIncomingMessage(STORY_DE_TEXTO, 'webhookReceived', 'received')).toBeNull();
+    });
+
+    it('nao usa o LID de participante de grupo como endereco', () => {
+      expect(extractIncomingMessage(MENSAGEM_DE_GRUPO, 'webhookReceived', 'received')).toBeNull();
     });
   });
 
