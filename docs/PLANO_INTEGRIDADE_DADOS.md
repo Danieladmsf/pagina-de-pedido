@@ -27,7 +27,7 @@ Com duas restrições que valem mais que a velocidade:
 | Pedido → cliente | **Telefone**, como texto — o pedido **não guarda `clienteId`** | 3 pedidos têm **nome** no campo telefone ("LARA", "Cidinha"); 10 formatos diferentes de número na base |
 | Cliente sem telefone | **Nome** (`where('nome','==')`) | Homônimos viram um cliente só — furo ativo |
 | Id do cliente | Existe: `{ownerId}_{telefone}` ou `{ownerId}_n_{slug}` | **Estável** (não muda ao editar o telefone) — mas nenhum pedido o guarda |
-| Id do pedido | Firestore (20 chars) desde 31/07 | 696 pedidos antigos com id curto de `Math.random()` (8 chars) |
+| Id do pedido | Firestore (20 chars) **só na Mesa**, desde 31/07 | **707 de 1.466 pedidos têm id curto de 8 chars** — 234 de mesa (`Math.random`, corrigido) e **390 do cardápio público, que CONTINUA gerando** (`CartDrawer.tsx:693`) |
 | Promoção → produto | `items[].menuItemId` | 13 referências, **todas vivas** hoje |
 | Prefixo de 5 chars | comparação por `startsWith` | **0 colisões** em 1.405 pedidos — mas o pool cresce |
 
@@ -113,6 +113,19 @@ Lista o que a Fase 0 achou: telefone repetido, telefone inválido, homônimos se
 
 **2.2 — Acerto de Prazo antigo.** As 4 linhas antigas casam o cliente **pelo nome escrito no título**. Passam a exibir "sem vínculo" em vez de adivinhar — melhor não mostrar do que apontar o cliente errado (é a mesma regra já aplicada ao pagamento que não é encontrado).
 
+**2.2-b — O código curto do cliente x o id do documento.**
+O checkout público **gera o próprio id de 8 caracteres** (`CartDrawer.tsx:693`) — e isso **não é descuido**: é o número curto que o cliente lê, repete no WhatsApp e procura em "Meus Pedidos". Um id do Firestore de 20 caracteres seria impossível de ditar por telefone.
+
+O erro é ter **uma coisa só fazendo dois trabalhos**: identidade do documento e código legível. Por isso o espaço do prefixo de 5 chars é 60 milhões em vez de 916 milhões — 15x menor —, e **continua encolhendo a cada pedido novo do cardápio**, não só no histórico.
+
+A separação: `orders` passa a nascer com **id do Firestore** e um campo **`orderCode`** curto (o que o cliente vê). Quem exibe passa a ler `orderCode`; quem vincula usa o id.
+
+**Migração obrigatória antes de virar a chave** — o código curto está em lugares que já saíram da nossa mão:
+- links de acompanhamento e mensagens de WhatsApp já enviadas;
+- a tela "Meus Pedidos" e a busca por número no PDV;
+- o cupom impresso (`#` + 5 primeiros caracteres).
+Backfill: todo pedido existente ganha `orderCode = id` (o código continua sendo o que sempre foi). Só depois disso a geração muda. Sem esse passo, pedido antigo fica sem código na tela.
+
 **2.3 — Aposentar o prefixo como fonte primária.** O prefixo de 5 chars continua valendo para o histórico, mas com um corte: **só casa com pedido criado ANTES do lançamento**. Isso elimina o furo de um lançamento de 2026 abrir um pedido de 2027 que por acaso começa igual — sem tocar em dado nenhum, só na comparação.
 
 **Risco:** baixo, tudo em leitura. **Verificação:** as linhas antigas que abriam continuam abrindo; as de encomenda passam a abrir; nenhuma linha nova deixa de abrir.
@@ -196,3 +209,4 @@ Trocar todo vínculo por texto por vínculo por id — a começar por **gravar `
 
 - **31/07/2026** — criado a partir da auditoria (`9314ece`).
 - **31/07/2026** — §5.0 acrescentado. A primeira versão propunha normalizar o telefone e parava aí: tratava o sintoma e deixava a identidade do cliente sendo um texto digitado. O dono apontou a falha ("cliente não tem id? tudo gira em torno de telefone?"). O conserto de raiz é o pedido guardar `clienteId`.
+- **31/07/2026** — §6.2-b acrescentado, corrigindo um **erro meu**: o §2 dizia que os ids curtos tinham parado de nascer com o conserto da Mesa. Não tinham — **o cardápio público continua gerando id de 8 caracteres** (`CartDrawer.tsx:693`), e ele responde por 390 dos 707 pedidos com id curto. Achado por uma auditoria independente do plano; conferido no dado antes de aceitar.
