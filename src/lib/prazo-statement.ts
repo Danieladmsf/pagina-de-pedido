@@ -80,6 +80,38 @@ export function matchOrderForTransaction(tx: CreditTransaction, orders: any[]): 
 }
 
 /**
+ * Compras do extrato cujo pedido NÃO está na lista carregada.
+ *
+ * A tela busca os pedidos do cliente pelo telefone, e o telefone é gravado no
+ * pedido do jeito que foi digitado no PDV ("(16)992156780" numa venda,
+ * "16992156780" na outra) — a busca por formato conhecido erra alguns. Como o
+ * próprio lançamento carrega o pedido (`orderId` nos novos, "#lstG2" nos
+ * antigos), o que faltou pode ser buscado pelo id, e aí o formato do telefone
+ * não importa mais. Devolve separado porque a busca é diferente: id completo é
+ * leitura direta; prefixo antigo é faixa de ids.
+ */
+export function missingOrderRefs(
+  transactions: CreditTransaction[],
+  orders: any[],
+): { ids: string[]; prefixes: string[] } {
+  const ids = new Set<string>();
+  const prefixes = new Set<string>();
+
+  for (const tx of transactions) {
+    if (tx.type !== 'debit') continue;
+    if (matchOrderForTransaction(tx, orders)) continue;
+    if (tx.orderId) {
+      ids.add(tx.orderId);
+      continue;
+    }
+    const ref = legacyOrderRef(tx.description);
+    if (ref) prefixes.add(ref);
+  }
+
+  return { ids: [...ids], prefixes: [...prefixes] };
+}
+
+/**
  * Monta o extrato em ordem cronológica com o saldo acumulado em cada linha.
  * A tela pode filtrar/inverter depois — o saldo de cada linha continua sendo o
  * do momento do lançamento, que é o que o cliente confere.
@@ -143,6 +175,147 @@ export function statementTotals(rows: StatementRow[]): StatementTotals {
     lastPurchaseAt: lastPurchaseAt ? new Date(lastPurchaseAt) : null,
     lastPaymentAt: lastPaymentAt ? new Date(lastPaymentAt) : null,
   };
+}
+
+// ────────────────────────── O que um pagamento quitou ──────────────────────────
+
+export type CoveredPurchase = {
+  /** A compra (débito) que este pagamento abateu. */
+  tx: CreditTransaction;
+  order: any | null;
+  /** Valor cheio da compra. */
+  amount: number;
+  /** Quanto DESTE pagamento entrou nela (menor que `amount` = abatimento parcial). */
+  applied: number;
+  /** A compra ficou quitada depois deste pagamento? */
+  settled: boolean;
+};
+
+export type PaymentAllocation = {
+  /** Saldo devedor imediatamente ANTES do pagamento (negativo = crédito a favor). */
+  balanceBefore: number;
+  paid: number;
+  /** Saldo devedor depois. Negativo = sobrou crédito a favor do cliente. */
+  balanceAfter: number;
+  /** Parte do pagamento que não achou compra em aberto e virou crédito a favor. */
+  leftover: number;
+  /** As compras abatidas, da mais antiga para a mais nova. */
+  covered: CoveredPurchase[];
+};
+
+/**
+ * O que um pagamento quitou.
+ *
+ * O extrato do Prazo é um SALDO CORRENTE: o recebimento entra como um crédito
+ * solto, sem apontar para compra nenhuma. Então "o que foi pago" não está
+ * gravado em lugar nenhum — é reconstruído aqui, quitando da compra mais antiga
+ * para a mais nova (o cliente paga o que está atrasado primeiro), que é como
+ * dono e cliente conferem a conta na prática.
+ *
+ * A reconstrução roda o extrato inteiro até o pagamento, e não só as compras
+ * ainda em aberto hoje: pagamento antigo tem que mostrar o que ele quitou NA
+ * ÉPOCA, senão o acerto de julho apareceria abatendo a compra de agosto.
+ *
+ * Pagamento acima da dívida vira crédito a favor (`leftover`) e é usado nas
+ * compras seguintes — mesmo modelo do saldo negativo da tela do Prazo.
+ */
+export function allocatePayment(
+  transactions: CreditTransaction[],
+  paymentId: string,
+  orders: any[] = [],
+): PaymentAllocation | null {
+  const EPS = 0.009;
+  const ascending = [...transactions].sort((a, b) => toTime(a.date) - toTime(b.date));
+
+  /** Compras ainda em aberto, da mais antiga para a mais nova. */
+  const open: Array<{ tx: CreditTransaction; remaining: number }> = [];
+  /** Pagamento adiantado ainda não consumido por nenhuma compra. */
+  let creditPool = 0;
+
+  for (const tx of ascending) {
+    const amount = Number(tx.amount) || 0;
+
+    if (tx.type === 'debit') {
+      let devido = amount;
+      const usaCredito = Math.min(creditPool, devido);
+      creditPool -= usaCredito;
+      devido -= usaCredito;
+      if (devido > EPS) open.push({ tx, remaining: devido });
+      continue;
+    }
+
+    const isAlvo = tx.id === paymentId;
+    const balanceBefore = open.reduce((s, o) => s + o.remaining, 0) - creditPool;
+    const covered: CoveredPurchase[] = [];
+    let rest = amount;
+
+    while (rest > EPS && open.length > 0) {
+      const head = open[0];
+      const applied = Math.min(head.remaining, rest);
+      head.remaining -= applied;
+      rest -= applied;
+      const settled = head.remaining <= EPS;
+      covered.push({
+        tx: head.tx,
+        order: matchOrderForTransaction(head.tx, orders),
+        amount: Number(head.tx.amount) || 0,
+        applied,
+        settled,
+      });
+      if (settled) open.shift();
+    }
+
+    if (isAlvo) {
+      return {
+        balanceBefore,
+        paid: amount,
+        balanceAfter: balanceBefore - amount,
+        leftover: rest,
+        covered,
+      };
+    }
+
+    creditPool += rest;
+  }
+
+  return null;
+}
+
+/**
+ * Acha, no extrato do cliente, o crédito que corresponde a um recebimento
+ * lançado no caixa.
+ *
+ * Lançamentos novos carregam o id do crédito e casam direto. Os antigos só têm
+ * valor e hora: o caixa grava `serverTimestamp` e o extrato grava o relógio do
+ * navegador, então a comparação é por proximidade, nunca por igualdade. Fora da
+ * janela, só casa se existir um único crédito com aquele valor — melhor não
+ * mostrar nada do que apontar o pagamento errado.
+ */
+export function findPaymentTransaction(
+  transactions: CreditTransaction[],
+  ref: { id?: string | null; amount: number; at?: Date | null; toleranceMs?: number },
+): CreditTransaction | null {
+  if (ref.id) {
+    const exato = transactions.find((tx) => tx.id === ref.id);
+    if (exato) return exato;
+  }
+
+  const candidatos = transactions.filter(
+    (tx) => tx.type === 'credit' && Math.abs((Number(tx.amount) || 0) - ref.amount) < 0.009,
+  );
+  if (candidatos.length === 0) return null;
+
+  const alvo = ref.at ? ref.at.getTime() : NaN;
+  if (!Number.isNaN(alvo)) {
+    const tolerancia = ref.toleranceMs ?? 10 * 60 * 1000;
+    const perto = candidatos
+      .map((tx) => ({ tx, dist: Math.abs(toTime(tx.date) - alvo) }))
+      .filter(({ dist }) => dist <= tolerancia)
+      .sort((a, b) => a.dist - b.dist)[0];
+    if (perto) return perto.tx;
+  }
+
+  return candidatos.length === 1 ? candidatos[0] : null;
 }
 
 // ─────────────────────────────── Exportação ───────────────────────────────

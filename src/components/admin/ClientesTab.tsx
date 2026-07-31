@@ -26,7 +26,7 @@ import { PrazoPage } from '@/components/admin/PrazoPage';
 interface ClientesTabProps {
   db: any;
   user: any;
-  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string; clienteId?: string; creditTxId?: string }) => Promise<void>;
   caixaAberto?: boolean;
 }
 

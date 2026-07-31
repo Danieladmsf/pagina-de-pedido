@@ -16,6 +16,7 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
+import { AcertoPrazoDetalhe, isAcertoPrazo } from '@/components/caixa/AcertoPrazoDetalhe';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1195,7 +1196,11 @@ export function CaixaTab({
                       };
 
                       const vendaOrder = getVendaOrder(lanc);
-                      const isExpandable = !!vendaOrder;
+                      // Acerto de Prazo não é venda de balcão: não tem pedido
+                      // vinculado, e o que ele tem para mostrar (as compras que
+                      // pagou) vem do extrato do cliente.
+                      const isAcerto = isAcertoPrazo(lanc);
+                      const isExpandable = !!vendaOrder || isAcerto;
                       const isOpen = expandedVendaId === linha.key;
                       const isCanceled = !!lanc.canceled;
                       // Só vendas do caixa ABERTO podem ser canceladas/reativadas
@@ -1206,12 +1211,12 @@ export function CaixaTab({
                         <React.Fragment key={linha.key}>
                           <TableRow
                             onClick={isExpandable ? () => setExpandedVendaId(isOpen ? null : linha.key) : undefined}
-                            className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''} ${isCanceled ? 'opacity-70 bg-rose-50/40' : ''}`}
+                            className={`${isExpandable ? 'cursor-pointer' : ''} ${isOpen ? (isAcerto ? 'bg-fuchsia-50/70 hover:bg-fuchsia-50/70' : 'bg-blue-50/70 hover:bg-blue-50/70') : ''} ${isCanceled ? 'opacity-70 bg-rose-50/40' : ''}`}
                           >
                             <TableCell className="pl-6 text-muted-foreground whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 {isExpandable ? (
-                                  <ChevronDown className={`h-4 w-4 text-blue-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                                  <ChevronDown className={`h-4 w-4 ${isAcerto ? 'text-fuchsia-500' : 'text-blue-500'} transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
                                 ) : (
                                   <span className="inline-block w-4" />
                                 )}
@@ -1272,15 +1277,19 @@ export function CaixaTab({
                           {isExpandable && isOpen && (
                             <TableRow className="hover:bg-transparent border-b-0">
                               <TableCell colSpan={7} className="p-0 pl-6 pr-6 pb-2">
-                                <VendaDetalhe
-                                  order={vendaOrder}
-                                  lanc={lanc}
-                                  partes={linha.partes}
-                                  // Venda cancelada não reimprime: o cupom do pedido não
-                                  // tem marca de cancelamento, então sairia uma 2ª via com
-                                  // cara de venda boa.
-                                  onReimprimir={isCanceled ? undefined : () => reimprimirCupomVenda(vendaOrder)}
-                                />
+                                {isAcerto ? (
+                                  <AcertoPrazoDetalhe lanc={lanc} ownerId={ownerId} orders={allOrders || orders || []} />
+                                ) : (
+                                  <VendaDetalhe
+                                    order={vendaOrder}
+                                    lanc={lanc}
+                                    partes={linha.partes}
+                                    // Venda cancelada não reimprime: o cupom do pedido não
+                                    // tem marca de cancelamento, então sairia uma 2ª via com
+                                    // cara de venda boa.
+                                    onReimprimir={isCanceled ? undefined : () => reimprimirCupomVenda(vendaOrder)}
+                                  />
+                                )}
                               </TableCell>
                             </TableRow>
                           )}

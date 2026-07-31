@@ -62,6 +62,10 @@ export interface LancamentoCaixa {
   usuario: string;
   destinatarioId?: string;
   destinatarioTipo?: 'motoboy' | 'freelancer';
+  /** Acerto de Prazo: de quem é a conta baixada (clientes/{id}). Só nos novos. */
+  clienteId?: string;
+  /** Acerto de Prazo: o crédito correspondente no extrato do cliente. */
+  creditTxId?: string;
   /** Cancelamento lógico: a venda fica na lista (apontada como cancelada),
    *  mas sai de TODOS os somatórios (totalizadores, gaveta e fechamento). */
   canceled?: boolean;
@@ -408,13 +412,17 @@ export function useCaixa(options?: UseCaixaOptions) {
     await batch.commit();
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, lancamentos]);
 
-  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo }: {
+  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId }: {
     tipo: 'sangria' | 'suprimento' | 'venda',
     titulo: string,
     valor: number,
     formaPagamento: string,
     destinatarioId?: string,
-    destinatarioTipo?: 'motoboy' | 'freelancer'
+    destinatarioTipo?: 'motoboy' | 'freelancer',
+    /** Acerto de Prazo: conta baixada + crédito correspondente no extrato. Sem
+     *  eles o caixa só teria o nome do cliente escrito no título. */
+    clienteId?: string,
+    creditTxId?: string,
   }) => {
     if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) {
       throw new Error("Não há caixa aberto no momento.");
@@ -433,6 +441,8 @@ export function useCaixa(options?: UseCaixaOptions) {
       ...autoria,
       ...(destinatarioId && { destinatarioId }),
       ...(destinatarioTipo && { destinatarioTipo }),
+      ...(clienteId && { clienteId }),
+      ...(creditTxId && { creditTxId }),
     });
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, caixaAberto]);
 
