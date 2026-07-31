@@ -24,8 +24,9 @@ Com duas restrições que valem mais que a velocidade:
 |---|---|---|
 | Venda do caixa → pedido | `orderId`/`encomendaId` (novos) · prefixo `#abcde` do título (antigos) | **205 de 1.361** lançamentos antigos sem id nenhum: 192 Mesa, 4 encomenda, 9 venda manual |
 | Compra a prazo → pedido | `orderId` desde 28/07 · `encomendaId` desde 31/07 · prefixo na descrição (antigos) | 45 de 51 débitos dependem do prefixo |
-| Pedido → cliente | **Telefone**, como texto | 3 pedidos têm **nome** no campo telefone ("LARA", "Cidinha"); 10 formatos diferentes de número na base |
+| Pedido → cliente | **Telefone**, como texto — o pedido **não guarda `clienteId`** | 3 pedidos têm **nome** no campo telefone ("LARA", "Cidinha"); 10 formatos diferentes de número na base |
 | Cliente sem telefone | **Nome** (`where('nome','==')`) | Homônimos viram um cliente só — furo ativo |
+| Id do cliente | Existe: `{ownerId}_{telefone}` ou `{ownerId}_n_{slug}` | **Estável** (não muda ao editar o telefone) — mas nenhum pedido o guarda |
 | Id do pedido | Firestore (20 chars) desde 31/07 | 696 pedidos antigos com id curto de `Math.random()` (8 chars) |
 | Promoção → produto | `items[].menuItemId` | 13 referências, **todas vivas** hoje |
 | Prefixo de 5 chars | comparação por `startsWith` | **0 colisões** em 1.405 pedidos — mas o pool cresce |
@@ -63,6 +64,30 @@ O que mede:
 ## 5. Fase 1 — Identidade do cliente (o furo que vira dinheiro errado)
 
 O telefone é a única chave entre pedido, cadastro, Prazo e campanhas. Hoje ele é campo livre e, quando falta, o app casa **pelo nome**.
+
+### 1.0 — O conserto de raiz: o pedido passa a guardar `clienteId`
+
+**O cliente já tem id** — `{ownerId}_{telefoneSóDígitos}` na criação, ou `{ownerId}_n_{slug}` sem telefone — e esse id **não muda quando o telefone muda** (editar faz `updateDoc` no mesmo documento). Existe, portanto, uma identidade estável. **Ela só não é usada por ninguém:**
+
+```
+pedido → customerName  (texto)
+         customerPhone (texto)          ← é por aqui que tudo é re-resolvido, toda vez
+         customerUid   (só pedidos do app)
+         clienteId     AUSENTE
+```
+
+Normalizar o telefone (1.1–1.4) reduz o estrago, mas mantém a identidade sendo **um texto que o operador digita**. É a mesma classe de erro do caixa, que ligava a venda ao pedido por um pedaço do título.
+
+**A mudança:** no momento da venda o cliente é resolvido **uma vez** e o pedido grava `clienteId`. Daí em diante o vínculo é por id, e o telefone volta a ser o que deve ser — **a forma de procurar o cliente**, não a forma de guardá-lo.
+
+- Vale para `orders` (PDV, Mesa, Delivery, cardápio público) e `encomendas`.
+- `syncCustomerFromOrder` passa a preferir `order.clienteId`; sem ele, cai no telefone (histórico).
+- O id determinístico **continua existindo** e não muda: ele é o que impede duas sincronizações simultâneas de criarem dois cadastros (foi assim que um nome virou 4 clientes).
+- **Backfill possível e inequívoco:** pedido cujo telefone casa com **exatamente um** cliente ganha `clienteId`. Onde casar com zero ou com mais de um, não se inventa — vai para a tela de conflitos.
+
+**O que isto resolve que a normalização sozinha não resolve:** cliente que troca de número, cadastro corrigido depois da venda, dois cadastros com o mesmo telefone em formatos diferentes, e a exclusão que hoje ressuscita dívida pelo telefone (§7.2) — com `clienteId` a dívida sabe de quem é, independente do número.
+
+**Limite honesto:** resolve os pedidos **novos**. Os antigos continuam ligados por telefone, e continuam funcionando por ele.
 
 **1.1 — Normalizar na escrita, em todos os pontos.**
 Já feito no PDV (`NovoPedidoTab`), na Mesa (`MesasTab`) e no cardápio público (`CartDrawer`, que já normalizava). Falta varrer: cadastro rápido, import de CSV, edição na aba Clientes, encomendas (já normaliza) e qualquer rota de API que aceite telefone. **Um helper único** (`normalizeCreditPhone`), nunca `replace` solto.
@@ -163,4 +188,11 @@ A Fase 1 vem antes porque é a única que ainda está **produzindo** dado ruim t
 
 ## 13. Resumo em uma linha
 
-Trocar todo vínculo por texto por vínculo por id, começando pela identidade do cliente — que é a única que ainda está estragando dado novo —, sem reescrever histórico e com uma verificação automática que impede a volta do problema.
+Trocar todo vínculo por texto por vínculo por id — a começar por **gravar `clienteId` no pedido**, que é o vínculo que ainda estraga dado novo todo dia —, sem reescrever histórico e com uma verificação automática que impede a volta do problema.
+
+---
+
+## 14. Histórico deste plano
+
+- **31/07/2026** — criado a partir da auditoria (`9314ece`).
+- **31/07/2026** — §5.0 acrescentado. A primeira versão propunha normalizar o telefone e parava aí: tratava o sintoma e deixava a identidade do cliente sendo um texto digitado. O dono apontou a falha ("cliente não tem id? tudo gira em torno de telefone?"). O conserto de raiz é o pedido guardar `clienteId`.
