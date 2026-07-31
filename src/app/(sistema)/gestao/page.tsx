@@ -873,10 +873,10 @@ export default function GestaoPage() {
               {editingCombo === null && (
                 <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
                   <h1 className="text-2xl font-black tracking-tight text-slate-800">
-                    {editingProduct !== null ? (editingProduct.isMarmita ? 'Editar Marmita' : 'Editar Produto') : 'Produtos e Marmitas'}
+                    {editingProduct !== null ? (editingProduct.isMarmita ? 'Editar Produto Montável' : 'Editar Produto') : 'Produtos'}
                   </h1>
                   <p className="text-sm text-muted-foreground font-medium">
-                    {editingProduct !== null ? 'Gerencie as configurações deste item.' : 'Gerencie seu cardápio e monte produtos personalizados (Marmitas).'}
+                    {editingProduct !== null ? 'Gerencie as configurações deste item.' : 'Gerencie seu cardápio e monte produtos personalizados.'}
                   </p>
                 </div>
               )}
@@ -902,7 +902,7 @@ export default function GestaoPage() {
               <CardHeader className="flex flex-col gap-2 border-b bg-white p-3 shrink-0">
                 <div className="flex items-center gap-2">
                   <Input
-                    placeholder="Procurar produto ou marmita..."
+                    placeholder="Procurar produto..."
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     className="flex-1"
@@ -967,7 +967,7 @@ export default function GestaoPage() {
                     {filteredItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="h-32 text-center text-sm text-muted-foreground">
-                          Nenhum produto ou marmita encontrado nesta categoria.
+                          Nenhum produto encontrado nesta categoria.
                         </TableCell>
                       </TableRow>
                     ) : filteredItems.map((item) => {
@@ -1825,7 +1825,7 @@ export default function GestaoPage() {
 
             const addonUsageMap = new Map<string, Set<string>>();
             for (const item of (items || [])) {
-              const typeLabel = item.isCombo ? ' (Combo)' : item.isMarmita ? ' (Marmita)' : ' (Produto)';
+              const typeLabel = item.isCombo ? ' (Combo)' : item.isMarmita ? ' (Montável)' : ' (Produto)';
               const statusLabel = item.isAvailable === false ? ' [Inativo]' : '';
               const displayName = `${item.name}${typeLabel}${statusLabel}`;
               
@@ -1878,7 +1878,7 @@ export default function GestaoPage() {
                 >
                   <HelpCircle className="h-4 w-4" />
                 </a>
-                <p className="text-sm text-muted-foreground font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Adicionais da Marmita).</p>
+                <p className="text-sm text-muted-foreground font-medium">Crie itens extras que podem ser vinculados aos seus produtos (ex: Bacon, Molho Extra, Borda Recheada).</p>
               </div>
               <Card className="border shadow-md rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
               <CardContent className="p-0 flex-1 min-h-0 flex flex-col lg:flex-row">

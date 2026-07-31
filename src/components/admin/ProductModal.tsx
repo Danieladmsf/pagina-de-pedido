@@ -304,9 +304,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     setGroups(newGroups);
   };
 
-  const pageTitle = editingProduct.id 
-    ? (isMarmita ? 'Editar Marmita/Prato Montável' : 'Editar Produto') 
-    : (isMarmita ? 'Nova Marmita/Prato Montável' : 'Novo Produto');
+  const pageTitle = editingProduct.id
+    ? (isMarmita ? 'Editar Produto Montável' : 'Editar Produto')
+    : (isMarmita ? 'Novo Produto Montável' : 'Novo Produto');
 
   return (
     <div className="space-y-4">
@@ -326,7 +326,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-12 md:col-span-4 space-y-1.5">
                 <Label htmlFor="name" className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Nome</Label>
-                <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Marmitex M" : "Ex: X-Burguer"} required />
+                <Input id="name" name="name" defaultValue={editingProduct?.name} placeholder={isMarmita ? "Ex: Monte o Seu M" : "Ex: X-Burguer"} required />
               </div>
               <div className="col-span-12 md:col-span-4 space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Categoria</Label>
@@ -664,7 +664,7 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
           Cancelar
         </Button>
         <Button type="submit" form="product-form" className="h-10 px-10 font-bold" disabled={uploadingImage}>
-          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : (isMarmita ? 'Salvar Marmita' : 'Salvar Produto')}
+          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar Produto'}
         </Button>
       </div>
     </div>
