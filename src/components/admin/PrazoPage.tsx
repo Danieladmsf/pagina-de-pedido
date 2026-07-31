@@ -169,7 +169,9 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // resgatados pelo id que o próprio extrato carrega (ver o efeito abaixo).
   const [ordersPorTelefone, setOrdersPorTelefone] = useState<any[]>([]);
   const [ordersPorId, setOrdersPorId] = useState<any[]>([]);
+  const [telefoneResolvido, setTelefoneResolvido] = useState(false);
   const pedidosBuscadosRef = React.useRef<Set<string>>(new Set());
+  const clienteBuscadoRef = React.useRef<string | undefined>(cliente?.id);
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const phoneDigits = normalizeCreditPhone(cliente?.celular || '');
@@ -192,13 +194,15 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // Pedidos do cliente (por telefone): dão os itens de cada compra do extrato.
   React.useEffect(() => {
     pedidosBuscadosRef.current = new Set();
+    clienteBuscadoRef.current = cliente?.id;
     setOrdersPorId([]);
-    if (!db || !ownerId || !cliente?.celular) { setOrdersPorTelefone([]); return; }
+    setTelefoneResolvido(false);
+    if (!db || !ownerId || !cliente?.celular) { setOrdersPorTelefone([]); setTelefoneResolvido(true); return; }
     let cancelled = false;
     (async () => {
       try {
         const variants = getPhoneVariants(cliente.celular).slice(0, 30);
-        if (variants.length === 0) { setOrdersPorTelefone([]); return; }
+        if (variants.length === 0) { setOrdersPorTelefone([]); setTelefoneResolvido(true); return; }
         const snap = await getDocs(query(
           collection(db, 'orders'),
           where('ownerId', '==', ownerId),
@@ -208,10 +212,12 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
       } catch (err) {
         console.error('[PrazoPage] Erro ao carregar pedidos do cliente:', err);
         if (!cancelled) setOrdersPorTelefone([]);
+      } finally {
+        if (!cancelled) setTelefoneResolvido(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [db, ownerId, cliente?.celular]);
+  }, [db, ownerId, cliente?.id, cliente?.celular]);
 
   const orders = useMemo(() => {
     const porId = new Map<string, any>();
@@ -225,8 +231,14 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // conhece, e o PDV grava o telefone como foi digitado ("(16)992156780"). Sem
   // isto, a compra fica sem pedido e não abre para mostrar o que foi vendido —
   // some da tela justamente a informação que o cliente veio conferir.
+  //
+  // Duas cautelas que parecem detalhe e não são (custaram um "não abre" em
+  // produção): só roda DEPOIS que a busca por telefone terminou, para saber o
+  // que de fato falta; e o resultado que chega não é descartado quando o efeito
+  // reroda. Descartar era o bug — a marca de "já buscado" impedia a segunda
+  // tentativa, e o pedido ficava perdido para sempre.
   React.useEffect(() => {
-    if (!db || !ownerId || transactions.length === 0) return;
+    if (!db || !ownerId || !telefoneResolvido || transactions.length === 0) return;
 
     const { ids, prefixes } = missingOrderRefs(transactions, orders);
     const idsNovos = ids.filter((id) => !pedidosBuscadosRef.current.has(id));
@@ -237,7 +249,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     idsNovos.forEach((id) => pedidosBuscadosRef.current.add(id));
     prefixosNovos.forEach((prefixo) => pedidosBuscadosRef.current.add(`#${prefixo}`));
 
-    let cancelled = false;
+    const clienteDaBusca = cliente?.id;
     (async () => {
       const encontrados: any[] = [];
       await Promise.all([
@@ -268,12 +280,13 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           }
         }),
       ]);
-      if (!cancelled && encontrados.length > 0) {
+      // O que chegou continua valendo mesmo se o efeito ja rerodou; so nao vale
+      // se a tela ja e de outro cliente (o pedido nao seria dele).
+      if (encontrados.length > 0 && clienteBuscadoRef.current === clienteDaBusca) {
         setOrdersPorId((anteriores) => [...anteriores, ...encontrados]);
       }
     })();
-    return () => { cancelled = true; };
-  }, [db, ownerId, transactions, orders]);
+  }, [db, ownerId, telefoneResolvido, transactions, orders, cliente?.id]);
 
   // ─── Extrato + totais ───
 
