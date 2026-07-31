@@ -4,6 +4,8 @@ import React, { useMemo, useState } from 'react';
 import {
   collection,
   doc,
+  documentId,
+  getDoc,
   getDocs,
   increment,
   orderBy,
@@ -52,6 +54,7 @@ import {
   buildStatement,
   buildStatementCsv,
   exportFileName,
+  missingOrderRefs,
   statementTotals,
   type CreditTransaction,
   type StatementRow,
@@ -68,7 +71,7 @@ interface PrazoPageProps {
   cliente: any;
   onBack: () => void;
   onEditCliente?: (cliente: any) => void;
-  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string; clienteId?: string; creditTxId?: string }) => Promise<void>;
   caixaAberto?: boolean;
 }
 
@@ -124,6 +127,13 @@ const KpiCard = ({
 };
 
 /**
+ * Teto de uma faixa "o id começa com X" no Firestore: o último caractere
+ * Unicode de uso comum. Escrito por código porque, solto no meio da linha,
+ * ele é invisível no editor.
+ */
+const FIM_DA_FAIXA_DE_ID = String.fromCharCode(0xf8ff);
+
+/**
  * Página do Prazo de um cliente (antes um modal de 420px que só listava o
  * extrato). Aqui o dono tem a conta inteira numa tela: saldo reconstruído pelo
  * extrato, filtros por período, recebimento, exportação e impressão.
@@ -155,7 +165,11 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const [configPayDay, setConfigPayDay] = useState(cliente?.creditPayDay ? String(cliente.creditPayDay) : '');
   const [savingConfig, setSavingConfig] = useState(false);
 
-  const [orders, setOrders] = useState<any[]>([]);
+  // Pedidos do cliente em duas levas: os que a busca por telefone trouxe e os
+  // resgatados pelo id que o próprio extrato carrega (ver o efeito abaixo).
+  const [ordersPorTelefone, setOrdersPorTelefone] = useState<any[]>([]);
+  const [ordersPorId, setOrdersPorId] = useState<any[]>([]);
+  const pedidosBuscadosRef = React.useRef<Set<string>>(new Set());
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const phoneDigits = normalizeCreditPhone(cliente?.celular || '');
@@ -177,25 +191,89 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   // Pedidos do cliente (por telefone): dão os itens de cada compra do extrato.
   React.useEffect(() => {
-    if (!db || !ownerId || !cliente?.celular) { setOrders([]); return; }
+    pedidosBuscadosRef.current = new Set();
+    setOrdersPorId([]);
+    if (!db || !ownerId || !cliente?.celular) { setOrdersPorTelefone([]); return; }
     let cancelled = false;
     (async () => {
       try {
         const variants = getPhoneVariants(cliente.celular).slice(0, 30);
-        if (variants.length === 0) { setOrders([]); return; }
+        if (variants.length === 0) { setOrdersPorTelefone([]); return; }
         const snap = await getDocs(query(
           collection(db, 'orders'),
           where('ownerId', '==', ownerId),
           where('customerPhone', 'in', variants),
         ));
-        if (!cancelled) setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        if (!cancelled) setOrdersPorTelefone(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error('[PrazoPage] Erro ao carregar pedidos do cliente:', err);
-        if (!cancelled) setOrders([]);
+        if (!cancelled) setOrdersPorTelefone([]);
       }
     })();
     return () => { cancelled = true; };
   }, [db, ownerId, cliente?.celular]);
+
+  const orders = useMemo(() => {
+    const porId = new Map<string, any>();
+    for (const pedido of [...ordersPorTelefone, ...ordersPorId]) {
+      if (pedido?.id) porId.set(pedido.id, pedido);
+    }
+    return [...porId.values()];
+  }, [ordersPorTelefone, ordersPorId]);
+
+  // Resgate pelo id do pedido: a busca por telefone só acha os formatos que ela
+  // conhece, e o PDV grava o telefone como foi digitado ("(16)992156780"). Sem
+  // isto, a compra fica sem pedido e não abre para mostrar o que foi vendido —
+  // some da tela justamente a informação que o cliente veio conferir.
+  React.useEffect(() => {
+    if (!db || !ownerId || transactions.length === 0) return;
+
+    const { ids, prefixes } = missingOrderRefs(transactions, orders);
+    const idsNovos = ids.filter((id) => !pedidosBuscadosRef.current.has(id));
+    const prefixosNovos = prefixes.filter((prefixo) => !pedidosBuscadosRef.current.has(`#${prefixo}`));
+    if (idsNovos.length === 0 && prefixosNovos.length === 0) return;
+    // Marca antes de buscar: pedido apagado nunca é encontrado, e sem a marca o
+    // efeito voltaria a buscá-lo a cada render.
+    idsNovos.forEach((id) => pedidosBuscadosRef.current.add(id));
+    prefixosNovos.forEach((prefixo) => pedidosBuscadosRef.current.add(`#${prefixo}`));
+
+    let cancelled = false;
+    (async () => {
+      const encontrados: any[] = [];
+      await Promise.all([
+        ...idsNovos.map(async (id) => {
+          try {
+            const snap = await getDoc(doc(db, 'orders', id));
+            // Confere o dono: o id vem de um lançamento, não da query.
+            if (snap.exists() && snap.data()?.ownerId === ownerId) {
+              encontrados.push({ id: snap.id, ...snap.data() });
+            }
+          } catch (err) {
+            console.error('[PrazoPage] Erro ao buscar pedido por id:', err);
+          }
+        }),
+        ...prefixosNovos.map(async (prefixo) => {
+          try {
+            // Faixa de ids que começam com o prefixo — é assim que o Firestore
+            // faz "começa com": do prefixo até ele mais o fim da faixa.
+            const snap = await getDocs(query(
+              collection(db, 'orders'),
+              where('ownerId', '==', ownerId),
+              where(documentId(), '>=', prefixo),
+              where(documentId(), '<', prefixo + FIM_DA_FAIXA_DE_ID),
+            ));
+            snap.docs.forEach((d) => encontrados.push({ id: d.id, ...d.data() }));
+          } catch (err) {
+            console.error('[PrazoPage] Erro ao buscar pedido pelo prefixo do extrato:', err);
+          }
+        }),
+      ]);
+      if (!cancelled && encontrados.length > 0) {
+        setOrdersPorId((anteriores) => [...anteriores, ...encontrados]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [db, ownerId, transactions, orders]);
 
   // ─── Extrato + totais ───
 
@@ -274,7 +352,8 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   // ─── Ações ───
 
-  const registrarCredito = async (amount: number, description: string, method?: string) => {
+  /** Devolve o id do crédito criado — é ele que liga o acerto ao lançamento do caixa. */
+  const registrarCredito = async (amount: number, description: string, method?: string): Promise<string> => {
     const transRef = doc(collection(db, 'clientes', cliente.id, 'credit_transactions'));
     // Lançamento e saldo do cadastro na MESMA escrita: se um falhar, nenhum
     // dos dois entra (era esta divergência que sumia com dinheiro real).
@@ -290,6 +369,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     });
     batch.update(doc(db, 'clientes', cliente.id), { creditBalance: increment(-amount) });
     await batch.commit();
+    return transRef.id;
   };
 
   const handleReceivePayment = async () => {
@@ -337,7 +417,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     setIsSubmitting(true);
     try {
       const forma = FORMAS_RECEBIMENTO.find((f) => f.id === paymentMethod)?.label || paymentMethod;
-      await registrarCredito(amount, `Pagamento recebido (${forma})`, paymentMethod);
+      const creditTxId = await registrarCredito(amount, `Pagamento recebido (${forma})`, paymentMethod);
 
       if (registrarLancamento) {
         await registrarLancamento({
@@ -345,6 +425,10 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           titulo: `Acerto de Prazo - ${cliente.nome || 'Cliente'}`,
           valor: amount,
           formaPagamento: paymentMethod,
+          // Sem estes dois o caixa só teria o nome do cliente escrito no título,
+          // e teria que adivinhar a conta pelo nome para mostrar o que foi pago.
+          clienteId: cliente.id,
+          creditTxId,
         });
       }
 
