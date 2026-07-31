@@ -50,6 +50,32 @@ export interface Caixa {
   };
 }
 
+/**
+ * Contrato de `registrarLancamento` — vive aqui, junto de quem grava, e é o
+ * MESMO tipo usado nas props das abas. Cada aba tinha a sua cópia declarada à
+ * mão, e um campo novo (o id do pedido) só era aceito onde alguém lembrasse de
+ * repetir: o valor chegava na chamada e era descartado silenciosamente.
+ */
+export type LancamentoInput = {
+  tipo: 'venda' | 'sangria' | 'suprimento';
+  titulo: string;
+  valor: number;
+  formaPagamento: string;
+  destinatarioId?: string;
+  destinatarioTipo?: 'motoboy' | 'freelancer';
+  /** Acerto de Prazo: conta baixada + crédito correspondente no extrato. Sem
+   *  eles o caixa só teria o nome do cliente escrito no título. */
+  clienteId?: string;
+  creditTxId?: string;
+  /** Venda: de onde ela veio. O título só carrega os 5 primeiros caracteres do
+   *  id ("PDV #ab12c"), Mesa não carrega nada e encomenda nem mora em `orders`
+   *  — por isso o id vai gravado, e não deduzido do texto. */
+  orderId?: string;
+  encomendaId?: string;
+};
+
+export type RegistrarLancamento = (input: LancamentoInput) => Promise<void>;
+
 export interface LancamentoCaixa {
   id: string;
   caixaId: string;
@@ -66,6 +92,12 @@ export interface LancamentoCaixa {
   clienteId?: string;
   /** Acerto de Prazo: o crédito correspondente no extrato do cliente. */
   creditTxId?: string;
+  /** Venda: o pedido que a originou. Só nos novos — os antigos só têm o "#" do
+   *  título, e Mesa nem isso. É o que faz a venda expandir, reimprimir o cupom
+   *  e cancelar o pedido junto. */
+  orderId?: string;
+  /** Venda de encomenda: mora em `encomendas`, não em `orders`. */
+  encomendaId?: string;
   /** Cancelamento lógico: a venda fica na lista (apontada como cancelada),
    *  mas sai de TODOS os somatórios (totalizadores, gaveta e fechamento). */
   canceled?: boolean;
@@ -412,18 +444,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     await batch.commit();
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, lancamentos]);
 
-  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId }: {
-    tipo: 'sangria' | 'suprimento' | 'venda',
-    titulo: string,
-    valor: number,
-    formaPagamento: string,
-    destinatarioId?: string,
-    destinatarioTipo?: 'motoboy' | 'freelancer',
-    /** Acerto de Prazo: conta baixada + crédito correspondente no extrato. Sem
-     *  eles o caixa só teria o nome do cliente escrito no título. */
-    clienteId?: string,
-    creditTxId?: string,
-  }) => {
+  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId, orderId, encomendaId }: LancamentoInput) => {
     if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) {
       throw new Error("Não há caixa aberto no momento.");
     }
@@ -443,6 +464,8 @@ export function useCaixa(options?: UseCaixaOptions) {
       ...(destinatarioTipo && { destinatarioTipo }),
       ...(clienteId && { clienteId }),
       ...(creditTxId && { creditTxId }),
+      ...(orderId && { orderId }),
+      ...(encomendaId && { encomendaId }),
     });
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, caixaAberto]);
 

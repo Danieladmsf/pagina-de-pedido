@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import {
   collection,
   doc,
@@ -59,6 +60,7 @@ import {
   type CreditTransaction,
   type StatementRow,
 } from '@/lib/prazo-statement';
+import { encomendaComoPedido } from '@/lib/encomendas/pedido';
 import { printExtratoPrazo } from '@/lib/prazo-receipt';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
@@ -71,7 +73,7 @@ interface PrazoPageProps {
   cliente: any;
   onBack: () => void;
   onEditCliente?: (cliente: any) => void;
-  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string; clienteId?: string; creditTxId?: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
 }
 
@@ -169,6 +171,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // resgatados pelo id que o próprio extrato carrega (ver o efeito abaixo).
   const [ordersPorTelefone, setOrdersPorTelefone] = useState<any[]>([]);
   const [ordersPorId, setOrdersPorId] = useState<any[]>([]);
+  const [encomendasDoCliente, setEncomendasDoCliente] = useState<any[]>([]);
   const [telefoneResolvido, setTelefoneResolvido] = useState(false);
   const pedidosBuscadosRef = React.useRef<Set<string>>(new Set());
   const clienteBuscadoRef = React.useRef<string | undefined>(cliente?.id);
@@ -219,13 +222,42 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     return () => { cancelled = true; };
   }, [db, ownerId, cliente?.id, cliente?.celular]);
 
+  // Encomendas do cliente (só na confeitaria): a compra a prazo de uma encomenda
+  // aponta para `encomendas`, não para `orders`, e sem isto ela apareceria no
+  // extrato sem poder abrir. Entram na MESMA lista, lidas como pedido.
+  const temEncomendas = storeProfile?.theme === 'confeitaria';
+  React.useEffect(() => {
+    if (!db || !ownerId || !temEncomendas || !cliente?.celular) { setEncomendasDoCliente([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const variants = getPhoneVariants(cliente.celular).slice(0, 30);
+        if (variants.length === 0) { setEncomendasDoCliente([]); return; }
+        const snap = await getDocs(query(
+          collection(db, 'encomendas'),
+          where('ownerId', '==', ownerId),
+          where('customerPhone', 'in', variants),
+        ));
+        if (!cancelled) setEncomendasDoCliente(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('[PrazoPage] Erro ao carregar encomendas do cliente:', err);
+        if (!cancelled) setEncomendasDoCliente([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [db, ownerId, temEncomendas, cliente?.celular]);
+
   const orders = useMemo(() => {
     const porId = new Map<string, any>();
     for (const pedido of [...ordersPorTelefone, ...ordersPorId]) {
       if (pedido?.id) porId.set(pedido.id, pedido);
     }
+    for (const enc of encomendasDoCliente) {
+      const comoPedido = encomendaComoPedido(enc);
+      if (comoPedido) porId.set(comoPedido.id, comoPedido);
+    }
     return [...porId.values()];
-  }, [ordersPorTelefone, ordersPorId]);
+  }, [ordersPorTelefone, ordersPorId, encomendasDoCliente]);
 
   // Resgate pelo id do pedido: a busca por telefone só acha os formatos que ela
   // conhece, e o PDV grava o telefone como foi digitado ("(16)992156780"). Sem

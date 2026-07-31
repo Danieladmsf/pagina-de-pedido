@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,7 @@ import { PrazoPage } from '@/components/admin/PrazoPage';
 interface ClientesTabProps {
   db: any;
   user: any;
-  registrarLancamento?: (params: { tipo: 'venda' | 'sangria' | 'suprimento'; titulo: string; valor: number; formaPagamento: string; clienteId?: string; creditTxId?: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
 }
 

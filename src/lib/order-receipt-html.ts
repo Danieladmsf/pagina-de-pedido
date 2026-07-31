@@ -15,6 +15,11 @@ import {
   esc,
 } from './receipt-print';
 import { brl } from '@/lib/utils';
+import { formatBrazilPhone, normalizeCreditPhone } from '@/lib/customer-credit';
+
+/** O telefone é gravado só com dígitos; no papel ele sai legível. */
+const telefoneDoCupom = (raw: any): string =>
+  formatBrazilPhone(normalizeCreditPhone(String(raw || ''))) || String(raw || '');
 
 /** Monta a string HTML completa do cupom do pedido. */
 export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = false): string {
@@ -213,7 +218,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
     <div class="mb b-dash pb">
       <p class="bold upper mb1">Dados do Cliente</p>
       <p>Nome: ${esc(order?.customerName)}</p>
-      <p>Celular: ${esc(order?.customerPhone)}</p>
+      <p>Celular: ${esc(telefoneDoCupom(order?.customerPhone))}</p>
       ${order?.deliveryAddress ? `<p>Endereço: ${esc(order.deliveryAddress)}</p>` : ''}
     </div>
 

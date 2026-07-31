@@ -19,6 +19,7 @@ import { getOrderStatusBadgeColor } from '@/lib/order-status';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { brl } from '@/lib/utils';
+import { matchOrderForTransaction } from '@/lib/prazo-statement';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Aguardando Confirmação',
@@ -498,8 +499,10 @@ export default function MyOrdersPage() {
               ) : (
                 <div className="divide-y max-h-[400px] overflow-y-auto custom-scrollbar">
                   {contaCasaTransactions.map(t => {
-                    const descId = (t.description || '').replace(/^.*#/, '').trim();
-                    const matchedOrder = descId && orders ? (orders as any[]).find((o: any) => o.id?.startsWith(descId)) : null;
+                    // Lançamento novo diz o pedido pelo id; o antigo só tem o
+                    // "#abcde" da descrição. Mesma regra da tela do Prazo
+                    // (lib/prazo-statement.matchOrderForTransaction).
+                    const matchedOrder = matchOrderForTransaction(t as any, (orders as any[]) || []);
                     return (
                       <div key={t.id} className="px-3 py-2.5 hover:bg-slate-50">
                         <div className="flex items-center justify-between">

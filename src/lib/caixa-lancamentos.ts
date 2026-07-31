@@ -24,21 +24,33 @@ export type LinhaCaixa = {
  * lançamentos individuais, então nenhum cálculo depende disto.
  *
  * Regras:
- * - só agrupa `tipo === 'venda'` com "#id" no título (Mesa e venda manual não
- *   têm "#", então nunca agrupam — melhor uma linha por lançamento do que juntar
- *   vendas diferentes);
+ * - só agrupa `tipo === 'venda'` que saiba de onde veio: `orderId`/`encomendaId`
+ *   gravados (lançamentos novos) ou o "#id" do título (os antigos). Venda manual
+ *   não tem nenhum dos dois e nunca agrupa — melhor uma linha por lançamento do
+ *   que juntar vendas diferentes;
+ * - o id gravado vem ANTES do título de propósito: "Mesa 5 - Finalizada" se
+ *   repete o dia inteiro, então agrupar mesa por título juntaria comandas
+ *   diferentes. Com o id, cada comanda é ela mesma;
  * - canceladas agrupam entre si, para um estado misto (legado, ou falha no meio
  *   do cancelamento) continuar visível em vez de sumir dentro de uma linha só;
  * - a ordem da lista original é preservada, e a linha nasce na posição da
  *   primeira parte.
  */
+export function chaveDeVinculo(l: LancamentoCaixa): string | null {
+  if (l.tipo !== 'venda') return null;
+  if (l.orderId) return `o:${l.orderId}`;
+  if (l.encomendaId) return `e:${l.encomendaId}`;
+  const m = (l.titulo || '').match(/#([A-Za-z0-9]+)/);
+  return m ? `t:${m[1].substring(0, 5)}` : null;
+}
+
 export function agruparLancamentosCaixa(lancamentos: LancamentoCaixa[]): LinhaCaixa[] {
   const linhas: LinhaCaixa[] = [];
   const porChave = new Map<string, LinhaCaixa>();
 
   for (const l of lancamentos) {
-    const m = l.tipo === 'venda' ? (l.titulo || '').match(/#([A-Za-z0-9]+)/) : null;
-    const chave = m ? `${m[1].substring(0, 5)}|${l.canceled ? 'c' : 'a'}` : null;
+    const vinculo = chaveDeVinculo(l);
+    const chave = vinculo ? `${vinculo}|${l.canceled ? 'c' : 'a'}` : null;
 
     const existente = chave ? porChave.get(chave) : undefined;
     if (existente) {

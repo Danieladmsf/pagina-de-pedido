@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,7 @@ function waLink(phoneDigits: string) {
 }
 export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false, permissions }: {
   db: any; user: any; storeProfile: any;
-  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
   permissions: PdvPermissions;
 }) {
@@ -140,6 +141,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         titulo: `Encomenda ${enc.id.substring(0, 5)} - Sinal (${enc.customerName})`,
         valor: enc.sinal,
         formaPagamento: 'pix',
+        encomendaId: enc.id,
       });
       await updateDoc(doc(db, 'encomendas', enc.id), {
         sinalLancado: true,
@@ -213,6 +215,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
           titulo: `Encomenda ${id.substring(0, 5)} - Entrada (${enc.customerName})`,
           valor: pago.valor,
           formaPagamento: pago.forma,
+          encomendaId: id,
         });
       } catch (err) {
         console.error('[encomendas] erro ao lançar a entrada no caixa:', err);
@@ -282,6 +285,9 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
         tituloVenda: `Encomenda ${entregando.id.substring(0, 5)} - Entrega (${entregando.customerName})`,
         tituloPrazo: `Encomenda ${entregando.id.substring(0, 5)} - Entrega (${entregando.customerName}) (Prazo)`,
         creditDescription: `Encomenda ${entregando.id.substring(0, 5)}`,
+        // Sem isto a compra a prazo de uma encomenda nunca abriria no extrato: a
+        // descrição não tem "#" e a encomenda nem mora em `orders`.
+        encomendaId: entregando.id,
         channel: 'encomenda',
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Prazo: cliente não encontrado para lançar a dívida.' }),
       });

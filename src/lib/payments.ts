@@ -13,6 +13,10 @@ type LancamentoInput = {
   titulo: string;
   valor: number;
   formaPagamento: string;
+  /** Pedido que originou a venda — o vínculo firme, sem depender do título. */
+  orderId?: string;
+  /** Encomenda que originou a venda (coleção própria, não é `orders`). */
+  encomendaId?: string;
 };
 type RegistrarLancamento = (input: LancamentoInput) => Promise<any> | any;
 
@@ -108,7 +112,9 @@ export async function registrarPagamentoSplits(
     creditDescription: string;
     /** Pedido que originou a dívida — vira o vínculo firme do extrato. */
     orderId?: string;
-    /** 'balcao' | 'mesa' | 'delivery' — de onde veio a venda. */
+    /** Encomenda que originou a venda (mora em `encomendas`, não em `orders`). */
+    encomendaId?: string;
+    /** 'balcao' | 'mesa' | 'delivery' | 'encomenda' — de onde veio a venda. */
     channel?: string;
     onContaCasaSemCliente?: () => void;
   }
@@ -122,9 +128,18 @@ export async function registrarPagamentoSplits(
     tituloPrazo,
     creditDescription,
     orderId,
+    encomendaId,
     channel,
     onContaCasaSemCliente,
   } = params;
+
+  // O id vai junto em TODA parte da venda: é ele que liga o lançamento do caixa
+  // ao pedido sem depender do "#" do título — que Mesa nunca teve e encomenda
+  // também não. Sem isso, expandir, reimprimir e cancelar ficam cegos.
+  const vinculo = {
+    ...(orderId ? { orderId } : {}),
+    ...(encomendaId ? { encomendaId } : {}),
+  };
 
   for (const split of splits) {
     if (split.methodId === 'conta_casa') {
@@ -141,7 +156,7 @@ export async function registrarPagamentoSplits(
         amount: split.amount,
         date: new Date().toISOString(),
         description: creditDescription,
-        ...(orderId ? { orderId } : {}),
+        ...vinculo,
         ...(channel ? { channel } : {}),
       });
       batch.update(doc(db, 'clientes', contaCasaCustomerId), { creditBalance: increment(split.amount) });
@@ -155,6 +170,7 @@ export async function registrarPagamentoSplits(
           titulo: tituloPrazo,
           valor: split.amount,
           formaPagamento: 'conta_casa',
+          ...vinculo,
         });
       }
     } else if (caixaAberto && registrarLancamento) {
@@ -163,6 +179,7 @@ export async function registrarPagamentoSplits(
         titulo: tituloVenda,
         valor: split.amount,
         formaPagamento: split.methodId,
+        ...vinculo,
       });
     }
   }

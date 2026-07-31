@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import { collection, onSnapshot, doc, query, updateDoc, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ import { usePdvAccess } from '@/contexts/PdvAccessContext';
 interface DeliveryTabProps {
   orders: any[];
   updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
-  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
   isCaixaHistorico?: boolean;
   onOpenCaixa?: () => void;

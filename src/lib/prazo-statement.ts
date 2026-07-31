@@ -24,6 +24,8 @@ export type CreditTransaction = {
   description?: string;
   /** Gravado nos lançamentos novos (lib/payments.ts). Ausente no histórico. */
   orderId?: string;
+  /** Encomenda que originou a compra — mora em `encomendas`, não em `orders`. */
+  encomendaId?: string;
   /** 'balcao' | 'mesa' | 'delivery' | 'acerto' — só nos lançamentos novos. */
   channel?: string;
   /** Forma usada no recebimento (pix, dinheiro...). Só em `credit`. */
@@ -69,10 +71,18 @@ export function legacyOrderRef(description?: string): string {
   return text.replace(/^.*#/, '').trim();
 }
 
-/** Pedido de um lançamento: `orderId` quando existe, senão o prefixo antigo. */
+/**
+ * Pedido de um lançamento: `orderId`/`encomendaId` quando existem, senão o
+ * prefixo antigo. Encomenda entra na MESMA lista de origens (a tela carrega as
+ * duas coleções), mas só casa por id: a descrição dela é "Encomenda ab12c",
+ * sem "#", e casar esse prefixo contra `orders` acharia um pedido qualquer.
+ */
 export function matchOrderForTransaction(tx: CreditTransaction, orders: any[]): any | null {
   if (tx.orderId) {
     return orders.find((order) => order?.id === tx.orderId) || null;
+  }
+  if (tx.encomendaId) {
+    return orders.find((order) => order?.id === tx.encomendaId) || null;
   }
   const ref = legacyOrderRef(tx.description);
   if (!ref) return null;
@@ -104,6 +114,9 @@ export function missingOrderRefs(
       ids.add(tx.orderId);
       continue;
     }
+    // Encomenda não é buscada por id solto: ela está em outra coleção, e quem
+    // carrega é a tela (que sabe se a loja tem encomendas).
+    if (tx.encomendaId) continue;
     const ref = legacyOrderRef(tx.description);
     if (ref) prefixes.add(ref);
   }

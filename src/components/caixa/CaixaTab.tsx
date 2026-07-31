@@ -298,8 +298,20 @@ export function CaixaTab({
     return map;
   }, [allOrders, orders]);
 
+  const ordersById = useMemo(() => {
+    const pool: any[] = (allOrders && allOrders.length ? allOrders : orders) || [];
+    return new Map<string, any>(pool.filter((o) => o?.id).map((o) => [o.id, o]));
+  }, [allOrders, orders]);
+
+  // Lançamento novo diz o pedido pelo id gravado; o antigo só tem o "#" do
+  // título. O id vem primeiro porque é exato: prefixo de 5 caracteres pode, em
+  // tese, cair no pedido errado — e Mesa nunca teve "#" nenhum.
   const getVendaOrder = (lanc: LancamentoCaixa) => {
     if (lanc.tipo !== 'venda') return null;
+    if (lanc.orderId) return ordersById.get(lanc.orderId) || null;
+    // Encomenda não mora em `orders`: sem pedido para abrir, e melhor assim do
+    // que casar o prefixo dela com o de um pedido qualquer.
+    if (lanc.encomendaId) return null;
     const m = (lanc.titulo || '').match(/#([A-Za-z0-9]+)/);
     if (!m) return null;
     return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;

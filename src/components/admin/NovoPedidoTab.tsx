@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
@@ -39,7 +40,7 @@ interface NovoPedidoTabProps {
   items: any[];
   db: any;
   user: any;
-  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
   storeProfile?: any;
   onOpenCaixa?: () => void;
@@ -460,7 +461,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         id: newOrderRef.id,
         ownerId,
         customerName: customerName || 'Cliente Balcão',
-        customerPhone: customerPhone || '',
+        // Só dígitos, como o cardápio público já grava. O campo é livre e o que
+        // for digitado aqui vira a chave que liga o pedido ao cliente: com
+        // "(16)992156780" a busca por telefone não achava o pedido, e a compra
+        // ficava sem itens no extrato do Prazo.
+        customerPhone: normalizeCreditPhone(customerPhone),
         deliveryAddress: fullDeliveryAddress || '',
         orderType: orderType,
         items: cart.map(i => ({

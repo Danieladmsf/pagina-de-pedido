@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import type { RegistrarLancamento } from '@/hooks/useCaixa';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -42,7 +43,7 @@ interface MesasTabProps {
   items?: any[];
   db?: any;
   user?: any;
-  registrarLancamento?: (params: { tipo: 'venda'; titulo: string; valor: number; formaPagamento: string }) => Promise<void>;
+  registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
   storeInfo?: any;
   onOpenCaixa?: () => void;
@@ -644,7 +645,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       const clientPatch: any = {};
       if (customerDirty) {
         clientPatch.customerName = customerName;
-        clientPatch.customerPhone = customerPhone;
+        // Só dígitos: é esta a chave que liga o pedido ao cliente (Prazo,
+        // cadastro, WhatsApp). Formato livre aqui quebra a busca lá.
+        clientPatch.customerPhone = normalizeCreditPhone(customerPhone);
       }
 
       let finalOrderId = activeOrderId;
@@ -657,15 +660,22 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
               : clientPatch,
           }
         : (() => {
-            finalOrderId = Math.random().toString(36).substring(2, 10).toUpperCase();
+            // Id do próprio Firestore, como em todo o resto do app. O antigo era
+            // `Math.random()` em 8 caracteres: além de gravar com `set` numa
+            // coleção compartilhada pelas lojas, o espaço dos 5 primeiros
+            // caracteres — que é por onde o caixa casa a venda — era 15x menor
+            // que o do id normal, e a chance de dois pedidos colidirem cresce
+            // com o quadrado do movimento.
+            const novoRef = doc(collection(db, 'orders'));
+            finalOrderId = novoRef.id;
             return {
-              ref: doc(db, 'orders', finalOrderId),
+              ref: novoRef,
               mode: 'set' as const,
               data: {
                 id: finalOrderId,
                 ownerId,
                 customerName: customerName || `Mesa ${selectedTable}`,
-                customerPhone: customerPhone || '',
+                customerPhone: normalizeCreditPhone(customerPhone),
                 tableNumber: selectedTable,
                 orderType: 'dine_in',
                 status: 'pending',
@@ -852,7 +862,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         totalAmount: totalCobrado,
       };
       if (linkedName) finalizeData.customerName = linkedName;
-      if (phone) finalizeData.customerPhone = phone;
+      if (phone) finalizeData.customerPhone = normalizeCreditPhone(phone);
       await updateDoc(doc(db, 'orders', activeOrderId), finalizeData);
 
       await registrarPagamentoSplits(db, {

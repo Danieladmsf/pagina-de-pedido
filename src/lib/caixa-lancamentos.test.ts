@@ -54,12 +54,51 @@ describe('agruparLancamentosCaixa', () => {
     expect(linhas).toHaveLength(3);
   });
 
-  it('venda de mesa e venda manual não têm "#" e ficam separadas', () => {
+  it('mesa ANTIGA (sem id gravado) não tem "#" e fica separada', () => {
     // Sem o id no título não dá para saber se são a mesma venda — juntar seria
-    // pior do que repetir.
+    // pior do que repetir. Vale para os lançamentos antigos, que não têm
+    // `orderId`; os novos agrupam pelo id (teste abaixo).
     const linhas = agruparLancamentosCaixa([
       venda('a', 'Mesa 4 - Finalizada', 30, 'pix'),
       venda('b', 'Mesa 4 - Finalizada', 20, 'dinheiro'),
+    ]);
+    expect(linhas).toHaveLength(2);
+  });
+
+  it('mesa NOVA agrupa pelo orderId, mesmo com o título repetido', () => {
+    const linhas = agruparLancamentosCaixa([
+      venda('a', 'Mesa 4 - Finalizada', 30, 'pix', { orderId: 'ped1' }),
+      venda('b', 'Mesa 4 - Finalizada', 20, 'dinheiro', { orderId: 'ped1' }),
+    ]);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].valor).toBe(50);
+  });
+
+  it('mesma mesa em comandas diferentes continua sendo duas vendas', () => {
+    // O caso que o título nunca soube distinguir: "Mesa 5 - Finalizada" se
+    // repete o dia inteiro. O id separa.
+    const linhas = agruparLancamentosCaixa([
+      venda('a', 'Mesa 5 - Finalizada', 38.4, 'debito', { orderId: 'ped1' }),
+      venda('b', 'Mesa 5 - Finalizada', 28.4, 'pix', { orderId: 'ped2' }),
+    ]);
+    expect(linhas).toHaveLength(2);
+  });
+
+  it('encomenda agrupa pelo encomendaId', () => {
+    const linhas = agruparLancamentosCaixa([
+      venda('a', 'Encomenda P07RO - Entrega (Camila)', 100, 'pix', { encomendaId: 'enc1' }),
+      venda('b', 'Encomenda P07RO - Entrega (Camila)', 75, 'dinheiro', { encomendaId: 'enc1' }),
+    ]);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].valor).toBe(175);
+  });
+
+  it('o id gravado vence o "#" do título quando os dois existem', () => {
+    // Dois pedidos cujos ids começam igual (prefixo de 5 chars) agrupariam
+    // errado pelo título. Com o id, cada um é ele mesmo.
+    const linhas = agruparLancamentosCaixa([
+      venda('a', 'PDV #abcde - Balcão', 10, 'pix', { orderId: 'abcdeXXXX' }),
+      venda('b', 'PDV #abcde - Balcão', 20, 'pix', { orderId: 'abcdeYYYY' }),
     ]);
     expect(linhas).toHaveLength(2);
   });
