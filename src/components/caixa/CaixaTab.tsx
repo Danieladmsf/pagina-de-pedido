@@ -15,6 +15,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
+import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -301,6 +302,19 @@ export function CaixaTab({
     const m = (lanc.titulo || '').match(/#([A-Za-z0-9]+)/);
     if (!m) return null;
     return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;
+  };
+
+  // 2ª via do cupom de uma venda já registrada. O lançamento do caixa não guarda
+  // cupom próprio: o que se reimprime é o PEDIDO vinculado, pelo mesmo caminho
+  // do cupom original (QZ Tray, com fallback do navegador). Como a impressão é
+  // silenciosa, o toast é o único sinal de que o clique funcionou.
+  const reimprimirCupomVenda = (order: any) => {
+    if (!order) return;
+    printOrderReceipt({ order, storeInfo: storeProfile });
+    toast({
+      title: 'Cupom enviado para a impressora',
+      description: `2ª via do pedido #${String(order.id || '').substring(0, 5)}.`,
+    });
   };
 
   // ---- Handlers ----
@@ -1258,7 +1272,15 @@ export function CaixaTab({
                           {isExpandable && isOpen && (
                             <TableRow className="hover:bg-transparent border-b-0">
                               <TableCell colSpan={7} className="p-0 pl-6 pr-6 pb-2">
-                                <VendaDetalhe order={vendaOrder} lanc={lanc} partes={linha.partes} />
+                                <VendaDetalhe
+                                  order={vendaOrder}
+                                  lanc={lanc}
+                                  partes={linha.partes}
+                                  // Venda cancelada não reimprime: o cupom do pedido não
+                                  // tem marca de cancelamento, então sairia uma 2ª via com
+                                  // cara de venda boa.
+                                  onReimprimir={isCanceled ? undefined : () => reimprimirCupomVenda(vendaOrder)}
+                                />
                               </TableCell>
                             </TableRow>
                           )}
@@ -2347,7 +2369,13 @@ export function CaixaTab({
 
 // ─── Componente SummaryCard ───
 // Painel de detalhes de uma venda (itens do pedido), aberto ao clicar na linha.
-function VendaDetalhe({ order, lanc, partes }: { order: any; lanc: LancamentoCaixa; partes: LancamentoCaixa[] }) {
+function VendaDetalhe({ order, lanc, partes, onReimprimir }: {
+  order: any;
+  lanc: LancamentoCaixa;
+  partes: LancamentoCaixa[];
+  /** Ausente quando a venda não deve gerar 2ª via (venda cancelada). */
+  onReimprimir?: () => void;
+}) {
   const orderType: string = order?.orderType || 'pickup';
   // Venda dividida: a expansão mostra os itens UMA vez e detalha o pagamento.
   const isMultiplo = partes.length > 1;
@@ -2414,15 +2442,29 @@ function VendaDetalhe({ order, lanc, partes }: { order: any; lanc: LancamentoCai
             </p>
           </div>
         </div>
-        {isMultiplo ? (
-          <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
-            Múltiplos · {partes.length} formas
-          </span>
-        ) : pgto && (
-          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${pgto.className}`}>
-            {pgto.label}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isMultiplo ? (
+            <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+              Múltiplos · {partes.length} formas
+            </span>
+          ) : pgto ? (
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${pgto.className}`}>
+              {pgto.label}
+            </span>
+          ) : null}
+          {onReimprimir && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-blue-200 bg-white px-2.5 text-[12px] font-bold text-blue-700 shadow-sm hover:bg-blue-50 hover:text-blue-800"
+              title="Reimprimir o cupom desta venda (2ª via)"
+              onClick={(e) => { e.stopPropagation(); onReimprimir(); }}
+            >
+              <Printer className="h-4 w-4" />
+              Reimprimir
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Itens vendidos */}
