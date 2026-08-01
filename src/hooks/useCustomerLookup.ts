@@ -21,13 +21,7 @@ export function useCustomerLookup(db: any, ownerId: string | undefined, name: st
     (async () => {
       try {
         const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
-        if (!ignore) {
-          setAllCustomers(
-            snap.docs
-              .map((d: any) => ({ id: d.id, ...d.data() }))
-              .filter((customer: any) => customer.archived !== true && !customer.mergeInProgress),
-          );
-        }
+        if (!ignore) setAllCustomers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       } catch (e) {
         console.error('Erro ao carregar clientes para autocomplete:', e);
       }

@@ -3,10 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { UserPlus, Loader2 } from 'lucide-react';
-import { findCreditCustomers, isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone, quickRegistrationCreditDefaults } from '@/lib/customer-credit';
+import { normalizeCreditPhone } from '@/lib/customer-credit';
 
 interface QuickRegisterClientModalProps {
   isOpen: boolean;
@@ -41,7 +41,7 @@ export function QuickRegisterClientModal({
   useEffect(() => {
     if (isOpen) {
       setFormNome(initialName || '');
-      setFormCelular(maskCreditPhoneInput(initialPhone || ''));
+      setFormCelular(initialPhone || '');
       setFormNascimento('');
       setFormNumero('');
       setFormComplemento('');
@@ -62,67 +62,34 @@ export function QuickRegisterClientModal({
   }, [isOpen, initialName, initialPhone, initialAddress]);
 
   const handleMaskCelular = (val: string) => {
-    setFormCelular(maskCreditPhoneInput(val));
+    const raw = val.replace(/\D/g, '');
+    let masked = raw;
+    if (raw.length > 2) masked = `(${raw.substring(0, 2)}) ` + raw.substring(2);
+    if (raw.length > 7) masked = `(${raw.substring(0, 2)}) ${raw.substring(2, 7)}-${raw.substring(7, 11)}`;
+    setFormCelular(masked);
   };
 
   const handleRegister = async () => {
-    const phoneNormalized = normalizeCreditPhone(formCelular);
+    const phoneRaw = formCelular.replace(/\D/g, '');
     if (!formNome.trim()) {
       toast({ variant: 'destructive', title: 'Aviso', description: 'O Nome do Cliente é obrigatório.' });
       return;
     }
-    if (!isValidCreditPhone(phoneNormalized)) {
+    if (phoneRaw.length < 10 || phoneRaw.length > 11) {
       toast({ variant: 'destructive', title: 'Aviso', description: 'Preencha o celular (WhatsApp) corretamente com DDD.' });
       return;
     }
 
     try {
       setIsSubmitting(true);
-      const phoneMatches = await findCreditCustomers(db, ownerId, phoneNormalized, { includeArchived: true });
-      if (phoneMatches.length > 1) {
-        toast({
-          variant: 'destructive',
-          title: 'Telefone em conflito',
-          description: 'Há mais de um cadastro para este telefone. Resolva o conflito na aba Clientes antes de vender no Prazo.',
-        });
-        return;
-      }
-      const matchedCustomer = phoneMatches[0];
-      if (matchedCustomer?.data?.archived === true) {
-        toast({
-          variant: 'destructive',
-          title: 'Cliente arquivado',
-          description: 'Restaure este cliente na aba Clientes antes de habilitar uma nova compra no Prazo.',
-        });
-        return;
-      }
-      const docId = matchedCustomer?.id || `${ownerId}_${phoneNormalized}`;
+      const phoneNormalized = normalizeCreditPhone(phoneRaw);
+      const docId = phoneNormalized ? `${ownerId}_${phoneNormalized}` : doc(collection(db, 'clientes')).id;
       const newRef = doc(db, 'clientes', docId);
       // This modal performs its own write before handing control back to the
       // checkout handler, so the live permission must be checked here too.
       if (canSubmit && !canSubmit()) {
         onSubmitBlocked?.();
         return;
-      }
-      const existing = await getDoc(newRef);
-      if (existing.exists()) {
-        const existingData: any = existing.data() || {};
-        if (existingData.archived === true) {
-          toast({
-            variant: 'destructive',
-            title: 'Cliente arquivado',
-            description: 'Restaure este cliente na aba Clientes antes de habilitar uma nova compra no Prazo.',
-          });
-          return;
-        }
-        if (normalizeCreditPhone(String(existingData.celular || '')) !== phoneNormalized) {
-          toast({
-            variant: 'destructive',
-            title: 'Cadastro em conflito',
-            description: 'Este identificador pertence a um cadastro que trocou de telefone. Corrija o conflito na aba Clientes.',
-          });
-          return;
-        }
       }
       await setDoc(newRef, {
         id: docId,
@@ -135,18 +102,15 @@ export function QuickRegisterClientModal({
         complemento: formComplemento,
         bairro: formBairro,
         cidade: formCidade,
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        // Defaults financeiros pertencem SOMENTE ao cadastro novo. Com merge,
-        // repetir o cadastro rápido não pode zerar dívida, limite ou vencimento.
-        ...quickRegistrationCreditDefaults(existing.exists(), new Date().toISOString()),
+        creditEnabled: true,
+        creditLimit: 0,
+        creditPayDay: 0,
+        creditBalance: 0
       }, { merge: true });
 
-      toast({
-        title: 'Sucesso',
-        description: existing.exists()
-          ? 'Cadastro existente reutilizado sem alterar saldo ou limite.'
-          : 'Cliente cadastrado com Prazo ativado!',
-      });
+      toast({ title: 'Sucesso', description: 'Cliente cadastrado com Prazo ativado!' });
       onSuccess(); // Close and let parent continue or re-trigger
     } catch (error) {
       console.error(error);

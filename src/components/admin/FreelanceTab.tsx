@@ -7,7 +7,6 @@ import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebas
 import { collection, query, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { brl } from '@/lib/utils';
-import { getOrderCode } from '@/lib/order-code';
 
 interface FreelanceTabProps {
   orders: any[];
@@ -351,7 +350,7 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                               <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm shrink-0">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5 mb-1">
-                                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1 rounded">#{getOrderCode(ped).slice(-5).toUpperCase() || '---'}</span>
+                                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1 rounded">#{ped.id?.slice(-5).toUpperCase() || '---'}</span>
                                     <span className="text-xs text-slate-500 flex items-center gap-1">
                                       <Clock className="h-3 w-3" />
                                       {new Date(ped.orderDateTime || ped.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}

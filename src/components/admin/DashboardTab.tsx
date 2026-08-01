@@ -5,7 +5,6 @@ import { collection, query, where } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getOrderCode } from '@/lib/order-code';
 import {
   ResponsiveContainer,
   BarChart,
@@ -87,11 +86,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
     () => (db && user ? query(collection(db, 'clientes'), where('ownerId', '==', user.uid)) : null),
     [db, user]
   );
-  const { data: clientesRaw } = useCollection(clientesQuery);
-  const clientes = useMemo(
-    () => (clientesRaw || []).filter((customer: any) => customer?.archived !== true),
-    [clientesRaw],
-  );
+  const { data: clientes } = useCollection(clientesQuery);
 
   const [rangePreset, setRangePreset] = useState<RangePreset>('hoje');
   const [customFrom, setCustomFrom] = useState<string>(todayInputValue());
@@ -662,7 +657,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                           {brl(o.totalAmount || 0)}
                         </div>
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          #{getOrderCode(o).slice(-5).toUpperCase()}
+                          #{(o.id || '').slice(-5).toUpperCase()}
                         </div>
                       </div>
                     </div>

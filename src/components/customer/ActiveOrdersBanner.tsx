@@ -7,7 +7,6 @@ import { collection, query, where } from 'firebase/firestore';
 import { ShoppingBag, ChevronRight } from 'lucide-react';
 import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
-import { getOrderCode } from '@/lib/order-code';
 
 const ACTIVE_STATUSES = ['pending', 'received', 'ready', 'out_for_delivery'];
 const STATUS_LABELS: Record<string, string> = {
@@ -91,7 +90,7 @@ export function ActiveOrdersBanner({ storeId, storeSlug }: { storeId?: string | 
                 </span>
               </div>
               <p className="font-black text-base mt-1 truncate">Clique para acompanhar seu pedido</p>
-              <p className="text-xs text-white/90 truncate">#{getOrderCode(latest)}</p>
+              <p className="text-xs text-white/90 truncate">#{latest.id}</p>
             </div>
             <ChevronRight className="h-6 w-6 flex-shrink-0 text-white/90" />
           </div>

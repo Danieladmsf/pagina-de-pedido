@@ -22,7 +22,6 @@ import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
-import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 const formatDateBR = (iso?: string) => {
   if (!iso) return '—';
@@ -65,7 +64,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
   const [lancandoId, setLancandoId] = useState<string | null>(null);
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId), [ownerId, user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const [novaAberta, setNovaAberta] = useState(false);
   // Encomenda que está sendo entregue: abre o mesmo fechamento dos pedidos.
   const [entregando, setEntregando] = useState<(Encomenda & { id: string }) | null>(null);
@@ -111,25 +110,6 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     () => encomendas.find((e) => e.id === selecionadaId) || null,
     [encomendas, selecionadaId],
   );
-
-  async function ensureEncomendaClienteId(enc: Encomenda & { id: string }) {
-    // Operadores não escrevem no cadastro de clientes. O dono resolve a
-    // identidade na primeira ação administrativa sobre a encomenda; o helper
-    // também grava o vínculo no documento sem remover o fallback textual.
-    if (!db || !ownerId || user?.uid !== ownerId) return enc.clienteId || null;
-    try {
-      const result = await syncCustomerFromOrder(db, enc, {
-        ownerId,
-        countOrder: false,
-        linkCollection: 'encomendas',
-        allowArchivedCustomer: false,
-      });
-      return result.customerId;
-    } catch (error) {
-      console.warn('[encomendas] não foi possível vincular clienteId:', error);
-      return null;
-    }
-  }
 
   // Quanto a loja ainda tem para receber no que está na lista — é o número que
   // some quando encomenda fica pela metade.
@@ -197,7 +177,6 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
       return;
     }
     try {
-      await ensureEncomendaClienteId(enc);
       await updateDoc(doc(db, 'encomendas', enc.id), { status });
       if (status === 'entregue' && falta > 0) {
         toast({
@@ -723,3 +702,4 @@ function EncomendaDetalhe({ enc, allowStatus, allowEdit, allowReprint, canLancar
     </div>
   );
 }
+

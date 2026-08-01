@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye, PackageSearch } from 'lucide-react';
 import { brl } from '@/lib/utils';
-import type { OperatorRetaguardaTabId } from '@/lib/user-permissions';
 
-const CONFIG: Record<OperatorRetaguardaTabId, { title: string; empty: string }> = {
+type CatalogTab = 'produtos' | 'categorias' | 'addons' | 'promocoes';
+
+const CONFIG: Record<CatalogTab, { title: string; empty: string }> = {
   produtos: { title: 'Produtos', empty: 'Nenhum produto cadastrado.' },
   categorias: { title: 'Categorias', empty: 'Nenhuma categoria cadastrada.' },
   addons: { title: 'Adicionais', empty: 'Nenhum adicional cadastrado.' },
@@ -29,7 +30,7 @@ export function OperatorCatalogReadOnly({
   promotions,
   isLoading,
 }: {
-  activeTab: OperatorRetaguardaTabId;
+  activeTab: CatalogTab;
   items: any[];
   categories: any[];
   addons: any[];

@@ -53,6 +53,3 @@ pglite-debug.log
 # Material solto largado na raiz (PDF/audio/print): mover para /arquivos
 /*.pdf
 /*.ogg
-
-# Manifestos locais gerados antes de backfills de integridade.
-.integridade-backups/

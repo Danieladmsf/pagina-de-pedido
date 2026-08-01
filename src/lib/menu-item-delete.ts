@@ -1,9 +1,10 @@
 /**
  * Exclusão de produto SEM deixar referência morta atrás.
  *
- * Produtos podem ser citados por promoções e por `comboItems[].itemId`. Apagar
- * só o produto deixava a promoção órfã e podia transformar um combo em uma
- * oferta diferente da que o dono montou.
+ * `promotions.items[].menuItemId` é a única referência cruzada a `menuItems` no
+ * projeto. Apagar só o produto deixava a linha órfã na promoção — a tela de
+ * Promoções mostrava um item em branco e o "de/por" apontava pro vazio. Na Lima
+ * Limão isso já tinha acontecido 5 vezes antes de alguém notar.
  *
  * Produto e promoções saem no MESMO batch: ou tudo, ou nada.
  */
@@ -14,23 +15,6 @@ export function promotionsUsingItem(promotions: any[], itemId: string): any[] {
   return (promotions || []).filter((p: any) =>
     (Array.isArray(p?.items) ? p.items : []).some((i: any) => i?.menuItemId === itemId)
   );
-}
-
-/** Combos vivos que dependem de qualquer produto que se pretende apagar. */
-export function combosUsingRemovedItems(menuItems: any[], itemIds: Set<string>): any[] {
-  return (menuItems || []).filter((item: any) =>
-    item?.isCombo === true
-      && !itemIds.has(item.id)
-      && (Array.isArray(item.comboItems) ? item.comboItems : [])
-        .some((part: any) => itemIds.has(part?.itemId)),
-  );
-}
-
-export function comboReferenceWarning(menuItems: any[], itemIds: Set<string>): string {
-  const combos = combosUsingRemovedItems(menuItems, itemIds);
-  if (combos.length === 0) return '';
-  const nomes = combos.map((combo: any) => `• ${combo.name || 'combo sem nome'}`).join('\n');
-  return `A exclusão foi bloqueada porque ${combos.length} ${combos.length === 1 ? 'combo depende' : 'combos dependem'} deste produto:\n${nomes}\n\nEdite ou exclua ${combos.length === 1 ? 'o combo' : 'os combos'} primeiro.`;
 }
 
 /**
@@ -53,14 +37,7 @@ export function promotionUpdatesForRemovedItems(
 }
 
 /** Apaga o produto e, no mesmo batch, tira ele de todas as promoções. */
-export async function deleteMenuItemWithCleanup(
-  db: any,
-  itemId: string,
-  promotions: any[],
-  menuItems: any[] = [],
-): Promise<void> {
-  const comboWarning = comboReferenceWarning(menuItems, new Set([itemId]));
-  if (comboWarning) throw new Error(comboWarning);
+export async function deleteMenuItemWithCleanup(db: any, itemId: string, promotions: any[]): Promise<void> {
   const batch = writeBatch(db);
   batch.delete(doc(db, 'menuItems', itemId));
   for (const u of promotionUpdatesForRemovedItems(promotions, new Set([itemId]))) {

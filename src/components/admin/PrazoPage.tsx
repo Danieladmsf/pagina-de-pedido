@@ -47,7 +47,6 @@ import {
   dueDateFor,
   formatBrazilPhone,
   getPhoneVariants,
-  creditPhonesAreEqual,
   isCreditEnabled,
   normalizeCreditPhone,
 } from '@/lib/customer-credit';
@@ -177,7 +176,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const pedidosBuscadosRef = React.useRef<Set<string>>(new Set());
   const clienteBuscadoRef = React.useRef<string | undefined>(cliente?.id);
 
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, user.uid), [user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
   const phoneDigits = normalizeCreditPhone(cliente?.celular || '');
   // O celular é a única chave entre esta conta, o pedido e o cadastro. Sem ele
   // o Prazo não pode nem ser ligado (ver handleSaveConfig).
@@ -195,55 +194,29 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const storeProfileRef = useMemoFirebase(() => (db && ownerId ? doc(db, 'store_profiles', ownerId) : null), [db, ownerId]);
   const { data: storeProfile } = useDoc<any>(storeProfileRef);
 
-  // Pedidos do cliente: `clienteId` é a fonte primária; telefone fica somente
-  // como fallback para o histórico anterior à migração.
+  // Pedidos do cliente (por telefone): dão os itens de cada compra do extrato.
   React.useEffect(() => {
     pedidosBuscadosRef.current = new Set();
     clienteBuscadoRef.current = cliente?.id;
     setOrdersPorId([]);
     setTelefoneResolvido(false);
-    if (!db || !ownerId || !cliente?.id) { setOrdersPorTelefone([]); setTelefoneResolvido(true); return; }
+    if (!db || !ownerId || !cliente?.celular) { setOrdersPorTelefone([]); setTelefoneResolvido(true); return; }
     let cancelled = false;
     (async () => {
-      const byId = new Map<string, any>();
       try {
-        const linkedSnap = await getDocs(query(
+        const variants = getPhoneVariants(cliente.celular).slice(0, 30);
+        if (variants.length === 0) { setOrdersPorTelefone([]); setTelefoneResolvido(true); return; }
+        const snap = await getDocs(query(
           collection(db, 'orders'),
           where('ownerId', '==', ownerId),
-          where('clienteId', '==', cliente.id),
+          where('customerPhone', 'in', variants),
         ));
-        linkedSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+        if (!cancelled) setOrdersPorTelefone(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        console.error('[PrazoPage] Erro ao carregar pedidos por clienteId:', err);
-      }
-
-      try {
-        const variants = getPhoneVariants(cliente.celular || '').slice(0, 30);
-        if (variants.length > 0) {
-          const legacySnap = await getDocs(query(
-            collection(db, 'orders'),
-            where('ownerId', '==', ownerId),
-            where('customerPhone', 'in', variants),
-          ));
-          legacySnap.docs.forEach((d) => {
-            const data: any = d.data() || {};
-            // Um pedido já ligado a OUTRO cliente nunca volta a ser capturado
-            // por um telefone antigo coincidente.
-            if (
-              (!data.clienteId || data.clienteId === cliente.id)
-              && creditPhonesAreEqual(String(data.customerPhone || ''), cliente.celular || '')
-            ) {
-              byId.set(d.id, { id: d.id, ...data });
-            }
-          });
-        }
-      } catch (err) {
-        console.error('[PrazoPage] Erro ao carregar pedidos legados por telefone:', err);
+        console.error('[PrazoPage] Erro ao carregar pedidos do cliente:', err);
+        if (!cancelled) setOrdersPorTelefone([]);
       } finally {
-        if (!cancelled) {
-          setOrdersPorTelefone([...byId.values()]);
-          setTelefoneResolvido(true);
-        }
+        if (!cancelled) setTelefoneResolvido(true);
       }
     })();
     return () => { cancelled = true; };
@@ -254,46 +227,25 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // extrato sem poder abrir. Entram na MESMA lista, lidas como pedido.
   const temEncomendas = storeProfile?.theme === 'confeitaria';
   React.useEffect(() => {
-    if (!db || !ownerId || !temEncomendas || !cliente?.id) { setEncomendasDoCliente([]); return; }
+    if (!db || !ownerId || !temEncomendas || !cliente?.celular) { setEncomendasDoCliente([]); return; }
     let cancelled = false;
     (async () => {
-      const byId = new Map<string, any>();
       try {
-        const linkedSnap = await getDocs(query(
+        const variants = getPhoneVariants(cliente.celular).slice(0, 30);
+        if (variants.length === 0) { setEncomendasDoCliente([]); return; }
+        const snap = await getDocs(query(
           collection(db, 'encomendas'),
           where('ownerId', '==', ownerId),
-          where('clienteId', '==', cliente.id),
+          where('customerPhone', 'in', variants),
         ));
-        linkedSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+        if (!cancelled) setEncomendasDoCliente(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        console.error('[PrazoPage] Erro ao carregar encomendas por clienteId:', err);
-      }
-      try {
-        const variants = getPhoneVariants(cliente.celular || '').slice(0, 30);
-        if (variants.length > 0) {
-          const legacySnap = await getDocs(query(
-            collection(db, 'encomendas'),
-            where('ownerId', '==', ownerId),
-            where('customerPhone', 'in', variants),
-          ));
-          legacySnap.docs.forEach((d) => {
-            const data: any = d.data() || {};
-            if (
-              (!data.clienteId || data.clienteId === cliente.id)
-              && creditPhonesAreEqual(String(data.customerPhone || ''), cliente.celular || '')
-            ) {
-              byId.set(d.id, { id: d.id, ...data });
-            }
-          });
-        }
-      } catch (err) {
-        console.error('[PrazoPage] Erro ao carregar encomendas legadas por telefone:', err);
-      } finally {
-        if (!cancelled) setEncomendasDoCliente([...byId.values()]);
+        console.error('[PrazoPage] Erro ao carregar encomendas do cliente:', err);
+        if (!cancelled) setEncomendasDoCliente([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [db, ownerId, temEncomendas, cliente?.id, cliente?.celular]);
+  }, [db, ownerId, temEncomendas, cliente?.celular]);
 
   const orders = useMemo(() => {
     const porId = new Map<string, any>();
@@ -445,6 +397,26 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   // ─── Ações ───
 
+  /** Devolve o id do crédito criado — é ele que liga o acerto ao lançamento do caixa. */
+  const registrarCredito = async (amount: number, description: string, method?: string): Promise<string> => {
+    const transRef = doc(collection(db, 'clientes', cliente.id, 'credit_transactions'));
+    // Lançamento e saldo do cadastro na MESMA escrita: se um falhar, nenhum
+    // dos dois entra (era esta divergência que sumia com dinheiro real).
+    const batch = writeBatch(db);
+    batch.set(transRef, {
+      id: transRef.id,
+      type: 'credit',
+      amount,
+      date: new Date().toISOString(),
+      description,
+      ...(method ? { paymentMethod: method } : {}),
+      channel: 'acerto',
+    });
+    batch.update(doc(db, 'clientes', cliente.id), { creditBalance: increment(-amount) });
+    await batch.commit();
+    return transRef.id;
+  };
+
   const handleReceivePayment = async () => {
     const amount = Number(paymentAmount.replace(',', '.'));
     if (!db || !cliente?.id) return;
@@ -454,14 +426,6 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     }
     if (caixaAberto === false) {
       toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa para registrar o recebimento.' });
-      return;
-    }
-    if (!registrarLancamento) {
-      toast({
-        variant: 'destructive',
-        title: 'Caixa indisponível',
-        description: 'Não foi possível preparar o lançamento conjunto. Nenhuma baixa foi feita.',
-      });
       return;
     }
 
@@ -498,32 +462,20 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     setIsSubmitting(true);
     try {
       const forma = FORMAS_RECEBIMENTO.find((f) => f.id === paymentMethod)?.label || paymentMethod;
-      const creditRef = doc(collection(db, 'clientes', cliente.id, 'credit_transactions'));
-      const batch = writeBatch(db);
-      batch.set(creditRef, {
-        id: creditRef.id,
-        type: 'credit',
-        amount,
-        date: new Date().toISOString(),
-        description: `Pagamento recebido (${forma})`,
-        paymentMethod,
-        channel: 'acerto',
-      });
-      batch.update(doc(db, 'clientes', cliente.id), { creditBalance: increment(-amount) });
-      await registrarLancamento({
-        tipo: 'venda',
-        titulo: `Acerto de Prazo - ${cliente.nome || 'Cliente'}`,
-        valor: amount,
-        formaPagamento: paymentMethod,
-        clienteId: cliente.id,
-        creditTxId: creditRef.id,
-      }, {
-        batch,
-        transactionId: `prazo_${cliente.id}_${creditRef.id}`,
-      });
-      // Crédito, contador do cliente e linha do caixa confirmam juntos. Se o
-      // commit falhar, nada entra e uma nova tentativa não duplica pagamento.
-      await batch.commit();
+      const creditTxId = await registrarCredito(amount, `Pagamento recebido (${forma})`, paymentMethod);
+
+      if (registrarLancamento) {
+        await registrarLancamento({
+          tipo: 'venda',
+          titulo: `Acerto de Prazo - ${cliente.nome || 'Cliente'}`,
+          valor: amount,
+          formaPagamento: paymentMethod,
+          // Sem estes dois o caixa só teria o nome do cliente escrito no título,
+          // e teria que adivinhar a conta pelo nome para mostrar o que foi pago.
+          clienteId: cliente.id,
+          creditTxId,
+        });
+      }
 
       toast({ title: 'Pagamento registrado!', description: `${brl(amount)} baixado da conta de ${cliente.nome || 'cliente'}.` });
       setPaymentAmount('');

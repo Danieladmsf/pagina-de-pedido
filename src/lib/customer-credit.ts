@@ -6,14 +6,9 @@ export type CreditCustomer = {
   data: any;
 };
 
-export type UniqueCustomerMatch =
-  | { kind: 'none' }
-  | { kind: 'ambiguous' }
-  | { kind: 'unique'; customer: CreditCustomer };
-
 export type CreditValidationResult = {
   allowed: boolean;
-  reason?: 'not_found' | 'ambiguous' | 'disabled' | 'past_due' | 'over_limit';
+  reason?: 'not_found' | 'disabled' | 'past_due' | 'over_limit';
   message?: string;
   customer?: CreditCustomer;
   balance?: number;
@@ -21,71 +16,19 @@ export type CreditValidationResult = {
   nextBalance?: number;
 };
 
-export const ambiguousCreditCustomerResult = (
-  customers: CreditCustomer[],
-): CreditValidationResult | null => customers.length > 1 ? {
-  allowed: false,
-  reason: 'ambiguous',
-  message: 'Há mais de um cadastro ativo para este telefone. Resolva o conflito na aba Clientes antes de vender no Prazo.',
-} : null;
-
 
 // creditEnabled explícito (true/false, gravado pela aba Clientes) tem
 // precedência; o legado contaCasa.enabled só vale quando creditEnabled
 // nunca foi definido. Sem isso, desativar o prazo na aba Clientes não
 // surtia efeito para clientes do cadastro rápido (que gravava os dois).
 export const isCreditEnabled = (data: any) =>
-  data?.archived !== true && !data?.mergeInProgress && (
-    data?.creditEnabled === true ||
-    (data?.creditEnabled === undefined && data?.contaCasa?.enabled === true)
-  );
+  data?.creditEnabled === true ||
+  (data?.creditEnabled === undefined && data?.contaCasa?.enabled === true);
 
 export const normalizeCreditPhone = (phone: string) => {
   const digits = (phone || '').replace(/\D/g, '');
   return digits.replace(/^55(?=\d{10,11}$)/, '');
 };
-
-/** Telefone brasileiro com DDD, depois da normalização compartilhada. */
-export const isValidCreditPhone = (phone: string) => {
-  const digits = normalizeCreditPhone(phone);
-  return digits.length === 10 || digits.length === 11;
-};
-
-/**
- * Compara a identidade telefônica depois de remover apenas formatação e o +55.
- * Não considera automaticamente números com e sem o nono dígito como a mesma
- * pessoa: as variantes ampliam consultas legadas, mas não decidem identidade.
- */
-export const creditPhonesAreEqual = (left: string, right: string) => {
-  const normalizedLeft = normalizeCreditPhone(left);
-  const normalizedRight = normalizeCreditPhone(right);
-  return isValidCreditPhone(normalizedLeft)
-    && normalizedLeft === normalizedRight;
-};
-
-/**
- * Máscara progressiva para campos de telefone. A persistência continua usando
- * `normalizeCreditPhone`; esta função existe apenas para a entrada humana.
- */
-export const maskCreditPhoneInput = (phone: string) => {
-  const digits = normalizeCreditPhone(phone).slice(0, 11);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  }
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-};
-
-/** Defaults financeiros só podem nascer junto com um cadastro realmente novo. */
-export const quickRegistrationCreditDefaults = (customerAlreadyExists: boolean, createdAt: string) =>
-  customerAlreadyExists ? {} : {
-    createdAt,
-    creditEnabled: true,
-    creditLimit: 0,
-    creditPayDay: 0,
-    creditBalance: 0,
-  };
 
 export const formatBrazilPhone = (digits: string) => {
   if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
@@ -97,63 +40,24 @@ export const getPhoneVariants = (phone: string) => {
   const raw = (phone || '').trim();
   const normalized = normalizeCreditPhone(phone);
   const compact = raw.replace(/[\s\-()+]/g, '');
-  if (!normalized) return Array.from(new Set([raw, compact].filter(Boolean)));
-
-  // Dez e onze dígitos podem representar pessoas diferentes. As variantes
-  // cobrem apenas formatações medidas no legado do mesmo número exato.
-  const ddd = normalized.slice(0, 2);
-  const subscriber = normalized.slice(2);
-  const splitAt = subscriber.length === 9 ? 5 : 4;
-  const first = subscriber.slice(0, splitAt);
-  const last = subscriber.slice(splitAt);
-  const formatted = formatBrazilPhone(normalized);
-  const localVariants = [
-    normalized,
-    formatted,
-    `(${ddd})${subscriber}`,
-    `(${ddd}) ${subscriber}`,
-    `(${ddd})${first}-${last}`,
-    `(${ddd}) ${first} ${last}`,
-    `${ddd} ${first}-${last}`,
-    `${ddd} ${first} ${last}`,
-    `${ddd}-${first}-${last}`,
-  ];
+  const withoutNinthDigit = normalized.length === 11 && normalized[2] === '9'
+    ? `${normalized.slice(0, 2)}${normalized.slice(3)}`
+    : '';
+  const withNinthDigit = normalized.length === 10
+    ? `${normalized.slice(0, 2)}9${normalized.slice(2)}`
+    : '';
+  const localNumbers = Array.from(new Set([normalized, withoutNinthDigit, withNinthDigit].filter(Boolean)));
 
   return Array.from(new Set([
     raw,
     compact,
-    ...localVariants,
-    `+55${normalized}`,
-    `55${normalized}`,
-    `+55 ${normalized}`,
-    `55 ${normalized}`,
-    `+55 ${formatted}`,
-    `55 ${formatted}`,
-    `+55 ${ddd} ${first}-${last}`,
-    `+55(${ddd})${subscriber}`,
-    `+55 (${ddd})${subscriber}`,
-    `+55 ${ddd} ${first} ${last}`,
-  ].filter(Boolean))).slice(0, 30);
-};
-
-/**
- * Escolha segura para telas que precisam de UMA identidade. Formatações
- * diferentes do mesmo número contam como duplicidade; arquivados nunca entram.
- */
-export const matchUniqueActiveCustomerByPhone = (
-  customers: CreditCustomer[],
-  phone: string,
-): UniqueCustomerMatch => {
-  const normalized = normalizeCreditPhone(phone);
-  if (!isValidCreditPhone(normalized)) return { kind: 'none' };
-  const matches = customers.filter(({ data }) =>
-    data?.archived !== true
-    && !data?.mergeInProgress
-    && normalizeCreditPhone(String(data?.celular || '')) === normalized);
-  const unique = Array.from(new Map(matches.map((customer) => [customer.id, customer])).values());
-  if (unique.length === 0) return { kind: 'none' };
-  if (unique.length > 1) return { kind: 'ambiguous' };
-  return { kind: 'unique', customer: unique[0] };
+    ...localNumbers.flatMap((localNumber) => [
+      localNumber,
+      formatBrazilPhone(localNumber),
+      `+55${localNumber}`,
+      `55${localNumber}`,
+    ]),
+  ].filter(Boolean)));
 };
 
 // Desde quando o cliente está devendo, reconstruído pelo extrato: percorre as
@@ -170,9 +74,7 @@ async function getDebtSince(db: any, clienteId: string): Promise<Date | null> {
   let since: string | null = null;
   for (const transaction of transactions) {
     const amount = Number(transaction.amount) || 0;
-    if (transaction.type === 'debit') runningBalance += amount;
-    else if (transaction.type === 'credit') runningBalance -= amount;
-    else continue;
+    runningBalance += transaction.type === 'debit' ? amount : -amount;
     if (runningBalance > 0.009) {
       if (!since) since = transaction.date;
     } else {
@@ -199,12 +101,6 @@ const isPendingCreditOrder = (order: any, ownerId: string) =>
   order.paymentMethod.includes('conta_casa') &&
   !['delivered', 'canceled'].includes(order?.status);
 
-export const creditOrderMatchesCustomer = (order: any, phone: string, customerId?: string) => {
-  if (order?.clienteId) return !!customerId && order.clienteId === customerId;
-  return creditPhonesAreEqual(String(order?.customerIdentifier || ''), phone)
-    || creditPhonesAreEqual(String(order?.customerPhone || ''), phone);
-};
-
 /**
  * Soma os pedidos a prazo ainda em andamento do próprio cliente (consulta por
  * customerUid — é o que as regras permitem no lado do cliente). Sem isso o
@@ -224,55 +120,38 @@ export async function sumPendingCreditOrdersForCustomer(db: any, ownerId: string
 }
 
 /** Versão do painel admin: varre os pedidos da loja e casa por telefone. */
-export async function sumPendingCreditOrdersForOwner(
-  db: any,
-  ownerId: string,
-  phone: string,
-  customerId?: string,
-): Promise<number> {
+export async function sumPendingCreditOrdersForOwner(db: any, ownerId: string, phone: string): Promise<number> {
   if (!db || !ownerId || !phone) return 0;
   try {
+    const variants = new Set(getPhoneVariants(phone));
     const snap = await getDocs(query(collection(db, 'orders'), where('ownerId', '==', ownerId)));
     return snap.docs.reduce((sum: number, orderDoc: any) => {
       const order = orderDoc.data();
-      const matchesCustomer = creditOrderMatchesCustomer(order, phone, customerId);
-      return matchesCustomer && isPendingCreditOrder(order, ownerId) ? sum + (Number(order.totalAmount) || 0) : sum;
+      const matchesPhone = variants.has(order?.customerIdentifier) || variants.has(order?.customerPhone);
+      return matchesPhone && isPendingCreditOrder(order, ownerId) ? sum + (Number(order.totalAmount) || 0) : sum;
     }, 0);
   } catch {
     return 0;
   }
 }
 
-export async function findCreditCustomers(
-  db: any,
-  ownerId: string,
-  phone: string,
-  options?: { includeArchived?: boolean },
-): Promise<CreditCustomer[]> {
+export async function findCreditCustomers(db: any, ownerId: string, phone: string): Promise<CreditCustomer[]> {
   if (!db || !ownerId || !phone) return [];
 
   const byId = new Map<string, CreditCustomer>();
-  const variants = getPhoneVariants(phone).slice(0, 30);
-  if (variants.length === 0) return [];
-  const snap = await getDocs(query(
-    collection(db, 'clientes'),
-    where('ownerId', '==', ownerId),
-    where('celular', 'in', variants),
-  ));
+  for (const phoneVariant of getPhoneVariants(phone)) {
+    const snap = await getDocs(query(
+      collection(db, 'clientes'),
+      where('ownerId', '==', ownerId),
+      where('celular', '==', phoneVariant)
+    ));
 
-  snap.docs.forEach((customerDoc: any) => {
-    const data = customerDoc.data() || {};
-    // Cliente arquivado conserva o histórico, mas não pode ser escolhido
-    // silenciosamente para uma nova venda a prazo.
-    if (
-      creditPhonesAreEqual(String(data.celular || ''), phone)
-      && !data.mergeInProgress
-      && (options?.includeArchived === true || data.archived !== true)
-      && !byId.has(customerDoc.id)
-    ) {
-      byId.set(customerDoc.id, { id: customerDoc.id, data });
-    }
-  });
+    snap.docs.forEach((customerDoc: any) => {
+      if (!byId.has(customerDoc.id)) {
+        byId.set(customerDoc.id, { id: customerDoc.id, data: customerDoc.data() });
+      }
+    });
+  }
 
   return Array.from(byId.values());
 }
@@ -361,9 +240,6 @@ export async function validateCustomerCredit(
       message: 'Cliente nao cadastrado para compras a prazo.',
     };
   }
-
-  const ambiguous = ambiguousCreditCustomerResult(customers);
-  if (ambiguous) return ambiguous;
 
   const enabledCustomers = customers.filter((customer) => isCreditEnabled(customer.data || {}));
 

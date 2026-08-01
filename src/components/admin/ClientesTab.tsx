@@ -2,20 +2,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import type { RegistrarLancamento } from '@/hooks/useCaixa';
-import {
-  arrayUnion,
-  collection,
-  deleteField,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  runTransaction,
-  serverTimestamp,
-  updateDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,29 +14,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
-import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2, Archive, RotateCcw, ShieldAlert, GitMerge, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, Upload, Users, Phone, MapPin, CalendarDays, ChevronLeft, ChevronRight, Loader2, Eye, X, TrendingUp, ShoppingBag, Info, Receipt, User, Filter, ChevronUp, ChevronDown, ChevronsUpDown, Building2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { normalizeCreditPhone, getPhoneVariants, formatBrazilPhone, isCreditEnabled, isValidCreditPhone } from '@/lib/customer-credit';
-import { nameDocId, unidentifiedCustomerDocId } from '@/lib/customers/customer-sync';
-import {
-  buildCustomerImportIndex,
-  hasExactLegacyCustomerPhone,
-  resolveCustomerImportPhone,
-} from '@/lib/customers/customer-import';
+import { normalizeCreditPhone, getPhoneVariants, formatBrazilPhone } from '@/lib/customer-credit';
+import { nameDocId } from '@/lib/customers/customer-sync';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { PrazoPage } from '@/components/admin/PrazoPage';
-import {
-  balanceDivergenceIssue,
-  findCustomerIdentityIssues,
-  findOrderIdentityIssues,
-  isCustomerArchived,
-  isIntegrityIssueIgnored,
-  type CustomerIntegrityIssue,
-} from '@/lib/customer-integrity';
-import { mergeCustomers } from '@/lib/customers/customer-merge';
 
 interface ClientesTabProps {
   db: any;
@@ -83,11 +56,6 @@ interface Cliente {
   razaoSocial?: string;
   nomeFantasia?: string;
   inscricaoEstadual?: string;
-  archived?: boolean;
-  archivedAt?: unknown;
-  archiveReason?: string;
-  mergedInto?: string;
-  integrityIgnoredIssues?: string[];
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -105,20 +73,14 @@ function parseDateBR(value?: string): number {
 }
 
 function parseCSVLine(line: string): string[] {
-  const separator = line.includes(';') && !line.includes(',') ? ';' : ',';
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === separator && !inQuotes) {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
       result.push(current.trim());
       current = '';
     } else {
@@ -146,10 +108,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   // Prazo enxergar saldo/limite novos assim que uma baixa é lançada.
   const [prazoClienteId, setPrazoClienteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const [integrityIssues, setIntegrityIssues] = useState<CustomerIntegrityIssue[] | null>(null);
-  const [checkingIntegrity, setCheckingIntegrity] = useState(false);
-  const [resolvingIssueKey, setResolvingIssueKey] = useState<string | null>(null);
 
   // Trava o botão enquanto lê o extrato e apaga, pra não disparar duas vezes.
   const [deletingClienteId, setDeletingClienteId] = useState<string | null>(null);
@@ -218,15 +176,11 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     return query(collection(db, 'clientes'), where('ownerId', '==', user.uid));
   }, [db, user]);
 
-  const { data: clientesRaw, isLoading, error: clientesError } = useCollection(clientesQuery);
-  const allClientes = (clientesRaw || []) as Cliente[];
-  const clientes = useMemo(
-    () => allClientes.filter((customer) => showArchived ? isCustomerArchived(customer) : !isCustomerArchived(customer)),
-    [allClientes, showArchived],
-  );
+  const { data: clientesRaw, isLoading } = useCollection(clientesQuery);
+  const clientes = (clientesRaw || []) as Cliente[];
 
   // Foto de perfil do WhatsApp sob demanda (loader compartilhado, cache de módulo).
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, user.uid), [user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
 
   // Opções de filtro derivadas da própria base
   const bairroOptions = useMemo(
@@ -289,7 +243,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     return result;
   }, [clientes, searchTerm, filterBairro, filterCidade, sortBy, sortDir]);
 
-  const prazoCliente = prazoClienteId ? allClientes.find(c => c.id === prazoClienteId) || null : null;
+  const prazoCliente = prazoClienteId ? clientes.find(c => c.id === prazoClienteId) || null : null;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -366,24 +320,14 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
   /** Procura quem já usa esse número na loja (aceita as variações de formato). */
   const findClienteByCelular = async (phone: string) => {
-    if (!phone) return { kind: 'none' as const };
-    const normalized = normalizeCreditPhone(phone);
+    if (!phone) return null;
     const variants = getPhoneVariants(phone).slice(0, 30);
     const snap = await getDocs(query(
       collection(db, 'clientes'),
       where('ownerId', '==', user.uid),
       where('celular', 'in', variants),
     ));
-    const exact = snap.docs.filter((candidate) =>
-      normalizeCreditPhone(String(candidate.data()?.celular || '')) === normalized,
-    );
-    const active = exact.filter((candidate) => candidate.data()?.archived !== true);
-    if (active.length > 1) return { kind: 'ambiguous' as const };
-    if (active.length === 1) return { kind: 'unique' as const, doc: active[0] };
-    if (exact.some((candidate) => candidate.data()?.archived === true)) {
-      return { kind: 'archived' as const };
-    }
-    return { kind: 'none' as const };
+    return snap.empty ? null : snap.docs[0];
   };
 
   const handleSave = async () => {
@@ -419,24 +363,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
       // Quem já usa esse número: no cadastro novo vira atualização do mesmo
       // cliente; na edição impede partir o histórico em dois cadastros.
-      const phoneMatch = await findClienteByCelular(data.celular);
-      if (phoneMatch.kind === 'ambiguous') {
-        toast({
-          variant: 'destructive',
-          title: 'Telefone em conflito',
-          description: 'Mais de um cadastro ativo usa esse telefone. Resolva o conflito antes de salvar.',
-        });
-        return;
-      }
-      if (phoneMatch.kind === 'archived') {
-        toast({
-          variant: 'destructive',
-          title: 'Cliente arquivado',
-          description: 'Restaure o cadastro arquivado antes de reutilizar este telefone.',
-        });
-        return;
-      }
-      const jaCadastrado = phoneMatch.kind === 'unique' ? phoneMatch.doc : null;
+      const jaCadastrado = await findClienteByCelular(data.celular);
 
       if (editingCliente?.id) {
         if (jaCadastrado && jaCadastrado.id !== editingCliente.id) {
@@ -450,34 +377,8 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
         await updateDoc(doc(db, 'clientes', editingCliente.id), data);
         toast({ title: 'Cliente atualizado!' });
       } else {
-        let existingTarget = jaCadastrado;
-        const proposedId = `${user.uid}_${data.celular}`;
-
-        // A busca por telefone reutiliza ids legados. Se ela nao achou nada,
-        // o id deterministico ainda precisa ser conferido: ele pode pertencer a
-        // um cliente que trocou de telefone. Um set(merge) nesse caso partiria
-        // silenciosamente o historico daquele cadastro.
-        if (!existingTarget) {
-          const proposedSnap = await getDoc(doc(db, 'clientes', proposedId));
-          if (proposedSnap.exists()) {
-            const current = proposedSnap.data() || {};
-            const sameIdentity = current.ownerId === user.uid
-              && current.archived !== true
-              && normalizeCreditPhone(String(current.celular || '')) === data.celular;
-            if (!sameIdentity) {
-              toast({
-                variant: 'destructive',
-                title: 'Conflito no cadastro',
-                description: 'O identificador desse telefone ja pertence a outro historico. Corrija o cadastro existente antes de continuar.',
-              });
-              return;
-            }
-            existingTarget = proposedSnap as any;
-          }
-        }
-
-        const isExisting = !!existingTarget;
-        const docId = existingTarget ? existingTarget.id : proposedId;
+        const isExisting = !!jaCadastrado;
+        const docId = jaCadastrado ? jaCadastrado.id : `${user.uid}_${data.celular}`;
 
         // Os zeros (saldo do Prazo, nº de pedidos, ticket) só valem para um
         // cadastro NOVO. Reaproveitando um cliente que já existe eles apagariam
@@ -491,22 +392,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           ultimoPedido: '',
         };
 
-        const targetRef = doc(db, 'clientes', docId);
-        await runTransaction(db, async (transaction) => {
-          const currentSnap = await transaction.get(targetRef);
-          if (isExisting) {
-            if (!currentSnap.exists()) throw new Error('O cadastro mudou enquanto era salvo. Tente novamente.');
-            const current: any = currentSnap.data() || {};
-            const sameIdentity = current.ownerId === user.uid
-              && current.archived !== true
-              && normalizeCreditPhone(String(current.celular || '')) === data.celular;
-            if (!sameIdentity) throw new Error('O identificador foi ocupado por outro histórico. Resolva o conflito antes de salvar.');
-            transaction.set(targetRef, data, { merge: true });
-            return;
-          }
-          if (currentSnap.exists()) throw new Error('O identificador foi ocupado enquanto o cadastro era salvo. Tente novamente.');
-          transaction.set(targetRef, { ...data, id: docId, ...inicial });
-        });
+        await setDoc(doc(db, 'clientes', docId), { ...data, id: docId, ...inicial }, { merge: true });
         toast({ title: isExisting ? 'Cliente atualizado (já cadastrado)!' : 'Cliente cadastrado!' });
       }
       setEditingCliente(null);
@@ -517,141 +403,59 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
-  const archiveCustomer = async (id: string, reason: string) => {
-    const customer = allClientes.find((item) => item.id === id);
-    await updateDoc(doc(db, 'clientes', id), {
-      archived: true,
-      archivedAt: serverTimestamp(),
-      archiveReason: reason,
-      creditEnabledBeforeArchive: isCreditEnabled(customer),
-      creditEnabled: false,
-    });
-  };
-
-  const restoreCustomer = async (id: string) => {
-    try {
-      const customer = allClientes.find((item) => item.id === id) as any;
-      if (customer?.mergedInto) {
-        toast({
-          variant: 'destructive',
-          title: 'Cadastro unificado',
-          description: `Este cadastro foi incorporado em ${customer.mergedInto}. Restaurá-lo isoladamente duplicaria o extrato.`,
-        });
-        return;
-      }
-      if (isValidCreditPhone(customer?.celular || '')) {
-        const phoneMatch = await findClienteByCelular(customer.celular);
-        if (phoneMatch.kind === 'ambiguous'
-          || (phoneMatch.kind === 'unique' && phoneMatch.doc.id !== id)) {
-          toast({
-            variant: 'destructive',
-            title: 'Telefone em uso',
-            description: 'Outro cadastro ativo usa este telefone. Resolva o conflito antes de restaurar.',
-          });
-          return;
-        }
-      }
-      await updateDoc(doc(db, 'clientes', id), {
-        archived: false,
-        archivedAt: deleteField(),
-        archiveReason: deleteField(),
-        mergedInto: deleteField(),
-        creditEnabled: customer?.creditEnabledBeforeArchive === true,
-        creditEnabledBeforeArchive: deleteField(),
-      });
-      toast({ title: 'Cliente restaurado.' });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Não foi possível restaurar', description: err?.message });
-    }
-  };
-
   /**
-   * Histórico e referências vencem a vontade de apagar: nesses casos o cliente
-   * é arquivado. Exclusão física só acontece com saldo zero, sem pedido novo
-   * apontando por `clienteId`, e em um único batch atômico.
+   * Exclui o cliente E o extrato do Prazo dele.
+   *
+   * O Firestore NÃO apaga subcoleção junto com o documento, então antes o
+   * extrato (`clientes/{id}/credit_transactions`) sobrevivia invisível. E como o
+   * id do cliente vem do telefone (`{uid}_{celular}`), recadastrar o mesmo
+   * número reatava o extrato antigo no cadastro novo — a dívida ressuscitava.
+   *
+   * Com saldo em aberto a exclusão é bloqueada: o extrato é a fonte de verdade
+   * do saldo, e apagar dívida sem querer é perda de dinheiro real.
    */
   const handleDelete = async (id: string) => {
     if (!db || deletingClienteId) return;
     setDeletingClienteId(id);
     try {
-      const customer = allClientes.find((item) => item.id === id);
       const transSnap = await getDocs(collection(db, 'clientes', id, 'credit_transactions'));
       const saldo = transSnap.docs.reduce((acc, d) => {
         const t: any = d.data();
         const valor = Number(t.amount) || 0;
-        if (t.type === 'debit') return acc + valor;
-        if (t.type === 'credit') return acc - valor;
-        return acc;
+        return acc + (t.type === 'debit' ? valor : -valor);
       }, 0);
 
-      const [ordersSnap, encomendasSnap, cashTransactionsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'orders'), where('ownerId', '==', user.uid))),
-        getDocs(query(collection(db, 'encomendas'), where('ownerId', '==', user.uid))),
-        getDocs(query(collection(db, 'cash_transactions'), where('ownerId', '==', user.uid))),
-      ]);
-      const references = [
-        ...ordersSnap.docs.filter((orderDoc) => orderDoc.data()?.clienteId === id),
-        ...encomendasSnap.docs.filter((orderDoc) => orderDoc.data()?.clienteId === id),
-        ...cashTransactionsSnap.docs.filter((cashDoc) => cashDoc.data()?.clienteId === id),
-      ];
-
-      // Para legado sem clienteId, telefone so vale por igualdade normalizada
-      // exata. Nao completamos nono digito e nunca vinculamos por nome.
-      const customerPhone = normalizeCreditPhone(String(customer?.celular || ''));
-      const legacyReferences = isValidCreditPhone(customerPhone) ? [
-        ...ordersSnap.docs.filter((orderDoc) => {
-          const data = orderDoc.data() || {};
-          return hasExactLegacyCustomerPhone(data, customerPhone);
-        }),
-        ...encomendasSnap.docs.filter((orderDoc) => {
-          const data = orderDoc.data() || {};
-          return hasExactLegacyCustomerPhone(data, customerPhone);
-        }),
-      ] : [];
-
-      const hasBalance = Math.abs(saldo) > 0.009;
-      const hasStatementHistory = transSnap.size > 0;
-      const hasCustomerMetrics = Number(customer?.totalPedidos || 0) > 0
-        || Number(customer?.totalPontos || 0) !== 0
-        || !!String(customer?.ultimoPedido || '').trim();
-      const mustArchive = hasBalance
-        || hasStatementHistory
-        || references.length > 0
-        || legacyReferences.length > 0
-        || hasCustomerMetrics;
-      if (mustArchive) {
-        const motivos = [
-          hasBalance ? `saldo de ${brl(saldo)}` : '',
-          hasStatementHistory ? `${transSnap.size} lancamento(s) no extrato` : '',
-          references.length ? `${references.length} registro(s) historico(s) vinculado(s)` : '',
-          legacyReferences.length ? `${legacyReferences.length} pedido(s) legado(s) pelo telefone exato` : '',
-          hasCustomerMetrics ? 'metricas/historico de compras no cadastro' : '',
-          transSnap.size > 499 ? `${transSnap.size} lançamentos no extrato` : '',
-        ].filter(Boolean).join(', ');
-        if (!confirm(`Este cliente não pode ser apagado porque mantém ${motivos}.\n\nArquivar agora? Ele sairá da lista ativa, mas todo o histórico será preservado.`)) return;
-        const archiveReason = hasBalance
-          ? 'balance'
-          : hasStatementHistory
-            ? 'statement_history'
-            : legacyReferences.length
-              ? 'legacy_reference'
-              : hasCustomerMetrics
-                ? 'customer_history'
-                : 'referenced';
-        await archiveCustomer(id, archiveReason);
-        toast({ title: 'Cliente arquivado', description: 'O cadastro saiu da lista ativa e o histórico foi preservado.' });
+      if (saldo > 0.009) {
+        toast({
+          variant: 'destructive',
+          title: 'Cliente com conta em aberto',
+          description: `Ele ainda deve ${brl(saldo)} no Prazo. Receba ou acerte o extrato antes de excluir.`,
+        });
+        return;
+      }
+      if (saldo < -0.009) {
+        toast({
+          variant: 'destructive',
+          title: 'Cliente tem crédito a favor',
+          description: `Há ${brl(Math.abs(saldo))} a favor dele. Acerte o extrato antes de excluir.`,
+        });
         return;
       }
 
       const aviso = transSnap.size > 0
         ? `\n\nO extrato do Prazo (${transSnap.size} ${transSnap.size === 1 ? 'lançamento' : 'lançamentos'}, saldo zerado) será apagado junto e não tem como recuperar.`
         : '';
-      if (!confirm(`Excluir este cliente definitivamente? Ele tem saldo zero e nenhum registro historico vinculado.${aviso}`)) return;
+      if (!confirm(`Excluir este cliente?${aviso}`)) return;
 
-      const batch = writeBatch(db);
-      transSnap.docs.forEach((transactionDoc) => batch.delete(transactionDoc.ref));
-      batch.delete(doc(db, 'clientes', id));
-      await batch.commit();
+      // Extrato primeiro: se falhar no meio, o cliente continua lá e nada fica
+      // órfão. Lotes de 450 pro limite de 500 operações do Firestore.
+      const LOTE = 450;
+      for (let i = 0; i < transSnap.docs.length; i += LOTE) {
+        const batch = writeBatch(db);
+        transSnap.docs.slice(i, i + LOTE).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, 'clientes', id));
       toast({ title: 'Cliente excluído.' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro', description: err.message });
@@ -660,163 +464,24 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
     }
   };
 
-  const runIntegrityCheck = async () => {
-    if (!db || checkingIntegrity) return;
-    setCheckingIntegrity(true);
-    try {
-      const activeCustomers = allClientes.filter((customer) => !isCustomerArchived(customer));
-      const issues = findCustomerIdentityIssues(activeCustomers);
-      const [ordersSnap, balanceIssues] = await Promise.all([
-        getDocs(query(collection(db, 'orders'), where('ownerId', '==', user.uid))),
-        Promise.all(activeCustomers.map(async (customer) => {
-        const transactionSnap = await getDocs(collection(db, 'clientes', customer.id, 'credit_transactions'));
-        return balanceDivergenceIssue(customer, transactionSnap.docs.map((transactionDoc) => transactionDoc.data()));
-        })),
-      ]);
-      const customerIssues = [...issues, ...balanceIssues.filter((issue): issue is CustomerIntegrityIssue => issue !== null)]
-        .filter((issue) => !isIntegrityIssueIgnored(issue, activeCustomers));
-      const orderIssues = findOrderIdentityIssues(
-        ordersSnap.docs.map((orderDoc) => ({ id: orderDoc.id, ...orderDoc.data() })),
-      );
-      const visibleIssues = [...customerIssues, ...orderIssues];
-      setIntegrityIssues(visibleIssues);
-      toast({
-        title: visibleIssues.length ? `${visibleIssues.length} conflito(s) para revisar` : 'Integridade dos clientes em dia',
-        description: visibleIssues.length ? 'Nenhum cadastro foi alterado automaticamente.' : 'Não encontrei conflito ativo nesta leitura.',
-      });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Falha na verificação', description: err?.message });
-    } finally {
-      setCheckingIntegrity(false);
-    }
-  };
-
-  const ignoreIntegrityIssue = async (issue: CustomerIntegrityIssue) => {
-    setResolvingIssueKey(issue.key);
-    try {
-      if (issue.type === 'order_invalid_phone' && issue.orderId) {
-        await updateDoc(doc(db, 'orders', issue.orderId), { customerIdentityIssueIgnored: true });
-        setIntegrityIssues((current) => current?.filter((item) => item.key !== issue.key) || []);
-        toast({ title: 'Conflito do pedido ignorado', description: 'A decisão ficou registrada no próprio pedido.' });
-        return;
-      }
-      const batch = writeBatch(db);
-      issue.customerIds.forEach((customerId) => {
-        batch.update(doc(db, 'clientes', customerId), { integrityIgnoredIssues: arrayUnion(issue.key) });
-      });
-      await batch.commit();
-      setIntegrityIssues((current) => current?.filter((item) => item.key !== issue.key) || []);
-      toast({ title: 'Conflito ignorado', description: 'A decisão ficou registrada nos cadastros envolvidos.' });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Não foi possível ignorar', description: err?.message });
-    } finally {
-      setResolvingIssueKey(null);
-    }
-  };
-
-  const correctIntegrityIssue = async (issue: CustomerIntegrityIssue) => {
-    if (issue.type === 'order_invalid_phone' && issue.orderId) {
-      const answer = prompt('Digite o telefone correto com DDD:', issue.currentValue || '');
-      if (answer === null) return;
-      if (!isValidCreditPhone(answer)) {
-        toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Use um telefone brasileiro com DDD e 10 ou 11 dígitos.' });
-        return;
-      }
-      setResolvingIssueKey(issue.key);
-      try {
-        const normalizedPhone = normalizeCreditPhone(answer);
-        await updateDoc(doc(db, 'orders', issue.orderId), {
-          customerPhone: normalizedPhone,
-          customerIdentifier: normalizedPhone,
-          customerIdentityPending: true,
-          customerIdentityConflict: false,
-          customerIdentityIssueIgnored: false,
-        });
-        setIntegrityIssues((current) => current?.filter((item) => item.key !== issue.key) || []);
-        toast({ title: 'Pedido corrigido', description: 'A identidade será vinculada pelo telefone exato.' });
-      } catch (err: any) {
-        toast({ variant: 'destructive', title: 'Não foi possível corrigir o pedido', description: err?.message });
-      } finally {
-        setResolvingIssueKey(null);
-      }
-      return;
-    }
-    const customer = allClientes.find((item) => item.id === issue.customerIds[0]);
-    if (!customer) return;
-    if (issue.type !== 'balance_divergence') {
-      openEditForm(customer);
-      return;
-    }
-    setResolvingIssueKey(issue.key);
-    try {
-      await updateDoc(doc(db, 'clientes', customer.id), { creditBalance: issue.expectedBalance || 0 });
-      setIntegrityIssues((current) => current?.filter((item) => item.key !== issue.key) || []);
-      toast({ title: 'Saldo corrigido pelo extrato', description: `Novo saldo: ${brl(issue.expectedBalance || 0)}.` });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Não foi possível corrigir', description: err?.message });
-    } finally {
-      setResolvingIssueKey(null);
-    }
-  };
-
-  const unifyIntegrityIssue = async (issue: CustomerIntegrityIssue) => {
-    const candidates = issue.customerIds
-      .map((id) => allClientes.find((customer) => customer.id === id))
-      .filter((customer): customer is Cliente => !!customer);
-    if (candidates.length < 2) return;
-    const options = candidates.map((customer, index) => `${index + 1}. ${customer.nome || 'Sem nome'} — ${formatBrazilPhone(normalizeCreditPhone(customer.celular || '')) || customer.id}`).join('\n');
-    const answer = prompt(`Qual cadastro deve ser o principal?\n\n${options}\n\nDigite o número:`);
-    const targetIndex = Number(answer) - 1;
-    if (!Number.isInteger(targetIndex) || !candidates[targetIndex]) return;
-    const target = candidates[targetIndex];
-    const sources = candidates.filter((customer) => customer.id !== target.id);
-    if (!confirm(`Unificar ${sources.length} cadastro(s) em “${target.nome}”?\n\nExtratos serão copiados, pedidos com clienteId serão redirecionados e as origens ficarão arquivadas. Nada será apagado.`)) return;
-
-    setResolvingIssueKey(issue.key);
-    try {
-      const result = await mergeCustomers(db, user.uid, target.id, sources.map((customer) => customer.id));
-      setIntegrityIssues((current) => current?.filter((item) => item.key !== issue.key) || []);
-      toast({
-        title: 'Cadastros unificados',
-        description: `${result.transactionsCopied} lançamento(s) copiado(s), ${result.referencesUpdated} vínculo(s) atualizado(s). Saldo final ${brl(result.finalBalance)}.`,
-      });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Unificação interrompida', description: `${err?.message || 'Tente novamente.'} A operação é idempotente e pode ser repetida.` });
-    } finally {
-      setResolvingIssueKey(null);
-    }
-  };
-
   // ─── CSV Import ───
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !db || !user) return;
 
-    // Importacao por identidade exige a fotografia completa da loja. A lista
-    // vazia e valida; lista ainda nao carregada/erro de leitura nao e.
-    if (isLoading || clientesRaw === null || clientesError) {
-      toast({
-        variant: 'destructive',
-        title: 'Base de clientes indisponivel',
-        description: 'Aguarde a lista carregar e tente novamente. Nenhum cliente foi importado.',
-      });
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
     setIsImporting(true);
     try {
       const buffer = await file.arrayBuffer();
-      let text = new TextDecoder('utf-8').decode(buffer);
-      if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buffer);
-      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      const decoder = new TextDecoder('windows-1252');
+      const text = decoder.decode(buffer);
+      const lines = text.split('\n').filter(l => l.trim());
       if (lines.length < 2) {
         toast({ variant: 'destructive', title: 'CSV vazio ou inválido' });
         return;
       }
 
-      const header = parseCSVLine(lines[0]).map((column) =>
-        column.replace(/^\uFEFF/, '').trim().toLowerCase());
+      // Parse header
+      const header = parseCSVLine(lines[0]);
       const nameIdx = header.indexOf('nome');
       const phoneIdx = header.indexOf('celular');
       const birthIdx = header.indexOf('data_nascimento');
@@ -832,20 +497,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
       const lastIdx = header.indexOf('ultimo_pedido');
 
       let imported = 0;
-      let skippedInvalidPhones = 0;
-      let skippedConflicts = 0;
-      let skippedDuplicateRows = 0;
       const BATCH_SIZE = 400;
-      const customerIndex = buildCustomerImportIndex(user.uid, allClientes);
-      const seenPhones = new Set<string>();
-      const seenIds = new Set<string>();
-      const planned: Array<{
-        id: string;
-        existing: boolean;
-        normalizedPhone: string;
-        profile: Record<string, unknown>;
-        initial?: Record<string, unknown>;
-      }> = [];
+      let batch = writeBatch(db);
+      let batchCount = 0;
 
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
@@ -854,118 +508,42 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
         // Id previsível também sem telefone: reimportar a mesma planilha
         // atualiza o cliente em vez de criar uma cópia dele.
-        const rawPhone = (cols[phoneIdx] || '').trim();
-        const normalizedPhone = normalizeCreditPhone(rawPhone);
-        let docId = '';
-        let existing = false;
-        if (rawPhone) {
-          const resolution = resolveCustomerImportPhone(customerIndex, rawPhone);
-          if (resolution.status === 'invalid') {
-            skippedInvalidPhones++;
-            continue;
-          }
-          if (seenPhones.has(resolution.normalizedPhone)) {
-            skippedDuplicateRows++;
-            continue;
-          }
-          seenPhones.add(resolution.normalizedPhone);
-          if (resolution.status !== 'new' && resolution.status !== 'existing') {
-            skippedConflicts++;
-            continue;
-          }
-          docId = resolution.id;
-          existing = resolution.status === 'existing';
-        }
-        // Sem telefone, cada linha recebe uma identidade estavel dentro do CSV.
-        // Assim dois homonimos da mesma planilha nao sao fundidos pelo nome.
-        if (!rawPhone) {
-          docId = unidentifiedCustomerDocId(user.uid, nome, `csv-${i}`) || nameDocId(user.uid, nome);
-          const sameId = customerIndex.byId.get(docId);
-          if (sameId?.archived === true || (sameId && isValidCreditPhone(sameId.celular || ''))) {
-            skippedConflicts++;
-            continue;
-          }
-          existing = !!sameId;
-        }
-        if (!docId || seenIds.has(docId)) {
-          skippedDuplicateRows++;
-          continue;
-        }
-        seenIds.add(docId);
-        const profile: Record<string, unknown> = {
+        const normalizedPhone = normalizeCreditPhone(cols[phoneIdx] || '');
+        const docId = normalizedPhone ? `${user.uid}_${normalizedPhone}` : nameDocId(user.uid, nome);
+        const ref = doc(db, 'clientes', docId);
+        batch.set(ref, {
+          id: docId,
           nome,
           celular: normalizedPhone,
-          naoIdentificado: !normalizedPhone,
-        };
-        const optionalProfile = {
           dataNascimento: (cols[birthIdx] || '').trim(),
           logradouro: (cols[streetIdx] || '').trim(),
           logradouroNumero: (cols[numIdx] || '').trim(),
           complemento: (cols[compIdx] || '').trim(),
           bairro: (cols[neighIdx] || '').trim(),
           cidade: (cols[cityIdx] || '').trim(),
-        };
-        for (const [field, value] of Object.entries(optionalProfile)) {
-          if (value) profile[field] = value;
+          totalPedidos: parseInt(cols[totalIdx] || '0') || 0,
+          totalPontos: parseInt(cols[pointsIdx] || '0') || 0,
+          clienteDesde: (cols[sinceIdx] || '').trim(),
+          ticketMedio: parseFloat(cols[ticketIdx] || '0') || 0,
+          ultimoPedido: (cols[lastIdx] || '').trim(),
+          ownerId: user.uid,
+        });
+
+        batchCount++;
+        imported++;
+
+        if (batchCount >= BATCH_SIZE) {
+          await batch.commit();
+          batch = writeBatch(db);
+          batchCount = 0;
         }
-
-        planned.push({
-          id: docId,
-          existing,
-          normalizedPhone,
-          profile,
-          initial: existing ? undefined : {
-            id: docId,
-            ownerId: user.uid,
-            totalPedidos: parseInt(cols[totalIdx] || '0', 10) || 0,
-            totalPontos: parseInt(cols[pointsIdx] || '0', 10) || 0,
-            clienteDesde: (cols[sinceIdx] || '').trim(),
-            ticketMedio: parseFloat(cols[ticketIdx] || '0') || 0,
-            ultimoPedido: (cols[lastIdx] || '').trim(),
-          },
-        });
-
       }
 
-      for (let offset = 0; offset < planned.length; offset += BATCH_SIZE) {
-        const chunk = planned.slice(offset, offset + BATCH_SIZE);
-        await runTransaction(db, async (transaction) => {
-          const refs = chunk.map((item) => doc(db, 'clientes', item.id));
-          const currentDocs = await Promise.all(refs.map((ref) => transaction.get(ref)));
-
-          chunk.forEach((item, index) => {
-            const currentSnap = currentDocs[index];
-            if (item.existing) {
-              if (!currentSnap.exists()) throw new Error(`Cliente ${item.id} mudou durante a importacao.`);
-              const current = currentSnap.data() || {};
-              const currentPhone = normalizeCreditPhone(String(current.celular || ''));
-              const sameIdentity = current.ownerId === user.uid
-                && current.archived !== true
-                && (item.normalizedPhone ? currentPhone === item.normalizedPhone : !currentPhone);
-              if (!sameIdentity) throw new Error(`Conflito de identidade em ${item.id}.`);
-              // Somente perfil nao vazio; metricas, saldo, historico e flags de
-              // arquivamento permanecem intocados no cadastro existente.
-              transaction.set(refs[index], item.profile, { merge: true });
-              return;
-            }
-
-            // Create-only dentro da transacao evita sobrescrever um id que foi
-            // ocupado depois do preload.
-            if (currentSnap.exists()) throw new Error(`O identificador ${item.id} foi ocupado durante a importacao.`);
-            transaction.set(refs[index], { ...item.profile, ...item.initial });
-          });
-        });
-        imported += chunk.length;
+      if (batchCount > 0) {
+        await batch.commit();
       }
 
-      toast({
-        title: `${imported} clientes importados com sucesso!`,
-        description: [
-          skippedInvalidPhones > 0 ? `${skippedInvalidPhones} telefone(s) invalido(s)` : '',
-          skippedConflicts > 0 ? `${skippedConflicts} conflito(s) de identidade/arquivamento` : '',
-          skippedDuplicateRows > 0 ? `${skippedDuplicateRows} linha(s) repetida(s)` : '',
-        ].filter(Boolean).join('; ') || undefined,
-      });
+      toast({ title: `${imported} clientes importados com sucesso!` });
     } catch (err: any) {
       console.error(err);
       toast({ variant: 'destructive', title: 'Erro na importação', description: err.message });
@@ -1020,64 +598,10 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
 
   return (
     <div className="w-full max-w-[1400px] mx-auto flex flex-col h-full min-h-0 gap-4 pt-4 pb-2">
-      <div className="px-2 shrink-0 flex flex-wrap items-start gap-3">
-        <div className="flex-1 min-w-[260px]">
-          <h1 className="text-3xl font-black tracking-tight text-slate-800">Base de Clientes</h1>
-          <p className="text-muted-foreground mt-1 font-medium">Cadastre, gerencie e acompanhe o histórico de pedidos da sua carteira de clientes.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => { setShowArchived((value) => !value); setCurrentPage(1); }} className="gap-1.5">
-            {showArchived ? <Users className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-            {showArchived ? 'Ver ativos' : `Arquivados (${allClientes.filter(isCustomerArchived).length})`}
-          </Button>
-          <Button variant="outline" size="sm" onClick={runIntegrityCheck} disabled={checkingIntegrity} className="gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50">
-            {checkingIntegrity ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
-            Verificar conflitos
-          </Button>
-        </div>
+      <div className="px-2 shrink-0">
+        <h1 className="text-3xl font-black tracking-tight text-slate-800">Base de Clientes</h1>
+        <p className="text-muted-foreground mt-1 font-medium">Cadastre, gerencie e acompanhe o histórico de pedidos da sua carteira de clientes.</p>
       </div>
-
-      {integrityIssues !== null && (
-        <section className="mx-2 shrink-0 rounded-2xl border border-amber-200 bg-amber-50/70 overflow-hidden">
-          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-amber-200">
-            <AlertTriangle className="h-4 w-4 text-amber-700" />
-            <p className="text-sm font-bold text-amber-900 flex-1">
-              {integrityIssues.length ? `${integrityIssues.length} conflito(s) aguardando decisão` : 'Nenhum conflito ativo encontrado'}
-            </p>
-            <Button variant="ghost" size="sm" onClick={runIntegrityCheck} disabled={checkingIntegrity} className="h-7 text-xs text-amber-800">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${checkingIntegrity ? 'animate-spin' : ''}`} /> Atualizar
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setIntegrityIssues(null)} className="h-7 w-7"><X className="h-3.5 w-3.5" /></Button>
-          </div>
-          {integrityIssues.length > 0 && (
-            <div className="max-h-52 overflow-y-auto divide-y divide-amber-200/70">
-              {integrityIssues.map((issue) => {
-                const busy = resolvingIssueKey === issue.key;
-                const canUnify = issue.type === 'duplicate_phone' || issue.type === 'homonym_without_phone';
-                return (
-                  <div key={issue.key} className="px-4 py-2.5 flex flex-wrap items-center gap-2 bg-white/60">
-                    <div className="flex-1 min-w-[260px]">
-                      <p className="text-xs font-black text-slate-800">{issue.title}</p>
-                      <p className="text-xs text-slate-600">{issue.description}</p>
-                    </div>
-                    {canUnify && (
-                      <Button size="sm" variant="outline" onClick={() => unifyIntegrityIssue(issue)} disabled={busy} className="h-7 text-xs gap-1">
-                        <GitMerge className="h-3.5 w-3.5" /> Unificar
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={() => correctIntegrityIssue(issue)} disabled={busy} className="h-7 text-xs gap-1">
-                        <Pencil className="h-3.5 w-3.5" /> {issue.type === 'balance_divergence' ? 'Corrigir saldo' : issue.type === 'order_invalid_phone' ? 'Corrigir pedido' : 'Corrigir'}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => ignoreIntegrityIssue(issue)} disabled={busy} className="h-7 text-xs text-slate-500">
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Ignorar'}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
 
       {/* SEÇÃO — Tabela de Clientes */}
       <section className="bg-white rounded-2xl shadow-sm border overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -1091,7 +615,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           </div>
           <div className="flex gap-2">
             <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCSV} className="hidden" />
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting || isLoading || !!clientesError} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 text-xs">
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8 text-xs">
               {isImporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
               Importar CSV
             </Button>
@@ -1168,14 +692,12 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
               {paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                    {clientes.length === 0
-                      ? (showArchived ? 'Nenhum cliente arquivado.' : 'Nenhum cliente cadastrado. Importe um CSV ou cadastre manualmente.')
-                      : 'Nenhum resultado encontrado.'}
+                    {clientes.length === 0 ? 'Nenhum cliente cadastrado. Importe um CSV ou cadastre manualmente.' : 'Nenhum resultado encontrado.'}
                   </TableCell>
                 </TableRow>
               ) : (
                 paginated.map(c => (
-                  <TableRow key={c.id} className={`hover:bg-muted/20 cursor-pointer ${c.archived ? 'opacity-70 bg-slate-50' : ''}`} onClick={() => setViewingCliente(c)}>
+                  <TableRow key={c.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => setViewingCliente(c)}>
                     <TableCell className="pl-4 font-semibold text-slate-700">
                       <div className="flex items-center gap-2.5">
                         <ContactAvatar
@@ -1201,7 +723,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                               </Badge>
                             )
                           )}
-                          {c.archived && <Badge variant="outline" className="ml-2 text-[10px]">Arquivado</Badge>}
                         </span>
                       </div>
                     </TableCell>
@@ -1217,28 +738,18 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                     <TableCell className="text-muted-foreground text-sm">{c.ultimoPedido || '-'}</TableCell>
                     <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
-                        {!c.archived && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setPrazoClienteId(c.id); }} title="Abrir o Prazo (conta do cliente)">
-                            <Receipt className="h-3.5 w-3.5 text-indigo-500" />
-                          </Button>
-                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setPrazoClienteId(c.id); }} title="Abrir o Prazo (conta do cliente)">
+                          <Receipt className="h-3.5 w-3.5 text-indigo-500" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)} title="Ver Detalhes">
                           <Eye className="h-3.5 w-3.5 text-blue-500" />
                         </Button>
-                        {c.archived ? (
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => restoreCustomer(c.id)} disabled={!!c.mergedInto} title={c.mergedInto ? `Unificado em ${c.mergedInto}` : 'Restaurar cliente'}>
-                            <RotateCcw className="h-3.5 w-3.5 text-emerald-600" />
-                          </Button>
-                        ) : (
-                          <>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)} title="Editar Cliente">
-                              <Pencil className="h-3.5 w-3.5 text-amber-500" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)} disabled={deletingClienteId === c.id} title="Excluir ou arquivar">
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </>
-                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditForm(c)} title="Editar Cliente">
+                          <Pencil className="h-3.5 w-3.5 text-amber-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(c.id)} disabled={deletingClienteId === c.id} title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1574,14 +1085,6 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 Cliente desde: {viewingCliente.clienteDesde || '-'}
               </div>
 
-              {viewingCliente.archived && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                  <p className="font-bold text-slate-800">Cadastro arquivado</p>
-                  <p>O histórico foi preservado e este cliente não participa de novas vendas ou campanhas.</p>
-                  {viewingCliente.mergedInto && <p className="mt-1">Unificado em: {viewingCliente.mergedInto}</p>}
-                </div>
-              )}
-
               {viewingCliente.creditEnabled && (
                 <div className="pt-2 border-t mt-2">
                   <Button 
@@ -1599,15 +1102,9 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingCliente(null)}>Fechar</Button>
-            {viewingCliente?.archived && !viewingCliente?.mergedInto ? (
-              <Button onClick={() => { restoreCustomer(viewingCliente.id); setViewingCliente(null); }} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                <RotateCcw className="h-4 w-4 mr-2" /> Restaurar
-              </Button>
-            ) : !viewingCliente?.archived ? (
-              <Button onClick={() => { openEditForm(viewingCliente); setViewingCliente(null); }} className="bg-amber-500 hover:bg-amber-600 text-white">
-                <Pencil className="h-4 w-4 mr-2" /> Editar
-              </Button>
-            ) : null}
+            <Button onClick={() => { openEditForm(viewingCliente); setViewingCliente(null); }} className="bg-amber-500 hover:bg-amber-600 text-white">
+              <Pencil className="h-4 w-4 mr-2" /> Editar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

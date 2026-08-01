@@ -25,8 +25,9 @@ import {
 } from 'lucide-react';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
-  canAccessRetaguardaTab,
+  canAccessRetaguarda,
   EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+  getRetaguardaPermissionForTab,
 } from '@/lib/user-permissions';
 
 interface SidebarNavProps {
@@ -44,8 +45,10 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
   const { role, operatorPermissions } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda
     ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
-  const canShowTab = (tabId: string) =>
-    canAccessRetaguardaTab(role, retaguardaPermissions, tabId);
+  const canShowTab = (tabId: string) => {
+    const permission = getRetaguardaPermissionForTab(tabId);
+    return permission !== null && canAccessRetaguarda(role, retaguardaPermissions, permission);
+  };
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },

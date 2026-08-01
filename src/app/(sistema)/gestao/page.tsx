@@ -15,12 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { findUnderSuppliedProducts } from '@/lib/addon-groups';
-import {
-  comboReferenceWarning,
-  deleteItemWarning,
-  deleteMenuItemWithCleanup,
-  promotionUpdatesForRemovedItems,
-} from '@/lib/menu-item-delete';
+import { deleteItemWarning, deleteMenuItemWithCleanup, promotionUpdatesForRemovedItems } from '@/lib/menu-item-delete';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { useToast } from '@/hooks/use-toast';
@@ -49,10 +44,9 @@ import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
-  canAccessRetaguardaTab,
+  canAccessRetaguarda,
   EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
-  OPERATOR_RETAGUARDA_TAB_IDS,
-  type OperatorRetaguardaTabId,
+  getRetaguardaPermissionForTab,
 } from '@/lib/user-permissions';
 import { OperatorCatalogReadOnly } from '@/components/admin/OperatorCatalogReadOnly';
 import { UsuariosTab } from '@/components/admin/UsuariosTab';
@@ -82,10 +76,10 @@ export default function GestaoPage() {
   const { role, ownerId, actorId, actorName, operatorName, operatorPermissions } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda
     ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
-  const isTabAllowed = React.useCallback(
-    (tabId: string) => canAccessRetaguardaTab(role, retaguardaPermissions, tabId),
-    [retaguardaPermissions, role],
-  );
+  const isTabAllowed = React.useCallback((tabId: string) => {
+    const permission = getRetaguardaPermissionForTab(tabId);
+    return permission !== null && canAccessRetaguarda(role, retaguardaPermissions, permission);
+  }, [retaguardaPermissions, role]);
   const allowedTabs = React.useMemo(
     () => GESTAO_TAB_ORDER.filter((tabId) => isTabAllowed(tabId)),
     [isTabAllowed],
@@ -368,21 +362,6 @@ export default function GestaoPage() {
     if (movendo && !outras.some((c: any) => c.id === deleteCategoryTarget)) {
       toast({ variant: 'destructive', title: 'Escolha para onde vão os produtos' });
       return;
-    }
-
-    if (!movendo && alvos.length > 0) {
-      const comboWarning = comboReferenceWarning(
-        items || [],
-        new Set(alvos.map((item: any) => item.id)),
-      );
-      if (comboWarning) {
-        toast({
-          variant: 'destructive',
-          title: 'Há combos usando produtos desta categoria',
-          description: comboWarning,
-        });
-        return;
-      }
     }
 
     setIsDeletingCategory(true);
@@ -729,7 +708,7 @@ export default function GestaoPage() {
   }
 
   if (role === 'operator') {
-    if (!(OPERATOR_RETAGUARDA_TAB_IDS as readonly string[]).includes(activeTab)) {
+    if (!['produtos', 'categorias', 'addons', 'promocoes'].includes(activeTab)) {
       return (
         <div className="flex h-screen items-center justify-center bg-slate-100 text-sm font-medium text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Redirecionando para o PDV…
@@ -763,7 +742,7 @@ export default function GestaoPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <OperatorCatalogReadOnly
-              activeTab={activeTab as OperatorRetaguardaTabId}
+              activeTab={activeTab as 'produtos' | 'categorias' | 'addons' | 'promocoes'}
               items={(items || []) as any[]}
               categories={(categories || []) as any[]}
               addons={(addons || []) as any[]}
@@ -1130,20 +1109,10 @@ export default function GestaoPage() {
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => {
                                 if (!db) return;
-                                const comboWarning = comboReferenceWarning(items || [], new Set([item.id]));
-                                if (comboWarning) {
-                                  toast({ variant: 'destructive', title: 'Produto usado em combo', description: comboWarning });
-                                  return;
-                                }
                                 // Sai das promoções junto, senão a promoção fica
                                 // apontando pra um produto que não existe mais.
                                 if (confirm(`Excluir "${item.name}"?${deleteItemWarning(promotions || [], item.id)}`)) {
-                                  try {
-                                    await deleteMenuItemWithCleanup(db, item.id, promotions || [], items || []);
-                                    toast({ title: 'Produto excluído.' });
-                                  } catch (error: any) {
-                                    toast({ variant: 'destructive', title: 'Não foi possível excluir', description: error?.message });
-                                  }
+                                  await deleteMenuItemWithCleanup(db, item.id, promotions || []);
                                 }
                               }} title="Excluir">
                                 <Trash2 className="h-4 w-4 text-destructive" />

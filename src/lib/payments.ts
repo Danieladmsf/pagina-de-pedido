@@ -1,5 +1,5 @@
 import { collection, doc, increment, writeBatch } from 'firebase/firestore';
-import { findCreditCustomers, isValidCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
+import { validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
 
 // Centraliza o pós-fechamento financeiro que era copiado em NovoPedidoTab,
 // MesasTab e DeliveryTab. São duas etapas porque cada canal grava/atualiza o
@@ -17,8 +17,6 @@ type LancamentoInput = {
   orderId?: string;
   /** Encomenda que originou a venda (coleção própria, não é `orders`). */
   encomendaId?: string;
-  /** Cliente do Prazo, quando esta parte da venda foi fiada. */
-  clienteId?: string;
 };
 type RegistrarLancamento = (input: LancamentoInput) => Promise<any> | any;
 
@@ -55,18 +53,13 @@ export async function resolveContaCasa(
 
   const amount = contaCasaSplits.reduce((sum, s) => sum + s.amount, 0);
 
-  if (!isValidCreditPhone(phone)) {
+  if (!phone || phone.replace(/\D/g, '').length < 10) {
     return { kind: 'register', phone: '' };
   }
 
-  let pendingAmount: number | undefined;
-  if (includePending) {
-    // Pedidos novos usam clienteId; telefone só entra como fallback nos
-    // legados. Com mais de um cadastro para o número não escolhemos um id.
-    const candidates = await findCreditCustomers(db, ownerId, phone);
-    const uniqueCustomerId = candidates.length === 1 ? candidates[0].id : undefined;
-    pendingAmount = await sumPendingCreditOrdersForOwner(db, ownerId, phone, uniqueCustomerId);
-  }
+  const pendingAmount = includePending
+    ? await sumPendingCreditOrdersForOwner(db, ownerId, phone)
+    : undefined;
   const creditCheck = await validateCustomerCredit(
     db,
     ownerId,
@@ -177,7 +170,6 @@ export async function registrarPagamentoSplits(
           titulo: tituloPrazo,
           valor: split.amount,
           formaPagamento: 'conta_casa',
-          clienteId: contaCasaCustomerId,
           ...vinculo,
         });
       }

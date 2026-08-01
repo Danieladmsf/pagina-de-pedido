@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc, setDoc, getDoc, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, getDoc, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronLeft, ShoppingBag, Clock, Loader2, User as UserIcon, Phone, MapPin, Pencil, Save, RotateCcw, Receipt, QrCode, Wallet, CalendarDays, CheckCircle2, XCircle } from 'lucide-react';
@@ -20,8 +20,6 @@ import { useCustomerFirebase } from '@/firebase/customer-client';
 import { ensureAuthenticated } from '@/firebase/non-blocking-login';
 import { brl } from '@/lib/utils';
 import { matchOrderForTransaction } from '@/lib/prazo-statement';
-import { getOrderCode } from '@/lib/order-code';
-import { getPhoneVariants, isCreditEnabled, maskCreditPhoneInput, matchUniqueActiveCustomerByPhone, normalizeCreditPhone } from '@/lib/customer-credit';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Aguardando Confirmação',
@@ -198,7 +196,7 @@ export default function MyOrdersPage() {
   useEffect(() => {
     if (profile) {
       setName((profile as any).name || '');
-      setPhone(maskCreditPhoneInput((profile as any).phone || ''));
+      setPhone((profile as any).phone || '');
       setAddress((profile as any).address || '');
     }
   }, [profile]);
@@ -213,14 +211,7 @@ export default function MyOrdersPage() {
   useEffect(() => {
     // Aguarda o login (anônimo) — as regras de clientes/credit_transactions
     // exigem usuário autenticado para leitura.
-    if (!storeId || !db || !customerPhone || !user) {
-      setContaCasaInfo(null);
-      setContaCasaTransactions([]);
-      return;
-    }
-
-    setContaCasaInfo(null);
-    setContaCasaTransactions([]);
+    if (!storeId || !db || !customerPhone || !user) return;
 
     // Buscar loja
     getDoc(doc(db, 'store_profiles', storeId)).then(snap => {
@@ -228,46 +219,30 @@ export default function MyOrdersPage() {
     });
 
     // Buscar cliente com listener em tempo real
-    const possiblePhones = getPhoneVariants(customerPhone);
+    const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55/, '');
+    const possiblePhones = Array.from(new Set([customerPhone, normalizedPhone, '+55' + normalizedPhone, '55' + normalizedPhone]));
     const q = query(collection(db, 'clientes'), where('ownerId', '==', storeId), where('celular', 'in', possiblePhones));
-    let transactionCustomerId: string | null = null;
-    let unsubTransactions: (() => void) | null = null;
-
-    const clearCreditCustomer = () => {
-      setContaCasaInfo(null);
-      setContaCasaTransactions([]);
-      transactionCustomerId = null;
-      unsubTransactions?.();
-      unsubTransactions = null;
-    };
-
     const unsubClient = onSnapshot(q, (snap) => {
-      const match = matchUniqueActiveCustomerByPhone(
-        snap.docs.map((customerDoc) => ({ id: customerDoc.id, data: customerDoc.data() || {} })),
-        customerPhone,
-      );
-      if (match.kind !== 'unique' || !isCreditEnabled(match.customer.data)) {
-        clearCreditCustomer();
-        return;
+      if (!snap.empty) {
+        const cData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
+        if (cData.creditEnabled) {
+          setContaCasaInfo(cData);
+        }
       }
-
-      const cData = { id: match.customer.id, ...match.customer.data } as any;
-      setContaCasaInfo(cData);
-      if (transactionCustomerId === match.customer.id) return;
-
-      unsubTransactions?.();
-      setContaCasaTransactions([]);
-      transactionCustomerId = match.customer.id;
-      const tq = query(collection(db, 'clientes', match.customer.id, 'credit_transactions'), orderBy('date', 'desc'));
-      unsubTransactions = onSnapshot(tq, (tsnap) => {
-        setContaCasaTransactions(tsnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
     });
 
-    return () => {
-      unsubClient();
-      unsubTransactions?.();
-    };
+    // Buscar transações
+    getDocs(q).then(snap => {
+      if (!snap.empty) {
+        const cId = snap.docs[0].id;
+        const tq = query(collection(db, 'clientes', cId, 'credit_transactions'), orderBy('date', 'desc'));
+        onSnapshot(tq, (tsnap) => {
+          setContaCasaTransactions(tsnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+      }
+    });
+
+    return () => unsubClient();
   }, [storeId, db, customerPhone, user]);
 
 
@@ -287,11 +262,10 @@ export default function MyOrdersPage() {
       if (prev && prev !== order.status) {
         const msg = statusMessage(order.status, order.orderType || 'delivery');
         if (msg) {
-          const orderCode = getOrderCode(order);
-          toast({ title: `${msg.title} #${orderCode}`, description: msg.description });
+          toast({ title: `${msg.title} #${order.id}`, description: msg.description });
           try {
             if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-              new Notification(msg.title, { body: `Pedido #${orderCode} — ${msg.description}` });
+              new Notification(msg.title, { body: `Pedido #${order.id} — ${msg.description}` });
             }
           } catch {}
         }
@@ -312,7 +286,7 @@ export default function MyOrdersPage() {
     try {
       await setDoc(doc(db, 'customers', user.uid), {
         uid: user.uid,
-        name, phone: normalizeCreditPhone(phone), address,
+        name, phone, address,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       toast({ title: 'Perfil atualizado' });
@@ -436,7 +410,7 @@ export default function MyOrdersPage() {
           <div className="bg-white rounded-xl shadow-sm p-3 space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div><Label className="text-[10px] font-semibold text-slate-500">Nome</Label><Input className="h-8 text-sm" value={name} onChange={e => setName(e.target.value)} /></div>
-              <div><Label className="text-[10px] font-semibold text-slate-500">Telefone</Label><Input className="h-8 text-sm" value={phone} onChange={e => setPhone(maskCreditPhoneInput(e.target.value))} /></div>
+              <div><Label className="text-[10px] font-semibold text-slate-500">Telefone</Label><Input className="h-8 text-sm" value={phone} onChange={e => setPhone(e.target.value)} /></div>
             </div>
             <div><Label className="text-[10px] font-semibold text-slate-500">Endereço</Label><Input className="h-8 text-sm" value={address} onChange={e => setAddress(e.target.value)} /></div>
             <Button size="sm" className="w-full h-8 text-xs" onClick={handleSaveProfile} disabled={savingProfile}>
@@ -579,7 +553,7 @@ export default function MyOrdersPage() {
                   <div key={order.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div className="px-3 py-2 border-b flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-800">#{getOrderCode(order).substring(0, 8)}</span>
+                        <span className="text-xs font-bold text-slate-800">#{order.id?.substring(0,8)}</span>
                         <span className="text-[10px] text-slate-400">{new Date(order.orderDateTime).toLocaleDateString('pt-BR')}</span>
                       </div>
                       <Badge className={`${getOrderStatusBadgeColor(order.status)} text-[9px] px-1.5 py-0.5`}>

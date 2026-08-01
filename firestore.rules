@@ -20,14 +20,6 @@ service cloud.firestore {
       return isAdmin() && request.auth.uid == ownerId;
     }
 
-    // Tenant ownership is immutable after creation. Checking both maps with a
-    // default also keeps legacy documents without ownerId from throwing during
-    // rule evaluation; no update may add, remove or replace the field.
-    function ownerIdIsUnchanged() {
-      return request.resource.data.get('ownerId', null)
-        == resource.data.get('ownerId', null);
-    }
-
     // ── Operadores (frente de caixa) ──
     // roles_operador/{uid} mapeia um login de operador para a loja (ownerId).
     // Operador ATIVO tem acesso de "staff" apenas ao operacional (pedidos,
@@ -168,9 +160,7 @@ service cloud.firestore {
           && pdvAllowsAction(pdv, 'delivery', 'cancelarPedido'))
         || (nextStatus == 'delivered'
           && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
-            'payDeliveryToMotoboy', 'totalAmount',
-            'customerIdentityPending',
-            'stockDeducted', 'stockDeductedItems'])
+            'payDeliveryToMotoboy', 'totalAmount', 'stockDeducted', 'stockDeductedItems'])
           && pdvAllowsAction(pdv, 'delivery', 'finalizarPedido')
           && ((request.resource.data.get('discount', 0)
                 == resource.data.get('discount', 0)
@@ -210,8 +200,7 @@ service cloud.firestore {
               && pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline'))))
         || (nextStatus == 'delivered'
           && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
-            'subtotal', 'totalAmount', 'customerName', 'customerPhone', 'clienteId',
-            'customerIdentityPending',
+            'subtotal', 'totalAmount', 'customerName', 'customerPhone',
             'stockDeducted', 'stockDeductedItems'])
           && pdvAllowsAction(pdv, 'mesas', 'fecharComanda')
           && ((request.resource.data.get('discount', 0)
@@ -220,22 +209,15 @@ service cloud.firestore {
                 == resource.data.get('surcharge', 0))
             || pdvAllowsAction(pdv, 'mesas', 'descontoAcrescimo'))
           && (!usesContaCasa(request.resource.data)
-            || pdvAllowsAction(pdv, 'mesas', 'vendaPrazo'))
-          && (!changed.hasAny(['clienteId'])
-            || !request.resource.data.keys().hasAny(['clienteId'])))
+            || pdvAllowsAction(pdv, 'mesas', 'vendaPrazo')))
         || (changed.hasOnly(['items', 'subtotal', 'totalAmount',
-              'customerName', 'customerPhone', 'clienteId', 'customerIdentityPending',
-              'stockDeducted', 'stockDeductedItems'])
+              'customerName', 'customerPhone', 'stockDeducted', 'stockDeductedItems'])
           && changed.hasAny(['items', 'subtotal', 'totalAmount'])
           && pdvAllowsAction(pdv, 'mesas', 'lancarItens')
-          && (!changed.hasAny(['customerName', 'customerPhone', 'clienteId'])
-            || pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa'))
-          && (!changed.hasAny(['clienteId'])
-            || !request.resource.data.keys().hasAny(['clienteId'])))
-        || (changed.hasOnly(['customerName', 'customerPhone', 'clienteId', 'customerIdentityPending'])
-          && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')
-          && (!changed.hasAny(['clienteId'])
-            || !request.resource.data.keys().hasAny(['clienteId'])))
+          && (!changed.hasAny(['customerName', 'customerPhone'])
+            || pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')))
+        || (changed.hasOnly(['customerName', 'customerPhone'])
+          && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa'))
         || (changed.hasOnly(['tableNumber', 'accepted'])
           && changed.hasAny(['tableNumber'])
           && pdvAllowsAction(pdv, 'mesas', 'gerenciarMesa')
@@ -370,13 +352,10 @@ service cloud.firestore {
     // Adicionamos a lógica de ownerId para isolar os dados
     match /categories/{categoryId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /menuItems/{menuItemId} {
@@ -389,17 +368,15 @@ service cloud.firestore {
       // aumentar nem deixar negativo. Reposição/estorno é só do dono (admin).
       // Operador ativo pode mexer APENAS no estoque (baixa na venda e estorno
       // no cancelamento via lib/inventory) — nunca em preço/nome/etc.
-      allow update: if ownerIdIsUnchanged() && (
-        isOwnerOf(resource.data.ownerId) ||
-          (operatorCanAdjustInventory(resource.data.ownerId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
-          (isAnonymous()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])
-            && request.resource.data.stockQuantity is number
-            && request.resource.data.stockQuantity >= 0
-            && resource.data.stockQuantity is number
-            && request.resource.data.stockQuantity < resource.data.stockQuantity)
-      );
+      allow update: if isOwnerOf(resource.data.ownerId) ||
+        (operatorCanAdjustInventory(resource.data.ownerId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
+        (isAnonymous()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])
+          && request.resource.data.stockQuantity is number
+          && request.resource.data.stockQuantity >= 0
+          && resource.data.stockQuantity is number
+          && request.resource.data.stockQuantity < resource.data.stockQuantity);
     }
 
     // Histórico de movimentação de estoque (entrada/saída/ajuste manual).
@@ -426,24 +403,18 @@ service cloud.firestore {
 
     match /addons/{addonId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /addonCategories/{categoryId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /customers/{userId} {
@@ -464,12 +435,9 @@ service cloud.firestore {
       // avaliado por si, então as ~25 checagens de delivery e as de mesa não se
       // somam no mesmo orçamento de expressões — que é o que vinha estourando o
       // limite de 1000 e abortando a avaliação no meio.
-      allow update: if ownerIdIsUnchanged()
-        && isOwnerOf(resource.data.ownerId);
-      allow update: if ownerIdIsUnchanged()
-        && operatorCanUpdateOrderFamily(resource.data.ownerId, true);
-      allow update: if ownerIdIsUnchanged()
-        && operatorCanUpdateOrderFamily(resource.data.ownerId, false);
+      allow update: if isOwnerOf(resource.data.ownerId);
+      allow update: if operatorCanUpdateOrderFamily(resource.data.ownerId, true);
+      allow update: if operatorCanUpdateOrderFamily(resource.data.ownerId, false);
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
         isOwnerOf(request.resource.data.ownerId) ||
@@ -492,11 +460,10 @@ service cloud.firestore {
         request.resource.data.customerUid == request.auth.uid ||
         isOwnerOf(request.resource.data.ownerId)
       );
-      allow update: if ownerIdIsUnchanged() && (
-        isOwnerOf(resource.data.ownerId) || (
-          isOperatorOf(resource.data.ownerId)
-          && !usesContaCasa(resource.data)
-          && !usesContaCasa(request.resource.data) && (
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        isOperatorOf(resource.data.ownerId)
+        && !usesContaCasa(resource.data)
+        && !usesContaCasa(request.resource.data) && (
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
             && operatorCanPdvAction(resource.data.ownerId,
               'encomendas_pedidos', 'mudarStatus'))
@@ -526,7 +493,6 @@ service cloud.firestore {
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
               || operatorCanPdvAction(resource.data.ownerId,
                 'encomendas_pedidos', 'mudarStatus')))
-          )
         )
       );
       allow delete: if false;
@@ -547,14 +513,13 @@ service cloud.firestore {
           'saldoInicial', 'dataAbertura', 'usuarioAbertura'])
         && operatorCanPdvAction(request.resource.data.ownerId, 'caixa', 'abrirCaixa')
       );
-      allow update: if ownerIdIsUnchanged() && (
-        isOwnerOf(resource.data.ownerId) || (
-          resource.data.status == 'aberto'
-          && request.resource.data.status == 'fechado'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'dataFechamento', 'totalFechamento', 'fechamentoDetalhes'])
-          && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'fecharCaixa')
-        )
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        request.resource.data.ownerId == resource.data.ownerId
+        && resource.data.status == 'aberto'
+        && request.resource.data.status == 'fechado'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'dataFechamento', 'totalFechamento', 'fechamentoDetalhes'])
+        && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'fecharCaixa')
       );
       allow delete: if isOwnerOf(resource.data.ownerId);
     }
@@ -565,16 +530,15 @@ service cloud.firestore {
       allow create: if isOwnerOf(request.resource.data.ownerId)
         || operatorCanCreateCashTransaction(
           request.resource.data.ownerId, request.resource.data);
-      allow update: if ownerIdIsUnchanged() && (
-        isOwnerOf(resource.data.ownerId) || (
-          resource.data.tipo == 'venda'
-          && !valueUsesContaCasa(resource.data.get('formaPagamento', ''))
-          && request.resource.data.caixaId == resource.data.caixaId
-          && cashRegisterIsOpen(resource.data.caixaId, resource.data.ownerId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'canceled', 'canceledAt', 'canceledBy', 'canceledByUid', 'canceledReason'])
-          && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'cancelarVenda')
-        )
+      allow update: if isOwnerOf(resource.data.ownerId) || (
+        resource.data.tipo == 'venda'
+        && !valueUsesContaCasa(resource.data.get('formaPagamento', ''))
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.caixaId == resource.data.caixaId
+        && cashRegisterIsOpen(resource.data.caixaId, resource.data.ownerId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'canceled', 'canceledAt', 'canceledBy', 'canceledByUid', 'canceledReason'])
+        && operatorCanPdvAction(resource.data.ownerId, 'caixa', 'cancelarVenda')
       );
       allow delete: if isOwnerOf(resource.data.ownerId);
     }
@@ -588,15 +552,7 @@ service cloud.firestore {
       // Base, condições de crédito e sincronização são owner-only. O cliente
       // anônimo mantém apenas a leitura legada necessária ao my-orders.
       allow create: if isOwnerOf(request.resource.data.ownerId);
-      allow update: if isOwnerOf(resource.data.ownerId)
-        && ownerIdIsUnchanged()
-        && (
-          resource.data.get('mergeInProgress', null) == null
-          || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'archived', 'archivedAt', 'archiveReason', 'mergedInto',
-            'creditEnabled', 'mergeInProgress'
-          ])
-        );
+      allow update: if isOwnerOf(resource.data.ownerId);
       allow delete: if isOwnerOf(resource.data.ownerId);
 
       match /credit_transactions/{transactionId} {
@@ -605,9 +561,7 @@ service cloud.firestore {
         allow get, list: if isAnonymous()
           || isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
         allow create, update, delete: if
-          isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId)
-          && get(/databases/$(database)/documents/clientes/$(clienteId)).data.get('archived', false) != true
-          && get(/databases/$(database)/documents/clientes/$(clienteId)).data.get('mergeInProgress', null) == null;
+          isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
       }
     }
 
@@ -643,31 +597,22 @@ service cloud.firestore {
 
     match /promotions/{promoId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create, update, delete: if isAdmin() && (
+        (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
+        (resource.data.ownerId == request.auth.uid)
+      );
     }
 
     match /campaigns/{campaignId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
     }
 
     match /broadcast_lists/{listId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
     }
 
     // Disparo agendado/segundo plano. O dono cria e lê (progresso em realtime) e
@@ -676,10 +621,7 @@ service cloud.firestore {
     match /scheduled_campaigns/{campaignId} {
       allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
       allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
     }
 
     match /whatsapp_messages/{messageId} {

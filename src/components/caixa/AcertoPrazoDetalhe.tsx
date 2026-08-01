@@ -3,9 +3,9 @@
 /**
  * Painel de um "Acerto de Prazo" no caixa — o que aquele recebimento pagou.
  *
- * O recebimento não é uma venda: é a baixa de uma dívida que nasceu em compras
- * de outros dias. Os novos guardam `clienteId`; os antigos têm somente o nome
- * no título e ficam sem vínculo. Quem tem a história é o extrato do cliente
+ * A linha do caixa só guarda o valor e o nome do cliente no título, porque o
+ * recebimento não é uma venda: é a baixa de uma dívida que nasceu em compras de
+ * outros dias. Quem tem essa história é o extrato do cliente
  * (`clientes/{id}/credit_transactions`), e é ele que este painel abre.
  *
  * A conta é buscada SÓ quando o dono expande a linha: em toda a base existem 4
@@ -13,10 +13,10 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { Loader2, Wallet } from 'lucide-react';
-import { brl } from '@/lib/utils';
+import { brl, normalizeSearch } from '@/lib/utils';
 import { formatBrazilPhone } from '@/lib/customer-credit';
 import {
   allocatePayment,
@@ -25,11 +25,21 @@ import {
   type PaymentAllocation,
 } from '@/lib/prazo-statement';
 import type { LancamentoCaixa } from '@/hooks/useCaixa';
-import { clienteDoTituloAcerto, resolveAcertoClienteLink } from '@/lib/acerto-prazo-link';
+
+/** Nome do cliente escrito no título ("Acerto de Prazo - Fulano"). */
+export function clienteDoTitulo(titulo?: string): string {
+  const m = (titulo || '').match(/^\s*acerto de prazo\s*-\s*(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+
+/** A linha é um recebimento de dívida do Prazo (e não uma venda de verdade)? */
+export function isAcertoPrazo(lanc: { tipo?: string; titulo?: string }): boolean {
+  return lanc.tipo === 'venda' && /^\s*acerto de prazo\b/i.test(lanc.titulo || '');
+}
 
 type Estado =
   | { status: 'carregando' }
-  | { status: 'sem-vinculo'; nome: string; legado: boolean }
+  | { status: 'sem-cliente'; nome: string }
   | { status: 'erro' }
   | {
       status: 'ok';
@@ -40,38 +50,64 @@ type Estado =
 
 type Conta =
   | { achou: true; cliente: any; transacoes: CreditTransaction[] }
-  | { achou: false; nome: string; legado: boolean };
+  | { achou: false; nome: string };
 
 /**
- * Acha a conta somente pelo id gravado. O nome do título antigo é texto
- * humano e nunca volta a ser usado como chave.
+ * Acha a conta do cliente. Lançamento novo carrega `clienteId` e vai direto;
+ * o antigo só tem o nome no título, então a busca é pelo cadastro da loja —
+ * e, havendo homônimos, ganha aquele cujo extrato contém este recebimento.
  */
 async function carregarConta(
   db: any,
   lanc: LancamentoCaixa,
+  ownerId?: string | null,
 ): Promise<Conta> {
   const lerExtrato = async (clienteId: string): Promise<CreditTransaction[]> => {
     const snap = await getDocs(collection(db, 'clientes', clienteId, 'credit_transactions'));
     return snap.docs.map((d) => ({ ...(d.data() as CreditTransaction), id: d.id }));
   };
 
-  const link = resolveAcertoClienteLink(lanc);
-  if (link.linked) {
-    const snap = await getDoc(doc(db, 'clientes', link.clienteId));
+  if (lanc.clienteId) {
+    const snap = await getDoc(doc(db, 'clientes', lanc.clienteId));
     if (snap.exists()) {
       const cliente = { id: snap.id, ...snap.data() };
       return { achou: true, cliente, transacoes: await lerExtrato(snap.id) };
     }
-    return { achou: false, nome: clienteDoTituloAcerto(lanc.titulo), legado: false };
   }
-  return { achou: false, nome: link.nomeLegado, legado: true };
+
+  const nome = clienteDoTitulo(lanc.titulo);
+  if (!nome || !ownerId) return { achou: false, nome };
+
+  const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
+  const alvo = normalizeSearch(nome);
+  const candidatos = snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as any) }))
+    .filter((c) => normalizeSearch(c.nome || '') === alvo);
+
+  if (candidatos.length === 0) return { achou: false, nome };
+
+  const at = lanc.data?.toDate?.() ?? null;
+  const valor = Math.abs(Number(lanc.valor) || 0);
+  let primeiro: Conta | null = null;
+
+  // Homônimos são raros, mas escolher o errado mostraria a conta de outra
+  // pessoa: vence quem tem este recebimento no extrato.
+  for (const cliente of candidatos.slice(0, 3)) {
+    const transacoes = await lerExtrato(cliente.id);
+    if (!primeiro) primeiro = { achou: true, cliente, transacoes };
+    if (findPaymentTransaction(transacoes, { amount: valor, at })) return { achou: true, cliente, transacoes };
+  }
+
+  return primeiro!;
 }
 
 export function AcertoPrazoDetalhe({
   lanc,
+  ownerId,
   orders,
 }: {
   lanc: LancamentoCaixa;
+  ownerId?: string | null;
   /** Pedidos da loja, para mostrar os itens de cada compra quitada. */
   orders: any[];
 }) {
@@ -79,7 +115,7 @@ export function AcertoPrazoDetalhe({
   const [estado, setEstado] = useState<Estado>({ status: 'carregando' });
 
   const valorPago = Math.abs(Number(lanc.valor) || 0);
-  const nomeTitulo = useMemo(() => clienteDoTituloAcerto(lanc.titulo), [lanc.titulo]);
+  const nomeTitulo = useMemo(() => clienteDoTitulo(lanc.titulo), [lanc.titulo]);
 
   useEffect(() => {
     if (!db) return;
@@ -88,11 +124,11 @@ export function AcertoPrazoDetalhe({
 
     (async () => {
       try {
-        const conta = await carregarConta(db, lanc);
+        const conta = await carregarConta(db, lanc, ownerId);
         if (cancelado) return;
 
         if (!conta.achou) {
-          setEstado({ status: 'sem-vinculo', nome: conta.nome || nomeTitulo, legado: conta.legado });
+          setEstado({ status: 'sem-cliente', nome: conta.nome || nomeTitulo });
           return;
         }
 
@@ -117,7 +153,7 @@ export function AcertoPrazoDetalhe({
     // por causa disso seria ida ao banco à toa. O que identifica a conta é o
     // lançamento.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, lanc.id, lanc.clienteId, lanc.creditTxId]);
+  }, [db, lanc.id, ownerId]);
 
   const moldura = 'border-l-2 border-fuchsia-400 bg-fuchsia-50/40 rounded-r-lg rounded-bl-lg px-4 py-3.5 my-1';
 
@@ -138,15 +174,11 @@ export function AcertoPrazoDetalhe({
     );
   }
 
-  if (estado.status === 'sem-vinculo') {
+  if (estado.status === 'sem-cliente') {
     return (
       <div className={`${moldura} text-[12.5px] text-slate-500`}>
-        <strong className="text-slate-700">
-          {estado.legado ? 'Acerto antigo, sem vínculo.' : 'Cliente vinculado não encontrado.'}
-        </strong>{' '}
-        {estado.legado
-          ? <>Este lançamento{estado.nome ? ` menciona ${estado.nome}` : ''}, mas não guarda o id do cliente. Para evitar abrir a conta de um homônimo, consulte o extrato diretamente em Clientes › Prazo.</>
-          : <>O id gravado não aponta mais para um cadastro existente. Confira a integridade do cliente antes de consultar o extrato.</>}
+        Não encontrei <strong className="text-slate-700">{estado.nome || 'este cliente'}</strong> no cadastro —
+        o nome pode ter sido alterado depois deste acerto. O extrato completo fica na ficha do cliente, em Clientes › Prazo.
       </div>
     );
   }

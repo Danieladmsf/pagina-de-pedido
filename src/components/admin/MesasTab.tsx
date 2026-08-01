@@ -9,13 +9,13 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Tag, X, CreditCard, Banknote, QrCode, Wallet, ArrowLeft, Printer, Globe, ArrowLeftRight, Flame } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
-import { collection, deleteField, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { resolvePrintMode } from '@/lib/receipt-print';
 import { QuickRegisterClientModal } from './QuickRegisterClientModal';
-import { creditPhonesAreEqual, isCreditEnabled, isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone } from '@/lib/customer-credit';
+import { getPhoneVariants, normalizeCreditPhone, isCreditEnabled } from '@/lib/customer-credit';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { usePromotions } from '@/hooks/usePromotions';
@@ -25,7 +25,7 @@ import { CustomerSuggestions } from '@/components/admin/CustomerSuggestions';
 import { itemNeedsCustomization, applyPromoPrice, addSimpleItemToCart, buildCustomizedCartItem, isWeightItem, makeWeightCartLine, setCartLineWeight, findUnweighedItem } from '@/lib/cart';
 import { WeightInput } from '@/components/admin/WeightInput';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
-import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
+import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
@@ -36,7 +36,6 @@ import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { brl } from '@/lib/utils';
-import { generateOrderCode, getOrderCodePrefix } from '@/lib/order-code';
 
 interface MesasTabProps {
   orders?: any[];
@@ -62,7 +61,6 @@ interface MesasDraftMemory {
   receiptPrinted: boolean;
   customerName: string;
   customerPhone: string;
-  customerId: string | null;
   customerDirty: boolean;
 }
 
@@ -144,7 +142,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // cadastro e habilita o pagamento no Prazo, igual ao Balcao.
   const [customerName, setCustomerName] = useState(initialDraft?.customerName ?? '');
   const [customerPhone, setCustomerPhone] = useState(initialDraft?.customerPhone ?? '');
-  const [customerId, setCustomerId] = useState<string | null>(initialDraft?.customerId ?? null);
   const [customerDirty, setCustomerDirty] = useState(initialDraft?.customerDirty ?? false);
   // Seletor de mesa: usado tanto para "Trocar de mesa" (currentTable preenchido)
   // quanto para "Atribuir mesa" a um pedido online sem mesa (currentTable null).
@@ -178,7 +175,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     receiptPrinted,
     customerName,
     customerPhone,
-    customerId,
     customerDirty,
   });
   draftSnapshotRef.current = {
@@ -189,7 +185,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     receiptPrinted,
     customerName,
     customerPhone,
-    customerId,
     customerDirty,
   };
 
@@ -244,8 +239,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
           // Carrega o cliente vinculado à comanda (ignora o rótulo "Mesa N").
           const loadedName = activeOrder.customerName && !/^Mesa\s*\d+$/i.test(activeOrder.customerName) ? activeOrder.customerName : '';
           setCustomerName(loadedName);
-          setCustomerPhone(maskCreditPhoneInput(activeOrder.customerPhone || ''));
-          setCustomerId(activeOrder.clienteId || null);
+          setCustomerPhone(activeOrder.customerPhone || '');
           setCustomerDirty(false);
         }
       } else if (tableChanged) {
@@ -259,7 +253,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         setReceiptPrinted(false);
         setCustomerName('');
         setCustomerPhone('');
-        setCustomerId(null);
         setCustomerDirty(false);
       }
     } else {
@@ -270,7 +263,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       setReceiptPrinted(false);
       setCustomerName('');
       setCustomerPhone('');
-      setCustomerId(null);
       setCustomerDirty(false);
     }
   }, [selectedTable, orders]); // depends on orders to sync in real-time
@@ -284,9 +276,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
   // Prazo está ativo (ao escolher na lista ou ao reabrir uma comanda vinculada).
   const creditCustomer = useMemo(() => {
     if (normalizeCreditPhone(customerPhone).length < 10 || allCustomers.length === 0) return null;
-    const exactMatches = allCustomers.filter(c =>
-      c.archived !== true && creditPhonesAreEqual(String(c.celular || ''), customerPhone));
-    return exactMatches.length === 1 ? exactMatches[0] : null;
+    const variants = new Set(getPhoneVariants(customerPhone));
+    return allCustomers.find(c => variants.has(String(c.celular || ''))) || null;
   }, [customerPhone, allCustomers]);
 
   const applyCustomer = (c: any) => {
@@ -297,8 +288,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     const name = String(c.nome || c.name || '').trim();
     const phone = String(c.celular || '');
     if (name) setCustomerName(name);
-    if (phone) setCustomerPhone(maskCreditPhoneInput(phone));
-    setCustomerId(c.id || null);
+    if (phone) setCustomerPhone(phone);
     setActiveLookupField(null);
     setCustomerDirty(true);
   };
@@ -310,7 +300,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     }
     setCustomerName('');
     setCustomerPhone('');
-    setCustomerId(null);
     setActiveLookupField(null);
     setCustomerDirty(true);
   };
@@ -614,10 +603,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       return;
     }
     if (!db || !user || !selectedTable || cart.length === 0) return;
-    if (customerPhone.trim() && !isValidCreditPhone(customerPhone)) {
-      toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Informe DDD + telefone (10 ou 11 dígitos), ou limpe o cliente.' });
-      return;
-    }
     const unweighed = findUnweighedItem(cart);
     if (unweighed) {
       toast({ variant: 'destructive', title: 'Peso não informado', description: `Digite o peso de "${unweighed.name}" antes de salvar.` });
@@ -655,43 +640,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         comboItems: i.comboItems || null
       }));
 
-      let finalOrderId = activeOrderId;
-      const newOrderRef = activeOrderId ? null : doc(collection(db, 'orders'));
-      if (newOrderRef) finalOrderId = newOrderRef.id;
-      const newOrderCode = newOrderRef ? generateOrderCode() : activeOrder?.orderCode;
-
-      const explicitCustomerId = customerDirty
-        ? customerId
-        : customerId || activeOrder?.clienteId || null;
-      let resolvedCustomerId = explicitCustomerId || (role === 'owner' ? proposedCustomerId(ownerId, {
-        id: finalOrderId,
-        customerName,
-        customerPhone,
-      }) : null);
-      const hasCustomerIdentity = !!customerName.trim() || isValidCreditPhone(customerPhone);
-      if (role === 'owner' && hasCustomerIdentity && finalOrderId) {
-        const identity = await syncCustomerFromOrder(db, {
-          id: finalOrderId,
-          ...(explicitCustomerId ? { clienteId: explicitCustomerId } : {}),
-          customerName,
-          customerPhone,
-        }, {
-          ownerId,
-          countOrder: false,
-          writeCustomer: false,
-          linkCollection: null,
-          allowArchivedCustomer: false,
-        });
-        resolvedCustomerId = identity.customerId;
-        if (identity.ambiguous) {
-          toast({
-            variant: 'destructive',
-            title: 'Cliente em conflito',
-            description: 'A comanda será salva sem vínculo. Resolva o telefone duplicado na aba Clientes.',
-          });
-        }
-      }
-
       // Vínculo do cliente: quando houve edição, grava também vazio para o
       // botão "Limpar" efetivamente remover o vínculo da comanda.
       const clientPatch: any = {};
@@ -700,10 +648,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         // Só dígitos: é esta a chave que liga o pedido ao cliente (Prazo,
         // cadastro, WhatsApp). Formato livre aqui quebra a busca lá.
         clientPatch.customerPhone = normalizeCreditPhone(customerPhone);
-        clientPatch.clienteId = resolvedCustomerId || deleteField();
-        clientPatch.customerIdentityPending = hasCustomerIdentity;
       }
 
+      let finalOrderId = activeOrderId;
       const orderSpec = activeOrderId
         ? {
             ref: doc(db, 'orders', activeOrderId),
@@ -719,17 +666,16 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
             // caracteres — que é por onde o caixa casa a venda — era 15x menor
             // que o do id normal, e a chance de dois pedidos colidirem cresce
             // com o quadrado do movimento.
+            const novoRef = doc(collection(db, 'orders'));
+            finalOrderId = novoRef.id;
             return {
-              ref: newOrderRef!,
+              ref: novoRef,
               mode: 'set' as const,
               data: {
                 id: finalOrderId,
-                orderCode: newOrderCode,
                 ownerId,
                 customerName: customerName || `Mesa ${selectedTable}`,
                 customerPhone: normalizeCreditPhone(customerPhone),
-                ...(resolvedCustomerId ? { clienteId: resolvedCustomerId } : {}),
-                ...(hasCustomerIdentity ? { customerIdentityPending: true } : {}),
                 tableNumber: selectedTable,
                 orderType: 'dine_in',
                 status: 'pending',
@@ -763,30 +709,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         });
       }
 
-      // Depois que a comanda existe, materializa/atualiza o cadastro proposto e
-      // confirma o vínculo. Se falhar, o pedido continua íntegro e conserva os
-      // campos textuais para o fallback legado.
-      if (role === 'owner' && resolvedCustomerId && finalOrderId) {
-        try {
-          await syncCustomerFromOrder(db, {
-            id: finalOrderId,
-            clienteId: resolvedCustomerId,
-            customerName,
-            customerPhone,
-            totalAmount: cartTotal,
-          }, { ownerId, countOrder: false });
-        } catch (identityError) {
-          console.warn('Erro ao materializar cliente da mesa:', identityError);
-        }
-      }
-
       // Atualiza o estado local imediatamente, sem depender do "eco" do onSnapshot.
       // Sem isso, ao criar uma mesa nova o activeOrderId continuava null até o
       // Firestore devolver o pedido em tempo real — e enquanto isso a mesa não
       // ficava marcada como ocupada, o botão "Receber" não aparecia e, ao sair
       // da tela, a comanda local era perdida.
       setActiveOrderId(finalOrderId);
-      setCustomerId(resolvedCustomerId);
       setOriginalCart(cart);
       setCustomerDirty(false);
 
@@ -794,7 +722,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         setReceiptPrinted(false); // Reseta o botão de "Receber" para "Imprimir Conta" pois a conta mudou
         printReceiptNow({
           id: finalOrderId,
-          orderCode: newOrderCode,
           customerName: `Mesa ${selectedTable}`,
           orderType: 'dine_in',
           tableNumber: selectedTable,
@@ -911,10 +838,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
       const linkedName = (customerName || '').trim();
       const phone = customerPhone || quickRegisterModal?.phone || '';
-      if (phone.trim() && !isValidCreditPhone(phone)) {
-        toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Informe DDD + telefone (10 ou 11 dígitos), ou limpe o cliente.' });
-        return;
-      }
       const contaCasa = await resolveContaCasa(db, { splits: splitsToProcess, ownerId, phone });
       if (contaCasa.kind === 'register') {
         setIsSubmitting(false);
@@ -926,30 +849,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         return;
       }
       const contaCasaCustomerId = contaCasa.kind === 'ok' ? contaCasa.customerId : null;
-      const activeOrder = activeOrders.find(o => o.id === activeOrderId);
-      const explicitCustomerId = contaCasaCustomerId || customerId || activeOrder?.clienteId || null;
-      let resolvedCustomerId = explicitCustomerId || (role === 'owner' ? proposedCustomerId(ownerId, {
-        id: activeOrderId,
-        customerName: linkedName,
-        customerPhone: phone,
-      }) : null);
-      if (role === 'owner' && (linkedName || isValidCreditPhone(phone))) {
-        const identity = await syncCustomerFromOrder(db, {
-          ...activeOrder,
-          id: activeOrderId,
-          ...(explicitCustomerId ? { clienteId: explicitCustomerId } : { clienteId: undefined }),
-          customerName: linkedName,
-          customerPhone: phone,
-          totalAmount: totalCobrado,
-        }, {
-          ownerId,
-          countOrder: false,
-          writeCustomer: false,
-          linkCollection: null,
-          allowArchivedCustomer: false,
-        });
-        resolvedCustomerId = identity.customerId;
-      }
 
       // Grava status + vínculo do cliente + desconto/acréscimo na mesma escrita
       // (totalAmount passa a ser o valor efetivamente cobrado; cupom já imprime
@@ -964,8 +863,6 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       };
       if (linkedName) finalizeData.customerName = linkedName;
       if (phone) finalizeData.customerPhone = normalizeCreditPhone(phone);
-      if (resolvedCustomerId) finalizeData.clienteId = resolvedCustomerId;
-      if (linkedName || isValidCreditPhone(phone)) finalizeData.customerIdentityPending = true;
       await updateDoc(doc(db, 'orders', activeOrderId), finalizeData);
 
       await registrarPagamentoSplits(db, {
@@ -983,13 +880,13 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
 
       // Vincula/contabiliza a venda no cadastro do cliente (só com cliente
       // identificado por telefone; venda anônima de mesa é ignorada). Idempotente.
-      if (role === 'owner' && (resolvedCustomerId || linkedName || isValidCreditPhone(phone))) {
+      if (role === 'owner' && phone) {
         try {
+          const activeOrder = activeOrders.find(o => o.id === activeOrderId);
           await syncCustomerFromOrder(db, {
             ...activeOrder,
             id: activeOrderId,
             ownerId,
-            clienteId: resolvedCustomerId,
             customerName: linkedName,
             customerPhone: phone,
             totalAmount: totalCobrado,
@@ -1170,7 +1067,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                           />
                           <div className="min-w-0">
                             <p className="font-bold text-sm text-slate-800 truncate">{o.customerName || 'Cliente'}</p>
-                            <p className="text-[10px] text-slate-400">{time && `${time} · `}#{getOrderCodePrefix(o)}</p>
+                            <p className="text-[10px] text-slate-400">{time && `${time} · `}#{o.id?.substring(0, 5)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -1288,7 +1185,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                 <div className="space-y-1.5">
                   <div className="relative">
                     <Input autoComplete="new-password" placeholder="Nome do Cliente" value={customerName}
-                      onChange={e => { setCustomerName(e.target.value); setCustomerId(null); setCustomerDirty(true); }}
+                      onChange={e => { setCustomerName(e.target.value); setCustomerDirty(true); }}
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
                       className="h-8 text-xs" />
@@ -1296,7 +1193,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                   </div>
                   <div className="relative">
                     <Input autoComplete="new-password" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
-                      onChange={e => { setCustomerPhone(maskCreditPhoneInput(e.target.value)); setCustomerId(null); setCustomerDirty(true); }}
+                      onChange={e => { setCustomerPhone(e.target.value); setCustomerDirty(true); }}
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
                       className="h-8 text-xs" />

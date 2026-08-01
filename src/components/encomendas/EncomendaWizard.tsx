@@ -22,8 +22,6 @@ import {
   precoDoAdicional,
   type SelecaoEncomenda,
 } from '@/lib/encomendas/pricing';
-import { isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone } from '@/lib/customer-credit';
-import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import {
   ArrowLeft, ArrowRight, Gift, Copy, MapPin, Store, Bike, Upload,
   CalendarDays, Clock, MessageCircle, Cake, Sparkles, Home, Check, Loader2, Trash2,
@@ -128,7 +126,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       const s = localStorage.getItem('customer_profile');
       if (s) prof = JSON.parse(s) || {};
       const savedPhone = prof.phone || localStorage.getItem('customer_phone') || '';
-      if (savedPhone) setPhone((v) => v || maskCreditPhoneInput(savedPhone));
+      if (savedPhone) setPhone((v) => v || savedPhone);
       if (prof.name) setName((v) => v || prof.name);
       if (prof.birthDate) setBirthday((v) => v || prof.birthDate);
       if (prof.street) setStreet((v) => v || prof.street);
@@ -303,7 +301,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
 
   const canNext = (() => {
     switch (step.id) {
-      case 'contato': return isValidCreditPhone(phone) && name.trim().length > 1;
+      case 'contato': return phone.trim().length >= 8 && name.trim().length > 1;
       case 'produtos': return products.size > 0;
       case 'bolo': return !!cakeFlavor;
       case 'peso': return !!cakeWeight;
@@ -388,12 +386,11 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     return L.join('\n');
   }
 
-  const buildEncomendaDoc = (id: string, customerUid: string, clienteId?: string): Encomenda => montarEncomenda({
+  const buildEncomendaDoc = (id: string, customerUid: string): Encomenda => montarEncomenda({
     id,
     customerUid,
     ownerId: storeId,
     cliente: { nome: name, telefone: phone, nascimento: birthday },
-    clienteId,
     sel: selecao,
     totais,
     sinalPercent: config.sinalPercent,
@@ -427,11 +424,10 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
     try {
       let prev: any = {};
       try { prev = JSON.parse(localStorage.getItem('customer_profile') || '{}') || {}; } catch {}
-      const normalizedPhone = normalizeCreditPhone(phone);
-      localStorage.setItem('customer_phone', normalizedPhone);
+      localStorage.setItem('customer_phone', phone);
       localStorage.setItem('customer_profile', JSON.stringify({
         ...prev,
-        name: name || prev.name, phone: normalizedPhone || prev.phone, birthDate: birthday || prev.birthDate,
+        name: name || prev.name, phone: phone || prev.phone, birthDate: birthday || prev.birthDate,
         street: street || prev.street, number: number || prev.number, complement: complement || prev.complement,
         neighborhood: neighborhood || prev.neighborhood, city: city || prev.city,
       }));
@@ -440,42 +436,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
       if (db && auth && storeId) {
         const user = await ensureAuthenticated(auth);
         const id = genEncomendaId();
-        // O anônimo pode consultar, mas não alterar `clientes`: ele grava o id
-        // existente ou o id determinístico proposto. Cliente novo é materializado
-        // pelo painel do dono quando a encomenda chegar.
-        let clienteId: string | undefined;
-        try {
-          const identity = await syncCustomerFromOrder(db, {
-            id,
-            customerName: name,
-            customerPhone: phone,
-            customerBirthDate: birthday,
-            street,
-            number,
-            complement,
-            neighborhood,
-            city,
-          }, {
-            ownerId: storeId,
-            countOrder: false,
-            writeCustomer: false,
-            linkCollection: null,
-          });
-          clienteId = identity.customerId || undefined;
-        } catch (identityError) {
-          // A resolução é um enriquecimento: indisponibilidade na consulta
-          // não pode impedir a encomenda, que mantém o fallback por telefone.
-          console.warn('[encomendas] não foi possível resolver clienteId:', identityError);
-        }
-        await setDoc(
-          doc(collection(db, 'encomendas'), id),
-          {
-            ...buildEncomendaDoc(id, user.uid, clienteId),
-            // O dono materializa a identidade na próxima sessão, inclusive se
-            // a encomenda chegou enquanto nenhum painel estava aberto.
-            customerIdentityPending: true,
-          },
-        );
+        await setDoc(doc(collection(db, 'encomendas'), id), buildEncomendaDoc(id, user.uid));
       }
     } catch (err) {
       console.error('[encomendas] falha ao registrar:', err);
@@ -517,7 +478,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
           {step.id === 'contato' && (
             <Section title="Vamos começar com seus dados.">
               <Field label="Telefone (WhatsApp)" required>
-                <Input value={phone} onChange={(e) => setPhone(maskCreditPhoneInput(e.target.value))} placeholder="(00) 90000-0000" inputMode="tel" />
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(00) 90000-0000" inputMode="tel" />
               </Field>
               <Field label="Nome e sobrenome" required>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Como podemos te chamar?" />

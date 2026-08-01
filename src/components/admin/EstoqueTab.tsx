@@ -40,7 +40,6 @@ import {
   type StockMovementType,
 } from '@/lib/stock-movements';
 import { removeAccents } from '@/lib/utils';
-import { getOrderCodePrefix } from '@/lib/order-code';
 
 interface EstoqueTabProps {
   db: any;
@@ -230,7 +229,7 @@ export function EstoqueTab({
           delta: -n,
           stockBefore: null,
           stockAfter: null,
-          note: `Pedido #${getOrderCodePrefix(order).toUpperCase()}`,
+          note: `Pedido #${String(order.id).slice(0, 5).toUpperCase()}`,
           userName: order.source === 'pdv' ? 'PDV' : 'Cardápio',
         });
       }

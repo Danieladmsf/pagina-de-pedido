@@ -19,31 +19,18 @@ import {
   Firestore,
   collection,
   doc,
-  getDoc,
   getDocs,
   query,
   where,
   setDoc,
   runTransaction,
 } from 'firebase/firestore';
-import { getPhoneVariants, isValidCreditPhone, normalizeCreditPhone } from '@/lib/customer-credit';
-
-export type CustomerLinkCollection = 'orders' | 'encomendas';
+import { normalizeCreditPhone, getPhoneVariants } from '@/lib/customer-credit';
 
 export interface SyncOptions {
   ownerId: string;
   /** true = também conta o pedido (totalPedidos/ticket/ultimoPedido). Use na entrega/finalização. */
   countOrder: boolean;
-  /**
-   * `false` não escreve em `clientes`. Se o telefone ainda não existir e não
-   * houver colisão, devolve o id determinístico proposto para o pedido já
-   * nascer vinculado; o dono materializa o cadastro depois.
-   */
-  writeCustomer?: boolean;
-  /** Coleção na qual `order.id` deve receber `clienteId`; `null` só resolve. */
-  linkCollection?: CustomerLinkCollection | null;
-  /** Histórico já ligado pode ler arquivado; venda nova nunca deve optar por ele. */
-  allowArchivedCustomer?: boolean;
 }
 
 export interface SyncResult {
@@ -52,8 +39,6 @@ export interface SyncResult {
   /** true se o pedido foi contabilizado agora (false se já tinha sido). */
   counted: boolean;
   customerId: string | null;
-  /** Mais de um cadastro ativo tinha o mesmo telefone normalizado. */
-  ambiguous?: boolean;
 }
 
 const ANON_NAMES = new Set(['cliente balcao', 'cliente balcão', 'cliente', '']);
@@ -79,175 +64,6 @@ export function nameDocId(ownerId: string, nome: string) {
   return `${ownerId}_n_${slug}`;
 }
 
-/**
- * Identidade provisória por PEDIDO para cliente sem telefone. O sufixo impede
- * que duas pessoas homônimas sejam fundidas. Repetir a sincronização do mesmo
- * pedido continua idempotente.
- */
-export function unidentifiedCustomerDocId(ownerId: string, nome: string, orderId: string) {
-  const token = String(orderId || '')
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return token ? `${nameDocId(ownerId, nome)}_${token}` : '';
-}
-
-/**
- * Proposta local, sem I/O. Permite que operador/cliente anônimo grave o vínculo
- * no pedido mesmo sem permissão de escrever em `clientes`. Quando o dono abrir
- * o registro, `syncCustomerFromOrder` valida colisões antes de materializá-lo.
- */
-export function proposedCustomerId(ownerId: string, order: any): string | null {
-  if (!ownerId || !order) return null;
-  const phone = normalizeCreditPhone(String(order.customerPhone || ''));
-  if (isValidCreditPhone(phone)) return `${ownerId}_${phone}`;
-  const name = String(order.customerName || '').trim();
-  if (!name || ANON_NAMES.has(name.toLowerCase())) return null;
-  const proposed = unidentifiedCustomerDocId(ownerId, name, String(order.id || ''));
-  return proposed && !proposed.startsWith(`${ownerId}_n__`) ? proposed : null;
-}
-
-type ResolvedCustomer = {
-  id: string;
-  data: any;
-  isNew: boolean;
-  unidentified: boolean;
-  source: 'explicit' | 'phone' | 'proposed';
-};
-
-const ownsCustomer = (data: any, ownerId: string) => data?.ownerId === ownerId;
-
-/**
- * Resolve uma identidade sem jamais consultar pelo nome.
- *
- * Ordem do contrato:
- *  1. `clienteId` explícito e pertencente à loja;
- *  2. exatamente um cadastro ativo com o telefone normalizado;
- *  3. id determinístico novo (só quando a chamada pode escrever).
- *
- * Duplicidade e colisão com cadastro arquivado são conflitos: não escolhemos
- * o primeiro e não reativamos/reescrevemos o arquivado por acidente.
- */
-async function resolveCustomer(
-  db: Firestore,
-  order: any,
-  ownerId: string,
-  options: { writeCustomer: boolean; allowArchivedCustomer: boolean },
-): Promise<{ customer: ResolvedCustomer | null; ambiguous: boolean }> {
-  const explicitId = String(order?.clienteId || '').trim();
-  if (explicitId) {
-    const explicitSnap = await getDoc(doc(db, 'clientes', explicitId));
-    if (explicitSnap.exists()) {
-      const data: any = explicitSnap.data() || {};
-      if (ownsCustomer(data, ownerId)
-        && !data.mergeInProgress
-        && (options.allowArchivedCustomer || data.archived !== true)) {
-        return {
-          customer: {
-            id: explicitId,
-            data,
-            isNew: false,
-            unidentified: data.naoIdentificado === true,
-            source: 'explicit',
-          },
-          ambiguous: false,
-        };
-      }
-    }
-    // Id inexistente, de outra loja ou arquivado em uma venda nova: nunca o
-    // materializa. Ainda é seguro tentar o fallback legado pelo telefone.
-  }
-
-  const rawPhone = String(order?.customerPhone || '').trim();
-  const normalizedPhone = normalizeCreditPhone(rawPhone);
-  const validPhone = isValidCreditPhone(normalizedPhone);
-  const name = String(order?.customerName || '').trim();
-
-  if (validPhone) {
-    const clientesRef = collection(db, 'clientes');
-    const snap = await getDocs(query(
-      clientesRef,
-      where('ownerId', '==', ownerId),
-      where('celular', 'in', getPhoneVariants(rawPhone)),
-    ));
-    const matching = snap.docs
-      .map((candidate) => ({ id: candidate.id, data: candidate.data() || {} }))
-      .filter(({ data }) =>
-        ownsCustomer(data, ownerId)
-        && normalizeCreditPhone(String(data.celular || '')) === normalizedPhone);
-
-    const allUnique = Array.from(new Map(matching.map((candidate) => [candidate.id, candidate])).values());
-    const unique = allUnique.filter(({ data }) =>
-      !data.mergeInProgress && (options.allowArchivedCustomer || data.archived !== true));
-    if (unique.length > 1) return { customer: null, ambiguous: true };
-    if (unique.length === 1) {
-      return {
-        customer: { ...unique[0], isNew: false, unidentified: false, source: 'phone' },
-        ambiguous: false,
-      };
-    }
-    // Um cadastro arquivado, mesmo com id legado/não determinístico, conserva
-    // esta identidade. Criar outro ativo com o mesmo telefone duplicaria saldo
-    // e histórico; a restauração deve ser decisão explícita na aba Clientes.
-    if (allUnique.some(({ data }) =>
-      data.mergeInProgress || (!options.allowArchivedCustomer && data.archived === true))) {
-      return { customer: null, ambiguous: true };
-    }
-
-    const deterministicId = proposedCustomerId(ownerId, order)!;
-    const deterministicSnap = await getDoc(doc(db, 'clientes', deterministicId));
-    if (deterministicSnap.exists()) {
-      const data: any = deterministicSnap.data() || {};
-      const sameIdentity = ownsCustomer(data, ownerId)
-        && normalizeCreditPhone(String(data.celular || '')) === normalizedPhone;
-      if (sameIdentity && !data.mergeInProgress && (options.allowArchivedCustomer || data.archived !== true)) {
-        return {
-          customer: { id: deterministicId, data, isNew: false, unidentified: false, source: 'phone' },
-          ambiguous: false,
-        };
-      }
-      // O id determinístico já pertence a um cadastro que trocou de número,
-      // foi arquivado, ou está corrompido. Sobrescrevê-lo partiria o histórico.
-      return { customer: null, ambiguous: true };
-    }
-
-    return {
-      customer: { id: deterministicId, data: {}, isNew: true, unidentified: false, source: 'proposed' },
-      ambiguous: false,
-    };
-  }
-
-  const normalizedName = name.toLowerCase();
-  if (!name || ANON_NAMES.has(normalizedName)) return { customer: null, ambiguous: false };
-
-  const deterministicId = proposedCustomerId(ownerId, order) || '';
-  // Sem id do registro não existe token estável que separe homônimos. Nesse
-  // caso mantemos o fallback textual no pedido, mas não inventamos um vínculo.
-  if (!deterministicId || deterministicId.startsWith(`${ownerId}_n__`)) {
-    return { customer: null, ambiguous: false };
-  }
-
-  const deterministicSnap = await getDoc(doc(db, 'clientes', deterministicId));
-  if (deterministicSnap.exists()) {
-    const data: any = deterministicSnap.data() || {};
-    if (!ownsCustomer(data, ownerId)
-      || data.mergeInProgress
-      || (!options.allowArchivedCustomer && data.archived === true)) {
-      return { customer: null, ambiguous: true };
-    }
-    return {
-      customer: { id: deterministicId, data, isNew: false, unidentified: true, source: 'phone' },
-      ambiguous: false,
-    };
-  }
-
-  return {
-    customer: { id: deterministicId, data: {}, isNew: true, unidentified: true, source: 'proposed' },
-    ambiguous: false,
-  };
-}
-
 /** Extrai o endereço estruturado do pedido (campos planos ou objeto address). */
 function extractAddress(order: any) {
   const a = order?.address && typeof order.address === 'object' ? order.address : {};
@@ -270,9 +86,8 @@ function extractAddress(order: any) {
 export async function syncCustomerFromOrder(
   db: Firestore,
   order: any,
-  options: SyncOptions,
+  { ownerId, countOrder }: SyncOptions,
 ): Promise<SyncResult> {
-  const { ownerId, countOrder } = options;
   const empty: SyncResult = { created: false, counted: false, customerId: null };
   if (!db || !ownerId || !order) return empty;
 
@@ -280,27 +95,28 @@ export async function syncCustomerFromOrder(
   const phone = normalizeCreditPhone(rawPhone);
   const nome = (order.customerName || '').toString().trim();
 
-  const writeCustomer = options.writeCustomer !== false;
-  const { customer, ambiguous } = await resolveCustomer(db, order, ownerId, {
-    writeCustomer,
-    allowArchivedCustomer: options.allowArchivedCustomer === true,
-  });
-  if (!customer) return { ...empty, ambiguous };
+  // Sem identificação útil → ignora (ex.: venda anônima de balcão "Cliente Balcão").
+  if (!phone && ANON_NAMES.has(nome.toLowerCase())) return empty;
+  if (!phone && !nome) return empty;
 
-  const customerId = customer.id;
-  const existing: any = customer.data;
-  const isNew = customer.isNew;
+  const clientesRef = collection(db, 'clientes');
+  const q = phone
+    ? query(clientesRef, where('ownerId', '==', ownerId), where('celular', 'in', getPhoneVariants(rawPhone)))
+    : query(clientesRef, where('ownerId', '==', ownerId), where('nome', '==', nome));
+
+  const snap = await getDocs(q);
+  const isNew = snap.empty;
+  const customerId = !isNew
+    ? snap.docs[0].id
+    : (phone ? `${ownerId}_${phone}` : nameDocId(ownerId, nome));
+  const existing: any = isNew ? {} : snap.docs[0].data();
   const clientRef = doc(db, 'clientes', customerId);
 
   // ── 1. Upsert de identidade/endereço (nunca sobrescreve com vazio) ──
   const addr = extractAddress(order);
   const patch: any = { id: customerId, ownerId };
   if (nome) patch.nome = nome;
-  // `clienteId` explícito pode vir de um pedido antigo, criado antes de o
-  // cliente trocar de número. O vínculo deve sobreviver à troca sem restaurar
-  // silenciosamente o telefone antigo no cadastro.
-  if (isValidCreditPhone(phone) && customer.source !== 'explicit') patch.celular = phone;
-  patch.naoIdentificado = customer.unidentified;
+  if (phone) patch.celular = phone;
   if (addr.logradouro) patch.logradouro = addr.logradouro;
   if (addr.logradouroNumero) patch.logradouroNumero = addr.logradouroNumero;
   if (addr.complemento) patch.complemento = addr.complemento;
@@ -310,37 +126,24 @@ export async function syncCustomerFromOrder(
 
   if (isNew) {
     patch.clienteDesde = new Date().toLocaleDateString('pt-BR');
+    patch.totalPedidos = 0;
+    patch.totalPontos = 0;
+    patch.ticketMedio = 0;
+    patch.creditBalance = 0;
+    patch.ultimoPedido = '';
   }
 
-  if (writeCustomer) await setDoc(clientRef, patch, { merge: true });
+  await setDoc(clientRef, patch, { merge: true });
 
-  // ── 2. Vínculo por id + contagem idempotente do pedido ──
+  // ── 2. Contagem idempotente do pedido ──
   let counted = false;
-  const linkCollection = options.linkCollection === undefined ? 'orders' : options.linkCollection;
-  if (order.id && linkCollection && writeCustomer) {
-    const orderRef = doc(db, linkCollection, order.id);
+  if (countOrder && order.id) {
+    const orderRef = doc(db, 'orders', order.id);
     const valor = Number(order.totalAmount) || 0;
     const hoje = new Date().toLocaleDateString('pt-BR');
-    counted = await runTransaction(db, async (tx) => {
+    await runTransaction(db, async (tx) => {
       const oSnap = await tx.get(orderRef);
-      if (!oSnap.exists()) return false;
-      const persistedOrder: any = oSnap.data() || {};
-      const persistedCustomerId = String(persistedOrder.clienteId || '').trim();
-      // Outro fluxo já vinculou uma identidade diferente. Nunca troca o dono
-      // do histórico com base num snapshot/telefone possivelmente atrasado.
-      if (persistedCustomerId && persistedCustomerId !== customerId) return false;
-
-      const shouldCount = countOrder
-        && linkCollection === 'orders'
-        && persistedOrder.customerCounted !== true;
-      const orderPatch: any = {};
-      if (!persistedCustomerId) orderPatch.clienteId = customerId;
-
-      if (!shouldCount) {
-        if (Object.keys(orderPatch).length > 0) tx.update(orderRef, orderPatch);
-        return false;
-      }
-
+      if (oSnap.exists() && oSnap.data().customerCounted === true) return; // já contado
       const cSnap = await tx.get(clientRef);
       const c: any = cSnap.exists() ? cSnap.data() : {};
       const oldPedidos = Number(c.totalPedidos) || 0;
@@ -348,10 +151,10 @@ export async function syncCustomerFromOrder(
       const novoTotal = oldPedidos + 1;
       const novoTicket = (oldPedidos * oldTicket + valor) / novoTotal;
       tx.set(clientRef, { totalPedidos: novoTotal, ticketMedio: novoTicket, ultimoPedido: hoje }, { merge: true });
-      tx.update(orderRef, { ...orderPatch, customerCounted: true });
-      return true;
+      if (oSnap.exists()) tx.update(orderRef, { customerCounted: true });
+      counted = true;
     });
   }
 
-  return { created: isNew && writeCustomer, counted, customerId, ambiguous: false };
+  return { created: isNew, counted, customerId };
 }

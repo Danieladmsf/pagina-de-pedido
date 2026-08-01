@@ -1,28 +1,9 @@
 # Plano — Usuários com permissões e segurança real (login de operador)
 
-> **Status:** implementação parcial. A base entrou no commit `4e51258` em 20/07/2026; uma auditoria em 31/07/2026 confirmou o fluxo principal, mas encontrou bloqueios de segurança antes do canário/rollout (ver §0).
+> **Status:** planejamento. Nada implementado.
 > **Criado em:** 19/07/2026
-> **Leitura histórica:** as seções abaixo preservam o plano e o retrato do código em 19/07/2026. Afirmações como “falta” e “nada implementado” devem ser lidas nessa data-base.
 > **Relação com o que já existe:** é a "Fase 7" que o plano `docs/PLANO_PERMISSOES_PDV.md` deixou para depois. As permissões do PDV (já implementadas e testadas) viram o **perfil de cada usuário**. As regras de operador no Firestore **já começaram** (ver §2).
 > **Diferença desta fase:** aqui a proteção é **de verdade, no servidor** — não só esconder itens de interface. É o que o dono pediu ("com mais segurança").
-
----
-
-## 0. Atualização de implementação e auditoria (31/07/2026)
-
-Já existem no código: `PdvAccessContext` com `ownerId` resolvido, perfil fail-closed por operador, guard de owner/operador, API server-side de usuários com Firebase Auth, convite por e-mail, tela “Usuários e acesso”, catálogo read-only para operador, autorização granular no PDV e suíte de regras para o emulador.
-
-A auditoria desta data também corrigiu regressões localizadas no gate da Retaguarda, no tenant usado para fotos do WhatsApp, na sincronização entre `roles_operador.active` e Firebase Auth e na imutabilidade de `ownerId` nas regras.
-
-**Ainda não considerar a promessa de “segurança real” concluída.** Antes da Fase F/canário, é obrigatório resolver:
-
-1. `clientes` e `credit_transactions` ainda possuem leitura legada por sessão anônima; isso não protege de verdade a base e o extrato do cliente.
-2. Um operador que precisa operar pedidos/caixa ainda consegue ler documentos históricos de `orders`, `cash_registers` e `cash_transactions`, logo consegue reconstruir faturamento anterior mesmo sem Dashboard.
-3. `store_profiles` é lido publicamente por causa do cardápio e mistura configuração pública com dados que o plano classifica como privados; é necessário separar projeção pública de configuração privada.
-4. A baixa pública de `menuItems.stockQuantity` e os pings de `active_sessions` continuam permissivos demais e precisam de um fluxo autenticado/transacional mais estrito.
-5. A suíte de regras passou no Firebase Emulator usando o JRE 21 já instalado fora do `PATH`, mas o log ainda registra casos negados por limite de 1.000 expressões. É necessário ampliar os cenários positivos e fazer a suíte falhar diante de erro de avaliação, não apenas conferir `permission-denied`. O deploy das regras também deve ser confirmado separadamente.
-
-Até esses itens serem resolvidos, os gates de interface ajudam a evitar erro operacional e várias ações já são recusadas no servidor, mas a garantia forte descrita no objetivo ainda é parcial.
 
 ---
 
