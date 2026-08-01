@@ -85,7 +85,20 @@
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 30)",
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 40)",
       "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 20)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(firebase --version)",
+      "Bash(gcloud --version)",
+      "Bash(firebase login:list)",
+      "Bash(git log *)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:9002/\" -UseBasicParsing -TimeoutSec 3; \"DEV SERVER UP: $\\($r.StatusCode\\)\" } catch { \"DEV SERVER DOWN: $\\($_.Exception.Message\\)\" })",
+      "Bash(cp \"C:/Users/Administrador/AppData/Local/Temp/analise-novaribeirao.mjs\" \"./_temp-analise.mjs\")",
+      "Bash(rm -f \"./_temp-analise.mjs\")",
+      "Bash(cp \"C:/Users/Administrador/AppData/Local/Temp/analise2.mjs\" \"./_temp-analise2.mjs\")",
+      "Bash(rm -f \"./_temp-analise2.mjs\")",
+      "WebFetch(domain:api.w-api.app)",
+      "WebFetch(domain:www.w-api.app)",
+      "PowerShell(gcloud firestore fields describe *)",
+      "PowerShell(node _activate_ttl.js)"
     ]
   }
 }

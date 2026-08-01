@@ -21,9 +21,10 @@ import { Label } from '@/components/ui/label';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { getTheme, themeToCssVars } from '@/lib/themes';
 import { Textarea } from '@/components/ui/textarea';
-import { validateCustomerCredit, normalizeCreditPhone, getPhoneVariants, sumPendingCreditOrdersForCustomer } from '@/lib/customer-credit';
-import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
+import { getPhoneVariants, isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone, sumPendingCreditOrdersForCustomer, validateCustomerCredit } from '@/lib/customer-credit';
+import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { getSalesChannelLabel, isItemVisibleInChannel, SalesChannel } from '@/lib/menu-visibility';
+import { generateOrderCode } from '@/lib/order-code';
 
 interface PaymentMethodConfig {
   id: string;
@@ -78,29 +79,6 @@ const checkCartChannelVisibility = (
     allowed: false,
     message: `"${hiddenItem.name}" não está disponível para ${getSalesChannelLabel(orderType)}.`
   };
-};
-
-const formatPhone = (val: string) => {
-  if (!val) return '';
-  let digits = val.replace(/\D/g, '');
-  // Remove o código do país 55 quando vem o número completo (12 ou 13 dígitos),
-  // pra não tratar o "55" como DDD. DDD 55 (RS) tem 10-11 dígitos e é preservado.
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
-    digits = digits.slice(2);
-  }
-  const raw = digits.slice(0, 11);
-  let f = '';
-  if (raw.length === 0) f = '';
-  else if (raw.length <= 2) f = `(${raw}`;
-  else if (raw.length <= 6) f = `(${raw.slice(0, 2)}) ${raw.slice(2)}`;
-  else if (raw.length <= 10) f = `(${raw.slice(0, 2)}) ${raw.slice(2, 6)}-${raw.slice(6)}`;
-  else f = `(${raw.slice(0, 2)}) ${raw.slice(2, 7)}-${raw.slice(7)}`;
-  
-  // Permite que o usuário digite o traço ou espaço manualmente no final sem apagar
-  if (val.endsWith(' ') && raw.length === 2 && f === `(${raw}`) return f + ') ';
-  if (val.endsWith('-') && (raw.length === 6 || raw.length === 7) && !f.endsWith('-')) return f + '-';
-  
-  return f;
 };
 
 const formatDate = (val: string) => {
@@ -256,7 +234,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         } catch {}
 
         setCustomerName(d.name || localProfile.name || '');
-        setCustomerPhone(d.phone || localProfile.phone || localStorage.getItem('customer_phone') || '');
+        setCustomerPhone(maskCreditPhoneInput(d.phone || localProfile.phone || localStorage.getItem('customer_phone') || ''));
         if (d.birthDate || localProfile.birthDate) setCustomerBirthDate(d.birthDate || localProfile.birthDate || '');
         
         // Carregar endereço salvo
@@ -538,7 +516,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const validateStep = (s: 1 | 2 | 3): string | null => {
     if (s === 1) {
       if (!customerName.trim()) return 'Informe seu nome.';
-      if (!customerPhone.trim() || customerPhone.replace(/\D/g, '').length < 10) return 'Informe um telefone válido.';
+      if (!isValidCreditPhone(customerPhone)) return 'Informe um telefone válido.';
       return null;
     }
     if (s === 2) {
@@ -651,37 +629,23 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       }
 
       const authUser = await ensureAuthenticated(auth);
+      const normalizedPhone = normalizeCreditPhone(customerPhone);
       // Salva/atualiza perfil do cliente no Firebase
       await setDoc(doc(db, 'customers', authUser.uid), {
         uid: authUser.uid,
         name: customerName,
-        phone: customerPhone,
+        phone: normalizedPhone,
         birthDate: customerBirthDate,
         address: fullDeliveryAddress,
         cep, street, number, neighborhood, complement, city,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
-      // Sincroniza o cliente no painel admin via função CENTRAL (identidade +
-      // endereço; nunca sobrescreve com vazio). Não conta o pedido aqui — a
-      // contagem acontece na entrega ('delivered'), de forma idempotente.
-      try {
-        await syncCustomerFromOrder(db, {
-          customerName,
-          customerPhone,
-          customerBirthDate,
-          street, number, complement, neighborhood, city,
-          deliveryAddress: fullDeliveryAddress,
-        } as any, { ownerId: effectiveStoreOwnerId, countOrder: false });
-      } catch (err) {
-        console.warn('Erro ao sincronizar cliente para painel admin:', err);
-      }
-
       // Salva em localStorage como fallback de robustez (Sessões anônimas)
       try {
         localStorage.setItem('customer_profile', JSON.stringify({
           name: customerName,
-          phone: customerPhone,
+          phone: normalizedPhone,
           birthDate: customerBirthDate,
           address: fullDeliveryAddress,
           cep, street, number, neighborhood, complement, city,
@@ -690,13 +654,42 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         console.warn('Erro ao salvar local profile fallback', e);
       }
 
-      // ID curto exibido ao cliente; crypto garante 8 caracteres e entropia real
-      const ORDER_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      const orderId = Array.from(
-        crypto.getRandomValues(new Uint8Array(8)),
-        (byte) => ORDER_ID_ALPHABET[byte % ORDER_ID_ALPHABET.length]
-      ).join('');
-      const orderRef = doc(collection(db, 'orders'), orderId);
+      // Identidade interna e código humano têm trabalhos diferentes: o
+      // Firestore gera o id usado por todos os vínculos; `orderCode` continua
+      // curto para o cliente ler, ditar e procurar.
+      const orderRef = doc(collection(db, 'orders'));
+      const orderId = orderRef.id;
+      const orderCode = generateOrderCode();
+      let clienteId = proposedCustomerId(effectiveStoreOwnerId, {
+        id: orderId,
+        customerName,
+        customerPhone: normalizedPhone,
+      });
+      // O cliente anônimo não altera o cadastro administrativo. Ele consulta
+      // colisões/arquivados e grava no pedido o id existente ou determinístico;
+      // o painel do dono materializa/atualiza o documento depois.
+      try {
+        const identity = await syncCustomerFromOrder(db, {
+          id: orderId,
+          customerName,
+          customerPhone: normalizedPhone,
+          customerBirthDate,
+          street, number, complement, neighborhood, city,
+          deliveryAddress: fullDeliveryAddress,
+        }, {
+          ownerId: effectiveStoreOwnerId,
+          countOrder: false,
+          writeCustomer: false,
+          linkCollection: null,
+          allowArchivedCustomer: false,
+        });
+        clienteId = identity.customerId;
+      } catch (err) {
+        // Sem conseguir consultar colisão/arquivado, é mais seguro manter o
+        // fallback por telefone do que gravar uma referência possivelmente errada.
+        clienteId = null;
+        console.warn('Não foi possível validar clienteId; pedido seguirá sem o vínculo:', err);
+      }
 
       const channelCheck = checkCartChannelVisibility(cart, menuItems, orderType);
       if (!channelCheck.allowed) {
@@ -738,9 +731,6 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       });
       const safeGrandTotal = safeSubtotal + appliedDeliveryFee;
 
-      // Normalizar telefone: remover +55, espaços, traços, parênteses
-      const normalizedPhone = customerPhone.replace(/[\s\-\(\)\+]/g, '').replace(/^55(\d{10,11})$/, '$1');
-
       if (paymentMethod === 'conta_casa') {
         const pendingAmount = await sumPendingCreditOrdersForCustomer(db, effectiveStoreOwnerId, authUser.uid);
         const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, normalizedPhone, safeGrandTotal, { pendingAmount });
@@ -760,6 +750,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
       const orderData = {
         id: orderId,
+        orderCode,
         customerIdentifier: normalizedPhone,
         // uid anônimo do cliente: é o que as regras usam para ele ler os próprios
         // pedidos (my-orders/banner) sem expor a lista de pedidos por telefone.
@@ -767,6 +758,10 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         ownerId: effectiveStoreOwnerId,
         customerName,
         customerPhone: normalizedPhone,
+        ...(clienteId ? { clienteId } : {}),
+        // O cliente público não pode materializar/atualizar `clientes`. O vigia
+        // autenticado do dono consome esta marca e conclui a reconciliação.
+        customerIdentityPending: true,
         customerBirthDate,
         customerEmail: authUser.email || '',
         deliveryAddress: orderType === 'delivery' ? fullDeliveryAddress : '',
@@ -796,12 +791,12 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
         order: { ref: orderRef, mode: 'set', data: orderData },
       });
 
-      toast({ title: "Pedido Enviado!", description: `Pedido #${orderId} foi recebido.` });
+      toast({ title: "Pedido Enviado!", description: `Pedido #${orderCode} foi recebido.` });
 
       // Salva o telefone no localStorage e notifica outros componentes
       try {
-        localStorage.setItem('customer_phone', customerPhone);
-        window.dispatchEvent(new CustomEvent('customer_phone_updated', { detail: customerPhone }));
+        localStorage.setItem('customer_phone', normalizedPhone);
+        window.dispatchEvent(new CustomEvent('customer_phone_updated', { detail: normalizedPhone }));
       } catch {}
 
       // Confirmação com check animado antes de fechar o carrinho
@@ -1051,7 +1046,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label htmlFor="cust_phone" className="text-xs font-bold">Telefone / WhatsApp</Label>
-                      <Input id="cust_phone" type="tel" autoComplete="tel" maxLength={15} value={customerPhone} onChange={(e) => setCustomerPhone(formatPhone(e.target.value))} className="h-9 text-sm" placeholder="(00) 90000-0000" />
+                      <Input id="cust_phone" type="tel" autoComplete="tel" maxLength={15} value={customerPhone} onChange={(e) => setCustomerPhone(maskCreditPhoneInput(e.target.value))} className="h-9 text-sm" placeholder="(00) 90000-0000" />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="cust_birth" className="text-xs font-bold">Nascimento <span className="font-normal opacity-60">(opcional)</span></Label>
@@ -1398,4 +1393,3 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     </Sheet>
   );
 }
-

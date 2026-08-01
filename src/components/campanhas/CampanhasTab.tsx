@@ -87,7 +87,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
     [db, user],
   );
   const { data: clientesRaw } = useCollection(clientesQuery);
-  const clients = (clientesRaw || []) as ClientLike[];
+  const clients = ((clientesRaw || []) as ClientLike[]).filter((client: any) => client?.archived !== true);
 
 
   // Listas de transmissão salvas (seleções de contatos reutilizáveis).
@@ -172,7 +172,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const set = (patch: Partial<CampaignDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
   // Foto de perfil sob demanda (loader compartilhado, cache de módulo).
-  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user), [user]);
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, user.uid), [user]);
 
   // Lista base: filtrada pelo preset ativo (se houver), senão todos — e ordenada
   // pelo critério analítico escolhido (nome, nº de compras, valor, ticket, recência).

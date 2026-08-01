@@ -36,6 +36,7 @@ import {
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { hasAnyRetaguardaAccess } from '@/lib/user-permissions';
 import { brl } from '@/lib/utils';
+import { getOrderCode } from '@/lib/order-code';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
 // estourar o limite de taxa da w-api numa rajada de pedidos.
@@ -300,9 +301,9 @@ export default function PdvPage() {
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
   const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
 
-  // Encomendas ficam em coleção própria (não em `orders`). Assinamos aqui — só na
-  // confeitaria — para o CONTADOR (badge) da aba Encomendas. O alerta sonoro/aviso
-  // de "nova encomenda" mora no <OrderAlertsWatcher/> do layout.
+  // Encomendas ficam em coleção própria (não em `orders`). Assinamos aqui — só
+  // na confeitaria — para o contador da aba e para o Caixa abrir os itens pelo
+  // `encomendaId`. O alerta de nova encomenda mora no layout.
   const encomendasAlertQuery = useMemoFirebase(() => {
     if (!db || !isRealUser || !canReadEncomendas || storeProfile?.theme !== 'confeitaria') return null;
     return query(collection(db, 'encomendas'), where('ownerId', '==', ownerId));
@@ -640,7 +641,7 @@ export default function PdvPage() {
     }
 
     const firstName = order.customerName ? order.customerName.split(' ')[0] : 'Cliente';
-    const shortId = order.id ? order.id.slice(-6).toUpperCase() : '000000';
+    const shortId = getOrderCode(order).slice(-6).toUpperCase() || '000000';
     const totalStr = typeof order.totalAmount === 'number' ? `${brl(order.totalAmount)}` : 'R$ 0,00';
     
     let itemsList = '';
@@ -890,15 +891,12 @@ export default function PdvPage() {
       const currentOrder = (ordersRaw as any[])?.find(o => o.id === orderId);
       const finalizingSale = updates.status === 'delivered' && currentOrder && currentOrder.status !== 'delivered';
       const shouldDeductStock = !!(finalizingSale && storeProfile?.general?.enableInventory && currentOrder.stockDeducted !== true);
-      
-      // Sincronização de Cliente quando o pedido é finalizado (entregue).
-      // Conta o pedido de forma IDEMPOTENTE (não duplica entre PCs/re-disparos).
-      if (role === 'owner' && finalizingSale && currentOrder) {
-        try {
-          await syncCustomerFromOrder(db, currentOrder, { ownerId, countOrder: true });
-        } catch (err) {
-          console.error('Erro ao sincronizar cliente (entrega):', err);
-        }
+      if (finalizingSale && currentOrder && (
+        currentOrder.clienteId
+        || String(currentOrder.customerPhone || '').trim()
+        || String(currentOrder.customerName || '').trim()
+      )) {
+        updates.customerIdentityPending = true;
       }
 
       if (updates.status === 'canceled' && currentOrder && currentOrder.status !== 'canceled') {
@@ -924,6 +922,18 @@ export default function PdvPage() {
         });
       } else {
         await updateDoc(doc(db, 'orders', orderId), updates);
+      }
+
+      // Só contabiliza depois de status/estoque terem sido confirmados. Se a
+      // escrita acima falhar, customerCounted e as métricas ficam intocados.
+      if (role === 'owner' && finalizingSale && currentOrder) {
+        try {
+          await syncCustomerFromOrder(db, { ...currentOrder, ...updates }, { ownerId, countOrder: true });
+        } catch (err) {
+          // A marca persistente fica no pedido e o watcher compartilhado tenta
+          // novamente sem duplicar a contagem.
+          console.error('Erro ao sincronizar cliente (entrega):', err);
+        }
       }
       toast({ title: "Status Atualizado", description: "O pedido foi atualizado." });
       if (updates.status && currentOrder?.status !== updates.status) {
@@ -1119,6 +1129,7 @@ export default function PdvPage() {
               storeProfile={storeProfile}
               orders={orders || []}
               allOrders={ordersRawSorted || []}
+              encomendas={storeProfile?.theme === 'confeitaria' ? (encomendasRaw || []) : []}
               autoOpenAbrirCaixa={autoOpenAbrirCaixa}
               onModalOpened={() => setAutoOpenAbrirCaixa(false)}
               selectedCaixaId={caixaSelecionadoId}

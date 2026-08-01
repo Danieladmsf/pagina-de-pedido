@@ -23,6 +23,8 @@ import {
 } from '@/lib/encomendas/pricing';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { valorRecebido } from '@/lib/encomendas/pagamento';
+import { isValidCreditPhone, maskCreditPhoneInput } from '@/lib/customer-credit';
+import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 export type EncomendaBalcaoResult = {
   id: string;
@@ -49,13 +51,6 @@ const gerarId = () => `${Date.now().toString(36)}${Math.random().toString(36).sl
 const hojeIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const mascaraTelefone = (valor: string) => {
-  const raw = valor.replace(/\D/g, '').slice(0, 11);
-  if (raw.length > 7) return `(${raw.slice(0, 2)}) ${raw.slice(2, 7)}-${raw.slice(7)}`;
-  if (raw.length > 2) return `(${raw.slice(0, 2)}) ${raw.slice(2)}`;
-  return raw;
 };
 
 /** Seção do formulário — mesma moldura branca do resto da Retaguarda. */
@@ -172,7 +167,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
   const editando = !!encomenda;
 
   const [nome, setNome] = useState(encomenda?.customerName || '');
-  const [telefone, setTelefone] = useState(mascaraTelefone(encomenda?.customerPhone || ''));
+  const [telefone, setTelefone] = useState(maskCreditPhoneInput(encomenda?.customerPhone || ''));
   const [nascimento, setNascimento] = useState(encomenda?.customerBirthDate || '');
 
   const [sel, setSel] = useState<SelecaoEncomenda>(
@@ -242,7 +237,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
     : Math.max(0, Math.min(totais.total, Number((pagoOutro || '').replace(',', '.')) || 0));
   const faltaDepois = Math.max(0, totais.total - pagoValor);
 
-  const telefoneOk = telefone.replace(/\D/g, '').length >= 10;
+  const telefoneOk = isValidCreditPhone(telefone);
   const podeSalvar = !!nome.trim() && telefoneOk && totais.subtotal > 0 && !!data && !!hora
     && (tipoEntrega !== 'delivery' || (rua.trim().length >= 3 && !!bairro.trim()));
 
@@ -292,6 +287,35 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
     setSalvando(true);
     try {
       const id = encomenda?.id || gerarId();
+      const existingClienteId = encomenda?.clienteId;
+      let clienteId = existingClienteId || (user.uid === ownerId && !encomenda ? proposedCustomerId(ownerId, {
+        id,
+        customerName: nome,
+        customerPhone: telefone,
+      }) : null) || undefined;
+      // Operador não escreve em `clientes`; o dono resolve/cria a identidade
+      // uma vez antes de persistir a encomenda. Em edição, o vínculo antigo
+      // é preservado se estiver arquivado/conflitante, sem reativá-lo.
+      if (user.uid === ownerId) {
+        const identity = await syncCustomerFromOrder(db, {
+          id,
+          ...(existingClienteId ? { clienteId: existingClienteId } : {}),
+          customerName: nome,
+          customerPhone: telefone,
+          customerBirthDate: nascimento,
+          street: rua,
+          number: numero,
+          complement: complemento,
+          neighborhood: bairro,
+          city: cidade,
+        }, {
+          ownerId,
+          countOrder: false,
+          linkCollection: null,
+          allowArchivedCustomer: false,
+        });
+        clienteId = identity.customerId || existingClienteId || undefined;
+      }
       // customerUid = quem está gravando: é o que as regras aceitam tanto do
       // dono quanto do operador (a página pública usa o uid anônimo do cliente).
       const enc = montarEncomenda({
@@ -301,6 +325,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
         customerUid: encomenda?.customerUid || user.uid,
         ownerId,
         cliente: { nome, telefone, nascimento },
+        clienteId,
         sel,
         totais,
         sinalPercent: config.sinalPercent,
@@ -334,6 +359,9 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
       } else {
         await setDoc(doc(collection(db, 'encomendas'), id), {
           ...enc,
+          ...((nome.trim() || isValidCreditPhone(telefone))
+            ? { customerIdentityPending: true }
+            : {}),
           // Só está "lançado" o que entrou agora; o resto o card cobra depois.
           sinalLancado: pagoValor > 0,
         });
@@ -394,7 +422,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
                 <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome de quem encomendou" className="h-9 text-sm" />
               </Campo>
               <Campo label="Telefone *">
-                <Input value={telefone} onChange={(e) => setTelefone(mascaraTelefone(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-9 text-sm" />
+                <Input value={telefone} onChange={(e) => setTelefone(maskCreditPhoneInput(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-9 text-sm" />
               </Campo>
               <Campo label="Nascimento">
                 <Input type="date" value={nascimento} onChange={(e) => setNascimento(e.target.value)} className="h-9 text-sm" />

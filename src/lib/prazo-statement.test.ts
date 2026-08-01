@@ -41,15 +41,31 @@ describe('buildStatement', () => {
 });
 
 describe('vínculo com o pedido', () => {
-  const orders = [{ id: 'ab12cXYZ', items: [] }, { id: 'zz999abc', items: [] }];
+  const orders = [
+    { id: 'ab12cXYZ', items: [], orderDateTime: '2026-07-01T10:00:00.000Z' },
+    { id: 'zz999abc', items: [], orderDateTime: '2026-07-01T10:00:00.000Z' },
+  ];
 
   it('usa o orderId quando o lançamento tem o campo novo', () => {
     expect(matchOrderForTransaction(tx({ orderId: 'zz999abc' }), orders)?.id).toBe('zz999abc');
   });
 
+  it('não mistura collections quando pedido e encomenda têm o mesmo id', () => {
+    const pedido = { id: 'mesmo-id', items: [] };
+    const encomenda = { id: 'mesmo-id', items: [], origem: 'encomenda' };
+
+    expect(matchOrderForTransaction(tx({ orderId: 'mesmo-id' }), [encomenda, pedido])).toBe(pedido);
+    expect(matchOrderForTransaction(tx({ encomendaId: 'mesmo-id' }), [pedido, encomenda])).toBe(encomenda);
+  });
+
   it('cai no prefixo da descrição para os lançamentos antigos', () => {
     expect(legacyOrderRef('PDV #ab12c')).toBe('ab12c');
     expect(matchOrderForTransaction(tx({ description: 'PDV #ab12c' }), orders)?.id).toBe('ab12cXYZ');
+  });
+
+  it('não casa o prefixo com um pedido criado depois do lançamento', () => {
+    const orderFuturo = { id: 'ab12cFUTURO', orderDateTime: '2026-07-02T10:00:00.000Z' };
+    expect(matchOrderForTransaction(tx({ description: 'PDV #ab12c' }), [orderFuturo])).toBeNull();
   });
 
   it('lançamento de mesa (sem "#") não casa com pedido nenhum', () => {
@@ -60,6 +76,16 @@ describe('vínculo com o pedido', () => {
   it('orderId que não está na lista não cai no prefixo por engano', () => {
     expect(matchOrderForTransaction(tx({ orderId: 'sumiu', description: 'PDV #ab12c' }), orders)).toBeNull();
   });
+
+  it('fallback legado ignora encomenda com o mesmo prefixo', () => {
+    const encomenda = {
+      id: 'ab12c-encomenda',
+      origem: 'encomenda',
+      orderDateTime: '2026-07-01T09:00:00.000Z',
+    };
+    expect(matchOrderForTransaction(tx({ description: 'PDV #ab12c' }), [...orders, encomenda])?.id)
+      .toBe('ab12cXYZ');
+  });
 });
 
 /**
@@ -68,7 +94,7 @@ describe('vínculo com o pedido', () => {
  * O extrato já sabia o pedido ("PDV #lstG2") — faltava ir buscá-lo pelo id.
  */
 describe('missingOrderRefs', () => {
-  const orders = [{ id: 'ab12cXYZ', items: [] }];
+  const orders = [{ id: 'ab12cXYZ', items: [], orderDateTime: '2026-07-01T10:00:00.000Z' }];
 
   it('devolve o prefixo da compra antiga cujo pedido não veio na lista', () => {
     const faltando = missingOrderRefs([
@@ -154,7 +180,11 @@ describe('allocatePayment', () => {
       tx({ id: 'compra-nova', amount: 57, description: 'PDV #Ie0Vt', date: '2026-07-30T19:48:20.834Z' }),
     ];
 
-    const alloc = allocatePayment(extrato, 'acerto', [{ id: 'r8DFZabc', items: [] }])!;
+    const alloc = allocatePayment(extrato, 'acerto', [{
+      id: 'r8DFZabc',
+      items: [],
+      orderDateTime: '2026-07-03T20:00:00.000Z',
+    }])!;
 
     expect(alloc.balanceBefore).toBe(64);
     expect(alloc.balanceAfter).toBe(0);
@@ -277,7 +307,11 @@ describe('exportação', () => {
       tx({ id: 'a', amount: 50, description: 'PDV #ab12c', orderId: 'ab12cXYZ', date: '2026-07-01T13:00:00.000Z' }),
       tx({ id: 'b', type: 'credit', amount: 20, description: 'Pagamento; com ponto-e-virgula', paymentMethod: 'pix', date: '2026-07-02T13:00:00.000Z' }),
     ],
-    [{ id: 'ab12cXYZ', items: [{ name: 'X-Salada', quantity: 2, unitPrice: 25, addons: [{ name: 'Bacon' }] }] }],
+    [{
+      id: 'ab12cXYZ',
+      orderCode: 'PEDIDO88',
+      items: [{ name: 'X-Salada', quantity: 2, unitPrice: 25, addons: [{ name: 'Bacon' }] }],
+    }],
   );
 
   it('gera o CSV com BOM, ponto-e-vírgula e número em pt-BR', () => {
@@ -286,6 +320,7 @@ describe('exportação', () => {
     expect(csv.startsWith('﻿')).toBe(true);
     expect(csv).toContain('Data;Hora;Tipo;Descricao;Pedido');
     expect(csv).toContain('50,00');
+    expect(csv).toContain('PEDIDO88');
     // Campo com ";" tem que sair entre aspas, senão vira duas colunas.
     expect(csv).toContain('"Pagamento; com ponto-e-virgula"');
     expect(csv).toContain('TOTAIS');

@@ -50,10 +50,10 @@ export function peekProfilePhoto(phone: string): string | null | undefined {
   return cache.has(key) ? cache.get(key) : undefined;
 }
 
-export function makeProfilePhotoLoader(user: any, ownerId?: string) {
+export function makeProfilePhotoLoader(user: any, ownerId: string) {
   return async (phone: string): Promise<string | null> => {
     const key = digits(phone);
-    if (!key || !user) return null;
+    if (!key || !user || !ownerId) return null;
     hydrate(key);
     if (cache.has(key)) return cache.get(key)!;
     if (inflight.has(key)) return inflight.get(key)!;
@@ -68,7 +68,7 @@ export function makeProfilePhotoLoader(user: any, ownerId?: string) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           // O token identifica quem executa; empresaId identifica a loja.
-          body: JSON.stringify({ empresaId: ownerId || user.uid, phone: key }),
+          body: JSON.stringify({ empresaId: ownerId, phone: key }),
         });
         const data = await res.json().catch(() => null);
         const link = res.ok && data?.link ? (data.link as string) : null;

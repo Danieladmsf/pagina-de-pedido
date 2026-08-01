@@ -16,7 +16,11 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
-import { AcertoPrazoDetalhe, isAcertoPrazo } from '@/components/caixa/AcertoPrazoDetalhe';
+import { AcertoPrazoDetalhe } from '@/components/caixa/AcertoPrazoDetalhe';
+import { isAcertoPrazo } from '@/lib/acerto-prazo-link';
+import { encomendaComoPedido } from '@/lib/encomendas/pedido';
+import { isUnlinkedLegacyCashSale, matchCashSaleSource } from '@/lib/order-linking';
+import { getOrderCodePrefix } from '@/lib/order-code';
 import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -48,6 +52,7 @@ export function CaixaTab({
   storeProfile,
   orders,
   allOrders,
+  encomendas,
   autoOpenAbrirCaixa,
   onModalOpened,
   selectedCaixaId,
@@ -58,6 +63,8 @@ export function CaixaTab({
   storeProfile?: any;
   orders?: any[];
   allOrders?: any[];
+  /** Carregadas pelo pai apenas para lojas de confeitaria. */
+  encomendas?: any[];
   autoOpenAbrirCaixa?: boolean;
   onModalOpened?: () => void;
   selectedCaixaId?: string | null;
@@ -280,41 +287,41 @@ export function CaixaTab({
     currentPage * ITEMS_PER_PAGE
   );
 
-  // ── Vínculo venda → pedido (para expandir e mostrar os itens) ──
-  // O lançamento de venda NÃO guarda orderId; o vínculo é o prefixo de 5 chars
-  // do id do pedido embutido no título ("Delivery #5WS7N - ...", "PDV #WdsOe -
-  // Balcão"). Indexamos os pedidos por esse prefixo para casar em O(1). Vendas
-  // de Mesa ("Mesa 4 - Finalizada") e vendas manuais não têm "#", então não
-  // expandem — melhor não mostrar do que mostrar itens de outro pedido.
-  const ordersByIdPrefix = useMemo(() => {
-    const pool: any[] = (allOrders && allOrders.length ? allOrders : orders) || [];
-    const map = new Map<string, any>();
-    for (const o of pool) {
-      if (typeof o?.id === 'string' && o.id.length >= 5) {
-        const key = o.id.substring(0, 5);
-        if (!map.has(key)) map.set(key, o); // pool já vem ordenado: 1º vence
-      }
-    }
-    return map;
-  }, [allOrders, orders]);
+  // ── Vínculo venda → pedido/encomenda (para expandir os itens) ──
+  const orderPool = useMemo<any[]>(
+    () => (allOrders && allOrders.length ? allOrders : orders) || [],
+    [allOrders, orders],
+  );
 
-  const ordersById = useMemo(() => {
-    const pool: any[] = (allOrders && allOrders.length ? allOrders : orders) || [];
-    return new Map<string, any>(pool.filter((o) => o?.id).map((o) => [o.id, o]));
-  }, [allOrders, orders]);
+  // A coleção só é consultada pelo pai na confeitaria. Esta segunda trava
+  // evita que um prop reutilizado por engano exponha encomendas em outro tema.
+  const encomendasComoPedidos = useMemo(() => {
+    if (storeProfile?.theme !== 'confeitaria') return [];
+    return (encomendas || []).map(encomendaComoPedido).filter(Boolean) as any[];
+  }, [encomendas, storeProfile?.theme]);
 
-  // Lançamento novo diz o pedido pelo id gravado; o antigo só tem o "#" do
-  // título. O id vem primeiro porque é exato: prefixo de 5 caracteres pode, em
-  // tese, cair no pedido errado — e Mesa nunca teve "#" nenhum.
+  const orderSources = useMemo(
+    () => [...orderPool, ...encomendasComoPedidos],
+    [orderPool, encomendasComoPedidos],
+  );
+
+  // Novos lançamentos casam por id exato. O prefixo fica apenas para o legado
+  // e exige que o pedido seja anterior ao lançamento.
   const getVendaOrder = (lanc: LancamentoCaixa) => {
-    if (lanc.tipo !== 'venda') return null;
-    if (lanc.orderId) return ordersById.get(lanc.orderId) || null;
-    // Encomenda não mora em `orders`: sem pedido para abrir, e melhor assim do
-    // que casar o prefixo dela com o de um pedido qualquer.
-    if (lanc.encomendaId) return null;
-    const m = (lanc.titulo || '').match(/#([A-Za-z0-9]+)/);
-    if (!m) return null;
-    return ordersByIdPrefix.get(m[1].substring(0, 5)) || null;
+    return matchCashSaleSource(lanc, orderPool, encomendasComoPedidos);
+  };
+
+  const isPedidoOperacional = (order: any) => order?.origem !== 'encomenda';
+
+  const canReprintOrder = (order: any) => isPedidoOperacional(order);
+
+  const linkedOrderCode = (order: any) => getOrderCodePrefix(order);
+
+  const descricaoOrigemNaoCancelavel = (order: any) => {
+    if (order?.origem === 'encomenda') {
+      return 'A encomenda vinculada não é cancelada por esta tela; somente o lançamento do caixa será cancelado.';
+    }
+    return '';
   };
 
   // 2ª via do cupom de uma venda já registrada. O lançamento do caixa não guarda
@@ -326,7 +333,7 @@ export function CaixaTab({
     printOrderReceipt({ order, storeInfo: storeProfile });
     toast({
       title: 'Cupom enviado para a impressora',
-      description: `2ª via do pedido #${String(order.id || '').substring(0, 5)}.`,
+      description: `2ª via do pedido #${linkedOrderCode(order)}.`,
     });
   };
 
@@ -467,7 +474,7 @@ export function CaixaTab({
       }
 
       const vendaOrder = getVendaOrder(cancelVendaTarget.principal);
-      if (vendaOrder && vendaOrder.status !== 'canceled' && updateOrderStatus) {
+      if (vendaOrder && isPedidoOperacional(vendaOrder) && vendaOrder.status !== 'canceled' && updateOrderStatus) {
         const ok = await updateOrderStatus(vendaOrder.id, 'canceled');
         if (ok === false) {
           toast({
@@ -506,7 +513,7 @@ export function CaixaTab({
       // Espelho do cancelamento: volta o pedido para finalizado (re-abate estoque;
       // contagem de cliente é idempotente; 'delivered' não dispara WhatsApp).
       const vendaOrder = getVendaOrder(linha.principal);
-      if (vendaOrder && vendaOrder.status === 'canceled' && updateOrderStatus) {
+      if (vendaOrder && isPedidoOperacional(vendaOrder) && vendaOrder.status === 'canceled' && updateOrderStatus) {
         const ok = await updateOrderStatus(vendaOrder.id, 'delivered');
         if (ok === false) {
           toast({
@@ -1212,6 +1219,7 @@ export function CaixaTab({
                       // vinculado, e o que ele tem para mostrar (as compras que
                       // pagou) vem do extrato do cliente.
                       const isAcerto = isAcertoPrazo(lanc);
+                      const isVendaAntigaSemVinculo = isUnlinkedLegacyCashSale(lanc, vendaOrder);
                       const isExpandable = !!vendaOrder || isAcerto;
                       const isOpen = expandedVendaId === linha.key;
                       const isCanceled = !!lanc.canceled;
@@ -1236,7 +1244,12 @@ export function CaixaTab({
                               </div>
                             </TableCell>
                             <TableCell className={`font-semibold ${isCanceled ? 'text-slate-400 line-through' : 'text-slate-700'}`} title={isCanceled && lanc.canceledReason ? `Motivo: ${lanc.canceledReason}` : undefined}>
-                              {lanc.titulo}
+                              <div>{lanc.titulo}</div>
+                              {isVendaAntigaSemVinculo && (
+                                <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-600 no-underline">
+                                  <History className="h-3 w-3" /> Venda antiga, sem vínculo
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className={`font-bold whitespace-nowrap ${isCanceled ? 'text-slate-400 line-through' : isNeg ? 'text-rose-600' : isPos ? 'text-emerald-600' : ''}`}>
                               {isNeg ? '-' : ''}{brl(Math.abs(linha.valor))}
@@ -1290,7 +1303,7 @@ export function CaixaTab({
                             <TableRow className="hover:bg-transparent border-b-0">
                               <TableCell colSpan={7} className="p-0 pl-6 pr-6 pb-2">
                                 {isAcerto ? (
-                                  <AcertoPrazoDetalhe lanc={lanc} ownerId={ownerId} orders={allOrders || orders || []} />
+                                  <AcertoPrazoDetalhe lanc={lanc} orders={orderSources} />
                                 ) : (
                                   <VendaDetalhe
                                     order={vendaOrder}
@@ -1299,7 +1312,7 @@ export function CaixaTab({
                                     // Venda cancelada não reimprime: o cupom do pedido não
                                     // tem marca de cancelamento, então sairia uma 2ª via com
                                     // cara de venda boa.
-                                    onReimprimir={isCanceled ? undefined : () => reimprimirCupomVenda(vendaOrder)}
+                                    onReimprimir={isCanceled || !canReprintOrder(vendaOrder) ? undefined : () => reimprimirCupomVenda(vendaOrder)}
                                   />
                                 )}
                               </TableCell>
@@ -1419,9 +1432,14 @@ export function CaixaTab({
             <DialogDescription>
               {(() => {
                 const linkedOrder = cancelVendaTarget ? getVendaOrder(cancelVendaTarget.principal) : null;
+                if (linkedOrder?.origem === 'encomenda') {
+                  return (
+                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. {descricaoOrigemNaoCancelavel(linkedOrder)}</>
+                  );
+                }
                 if (linkedOrder && linkedOrder.status !== 'canceled') {
                   return (
-                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. O pedido <strong>#{String(linkedOrder.id).substring(0, 5)}</strong> também será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>
+                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. O pedido <strong>#{linkedOrderCode(linkedOrder)}</strong> também será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>
                   );
                 }
                 return (
@@ -2398,6 +2416,7 @@ function VendaDetalhe({ order, lanc, partes, onReimprimir }: {
   onReimprimir?: () => void;
 }) {
   const orderType: string = order?.orderType || 'pickup';
+  const sourceType = order?.origem === 'encomenda' ? 'encomenda' : orderType;
   // Venda dividida: a expansão mostra os itens UMA vez e detalha o pagamento.
   const isMultiplo = partes.length > 1;
 
@@ -2405,8 +2424,9 @@ function VendaDetalhe({ order, lanc, partes, onReimprimir }: {
     delivery: { label: 'Delivery', Icon: Bike },
     pickup: { label: 'Balcão / Retirada', Icon: ShoppingBag },
     dine_in: { label: 'Mesa', Icon: UtensilsCrossed },
+    encomenda: { label: 'Encomenda', Icon: Receipt },
   };
-  const { label: tipoLabel, Icon } = tipoMeta[orderType] || tipoMeta.pickup;
+  const { label: tipoLabel, Icon } = tipoMeta[sourceType] || tipoMeta.pickup;
 
   const pagamentoMeta: Record<string, { label: string; className: string }> = {
     dinheiro: { label: 'Dinheiro', className: 'bg-amber-100 text-amber-700 border-amber-200' },

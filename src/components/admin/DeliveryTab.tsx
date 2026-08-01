@@ -31,6 +31,7 @@ import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { getOrderCode, getOrderCodePrefix } from '@/lib/order-code';
 
 interface DeliveryTabProps {
   orders: any[];
@@ -136,8 +137,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     return () => unsubscribe();
   }, [db, ownerId]);
 
+  const normalizedOrderSearch = searchTerm.trim().toLowerCase();
   const filteredOrders = onlyDeliveryAppOrders.filter(o =>
-    o.id.includes(searchTerm) ||
+    getOrderCode(o).toLowerCase().includes(normalizedOrderSearch) ||
+    String(o.id || '').toLowerCase().includes(normalizedOrderSearch) ||
     normalizeSearch(o.customerName).includes(normalizeSearch(searchTerm)) ||
     o.customerPhone?.includes(searchTerm)
   );
@@ -415,6 +418,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       // Desconto/acréscimo dados agora acumulam sobre os que o pedido já tinha e
       // totalAmount passa a ser o valor efetivamente cobrado (cupom já imprime).
       const updates: any = { status: 'delivered', paymentMethod: paymentString };
+      // O listener do dono resolve o legado antes da atualizacao de status. Aqui
+      // so propagamos ids ja validados (pedido ou Conta da Casa), nunca um chute.
+      const clienteId = contaCasaCustomerId || paymentModalOrder.clienteId;
+      if (clienteId) updates.clienteId = clienteId;
       if (discount > 0 || surcharge > 0) {
         updates.discount = (Number(paymentModalOrder.discount) || 0) + discount;
         updates.surcharge = (Number(paymentModalOrder.surcharge) || 0) + surcharge;
@@ -430,7 +437,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       
       // 2. Registrar venda no caixa (se aberto) e a dívida do Prazo (sempre —
       // caixa fechado não pode apagar o que o cliente ficou devendo).
-      const shortId = paymentModalOrder.id.substring(0, 5);
+      const shortId = getOrderCodePrefix(paymentModalOrder);
       await registrarPagamentoSplits(db, {
         splits: splitsToProcess,
         contaCasaCustomerId,
@@ -637,7 +644,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">#{order.id.substring(0, 5)}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">#{getOrderCodePrefix(order)}</span>
                         <span className="text-xs font-semibold text-slate-800 truncate">{order.customerName}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -681,7 +688,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
             <div className="flex justify-between items-center border-b pb-2 mb-2">
               <div>
                 <h2 className="text-base font-bold text-slate-800">
-                  Pedido #{selectedOrder.id.substring(0, 5)} <span className="text-muted-foreground font-normal text-xs">({selectedOrder.id})</span>
+                  Pedido #{getOrderCodePrefix(selectedOrder)} <span className="text-muted-foreground font-normal text-xs">({getOrderCode(selectedOrder)})</span>
                 </h2>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>CPF: Não informado</span>
@@ -838,7 +845,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       open={!!paymentModalOrder}
       onOpenChange={(open) => { if (!open) { setPaymentModalOrder(null); fechamento.reset(); } }}
       fechamento={fechamento}
-      title={`Pagamento #${paymentModalOrder?.id?.substring(0, 5) || ''}`}
+      title={`Pagamento #${getOrderCodePrefix(paymentModalOrder)}`}
       subtitle={paymentModalOrder?.customerName ? `${paymentModalOrder.orderType === 'pickup' ? 'Retirada' : 'Delivery'} · ${paymentModalOrder.customerName}` : undefined}
       items={paymentModalOrder?.items || []}
       caixaAberto={caixaAberto}
@@ -907,7 +914,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         <DialogContent className="max-w-none w-screen h-screen m-0 rounded-none border-none p-0 flex flex-col">
           <DialogHeader className="p-4 border-b shrink-0 bg-slate-50">
             <DialogTitle className="text-base font-bold text-slate-800 flex justify-between items-center gap-3 pr-8">
-              <span>🛒 Editar Itens do Pedido #{selectedOrder?.id?.substring(0, 5)}</span>
+              <span>🛒 Editar Itens do Pedido #{getOrderCodePrefix(selectedOrder)}</span>
               <span className="text-xs font-normal text-muted-foreground">Preços e adicionais do cardápio ativo</span>
             </DialogTitle>
             <DialogDescription className="text-xs">

@@ -250,6 +250,33 @@ export function hasAnyRetaguardaAccess(
   return RETAGUARDA_PERMISSION_KEYS.some((key) => canAccessRetaguarda(role, permissions, key));
 }
 
+/**
+ * Abas que possuem uma tela dedicada e segura para operador na Retaguarda.
+ *
+ * Manter esta lista no contrato compartilhado evita que a sidebar anuncie uma
+ * rota que o branch read-only de /gestao ainda não sabe renderizar. Em
+ * particular, Estoque continua owner-only até ganhar permissão e tela próprias.
+ */
+export const OPERATOR_RETAGUARDA_TAB_IDS = [
+  'produtos',
+  'categorias',
+  'addons',
+  'promocoes',
+] as const;
+
+export type OperatorRetaguardaTabId = (typeof OPERATOR_RETAGUARDA_TAB_IDS)[number];
+
+export function canAccessRetaguardaTab(
+  role: 'owner' | 'operator',
+  permissions: RetaguardaPermissions,
+  tabId: string,
+): boolean {
+  const permission = getRetaguardaPermissionForTab(tabId);
+  if (!permission || !canAccessRetaguarda(role, permissions, permission)) return false;
+  if (role === 'owner') return true;
+  return (OPERATOR_RETAGUARDA_TAB_IDS as readonly string[]).includes(tabId);
+}
+
 /** Traduz os IDs históricos da página/Sidebar para o contrato persistido. */
 export function getRetaguardaPermissionForTab(tabId: string): RetaguardaPermissionKey | null {
   if (tabId.startsWith('perfil_')) return 'perfil';

@@ -16,7 +16,7 @@ import { QuickRegisterClientModal } from './QuickRegisterClientModal';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
 import { useCallback, useMemo } from 'react';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
-import { findCreditCustomers, normalizeCreditPhone, isCreditEnabled } from '@/lib/customer-credit';
+import { findCreditCustomers, isCreditEnabled, isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone } from '@/lib/customer-credit';
 import { resolveContaCasa, registrarPagamentoSplits } from '@/lib/payments';
 import { fetchDeliveryFee } from '@/lib/delivery-fee';
 import { usePromotions } from '@/hooks/usePromotions';
@@ -28,12 +28,13 @@ import { WeightInput } from '@/components/admin/WeightInput';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
 import { brl, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
-import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
+import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { generateOrderCode, getOrderCodePrefix } from '@/lib/order-code';
 
 interface NovoPedidoTabProps {
   categories: any[];
@@ -161,6 +162,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  const [anonymousSale, setAnonymousSale] = useState(false);
   const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, ownerId);
 
   const groupedItems = useMemo(
@@ -259,7 +261,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           return;
         }
 
-        const customerData = customers[0].data || {};
+        const customerData = { id: customers[0].id, ...(customers[0].data || {}) };
         const displayName = getCustomerDisplayName(customerData);
         const savedAddress = getCustomerAddress(customerData);
 
@@ -285,6 +287,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
           }
         }
 
+        setSelectedCustomer(customerData);
+        setAnonymousSale(false);
         setCustomerLookupStatus('found');
       } catch (err) {
         if (ignore) return;
@@ -321,7 +325,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         const parsed = JSON.parse(saved);
         if (parsed.cart) setCart(parsed.cart);
         if (parsed.customerName && parsed.customerName !== 'Cliente Balcão') setCustomerName(parsed.customerName);
-        if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
+        if (parsed.customerPhone) setCustomerPhone(maskCreditPhoneInput(parsed.customerPhone));
         // orderType nao e restaurado: a pagina sempre abre em Balcao/Retirada (pickup)
         if (parsed.addressObj) setAddressObj(parsed.addressObj);
         if (parsed.deliveryFeeInput) setDeliveryFeeInput(parsed.deliveryFeeInput);
@@ -364,10 +368,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
 
   const applyCustomer = (c: any) => {
     setSelectedCustomer(c);
+    setAnonymousSale(false);
     const name = getCustomerDisplayName(c);
     const phone = String(c.celular || '');
     if (name) setCustomerName(name);
-    if (phone) setCustomerPhone(phone);
+    if (phone) setCustomerPhone(maskCreditPhoneInput(phone));
     if (orderType === 'delivery') {
       const addr = getCustomerAddress(c);
       if (hasAddressData(addr)) {
@@ -400,6 +405,12 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     setMatchedCustomerName('');
     setActiveLookupField(null);
     setSelectedCustomer(null);
+    setAnonymousSale(false);
+  };
+
+  const chooseAnonymousSale = () => {
+    clearCustomerFields();
+    setAnonymousSale(true);
   };
 
   const handleCheckout = () => {
@@ -425,6 +436,15 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     if (fechamento.isSplitMode && fechamento.paymentSplits.length === 0 && !fechamento.selectedPayment) return;
     if (!fechamento.isSplitMode && !fechamento.selectedPayment) return;
     if (!db || !user || cart.length === 0) return;
+
+    if (customerPhone.trim() && !isValidCreditPhone(customerPhone)) {
+      toast({
+        variant: 'destructive',
+        title: 'Telefone inválido',
+        description: 'Informe DDD + telefone (10 ou 11 dígitos), ou escolha "Sem cliente".',
+      });
+      return;
+    }
 
     if (!caixaAberto) {
       toast({ variant: 'destructive', title: 'Caixa Fechado', description: 'Você não pode finalizar vendas com o caixa fechado. Abra o caixa primeiro.' });
@@ -456,9 +476,45 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       const contaCasaCustomerId = contaCasa.kind === 'ok' ? contaCasa.customerId : null;
 
       const newOrderRef = doc(collection(db, 'orders'));
+      const orderCode = generateOrderCode();
+
+      const selectedClienteId = contaCasaCustomerId || selectedCustomer?.id || null;
+      let clienteId = selectedClienteId || (role === 'owner' ? proposedCustomerId(ownerId, {
+        id: newOrderRef.id,
+        customerName: customerName || 'Cliente Balcão',
+        customerPhone,
+      }) : null);
+      const hasCustomerIdentity = !anonymousSale && (!!customerName.trim() || isValidCreditPhone(customerPhone));
+      if (role === 'owner' && hasCustomerIdentity) {
+        const identity = await syncCustomerFromOrder(db, {
+          id: newOrderRef.id,
+          ...(selectedClienteId ? { clienteId: selectedClienteId } : {}),
+          customerName: customerName || 'Cliente Balcão',
+          customerPhone,
+          street: addressObj.street,
+          number: addressObj.number,
+          neighborhood: addressObj.neighborhood,
+          city: addressObj.city,
+        }, {
+          ownerId,
+          countOrder: false,
+          writeCustomer: false,
+          linkCollection: null,
+          allowArchivedCustomer: false,
+        });
+        clienteId = identity.customerId;
+        if (identity.ambiguous) {
+          toast({
+            variant: 'destructive',
+            title: 'Cliente em conflito',
+            description: 'A venda será salva sem vínculo: há mais de um cadastro para este telefone. Resolva na aba Clientes.',
+          });
+        }
+      }
 
       const orderData = {
         id: newOrderRef.id,
+        orderCode,
         ownerId,
         customerName: customerName || 'Cliente Balcão',
         // Só dígitos, como o cardápio público já grava. O campo é livre e o que
@@ -466,6 +522,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         // "(16)992156780" a busca por telefone não achava o pedido, e a compra
         // ficava sem itens no extrato do Prazo.
         customerPhone: normalizeCreditPhone(customerPhone),
+        ...(clienteId ? { clienteId } : {}),
+        ...(hasCustomerIdentity ? { customerIdentityPending: true } : {}),
         deliveryAddress: fullDeliveryAddress || '',
         orderType: orderType,
         items: cart.map(i => ({
@@ -514,14 +572,17 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       // Vendas anônimas ("Cliente Balcão" sem telefone) são ignoradas pela função.
       try {
         if (role === 'owner') {
-          await syncCustomerFromOrder(db, { ...orderData }, { ownerId, countOrder: true });
+          await syncCustomerFromOrder(db, { ...orderData }, {
+            ownerId,
+            countOrder: orderData.status === 'delivered',
+          });
         }
       } catch (err) {
         console.error('Erro ao sincronizar cliente (balcão):', err);
       }
 
       // Registrar venda no caixa (1 ou mais partes) ou Conta da Casa
-      const shortId = newOrderRef.id.substring(0, 5);
+      const shortId = getOrderCodePrefix(orderData);
       await registrarPagamentoSplits(db, {
         splits: splitsToProcess,
         contaCasaCustomerId,
@@ -545,6 +606,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         fechamento.reset();
         setCustomerName('');
         setCustomerPhone('');
+        setSelectedCustomer(null);
+        setAnonymousSale(false);
         setDeliveryFeeInput('');
         setAddressObj({ street: '', number: '', neighborhood: '', city: '' });
         setDynamicFee(null);
@@ -791,7 +854,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 const nameField = (
                   <div className="relative">
                     <Input autoComplete="new-password" placeholder="Nome do Cliente" value={customerName}
-                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); }}
+                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); setAnonymousSale(false); }}
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
                       className="h-7 text-xs" />
@@ -801,7 +864,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 const phoneField = (
                   <div className="relative">
                     <Input autoComplete="new-password" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
-                      onChange={e => { setCustomerPhone(e.target.value); setSelectedCustomer(null); }}
+                      onChange={e => { setCustomerPhone(maskCreditPhoneInput(e.target.value)); setSelectedCustomer(null); setAnonymousSale(false); }}
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
                       className={`h-7 text-xs ${orderType === 'delivery' ? 'border-blue-300 focus-visible:ring-blue-400 font-semibold' : ''}`} />
@@ -812,6 +875,16 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   ? (<>{phoneField}{nameField}</>)
                   : (<>{nameField}{phoneField}</>);
               })()}
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={chooseAnonymousSale}
+                  className={`rounded border px-2 py-1 text-[10px] font-bold transition-colors ${anonymousSale ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  Sem cliente
+                </button>
+                {anonymousSale && <span className="text-[10px] font-semibold text-slate-500">Venda anônima selecionada</span>}
+              </div>
               {selectedCustomer && isCreditEnabled(selectedCustomer) && (() => {
                 const limit = Number(selectedCustomer.creditLimit) || 0;
                 const balance = Number(selectedCustomer.creditBalance) || 0;

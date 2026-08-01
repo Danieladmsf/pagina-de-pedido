@@ -579,8 +579,12 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
                           <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-red-500 hover:text-red-700" onClick={async () => {
                             // Combo é menuItem: sai das promoções junto.
                             if (!db || !confirm(`Excluir este combo?${deleteItemWarning(promotionsRaw || [], combo.id)}`)) return;
-                            await deleteMenuItemWithCleanup(db, combo.id, promotionsRaw || []);
-                            toast({ title: '🗑️ Combo excluído.' });
+                            try {
+                              await deleteMenuItemWithCleanup(db, combo.id, promotionsRaw || [], items || []);
+                              toast({ title: '🗑️ Combo excluído.' });
+                            } catch (error: any) {
+                              toast({ variant: 'destructive', title: 'Não foi possível excluir', description: error?.message });
+                            }
                           }}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
