@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { brl, normalizeSearch } from '@/lib/utils';
+import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -760,9 +761,9 @@ export function CaixaTab({
     return freelancersFechamento.filter(f => f.valorPago > 0);
   }, [freelancersFechamento]);
 
-  const valorEsperadoFechamento = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboysFechamento - totalFreelancersFechamento;
+  const valorEsperadoFechamento = somaDinheiro(totais.valorEmCaixa, -taxaGarcomCalculada, -totalMotoboysFechamento, -totalFreelancersFechamento);
 
-  const diferencaApuracao = dinheiroApurado !== '' ? Number(dinheiroApurado) - valorEsperadoFechamento : 0;
+  const diferencaApuracao = dinheiroApurado !== '' ? somaDinheiro(Number(dinheiroApurado), -valorEsperadoFechamento) : 0;
   const apuracaoComFaltaSemJustificativa = dinheiroApurado !== '' && diferencaApuracao < 0 && !justificativaFalta.trim();
 
   const updateMotoboyPayment = (id: string, saldo: number, next: Partial<PaymentSelection>) => {
@@ -895,8 +896,8 @@ export function CaixaTab({
         return;
       }
 
-      const numApurado = Number(dinheiroApurado);
-      const diferencaCaixa = numApurado - valorLiquidoCaixaFisico;
+      const numApurado = emDinheiro(dinheiroApurado);
+      const diferencaCaixa = somaDinheiro(numApurado, -valorLiquidoCaixaFisico);
 
       if (diferencaCaixa < 0 && !justificativaFalta.trim()) {
         toast({ variant: 'destructive', title: 'Erro', description: 'Por favor, informe a justificativa para a falta de caixa.' });

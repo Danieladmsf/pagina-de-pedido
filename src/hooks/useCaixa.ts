@@ -4,6 +4,23 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFirestore, useCollection, useUser, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer, writeBatch } from 'firebase/firestore';
 import type { WriteBatch } from 'firebase/firestore';
+import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
+
+/** Campos de dinheiro do repasse de motoboy/freelancer (o resto é nome/contagem). */
+const CAMPOS_DE_DINHEIRO = ['taxa', 'total', 'jaPago', 'saldo', 'valorPago', 'saldoRestante', 'diaria', 'comissao'] as const;
+
+/**
+ * Arredonda só os campos de dinheiro do repasse, preservando o resto.
+ * Campo ausente continua ausente: virar 0 mudaria o sentido de
+ * `valorPago ?? total` na leitura do cupom.
+ */
+function emDinheiroNoRepasse<T extends Record<string, any>>(repasse: T): T {
+  const limpo: Record<string, any> = { ...repasse };
+  for (const campo of CAMPOS_DE_DINHEIRO) {
+    if (typeof limpo[campo] === 'number') limpo[campo] = emDinheiro(limpo[campo]);
+  }
+  return limpo as T;
+}
 
 export interface Caixa {
   id: string;
@@ -339,7 +356,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         ownerId,
         tipo: 'sangria',
         titulo: 'Taxa Garçom / Serviço de Mesa',
-        valor: params.taxaGarcom * -1,
+        valor: emDinheiro(params.taxaGarcom * -1),
         formaPagamento: '--',
         data: serverTimestamp(),
         ...autoria,
@@ -349,7 +366,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     // Registrar sangria para cada Motoboy
     if (params?.detalhesMotoboys) {
       for (const m of params.detalhesMotoboys) {
-        const valorPago = m.valorPago ?? m.total;
+        const valorPago = emDinheiro(m.valorPago ?? m.total);
         if (valorPago > 0) {
           batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
@@ -370,7 +387,7 @@ export function useCaixa(options?: UseCaixaOptions) {
     // Registrar sangria para cada Freelancer
     if (params?.detalhesFreelancers) {
       for (const f of params.detalhesFreelancers) {
-        const valorPago = f.valorPago ?? f.total;
+        const valorPago = emDinheiro(f.valorPago ?? f.total);
         if (valorPago > 0) {
           batch.set(doc(collection(db, 'cash_transactions')), {
             caixaId: caixaAberto.id,
@@ -389,23 +406,28 @@ export function useCaixa(options?: UseCaixaOptions) {
     }
 
     // Recalcular totais com as novas sangrias
-    const totalDeducoes = (params?.taxaGarcom || 0) 
-      + (params?.detalhesMotoboys?.reduce((s, m) => s + (m.valorPago ?? m.total), 0) || 0) 
-      + (params?.detalhesFreelancers?.reduce((s, f) => s + (f.valorPago ?? f.total), 0) || 0);
+    const totalDeducoes = somaDinheiro(
+      params?.taxaGarcom,
+      ...(params?.detalhesMotoboys?.map((m) => m.valorPago ?? m.total) || []),
+      ...(params?.detalhesFreelancers?.map((f) => f.valorPago ?? f.total) || []),
+    );
 
     // O dinheiro real físico na gaveta é apenas Vendas em Dinheiro, Suprimentos, menos Sangrias e Deduções.
-    const dinheiroEmCaixa = saldoIni + totalVendasDinheiro + totalSuprimentos - totalSangrias - totalDeducoes;
+    const dinheiroEmCaixa = somaDinheiro(saldoIni, totalVendasDinheiro, totalSuprimentos, -totalSangrias, -totalDeducoes);
     const valorRetirada = dinheiroEmCaixa > 0 ? dinheiroEmCaixa : 0;
 
     // Lançamentos de Apuração de Caixa (Falta/Sobra)
-    if (params?.diferencaCaixa !== undefined && params.diferencaCaixa !== 0) {
-      const isFalta = params.diferencaCaixa < 0;
+    // Arredondado antes de comparar com zero: uma diferença que é só resíduo de
+    // ponto flutuante (0,000000001) não pode virar lançamento de falta.
+    const diferencaCaixa = emDinheiro(params?.diferencaCaixa);
+    if (diferencaCaixa !== 0) {
+      const isFalta = diferencaCaixa < 0;
       batch.set(doc(collection(db, 'cash_transactions')), {
         caixaId: caixaAberto.id,
         ownerId,
         tipo: isFalta ? 'sangria' : 'suprimento',
-        titulo: isFalta ? `Falta de Caixa: ${params.justificativaFalta || 'Não justificada'}` : 'Sobra de Caixa Identificada',
-        valor: params.diferencaCaixa, // Positivo para sobra (suprimento), negativo para falta (sangria)
+        titulo: isFalta ? `Falta de Caixa: ${params?.justificativaFalta || 'Não justificada'}` : 'Sobra de Caixa Identificada',
+        valor: diferencaCaixa, // Positivo para sobra (suprimento), negativo para falta (sangria)
         formaPagamento: '--',
         data: serverTimestamp(),
         ...autoria,
@@ -413,8 +435,9 @@ export function useCaixa(options?: UseCaixaOptions) {
     }
 
     // O valor a ser retirado para zerar a gaveta é o valor real apurado (se informado), ou o cálculo padrão.
-    const valorParaRetirada = params?.dinheiroApurado !== undefined && params.dinheiroApurado >= 0 
-      ? params.dinheiroApurado 
+    const dinheiroApurado = emDinheiro(params?.dinheiroApurado);
+    const valorParaRetirada = params?.dinheiroApurado !== undefined && dinheiroApurado >= 0
+      ? dinheiroApurado
       : valorRetirada;
 
     // Registrar lançamento de Retirada no Fechamento
@@ -436,13 +459,13 @@ export function useCaixa(options?: UseCaixaOptions) {
     batch.update(doc(db, 'cash_registers', caixaAberto.id), {
       status: 'fechado',
       dataFechamento: serverTimestamp(),
-      totalFechamento: totalVendas + totalSuprimentos,
+      totalFechamento: somaDinheiro(totalVendas, totalSuprimentos),
       fechamentoDetalhes: {
-        taxaGarcom: params?.taxaGarcom || 0,
-        motoboys: params?.detalhesMotoboys || [],
-        freelancers: params?.detalhesFreelancers || [],
-        dinheiroApurado: params?.dinheiroApurado || 0,
-        diferencaCaixa: params?.diferencaCaixa || 0,
+        taxaGarcom: emDinheiro(params?.taxaGarcom),
+        motoboys: (params?.detalhesMotoboys || []).map(emDinheiroNoRepasse),
+        freelancers: (params?.detalhesFreelancers || []).map(emDinheiroNoRepasse),
+        dinheiroApurado,
+        diferencaCaixa,
         justificativaFalta: params?.justificativaFalta || '',
         totalDeducoes,
         valorRetirada: valorParaRetirada,
@@ -463,7 +486,9 @@ export function useCaixa(options?: UseCaixaOptions) {
       throw new Error("Não há caixa aberto no momento.");
     }
 
-    const valorFinal = tipo === 'sangria' ? Number(valor) * -1 : Number(valor);
+    // Arredondado aqui, no único caminho de gravação de lançamento: total de
+    // venda com desconto/rateio chega com resíduo de ponto flutuante.
+    const valorFinal = emDinheiro(tipo === 'sangria' ? Number(valor) * -1 : Number(valor));
     
     const data = {
       caixaId: caixaAberto.id,
