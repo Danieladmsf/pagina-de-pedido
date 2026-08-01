@@ -670,25 +670,32 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       }) : null);
       const hasCustomerIdentity = !!customerName.trim() || isValidCreditPhone(customerPhone);
       if (role === 'owner' && hasCustomerIdentity && finalOrderId) {
-        const identity = await syncCustomerFromOrder(db, {
-          id: finalOrderId,
-          ...(explicitCustomerId ? { clienteId: explicitCustomerId } : {}),
-          customerName,
-          customerPhone,
-        }, {
-          ownerId,
-          countOrder: false,
-          writeCustomer: false,
-          linkCollection: null,
-          allowArchivedCustomer: false,
-        });
-        resolvedCustomerId = identity.customerId;
-        if (identity.ambiguous) {
-          toast({
-            variant: 'destructive',
-            title: 'Cliente em conflito',
-            description: 'A comanda será salva sem vínculo. Resolva o telefone duplicado na aba Clientes.',
+        // A identidade do cliente nunca derruba a comanda — mesma regra do
+        // balcão (ver NovoPedidoTab): o vínculo é desejável, salvar a comanda
+        // é obrigatório. Sem ele a mesa segue com nome + telefone, como sempre.
+        try {
+          const identity = await syncCustomerFromOrder(db, {
+            id: finalOrderId,
+            ...(explicitCustomerId ? { clienteId: explicitCustomerId } : {}),
+            customerName,
+            customerPhone,
+          }, {
+            ownerId,
+            countOrder: false,
+            writeCustomer: false,
+            linkCollection: null,
+            allowArchivedCustomer: false,
           });
+          resolvedCustomerId = identity.customerId;
+          if (identity.ambiguous) {
+            toast({
+              variant: 'destructive',
+              title: 'Cliente em conflito',
+              description: 'A comanda será salva sem vínculo. Resolva o telefone duplicado na aba Clientes.',
+            });
+          }
+        } catch (err) {
+          console.error('[mesa] identidade do cliente falhou; comanda segue sem vínculo:', err);
         }
       }
 

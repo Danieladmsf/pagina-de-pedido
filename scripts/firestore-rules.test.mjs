@@ -260,6 +260,18 @@ await denied('operador não sincroniza cadastro de cliente', updateDoc(doc(final
   nome: 'Alterado',
 }));
 await denied('extrato da Conta da Casa é owner-only para operador', getDoc(doc(finalizeOperator, 'clientes/client-a/credit_transactions/credit-a')));
+// O caso que derrubou a venda em 01/08/2026: antes de cadastrar, o app pergunta
+// "este cliente já existe?" lendo o id determinístico. Documento inexistente
+// respondia permission-denied em vez de "não existe", e a venda com cliente novo
+// morria inteira. Ler o que não existe não revela dado nenhum.
+await allowed('owner consulta cliente que ainda não existe (venda com cliente novo)',
+  getDoc(doc(owner, 'clientes/owner-a_11988887777')));
+await denied('operador não consulta cliente inexistente',
+  getDoc(doc(finalizeOperator, 'clientes/owner-a_11988887777')));
+// Anônimo já lê `clientes` por design legado (o my-orders busca a Conta da Casa
+// por telefone), então também lê o inexistente — o ramo novo não afrouxa nada
+// para ele. Fechar isso é item do plano de permissões, não deste conserto.
+
 await allowed('owner mantém gestão da base de clientes', updateDoc(doc(owner, 'clientes/client-a'), {
   nome: 'Cliente Owner',
 }));

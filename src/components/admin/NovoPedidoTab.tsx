@@ -486,29 +486,39 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       }) : null);
       const hasCustomerIdentity = !anonymousSale && (!!customerName.trim() || isValidCreditPhone(customerPhone));
       if (role === 'owner' && hasCustomerIdentity) {
-        const identity = await syncCustomerFromOrder(db, {
-          id: newOrderRef.id,
-          ...(selectedClienteId ? { clienteId: selectedClienteId } : {}),
-          customerName: customerName || 'Cliente Balcão',
-          customerPhone,
-          street: addressObj.street,
-          number: addressObj.number,
-          neighborhood: addressObj.neighborhood,
-          city: addressObj.city,
-        }, {
-          ownerId,
-          countOrder: false,
-          writeCustomer: false,
-          linkCollection: null,
-          allowArchivedCustomer: false,
-        });
-        clienteId = identity.customerId;
-        if (identity.ambiguous) {
-          toast({
-            variant: 'destructive',
-            title: 'Cliente em conflito',
-            description: 'A venda será salva sem vínculo: há mais de um cadastro para este telefone. Resolva na aba Clientes.',
+        // A IDENTIDADE DO CLIENTE NUNCA DERRUBA A VENDA. Em 01/08/2026 esta
+        // chamada estava sem proteção: ao ler o id determinístico de um cliente
+        // NOVO (documento que ainda não existe), as regras respondiam
+        // permission-denied e o operador não conseguia vender. O vínculo é
+        // desejável; o dinheiro entrar é obrigatório. Sem identidade a venda
+        // segue pelo caminho antigo (nome + telefone no pedido).
+        try {
+          const identity = await syncCustomerFromOrder(db, {
+            id: newOrderRef.id,
+            ...(selectedClienteId ? { clienteId: selectedClienteId } : {}),
+            customerName: customerName || 'Cliente Balcão',
+            customerPhone,
+            street: addressObj.street,
+            number: addressObj.number,
+            neighborhood: addressObj.neighborhood,
+            city: addressObj.city,
+          }, {
+            ownerId,
+            countOrder: false,
+            writeCustomer: false,
+            linkCollection: null,
+            allowArchivedCustomer: false,
           });
+          clienteId = identity.customerId;
+          if (identity.ambiguous) {
+            toast({
+              variant: 'destructive',
+              title: 'Cliente em conflito',
+              description: 'A venda será salva sem vínculo: há mais de um cadastro para este telefone. Resolva na aba Clientes.',
+            });
+          }
+        } catch (err) {
+          console.error('[balcão] identidade do cliente falhou; venda segue sem vínculo:', err);
         }
       }
 

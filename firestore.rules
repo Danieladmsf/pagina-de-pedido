@@ -583,7 +583,16 @@ service cloud.firestore {
       // Leitura exige login (o anônimo do cardápio serve): o my-orders busca
       // o cliente por telefone para a Conta da Casa. Fechar mais que isso
       // exige mover essas consultas para API routes com Admin SDK.
-      allow get, list: if isAnonymous()
+      // `resource == null` é o documento que AINDA NÃO EXISTE. Sem este ramo,
+      // perguntar "este cliente já está cadastrado?" pelo id determinístico
+      // devolve permission-denied em vez de "não existe" — e foi isso que
+      // derrubou a venda com cliente novo (01/08/2026): a leitura negada
+      // abortava a venda inteira. Ler um documento inexistente não revela
+      // dado nenhum; só o dono logado pode perguntar.
+      allow get: if isAnonymous()
+        || (resource == null && isAdmin())
+        || isOwnerOf(resource.data.ownerId);
+      allow list: if isAnonymous()
         || isOwnerOf(resource.data.ownerId);
       // Base, condições de crédito e sincronização são owner-only. O cliente
       // anônimo mantém apenas a leitura legada necessária ao my-orders.

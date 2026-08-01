@@ -297,24 +297,30 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
       // uma vez antes de persistir a encomenda. Em edição, o vínculo antigo
       // é preservado se estiver arquivado/conflitante, sem reativá-lo.
       if (user.uid === ownerId) {
-        const identity = await syncCustomerFromOrder(db, {
-          id,
-          ...(existingClienteId ? { clienteId: existingClienteId } : {}),
-          customerName: nome,
-          customerPhone: telefone,
-          customerBirthDate: nascimento,
-          street: rua,
-          number: numero,
-          complement: complemento,
-          neighborhood: bairro,
-          city: cidade,
-        }, {
-          ownerId,
-          countOrder: false,
-          linkCollection: null,
-          allowArchivedCustomer: false,
-        });
-        clienteId = identity.customerId || existingClienteId || undefined;
+        // Mesma regra do balcão e da mesa: a identidade não derruba a
+        // encomenda. Falhando, ela é salva com o vínculo que já tinha.
+        try {
+          const identity = await syncCustomerFromOrder(db, {
+            id,
+            ...(existingClienteId ? { clienteId: existingClienteId } : {}),
+            customerName: nome,
+            customerPhone: telefone,
+            customerBirthDate: nascimento,
+            street: rua,
+            number: numero,
+            complement: complemento,
+            neighborhood: bairro,
+            city: cidade,
+          }, {
+            ownerId,
+            countOrder: false,
+            linkCollection: null,
+            allowArchivedCustomer: false,
+          });
+          clienteId = identity.customerId || existingClienteId || undefined;
+        } catch (err) {
+          console.error('[encomenda] identidade do cliente falhou; encomenda segue sem vínculo novo:', err);
+        }
       }
       // customerUid = quem está gravando: é o que as regras aceitam tanto do
       // dono quanto do operador (a página pública usa o uid anônimo do cliente).
