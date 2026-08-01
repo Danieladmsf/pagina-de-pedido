@@ -1917,13 +1917,36 @@ export default function GestaoPage() {
                 <div className="flex shrink-0 flex-col border-b bg-white lg:w-[270px] lg:border-b-0 lg:border-r min-h-0 max-h-44 lg:max-h-none">
                   <div className="shrink-0 border-b px-3 py-2">
                     <p className="text-xs font-bold text-slate-700">Containers</p>
+                    {/* O destaque sobrevive à troca de container: é assim que se
+                        navega entre os containers que usam o mesmo item. Mas ele
+                        precisa de saída visível — indo para um container onde o
+                        item não aparece, não haveria onde clicar de novo. */}
+                    {highlightedAddonId && (() => {
+                      const destacado = (addons || []).find((a: any) => a.id === highlightedAddonId);
+                      if (!destacado) return null;
+                      return (
+                        <div className="mt-1.5 flex items-center gap-1 rounded-md border border-orange-300 bg-orange-50 px-1.5 py-1">
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-orange-800" title={`Containers que usam "${destacado.name}"`}>
+                            usando: {destacado.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setHighlightedAddonId(null)}
+                            className="shrink-0 text-[11px] font-bold text-orange-500 transition-colors hover:text-orange-800"
+                            title="Tirar o destaque"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="min-h-0 flex-1 space-y-1 overflow-y-auto custom-scrollbar p-2">
                     {/* Lista Matriz com identidade âmbar (mesma cor do guia de ajuda),
                         para não se confundir com os containers */}
                     <Button
                       variant="outline"
-                      onClick={() => { setAddonCategoryFilter('all'); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
+                      onClick={() => { setAddonCategoryFilter('all'); setAddonSearchTerm(''); }}
                       size="sm"
                       className={`w-full justify-start gap-2 rounded-lg border-2 font-bold ${
                         addonCategoryFilter === 'all'
@@ -1937,7 +1960,7 @@ export default function GestaoPage() {
                       <Button
                         key={g}
                         variant={addonCategoryFilter === g ? 'default' : 'outline'}
-                        onClick={() => { setAddonCategoryFilter(g); setHighlightedAddonId(null); setAddonSearchTerm(''); }}
+                        onClick={() => { setAddonCategoryFilter(g); setAddonSearchTerm(''); }}
                         size="sm"
                         className={`w-full h-auto min-h-9 py-1.5 justify-between gap-2 rounded-lg flex items-center group ${
                           highlightedContainers.has(g) && addonCategoryFilter !== g
