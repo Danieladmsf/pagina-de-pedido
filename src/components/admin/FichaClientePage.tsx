@@ -105,9 +105,18 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
       };
 
       try {
-        // 1) Pelo id do cliente. Só uma igualdade — não precisa de índice novo,
-        //    e o próprio id já carrega o ownerId, então não vaza de outra loja.
-        const porId = await getDocs(query(collection(db, 'orders'), where('clienteId', '==', cliente.id)));
+        // 1) Pelo id do cliente — o vínculo firme.
+        //
+        // O `ownerId` PRECISA estar na consulta, mesmo o clienteId já
+        // carregando o dono no próprio id: as regras do Firestore não filtram
+        // resultado, elas exigem que a consulta seja provadamente restrita ao
+        // que o usuário pode ler. Sem esse filtro a busca volta 403, e a ficha
+        // ficava sem nenhuma compra ligada pelo cadastro.
+        const porId = await getDocs(query(
+          collection(db, 'orders'),
+          where('ownerId', '==', ownerId),
+          where('clienteId', '==', cliente.id),
+        ));
         porId.docs.forEach((d) => guardar(d.id, d.data(), 'clienteId'));
       } catch (err) {
         console.error('[ficha] compras por clienteId:', err);
