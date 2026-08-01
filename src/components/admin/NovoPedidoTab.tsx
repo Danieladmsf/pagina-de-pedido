@@ -1147,7 +1147,11 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       {/* Modal Forma de Pagamento — fechamento centralizado (desconto/acréscimo, split, troco) */}
       <FechamentoModal
         open={paymentModalOpen}
-        onOpenChange={setPaymentModalOpen}
+        // Limpa ao fechar, como Delivery e Encomendas já fazem: sem isso o
+        // desconto de um modal cancelado continuava descontando o Total do
+        // carrinho, mas sumia quando o modal era reaberto (ele reseta na
+        // abertura). O operador lia um valor e cobrava outro.
+        onOpenChange={(open) => { setPaymentModalOpen(open); if (!open) fechamento.reset(); }}
         fechamento={fechamento}
         title="Pagamento"
         subtitle={`Balcão · ${totalItens} ${totalItens === 1 ? 'item' : 'itens'}`}

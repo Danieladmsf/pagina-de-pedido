@@ -1510,7 +1510,9 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       {/* Modal Pagamento Mesa — fechamento centralizado (desconto/acréscimo, split, troco) */}
       <FechamentoModal
         open={paymentModalOpen}
-        onOpenChange={setPaymentModalOpen}
+        // Limpa ao fechar, como as outras abas: desconto de modal cancelado
+        // não pode continuar valendo no total da comanda.
+        onOpenChange={(open) => { setPaymentModalOpen(open); if (!open) fechamento.reset(); }}
         fechamento={fechamento}
         title="Encerrar Mesa"
         subtitle={`Mesa ${selectedTable ?? ''}`}
