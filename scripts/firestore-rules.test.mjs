@@ -140,8 +140,13 @@ await Promise.all([
   }),
   admin.doc('admin_secrets/owner-a').set({ hash: 'segredo' }),
   admin.doc('campaigns/campaign-a').set({ ownerId: 'owner-a', name: 'Campanha' }),
+  admin.doc('broadcast_lists/list-a').set({ ownerId: 'owner-a', name: 'Lista' }),
+  admin.doc('scheduled_campaigns/scheduled-a').set({ ownerId: 'owner-a', status: 'scheduled' }),
   admin.doc('categories/category-a').set({ ownerId: 'owner-a', name: 'Categoria' }),
   admin.doc('menuItems/item-a').set({ ownerId: 'owner-a', name: 'Produto', price: 10, stockQuantity: 10 }),
+  admin.doc('addons/addon-a').set({ ownerId: 'owner-a', name: 'Adicional', price: 2 }),
+  admin.doc('addonCategories/addon-category-a').set({ ownerId: 'owner-a', name: 'Grupo' }),
+  admin.doc('promotions/promotion-a').set({ ownerId: 'owner-a', name: 'Oferta' }),
   admin.doc('stock_movements/move-a').set({
     ownerId: 'owner-a', itemId: 'item-a', itemName: 'Produto', type: 'entrada',
     delta: 5, stockBefore: 10, stockAfter: 15, note: 'producao', userName: 'Camila',
@@ -168,8 +173,18 @@ await Promise.all([
     ownerId: 'owner-a', orderType: 'dine_in', status: 'pending',
     items: [], subtotal: 30, totalAmount: 30,
   }),
+  admin.doc('encomendas/encomenda-a').set({
+    ownerId: 'owner-a', customerUid: 'anon-a', status: 'pendente', total: 50,
+  }),
   admin.doc('clientes/client-a').set({ ownerId: 'owner-a', nome: 'Cliente', celular: '11999999999' }),
   admin.doc('clientes/client-a/credit_transactions/credit-a').set({ type: 'debit', amount: 10 }),
+  admin.doc('clientes/client-locked').set({
+    ownerId: 'owner-a', nome: 'Em unificação', celular: '11988887777',
+    creditEnabled: false, mergeInProgress: { targetCustomerId: 'client-a' },
+  }),
+  admin.doc('clientes/client-archived').set({
+    ownerId: 'owner-a', nome: 'Arquivado', celular: '11977776666', archived: true,
+  }),
   admin.doc('cash_registers/register-a').set({
     ownerId: 'owner-a', status: 'aberto', sessao: 1, saldoInicial: 0,
   }),
@@ -207,6 +222,17 @@ const operatorB = client('operator-b', { uid: 'op-b' });
 await allowed('owner lê o próprio segredo', getDoc(doc(owner, 'admin_secrets/owner-a')));
 await denied('outro owner não lê segredo alheio', getDoc(doc(otherOwner, 'admin_secrets/owner-a')));
 await allowed('owner altera o próprio cadastro', updateDoc(doc(owner, 'menuItems/item-a'), { price: 11 }));
+await allowed('owner cria categoria no próprio tenant', setDoc(doc(owner, 'categories/category-temp'), {
+  ownerId: 'owner-a', name: 'Temporária',
+}));
+await allowed('owner atualiza categoria sem trocar tenant', updateDoc(doc(owner, 'categories/category-temp'), {
+  name: 'Temporária atualizada',
+}));
+await allowed('owner exclui categoria do próprio tenant', deleteDoc(doc(owner, 'categories/category-temp')));
+await allowed('owner cria campanha no próprio tenant', setDoc(doc(owner, 'campaigns/campaign-temp'), {
+  ownerId: 'owner-a', name: 'Temporária',
+}));
+await allowed('owner exclui campanha do próprio tenant', deleteDoc(doc(owner, 'campaigns/campaign-temp')));
 
 await allowed('operador lê o próprio papel', getDoc(doc(statusOperator, 'roles_operador/op-status')));
 await denied('operador não edita o próprio papel', updateDoc(doc(statusOperator, 'roles_operador/op-status'), { active: false }));
@@ -236,6 +262,25 @@ await denied('operador não sincroniza cadastro de cliente', updateDoc(doc(final
 await denied('extrato da Conta da Casa é owner-only para operador', getDoc(doc(finalizeOperator, 'clientes/client-a/credit_transactions/credit-a')));
 await allowed('owner mantém gestão da base de clientes', updateDoc(doc(owner, 'clientes/client-a'), {
   nome: 'Cliente Owner',
+}));
+await allowed('owner lança no extrato de cliente ativo', setDoc(doc(owner, 'clientes/client-a/credit_transactions/credit-owner'), {
+  type: 'credit', amount: 1,
+}));
+await denied('unificação bloqueia alteração financeira concorrente no cadastro', updateDoc(doc(owner, 'clientes/client-locked'), {
+  creditBalance: 10,
+}));
+await denied('unificação bloqueia novo lançamento concorrente no extrato', setDoc(doc(owner, 'clientes/client-locked/credit_transactions/credit-race'), {
+  type: 'debit', amount: 10,
+}));
+await denied('cadastro arquivado não recebe novo lançamento no extrato', setDoc(doc(owner, 'clientes/client-archived/credit_transactions/credit-late'), {
+  type: 'debit', amount: 10,
+}));
+await allowed('owner conclui o arquivamento da origem travada', updateDoc(doc(owner, 'clientes/client-locked'), {
+  archived: true,
+  archiveReason: 'merged',
+  mergedInto: 'client-a',
+  creditEnabled: false,
+  mergeInProgress: null,
 }));
 await allowed('finalizador descobre o caixa mesmo sem exibir a aba Caixa', getDoc(doc(finalizeOperator, 'cash_registers/register-a')));
 await allowed('finalizarPedido permite concluir sem ajuste', updateDoc(doc(finalizeOperator, 'orders/order-a'), {
@@ -326,6 +371,31 @@ await denied('operador não abre caixa em outra loja', setDoc(doc(caixaOperator,
 await denied('operador não lê o admin_secret da própria loja', getDoc(doc(caixaOperator, 'admin_secrets/owner-a')));
 await denied('operador B não lê pedidos da loja A', getDoc(doc(operatorB, 'orders/order-a')));
 await allowed('operador B lê o caixa da própria loja', getDoc(doc(operatorB, 'cash_registers/register-b')));
+
+// O dono pode administrar os documentos do próprio tenant, mas não pode
+// "transferi-los" alterando ownerId: isso injetaria dados nas consultas de
+// outra loja. Cobertura completa das coleções mutáveis que carregam ownerId.
+const tenantTransferTargets = [
+  ['categoria', 'categories/category-a'],
+  ['produto', 'menuItems/item-a'],
+  ['adicional', 'addons/addon-a'],
+  ['grupo de adicionais', 'addonCategories/addon-category-a'],
+  ['pedido', 'orders/order-a'],
+  ['encomenda', 'encomendas/encomenda-a'],
+  ['caixa', 'cash_registers/register-a'],
+  ['lançamento de caixa', 'cash_transactions/sale-a'],
+  ['cliente', 'clientes/client-a'],
+  ['promoção', 'promotions/promotion-a'],
+  ['campanha', 'campaigns/campaign-a'],
+  ['lista de transmissão', 'broadcast_lists/list-a'],
+  ['campanha agendada', 'scheduled_campaigns/scheduled-a'],
+];
+
+for (const [kind, path] of tenantTransferTargets) {
+  await denied(`owner não transfere ${kind} para outro tenant`, updateDoc(doc(owner, path), {
+    ownerId: 'owner-b',
+  }));
+}
 
 // ── Histórico de estoque (stock_movements) ──
 // É um livro de registro: nasce e não muda. E o cliente anônimo do cardápio

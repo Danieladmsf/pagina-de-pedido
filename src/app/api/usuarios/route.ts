@@ -1,4 +1,4 @@
-import type { UserRecord } from 'firebase-admin/auth';
+import type { UpdateRequest, UserRecord } from 'firebase-admin/auth';
 import { FieldValue, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { firebaseConfig } from '@/firebase/config';
 import { getOptionalAdminAuth, getOptionalAdminDb } from '@/lib/firebase-admin';
@@ -172,7 +172,10 @@ function operatorDto(
     uid,
     name: typeof role.name === 'string' ? role.name : authUser?.displayName || '',
     email: authUser?.email || (typeof role.email === 'string' ? role.email : ''),
-    active: role.active === true,
+    // A UI exibe o estado efetivo, não apenas uma das duas metades. Isso também
+    // permite que o botão "Ativar" repare com um clique um Auth bloqueado
+    // manualmente, em vez de mostrar "Ativo" e "Bloqueado" ao mesmo tempo.
+    active: role.active === true && !!authUser && authUser.disabled !== true,
     permissions: sanitizePermissions(role.permissions),
     emailVerified: authUser?.emailVerified === true,
     authDisabled: authUser?.disabled === true,
@@ -360,7 +363,8 @@ export async function PATCH(request: Request) {
     }
 
     const updates: DocumentData = {};
-    if ('name' in body) updates.name = normalizeName(body.name);
+    const requestedName = 'name' in body ? normalizeName(body.name) : undefined;
+    if (requestedName !== undefined) updates.name = requestedName;
     if ('active' in body) {
       if (typeof body.active !== 'boolean') {
         throw new UsuariosApiError(400, 'O estado ativo deve ser verdadeiro ou falso.');
@@ -377,13 +381,103 @@ export async function PATCH(request: Request) {
       throw new UsuariosApiError(400, 'Nenhuma alteracao foi informada.');
     }
 
-    updates.updatedAt = FieldValue.serverTimestamp();
-    updates.updatedBy = ownerUid;
-    await ownedOperator.reference.update(updates);
+    const requestedActive = typeof updates.active === 'boolean'
+      ? updates.active
+      : undefined;
+    let updatedAuthUser = authUser;
+
+    const auditedUpdates = (values: DocumentData): DocumentData => ({
+      ...values,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: ownerUid,
+    });
+    const updateAuthUser = async (values: UpdateRequest): Promise<UserRecord> => {
+      try {
+        return await auth.updateUser(operatorUid, values);
+      } catch (error) {
+        throw mapFirebaseAuthError(error) || error;
+      }
+    };
+    const revokeOperatorSessions = async () => {
+      try {
+        await auth.revokeRefreshTokens(operatorUid);
+      } catch (error) {
+        throw mapFirebaseAuthError(error) || error;
+      }
+    };
+
+    if (requestedActive === false) {
+      // Fail-safe: as rules deixam de reconhecer o operador ANTES de qualquer
+      // chamada ao Auth. Mesmo se desabilitar/revogar a conta falhar depois, o
+      // papel permanece inativo e nenhum acesso a dados da loja e concedido.
+      await ownedOperator.reference.update(auditedUpdates(updates));
+
+      let authFailure: unknown;
+      try {
+        updatedAuthUser = await updateAuthUser({
+          disabled: true,
+          ...(requestedName !== undefined ? { displayName: requestedName } : {}),
+        });
+      } catch (error) {
+        authFailure = error;
+      }
+
+      // Revoga tambem os tokens ja emitidos. A tentativa acontece mesmo se o
+      // updateUser falhar, pois o documento inativo ja torna a operacao segura.
+      try {
+        await revokeOperatorSessions();
+      } catch (error) {
+        authFailure ??= error;
+      }
+      if (authFailure) throw authFailure;
+    } else if (requestedActive === true) {
+      const safeActivation = ownedOperator.data.active !== true || authUser.disabled === true;
+
+      // Estado inconsistente (papel ativo, Auth desabilitado): corta primeiro o
+      // papel para que habilitar o login nunca exponha as permissoes antigas.
+      if (safeActivation && ownedOperator.data.active === true) {
+        await ownedOperator.reference.update(auditedUpdates({ active: false }));
+      }
+
+      // Na ativacao, o login e habilitado primeiro. As rules continuam negando
+      // acesso ate o update final gravar active=true no Firestore.
+      updatedAuthUser = await updateAuthUser({
+        disabled: false,
+        ...(requestedName !== undefined ? { displayName: requestedName } : {}),
+      });
+
+      try {
+        await ownedOperator.reference.update(auditedUpdates(updates));
+      } catch (error) {
+        if (safeActivation) {
+          // Se o passo que concede o papel falhar, volta a bloquear o Auth. O
+          // documento segue inativo, portanto ate uma falha da compensacao nao
+          // concede acesso aos dados da loja.
+          try {
+            updatedAuthUser = await updateAuthUser({ disabled: true });
+          } catch (rollbackError) {
+            console.error('[api/usuarios] Falha ao reverter habilitacao do Auth:', rollbackError);
+          }
+          try {
+            await revokeOperatorSessions();
+          } catch (rollbackError) {
+            console.error('[api/usuarios] Falha ao revogar sessao apos ativacao incompleta:', rollbackError);
+          }
+        }
+        throw error;
+      }
+    } else {
+      // Alteracao comum: sincroniza o nome no Auth antes de publicar o mesmo
+      // valor no papel. Permissoes continuam sendo persistidas apenas no papel.
+      if (requestedName !== undefined) {
+        updatedAuthUser = await updateAuthUser({ displayName: requestedName });
+      }
+      await ownedOperator.reference.update(auditedUpdates(updates));
+    }
 
     const updatedSnapshot = await ownedOperator.reference.get();
     return noStoreJson({
-      usuario: operatorDto(operatorUid, updatedSnapshot.data() || {}, authUser),
+      usuario: operatorDto(operatorUid, updatedSnapshot.data() || {}, updatedAuthUser),
     });
   } catch (error) {
     return errorResponse(error);

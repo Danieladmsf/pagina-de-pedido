@@ -13,6 +13,9 @@
  * sendo aceitas para o histórico não sumir da tela.
  */
 
+import { getOrderCode } from '@/lib/order-code';
+import { findLegacyOrderBefore } from '@/lib/order-linking';
+
 export type CreditTransactionType = 'debit' | 'credit';
 
 export type CreditTransaction = {
@@ -79,14 +82,18 @@ export function legacyOrderRef(description?: string): string {
  */
 export function matchOrderForTransaction(tx: CreditTransaction, orders: any[]): any | null {
   if (tx.orderId) {
-    return orders.find((order) => order?.id === tx.orderId) || null;
+    return orders.find((order) => order?.id === tx.orderId && order?.origem !== 'encomenda') || null;
   }
   if (tx.encomendaId) {
-    return orders.find((order) => order?.id === tx.encomendaId) || null;
+    return orders.find((order) => order?.id === tx.encomendaId && order?.origem === 'encomenda') || null;
   }
   const ref = legacyOrderRef(tx.description);
   if (!ref) return null;
-  return orders.find((order) => typeof order?.id === 'string' && order.id.startsWith(ref)) || null;
+  return findLegacyOrderBefore(
+    orders.filter((order) => order?.origem !== 'encomenda'),
+    ref,
+    tx.date,
+  );
 }
 
 /**
@@ -394,7 +401,7 @@ export function buildStatementCsv(rows: StatementRow[], customer: ExportCustomer
         hora,
         isDebit ? 'Compra' : 'Pagamento',
         tx.description || (isDebit ? 'Compra' : 'Pagamento'),
-        order?.id || tx.orderId || legacyOrderRef(tx.description),
+        (order ? getOrderCode(order) : '') || tx.orderId || legacyOrderRef(tx.description),
         isDebit ? csvNumber(tx.amount) : '',
         isDebit ? '' : csvNumber(tx.amount),
         csvNumber(balanceAfter),
@@ -422,7 +429,7 @@ export function buildItemsCsv(rows: StatementRow[], customer: ExportCustomer): s
       const unitPrice = Number(item?.unitPrice ?? item?.price) || 0;
       linhas.push(csvLine([
         data,
-        order.id || '',
+        getOrderCode(order),
         item?.name || '',
         quantity,
         (item?.addons || []).map((addon: any) => addon?.name).filter(Boolean).join(' + '),

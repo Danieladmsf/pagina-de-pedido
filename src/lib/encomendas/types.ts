@@ -53,6 +53,7 @@ export interface Encomenda {
 
   customerName: string;
   customerPhone: string;        // normalizado (só dígitos)
+  clienteId?: string;           // vínculo estável com `clientes` (legado pode não ter)
   customerBirthDate?: string;
   isEmpresa: boolean;
 

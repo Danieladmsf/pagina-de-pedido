@@ -1,10 +1,12 @@
 /**
- * Importacao de contatos para a base de Campanhas (colecao `clientes`) via
- * arquivo CSV (modelo abaixo). Grava SEM sobrescrever clientes ja existentes —
- * contatos importados nascem com totalPedidos 0 e marca `source: 'import'`.
+ * Importacao de contatos de Campanhas para a colecao `clientes` via CSV.
+ * Clientes existentes nunca sao sobrescritos por este fluxo.
  */
-import { collection, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
-import { normalizeCreditPhone } from '@/lib/customer-credit';
+import { collection, doc, getDocs, query, runTransaction, where } from 'firebase/firestore';
+import {
+  buildCustomerImportIndex,
+  resolveCustomerImportPhone,
+} from '@/lib/customers/customer-import';
 
 export interface ImportContact {
   nome: string;
@@ -28,7 +30,7 @@ export function downloadContactsCsvTemplate() {
   URL.revokeObjectURL(url);
 }
 
-/** Quebra uma linha de CSV respeitando aspas e aceitando `,` ou `;` como separador. */
+/** Quebra uma linha de CSV respeitando aspas e aceitando `,` ou `;`. */
 function parseCsvLine(line: string): string[] {
   const sep = line.includes(';') && !line.includes(',') ? ';' : ',';
   const out: string[] = [];
@@ -47,39 +49,36 @@ function parseCsvLine(line: string): string[] {
     }
   }
   out.push(cur);
-  return out.map((c) => c.trim());
+  return out.map((column) => column.trim());
 }
 
 /**
- * Le o arquivo CSV e devolve a lista de contatos. Detecta cabecalho com
- * `nome`/`celular` (aceita telefone/whatsapp/fone); sem cabecalho reconhecido,
+ * Le o CSV. Detecta nome/celular (e aliases); sem cabecalho reconhecido,
  * assume coluna 0 = nome e coluna 1 = celular.
  */
 export async function parseContactsCsvFile(file: File): Promise<ImportContact[]> {
   const buffer = await file.arrayBuffer();
   let text = new TextDecoder('utf-8').decode(buffer);
-  // CSV salvo pelo Excel costuma vir em windows-1252: se a decodificacao UTF-8
-  // gerou caractere de substituicao, tenta de novo no encoding do Excel.
-  if (text.includes('�')) {
+  if (text.includes('\uFFFD')) {
     text = new TextDecoder('windows-1252').decode(buffer);
   }
 
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length === 0) return [];
 
-  const header = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
-  const nameIdx = header.findIndex((h) => h === 'nome' || h === 'name');
-  const phoneIdx = header.findIndex((h) => ['celular', 'telefone', 'whatsapp', 'fone', 'phone'].includes(h));
-
+  const header = parseCsvLine(lines[0]).map((value) => value.replace(/^\uFEFF/, '').toLowerCase());
+  const nameIdx = header.findIndex((value) => value === 'nome' || value === 'name');
+  const phoneIdx = header.findIndex((value) =>
+    ['celular', 'telefone', 'whatsapp', 'fone', 'phone'].includes(value));
   const hasHeader = nameIdx >= 0 || phoneIdx >= 0;
-  const nIdx = nameIdx >= 0 ? nameIdx : 0;
-  const pIdx = phoneIdx >= 0 ? phoneIdx : 1;
+  const resolvedNameIdx = nameIdx >= 0 ? nameIdx : 0;
+  const resolvedPhoneIdx = phoneIdx >= 0 ? phoneIdx : 1;
 
   const contacts: ImportContact[] = [];
   for (let i = hasHeader ? 1 : 0; i < lines.length; i++) {
-    const cols = parseCsvLine(lines[i]);
-    const nome = (cols[nIdx] || '').trim();
-    const celular = (cols[pIdx] || '').trim();
+    const columns = parseCsvLine(lines[i]);
+    const nome = (columns[resolvedNameIdx] || '').trim();
+    const celular = (columns[resolvedPhoneIdx] || '').trim();
     if (!nome && !celular) continue;
     contacts.push({ nome, celular });
   }
@@ -89,63 +88,108 @@ export async function parseContactsCsvFile(file: File): Promise<ImportContact[]>
 export interface ImportResult {
   imported: number;
   skipped: number;
+  skippedByReason: {
+    invalid: number;
+    existing: number;
+    duplicate: number;
+    archived: number;
+    collision: number;
+    duplicateCsv: number;
+  };
 }
 
 /**
- * Grava os contatos na colecao `clientes`. Pula os que ja existem (mesmo docId
- * `${ownerId}_${telefone}`) para NAO zerar dados de clientes reais, e os sem
- * telefone valido. Escreve em lotes (limite do Firestore por batch).
+ * Importa apenas contatos comprovadamente novos. A resolucao considera o
+ * telefone normalizado de todos os clientes da loja, e nao somente o docId.
  */
 export async function importContactsToClientes(
   db: any,
   ownerId: string,
   contacts: ImportContact[],
 ): Promise<ImportResult> {
-  if (!db || !ownerId || contacts.length === 0) return { imported: 0, skipped: 0 };
+  const skippedByReason: ImportResult['skippedByReason'] = {
+    invalid: 0,
+    existing: 0,
+    duplicate: 0,
+    archived: 0,
+    collision: 0,
+    duplicateCsv: 0,
+  };
+  if (!db || !ownerId || contacts.length === 0) {
+    return { imported: 0, skipped: 0, skippedByReason };
+  }
 
-  // Pre-carrega os ids existentes para nao sobrescrever clientes reais.
-  const existing = new Set<string>();
+  // Sem o preload completo, qualquer set() poderia duplicar um id legado ou
+  // sobrescrever um id deterministico que hoje pertence a outro telefone.
+  const existingCustomers: any[] = [];
   try {
     const snap = await getDocs(query(collection(db, 'clientes'), where('ownerId', '==', ownerId)));
-    snap.forEach((d: any) => existing.add(d.id));
-  } catch {
-    // Sem a lista previa, o set() ainda dedup por docId — mas pode reescrever.
-  }
-
-  let imported = 0;
-  let skipped = 0;
-  let batch = writeBatch(db);
-  let inBatch = 0;
-  const seen = new Set<string>();
-
-  for (const c of contacts) {
-    const normalizedPhone = normalizeCreditPhone(c.celular || '');
-    if (!normalizedPhone || normalizedPhone.length < 10) { skipped++; continue; }
-
-    const docId = `${ownerId}_${normalizedPhone}`;
-    if (existing.has(docId) || seen.has(docId)) { skipped++; continue; }
-    seen.add(docId);
-
-    batch.set(doc(db, 'clientes', docId), {
-      id: docId,
-      nome: (c.nome || '').trim() || normalizedPhone,
-      celular: normalizedPhone,
-      totalPedidos: 0,
-      ticketMedio: 0,
-      ownerId,
-      source: 'import',
-      importedAt: new Date().toISOString(),
+    snap.forEach((customerDoc: any) => {
+      existingCustomers.push({ id: customerDoc.id, ...(customerDoc.data() || {}) });
     });
-    imported++;
-    inBatch++;
-
-    if (inBatch >= 400) {
-      await batch.commit();
-      batch = writeBatch(db);
-      inBatch = 0;
-    }
+  } catch (error) {
+    const reason = error instanceof Error ? ` (${error.message})` : '';
+    throw new Error(`Nao foi possivel conferir a base de clientes${reason}. Nenhum contato foi importado.`);
   }
 
-  if (inBatch > 0) await batch.commit();
-  return { imported, skipped };
+  const index = buildCustomerImportIndex(ownerId, existingCustomers);
+  const seenPhones = new Set<string>();
+  const planned: Array<{ id: string; nome: string; celular: string }> = [];
+
+  // Valida o arquivo inteiro antes de criar a primeira transacao.
+  for (const contact of contacts) {
+    const resolution = resolveCustomerImportPhone(index, contact.celular || '');
+    if (resolution.status === 'invalid') {
+      skippedByReason.invalid++;
+      continue;
+    }
+    if (seenPhones.has(resolution.normalizedPhone)) {
+      skippedByReason.duplicateCsv++;
+      continue;
+    }
+    seenPhones.add(resolution.normalizedPhone);
+
+    if (resolution.status !== 'new') {
+      skippedByReason[resolution.status]++;
+      continue;
+    }
+
+    planned.push({
+      id: resolution.id,
+      nome: (contact.nome || '').trim() || resolution.normalizedPhone,
+      celular: resolution.normalizedPhone,
+    });
+  }
+
+  const importedAt = new Date().toISOString();
+  for (let offset = 0; offset < planned.length; offset += 400) {
+    const chunk = planned.slice(offset, offset + 400);
+    await runTransaction(db, async (transaction) => {
+      const refs = chunk.map((customer) => doc(db, 'clientes', customer.id));
+      const currentDocs = await Promise.all(refs.map((ref) => transaction.get(ref)));
+      currentDocs.forEach((current, index) => {
+        if (current.exists()) {
+          throw new Error(`O identificador ${chunk[index].id} foi ocupado durante a importacao. Nenhum contato deste lote foi sobrescrito.`);
+        }
+      });
+
+      chunk.forEach((customer, index) => {
+        // Apenas documentos comprovadamente novos chegam aqui. A leitura e a
+        // escrita na mesma transacao tornam a operacao create-only.
+        transaction.set(refs[index], {
+          id: customer.id,
+          nome: customer.nome,
+          celular: customer.celular,
+          totalPedidos: 0,
+          ticketMedio: 0,
+          ownerId,
+          source: 'import',
+          importedAt,
+        });
+      });
+    });
+  }
+
+  const skipped = Object.values(skippedByReason).reduce((total, count) => total + count, 0);
+  return { imported: planned.length, skipped, skippedByReason };
 }

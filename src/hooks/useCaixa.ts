@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useFirestore, useCollection, useUser, useMemoFirebase } from '@/firebase';
 import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer, writeBatch } from 'firebase/firestore';
+import type { WriteBatch } from 'firebase/firestore';
 
 export interface Caixa {
   id: string;
@@ -74,7 +75,17 @@ export type LancamentoInput = {
   encomendaId?: string;
 };
 
-export type RegistrarLancamento = (input: LancamentoInput) => Promise<void>;
+export type RegistrarLancamentoOptions = {
+  /** Permite compor o caixa na mesma operação atômica de outro subsistema. */
+  batch?: WriteBatch;
+  /** Id estável para repetição segura quando a operação tiver chave própria. */
+  transactionId?: string;
+};
+
+export type RegistrarLancamento = (
+  input: LancamentoInput,
+  options?: RegistrarLancamentoOptions,
+) => Promise<void>;
 
 export interface LancamentoCaixa {
   id: string;
@@ -444,14 +455,17 @@ export function useCaixa(options?: UseCaixaOptions) {
     await batch.commit();
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, lancamentos]);
 
-  const registrarLancamento = useCallback(async ({ tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId, orderId, encomendaId }: LancamentoInput) => {
+  const registrarLancamento = useCallback<RegistrarLancamento>(async (
+    { tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId, orderId, encomendaId },
+    options,
+  ) => {
     if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) {
       throw new Error("Não há caixa aberto no momento.");
     }
 
     const valorFinal = tipo === 'sangria' ? Number(valor) * -1 : Number(valor);
     
-    await addDoc(collection(db, 'cash_transactions'), {
+    const data = {
       caixaId: caixaAberto.id,
       ownerId,
       tipo,
@@ -466,7 +480,19 @@ export function useCaixa(options?: UseCaixaOptions) {
       ...(creditTxId && { creditTxId }),
       ...(orderId && { orderId }),
       ...(encomendaId && { encomendaId }),
-    });
+    };
+    const stableRef = options?.transactionId
+      ? doc(db, 'cash_transactions', options.transactionId)
+      : null;
+    if (options?.batch) {
+      options.batch.set(stableRef || doc(collection(db, 'cash_transactions')), data);
+      return;
+    }
+    if (stableRef) {
+      await setDoc(stableRef, data);
+      return;
+    }
+    await addDoc(collection(db, 'cash_transactions'), data);
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, caixaAberto]);
 
   // Cancelamento lógico de venda: marca/desmarca canceled no lançamento.

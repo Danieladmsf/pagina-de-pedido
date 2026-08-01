@@ -35,10 +35,19 @@ export function ImportContacts({ db, user }: ImportContactsProps) {
         toast({ variant: 'destructive', title: 'CSV vazio ou invalido', description: 'Use o modelo (nome, celular).' });
         return;
       }
-      const { imported, skipped } = await importContactsToClientes(db, user.uid, contacts);
+      const { imported, skipped, skippedByReason } = await importContactsToClientes(db, user.uid, contacts);
+      const conflicts = skippedByReason.duplicate
+        + skippedByReason.archived
+        + skippedByReason.collision
+        + skippedByReason.duplicateCsv;
+      const details = [
+        skippedByReason.existing > 0 ? `${skippedByReason.existing} ja existente(s)` : '',
+        skippedByReason.invalid > 0 ? `${skippedByReason.invalid} telefone(s) invalido(s)` : '',
+        conflicts > 0 ? `${conflicts} conflito(s) de identidade` : '',
+      ].filter(Boolean);
       toast({
         title: `${imported} contato(s) importado(s)`,
-        description: skipped > 0 ? `${skipped} ignorado(s) (ja existiam ou sem telefone valido).` : 'Prontos para usar nas campanhas.',
+        description: skipped > 0 ? `${skipped} ignorado(s): ${details.join(', ')}.` : 'Prontos para usar nas campanhas.',
       });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro na importacao', description: err?.message || 'Falha ao ler o CSV.' });

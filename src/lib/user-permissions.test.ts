@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { can } from '@/lib/pdv-permissions';
 import {
   canAccessRetaguarda,
+  canAccessRetaguardaTab,
   createEmptyOperatorPermissions,
   getRetaguardaPermissionForTab,
   normalizeOperatorPermissions,
@@ -65,5 +66,16 @@ describe('permissões de operador', () => {
     expect(getRetaguardaPermissionForTab('perfil_aparencia')).toBe('perfil');
     expect(getRetaguardaPermissionForTab('inexistente')).toBeNull();
     expect(createEmptyOperatorPermissions().pdv.enabled).toBe(true);
+  });
+
+  it('só libera para operador as abas que possuem tela read-only', () => {
+    const permissions = normalizeOperatorPermissions({
+      retaguarda: { produtos: true, categorias: true },
+    });
+
+    expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'produtos')).toBe(true);
+    expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'categorias')).toBe(true);
+    expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'estoque')).toBe(false);
+    expect(canAccessRetaguardaTab('owner', permissions.retaguarda, 'estoque')).toBe(true);
   });
 });

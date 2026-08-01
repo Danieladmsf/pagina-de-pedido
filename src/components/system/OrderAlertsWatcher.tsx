@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { collection, doc, query, where } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from 'react';
+import { collection, doc, query, updateDoc, where } from 'firebase/firestore';
 import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { useToast } from '@/hooks/use-toast';
@@ -10,6 +10,7 @@ import { warmupQz } from '@/lib/qz-print';
 import { claimAutoPrint, resolvePrintMode } from '@/lib/receipt-print';
 import { playNewOrderBeep, playOrderSound6s } from '@/lib/order-sound';
 import { can } from '@/lib/pdv-permissions';
+import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 
 /**
  * Vigia de PEDIDOS NOVOS montado no layout do route-group (sistema) — portanto
@@ -22,8 +23,8 @@ import { can } from '@/lib/pdv-permissions';
  * pra cá, o alerta acontece em qualquer tela aberta.
  *
  * Escopo: SÓ o alerta imediato do pedido que acabou de entrar (tocar / imprimir /
- * avisar). Baixa de estoque, cadastro de cliente, confete e WhatsApp seguem na
- * tela do PDV — são subsistemas à parte e continuam onde estavam.
+ * avisar). A reconciliação persistente da identidade também mora aqui; baixa de
+ * estoque, confete e WhatsApp seguem no PDV como subsistemas separados.
  */
 export function OrderAlertsWatcher() {
   const db = useFirestore();
@@ -76,6 +77,86 @@ export function OrderAlertsWatcher() {
 
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
   const seenEncomendaIdsRef = useRef<Set<string> | null>(null);
+  const identityInFlightRef = useRef<Set<string>>(new Set());
+  const identityDoneRef = useRef<Set<string>>(new Set());
+  const [identityRetryTick, setIdentityRetryTick] = useState(0);
+
+  useEffect(() => {
+    if (role !== 'owner') return;
+    const timer = window.setInterval(() => setIdentityRetryTick((value) => value + 1), 2 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [role]);
+
+  // Pedidos públicos e lançamentos de operador não podem escrever em
+  // `clientes`. Eles deixam uma marca persistente para o dono reconciliar aqui,
+  // inclusive na primeira carga e em qualquer tela do sistema. Em pedidos a
+  // marca permanece até entrega/cancelamento, para a métrica ser contabilizada
+  // mesmo quando a finalização aconteceu enquanto o dono estava offline.
+  useEffect(() => {
+    if (!db || !user || role !== 'owner' || user.uid !== ownerId) return;
+
+    const candidates = [
+      ...((ordersRaw || []) as any[]).map((record) => ({ collectionName: 'orders', record })),
+      ...((encomendasRaw || []) as any[]).map((record) => ({ collectionName: 'encomendas', record })),
+    ].filter(({ record }) => record?.id && record.customerIdentityPending === true);
+
+    for (const { collectionName, record } of candidates) {
+      const runId = `${collectionName}/${record.id}`;
+      const signature = [
+        runId,
+        record.status || '',
+        record.clienteId || '',
+        record.customerPhone || '',
+        record.customerName || '',
+        record.customerCounted === true ? 'counted' : 'uncounted',
+      ].join('|');
+      if (identityInFlightRef.current.has(runId) || identityDoneRef.current.has(signature)) continue;
+      identityInFlightRef.current.add(runId);
+
+      void (async () => {
+        try {
+          const isOrder = collectionName === 'orders';
+          const delivered = isOrder && record.status === 'delivered';
+          const canceled = isOrder && ['canceled', 'cancelled'].includes(record.status);
+          const result = await syncCustomerFromOrder(db, record, {
+            ownerId,
+            countOrder: delivered,
+            linkCollection: collectionName as 'orders' | 'encomendas',
+            allowArchivedCustomer: false,
+          });
+
+          // Encomenda não entra em totalPedidos. Pedido continua marcado enquanto
+          // está aberto, para ser contabilizado quando chegar a `delivered`.
+          if (result.ambiguous) {
+            // Continua pendente: depois de o dono corrigir/unificar os cadastros,
+            // a tentativa periódica consegue vincular e contabilizar sem backfill.
+            await updateDoc(doc(db, collectionName, record.id), {
+              customerIdentityPending: true,
+              customerIdentityConflict: true,
+            });
+            return;
+          }
+          if (!isOrder || delivered || canceled || !result.customerId) {
+            await updateDoc(doc(db, collectionName, record.id), {
+              customerIdentityPending: false,
+              customerIdentityConflict: false,
+            });
+          } else if (record.customerIdentityConflict === true) {
+            await updateDoc(doc(db, collectionName, record.id), {
+              customerIdentityConflict: false,
+            });
+          }
+          identityDoneRef.current.add(signature);
+        } catch (error) {
+          // A marca permanece verdadeira: nova alteração ou próxima sessão tenta
+          // novamente sem perder o pedido criado offline.
+          console.warn(`[customer-identity] falha ao reconciliar ${runId}:`, error);
+        } finally {
+          identityInFlightRef.current.delete(runId);
+        }
+      })();
+    }
+  }, [db, encomendasRaw, identityRetryTick, ordersRaw, ownerId, role, user]);
 
   // ── Alerta de PEDIDO NOVO (delivery/retirada online) ──
   useEffect(() => {

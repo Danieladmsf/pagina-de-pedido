@@ -2,9 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 /**
  * O que estes testes protegem: apagar produto sem deixar a promoção apontando
- * pro vazio. `promotions.items[].menuItemId` é a única referência cruzada a
- * `menuItems` no projeto, e ninguém a limpava — a Lima Limão acumulou 5
- * referências mortas antes de alguém perceber.
+ * pro vazio. Além de promoções, combos também apontam para produtos e precisam
+ * impedir uma exclusão que mudaria silenciosamente a composição da oferta.
  *
  * O ponto crítico é a ATOMICIDADE: produto e promoções têm que sair no mesmo
  * batch. Se o produto saísse antes, uma falha no meio recriaria exatamente o
@@ -18,7 +17,14 @@ vi.mock('firebase/firestore', () => ({
   writeBatch: () => batchMock,
 }));
 
-const { promotionsUsingItem, deleteItemWarning, deleteMenuItemWithCleanup, promotionUpdatesForRemovedItems } = await import('./menu-item-delete');
+const {
+  promotionsUsingItem,
+  deleteItemWarning,
+  deleteMenuItemWithCleanup,
+  promotionUpdatesForRemovedItems,
+  combosUsingRemovedItems,
+  comboReferenceWarning,
+} = await import('./menu-item-delete');
 
 const promocoes = [
   { id: 'promo1', name: 'Terça Maluca', items: [{ menuItemId: 'x' }, { menuItemId: 'y' }] },
@@ -58,6 +64,25 @@ describe('deleteItemWarning', () => {
     const aviso = deleteItemWarning(promocoes, 'x');
     expect(aviso).toContain('1 promoção');
     expect(aviso).not.toContain('promoções');
+  });
+});
+
+describe('referências de combo', () => {
+  const itens = [
+    { id: 'x', name: 'Lanche' },
+    { id: 'y', name: 'Batata' },
+    { id: 'c1', name: 'Combo Casal', isCombo: true, comboItems: [{ itemId: 'x' }, { itemId: 'y' }] },
+    { id: 'c2', name: 'Combo apagado junto', isCombo: true, comboItems: [{ itemId: 'x' }] },
+  ];
+
+  it('acha apenas combos sobreviventes que apontam para o produto', () => {
+    expect(combosUsingRemovedItems(itens, new Set(['x', 'c2'])).map((item) => item.id)).toEqual(['c1']);
+  });
+
+  it('explica por que a exclusão foi bloqueada', () => {
+    const aviso = comboReferenceWarning(itens, new Set(['x']));
+    expect(aviso).toContain('Combo Casal');
+    expect(aviso).toContain('Combo apagado junto');
   });
 });
 
@@ -105,5 +130,15 @@ describe('deleteMenuItemWithCleanup', () => {
     expect(batchMock.delete).toHaveBeenCalledTimes(1);
     expect(batchMock.update).not.toHaveBeenCalled();
     expect(batchMock.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('não apaga produto que ainda é componente de combo', async () => {
+    const itens = [
+      { id: 'y', name: 'Batata' },
+      { id: 'c1', name: 'Combo', isCombo: true, comboItems: [{ itemId: 'y' }] },
+    ];
+    await expect(deleteMenuItemWithCleanup({}, 'y', promocoes, itens)).rejects.toThrow('Combo');
+    expect(batchMock.delete).not.toHaveBeenCalled();
+    expect(batchMock.commit).not.toHaveBeenCalled();
   });
 });

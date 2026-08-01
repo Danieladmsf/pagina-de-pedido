@@ -16,6 +16,7 @@ import {
 } from './receipt-print';
 import { brl } from '@/lib/utils';
 import { formatBrazilPhone, normalizeCreditPhone } from '@/lib/customer-credit';
+import { getOrderCode, getOrderCodePrefix } from '@/lib/order-code';
 
 /** O telefone é gravado só com dígitos; no papel ele sai legível. */
 const telefoneDoCupom = (raw: any): string =>
@@ -31,6 +32,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   // Espaço vertical entre cada adicionário ("> nome") no 58mm. 80mm fica intacto.
   const addonGap = is58 ? '4px' : '0';
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
+  const orderCode = getOrderCode(order);
 
   const dt = new Date(order?.orderDateTime || Date.now());
   const dataStr = dt.toLocaleDateString('pt-BR');
@@ -200,7 +202,7 @@ export function buildOrderReceiptHtml(order: any, storeInfo: any, isKitchen = fa
   const body = `
     <div class="center mb b-dash pb">
       <h1 class="bold lg upper">${isKitchen ? '*** PRODUÇÃO COZINHA ***' : esc(storeName)}</h1>
-      ${!isKitchen ? `<p>Pedido: #${esc(String(order?.id || '').substring(0, 5))} (${esc(order?.id)})</p>` : ''}
+      ${!isKitchen ? `<p>Pedido: #${esc(getOrderCodePrefix(order))} (${esc(orderCode)})</p>` : ''}
       <p>Data: ${dataStr} ${horaStr}</p>
       ${showPrevisao ? `<p>Previsão: ${previsaoStr}</p>` : ''}
     </div>

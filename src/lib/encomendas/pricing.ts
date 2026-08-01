@@ -20,6 +20,7 @@ import type {
   SkuOption,
 } from './catalog';
 import type { Encomenda, EncomendaLineItem } from './types';
+import { normalizeCreditPhone } from '@/lib/customer-credit';
 
 export type Qmap = Record<string, number>;
 
@@ -226,6 +227,7 @@ export function montarEncomenda(params: {
   customerUid: string;
   ownerId: string;
   cliente: { nome: string; telefone: string; nascimento?: string };
+  clienteId?: string;
   sel: SelecaoEncomenda;
   totais: TotaisEncomenda;
   sinalPercent: number;
@@ -257,7 +259,8 @@ export function montarEncomenda(params: {
     customerUid: params.customerUid,
     ownerId: params.ownerId,
     customerName: params.cliente.nome.trim(),
-    customerPhone: params.cliente.telefone.replace(/\D/g, ''),
+    customerPhone: normalizeCreditPhone(params.cliente.telefone),
+    ...(params.clienteId ? { clienteId: params.clienteId } : {}),
     customerBirthDate: params.cliente.nascimento || '',
     isEmpresa: false,
     products: [...sel.products],
