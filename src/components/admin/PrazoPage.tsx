@@ -76,6 +76,9 @@ interface PrazoPageProps {
   onEditCliente?: (cliente: any) => void;
   registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
+  /** Dentro da Ficha do Cliente o cabeçalho (avatar, nome, voltar) já existe
+   *  na casca — repetir daria dois títulos na mesma tela. Nada de lógica muda. */
+  semCabecalho?: boolean;
 }
 
 type PeriodoId = '30' | '90' | 'ano' | 'tudo';
@@ -146,7 +149,7 @@ const FIM_DA_FAIXA_DE_ID = String.fromCharCode(0xf8ff);
  * dois divergem a página avisa e oferece o acerto, em vez de escolher um
  * número em silêncio.
  */
-export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarLancamento, caixaAberto }: PrazoPageProps) {
+export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarLancamento, caixaAberto, semCabecalho = false }: PrazoPageProps) {
   const { toast } = useToast();
   const ownerId = user?.uid;
 
@@ -730,7 +733,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   return (
     <div className="flex h-full min-h-0 w-full max-w-[1400px] mx-auto flex-col gap-4 pt-4 pb-2">
       {/* Cabeçalho */}
-      <header className="shrink-0 px-2">
+      {!semCabecalho && <header className="shrink-0 px-2">
         <button
           type="button"
           onClick={onBack}
@@ -790,7 +793,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
             )}
           </div>
         </div>
-      </header>
+      </header>}
 
       {/* Indicadores */}
       <div className="grid shrink-0 grid-cols-2 gap-3 px-2 md:grid-cols-3 xl:grid-cols-5">

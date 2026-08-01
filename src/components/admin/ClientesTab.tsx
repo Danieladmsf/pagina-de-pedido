@@ -41,6 +41,7 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { PrazoPage } from '@/components/admin/PrazoPage';
+import { FichaClientePage } from '@/components/admin/FichaClientePage';
 import {
   balanceDivergenceIssue,
   findCustomerIdentityIssues,
@@ -145,6 +146,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   // Guarda só o id: o cliente em si vem sempre da lista viva, para a tela do
   // Prazo enxergar saldo/limite novos assim que uma baixa é lançada.
   const [prazoClienteId, setPrazoClienteId] = useState<string | null>(null);
+  const [fichaClienteId, setFichaClienteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [integrityIssues, setIntegrityIssues] = useState<CustomerIntegrityIssue[] | null>(null);
@@ -290,6 +292,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   }, [clientes, searchTerm, filterBairro, filterCidade, sortBy, sortDir]);
 
   const prazoCliente = prazoClienteId ? allClientes.find(c => c.id === prazoClienteId) || null : null;
+  const fichaCliente = fichaClienteId ? allClientes.find(c => c.id === fichaClienteId) || null : null;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -1003,6 +1006,23 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
   // A gestão do Prazo é uma TELA, não um modal: ocupa a aba inteira e volta
   // para a lista pelo botão do cabeçalho. O cliente vem da lista viva, então
   // saldo e limite se atualizam sozinhos depois de cada lançamento.
+  // A ficha do cliente e uma TELA, como o Prazo: o clique no card abre o
+  // prontuario (compras + prazo), nao mais o modal de tres contadores.
+  if (fichaCliente) {
+    return (
+      <FichaClientePage
+        key={fichaCliente.id}
+        db={db}
+        user={user}
+        cliente={fichaCliente}
+        caixaAberto={caixaAberto}
+        registrarLancamento={registrarLancamento}
+        onBack={() => setFichaClienteId(null)}
+        onEditCliente={(c) => { setFichaClienteId(null); openEditForm(c); }}
+      />
+    );
+  }
+
   if (prazoCliente) {
     return (
       <PrazoPage
@@ -1175,7 +1195,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                 </TableRow>
               ) : (
                 paginated.map(c => (
-                  <TableRow key={c.id} className={`hover:bg-muted/20 cursor-pointer ${c.archived ? 'opacity-70 bg-slate-50' : ''}`} onClick={() => setViewingCliente(c)}>
+                  <TableRow key={c.id} className={`hover:bg-muted/20 cursor-pointer ${c.archived ? 'opacity-70 bg-slate-50' : ''}`} onClick={() => setFichaClienteId(c.id)}>
                     <TableCell className="pl-4 font-semibold text-slate-700">
                       <div className="flex items-center gap-2.5">
                         <ContactAvatar
@@ -1222,7 +1242,7 @@ export function ClientesTab({ db, user, registrarLancamento, caixaAberto }: Clie
                             <Receipt className="h-3.5 w-3.5 text-indigo-500" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setViewingCliente(c)} title="Ver Detalhes">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFichaClienteId(c.id)} title="Abrir a ficha do cliente">
                           <Eye className="h-3.5 w-3.5 text-blue-500" />
                         </Button>
                         {c.archived ? (
