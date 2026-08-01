@@ -48,6 +48,10 @@ export type ExtratoPrazoData = {
   saldo: number;
   /** Texto pronto do vencimento ("vence 10/08" / "vencida desde 10/07"). */
   vencimento?: string;
+  /** Período que a tela está mostrando ("Tudo", "01/07/2026 a 31/07/2026").
+   *  Com filtro personalizado, papel sem período é armadilha: o cliente
+   *  conferiria um recorte achando que é a conta inteira. */
+  periodo?: string;
   pixKey?: string;
   pixName?: string;
 };
@@ -60,7 +64,7 @@ const dataHora = (iso?: string) => {
 };
 
 export function buildExtratoPrazoHtml(opts: ExtratoPrazoData): string {
-  const { storeInfo, cliente, rows, saldo, vencimento, pixKey, pixName } = opts;
+  const { storeInfo, cliente, rows, saldo, vencimento, periodo, pixKey, pixName } = opts;
   const storeName = storeInfo?.general?.name || storeInfo?.storeName || 'Loja';
   const agora = new Date();
   // Saldo negativo é crédito do cliente, não dívida: o papel não pode entregar
@@ -99,6 +103,7 @@ export function buildExtratoPrazoHtml(opts: ExtratoPrazoData): string {
       <div class="section">
         <div class="row"><span>Cliente</span><span class="bold">${esc(cliente.nome || '-')}</span></div>
         ${cliente.celular ? `<div class="row"><span>Telefone</span><span>${esc(cliente.celular)}</span></div>` : ''}
+        ${periodo ? `<div class="row"><span>Periodo</span><span>${esc(periodo)}</span></div>` : ''}
         <div class="row"><span>Emitido em</span><span>${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div>
       </div>
       <p class="sep">${SEP_DASH}</p>

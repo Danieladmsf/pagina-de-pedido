@@ -22,18 +22,12 @@ import { buildComprasCsv, buildComprasItensCsv } from '@/lib/clientes/compras-ex
 import { printCompras } from '@/lib/clientes/compras-receipt';
 import { baixarCsv, nomeDeArquivo } from '@/lib/csv';
 import { useToast } from '@/hooks/use-toast';
+import { FiltroPeriodo } from '@/components/admin/FiltroPeriodo';
+import { dentroDaJanela, janelaDoPeriodo, type PeriodoSelecionado } from '@/lib/periodo';
 import { PrazoPage } from '@/components/admin/PrazoPage';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import type { RegistrarLancamento } from '@/hooks/useCaixa';
-
-type PeriodoId = '30' | '90' | 'ano' | 'tudo';
-const PERIODOS: { id: PeriodoId; label: string; dias: number | null }[] = [
-  { id: '30', label: '30 dias', dias: 30 },
-  { id: '90', label: '90 dias', dias: 90 },
-  { id: 'ano', label: '12 meses', dias: 365 },
-  { id: 'tudo', label: 'Tudo', dias: null },
-];
 
 const KpiCard = ({ icon: Icon, label, value, hint, tone = 'slate' }: {
   icon: typeof Wallet; label: string; value: string; hint?: React.ReactNode;
@@ -78,7 +72,7 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
   const [aba, setAba] = useState<'compras' | 'prazo'>('compras');
   const [compras, setCompras] = useState<CompraDoCliente[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [periodo, setPeriodo] = useState<PeriodoId>('tudo');
+  const [periodo, setPeriodo] = useState<PeriodoSelecionado>({ preset: 'tudo' });
   const [forma, setForma] = useState<string>('todas');
   const [canal, setCanal] = useState<string>('todos');
   const [busca, setBusca] = useState('');
@@ -97,7 +91,7 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
   // lista está filtrada por período ou forma e o arquivo viesse completo, o
   // cliente conferiria uma coisa e levaria outra.
   const rotuloDoFiltro = () => [
-    PERIODOS.find((p) => p.id === periodo)?.label || 'Tudo',
+    janelaDoPeriodo(periodo).rotulo,
     forma !== 'todas' ? forma : null,
     canal !== 'todos' ? canal : null,
   ].filter(Boolean).join(' · ');
@@ -201,15 +195,11 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
   }, [db, ownerId, cliente?.id, cliente?.celular, storeProfile?.theme]);
 
   const filtradas = useMemo(() => {
-    const dias = PERIODOS.find((p) => p.id === periodo)?.dias ?? null;
-    const limite = dias ? Date.now() - dias * 24 * 60 * 60 * 1000 : null;
+    const janela = janelaDoPeriodo(periodo);
     const termo = normalizeSearch(busca.trim());
 
     return compras.filter((c) => {
-      if (limite) {
-        const t = Date.parse(c.orderDateTime || '');
-        if (Number.isNaN(t) || t < limite) return false;
-      }
+      if (!dentroDaJanela(c.orderDateTime, janela)) return false;
       if (forma !== 'todas' && rotuloDaForma(c.paymentMethod) !== forma) return false;
       if (canal !== 'todos' && rotuloDoCanal(c) !== canal) return false;
       if (termo) {
@@ -364,20 +354,7 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
                 className="h-8 pl-8 text-xs"
               />
             </div>
-            <div className="flex gap-1">
-              {PERIODOS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPeriodo(p.id)}
-                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
-                    periodo === p.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <FiltroPeriodo valor={periodo} onChange={setPeriodo} />
             <select
               value={forma}
               onChange={(e) => setForma(e.target.value)}

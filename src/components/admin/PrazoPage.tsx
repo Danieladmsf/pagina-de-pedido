@@ -63,6 +63,8 @@ import {
 } from '@/lib/prazo-statement';
 import { encomendaComoPedido } from '@/lib/encomendas/pedido';
 import { printExtratoPrazo } from '@/lib/prazo-receipt';
+import { FiltroPeriodo } from '@/components/admin/FiltroPeriodo';
+import { dentroDaJanela, janelaDoPeriodo, type PeriodoSelecionado } from '@/lib/periodo';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
@@ -161,7 +163,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const [estornandoId, setEstornandoId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [periodo, setPeriodo] = useState<PeriodoId>('tudo');
+  const [periodo, setPeriodo] = useState<PeriodoSelecionado>({ preset: 'tudo' });
   const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>('todos');
 
   // Configuração do prazo (mesmos campos da ficha do cliente, editáveis aqui).
@@ -412,17 +414,13 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   // Filtros da lista (a linha guarda o saldo do momento, então filtrar não
   // reescreve o histórico — some da tela, não da conta).
   const filteredRows = useMemo(() => {
-    const dias = PERIODOS.find((p) => p.id === periodo)?.dias ?? null;
-    const desde = dias ? Date.now() - dias * 86400000 : null;
+    const janela = janelaDoPeriodo(periodo);
     const term = normalizeSearch(searchTerm.trim());
 
     return allRows.filter(({ tx, order }) => {
       if (tipoFiltro === 'compras' && tx.type !== 'debit') return false;
       if (tipoFiltro === 'pagamentos' && tx.type !== 'credit') return false;
-      if (desde) {
-        const time = Date.parse(tx.date || '');
-        if (Number.isNaN(time) || time < desde) return false;
-      }
+      if (!dentroDaJanela(tx.date, janela)) return false;
       if (term) {
         const itens = (order?.items || []).map((item: any) => item?.name).join(' ');
         if (!normalizeSearch(`${tx.description || ''} ${itens}`).includes(term)) return false;
@@ -433,7 +431,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   // Na tela o mais recente vem primeiro; no arquivo/cupom, ordem cronológica.
   const visibleRows = useMemo(() => [...filteredRows].reverse(), [filteredRows]);
-  const filtrosAtivos = periodo !== 'tudo' || tipoFiltro !== 'todos' || !!searchTerm.trim();
+  const filtrosAtivos = periodo.preset !== 'tudo' || tipoFiltro !== 'todos' || !!searchTerm.trim();
   const totaisFiltro = useMemo(() => {
     return filteredRows.reduce(
       (acc, { tx }) => {
@@ -659,6 +657,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
       rows: filteredRows,
       saldo,
       vencimento: vencimento?.texto,
+      periodo: janelaDoPeriodo(periodo).rotulo,
       pixKey: storeProfile?.creditPixKey || '',
       pixName: storeProfile?.creditPixName || '',
     });
@@ -1013,18 +1012,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
                 className="h-8 pl-8 text-xs"
               />
             </div>
-            <div className="flex rounded-lg bg-slate-100 p-0.5">
-              {PERIODOS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPeriodo(p.id)}
-                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition ${periodo === p.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <FiltroPeriodo valor={periodo} onChange={setPeriodo} />
             <div className="flex rounded-lg bg-slate-100 p-0.5">
               {([['todos', 'Todos'], ['compras', 'Compras'], ['pagamentos', 'Pagamentos']] as [TipoFiltro, string][]).map(([id, label]) => (
                 <button
@@ -1040,7 +1028,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
             {filtrosAtivos && (
               <button
                 type="button"
-                onClick={() => { setSearchTerm(''); setPeriodo('tudo'); setTipoFiltro('todos'); }}
+                onClick={() => { setSearchTerm(''); setPeriodo({ preset: 'tudo' }); setTipoFiltro('todos'); }}
                 className="flex items-center gap-1 text-[11px] font-bold text-slate-400 transition-colors hover:text-rose-600"
               >
                 <X className="h-3 w-3" /> Limpar
