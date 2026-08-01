@@ -93,7 +93,9 @@ Normalizar o telefone (1.1–1.4) reduz o estrago, mas mantém a identidade send
 Já feito no PDV (`NovoPedidoTab`), na Mesa (`MesasTab`) e no cardápio público (`CartDrawer`, que já normalizava). Falta varrer: cadastro rápido, import de CSV, edição na aba Clientes, encomendas (já normaliza) e qualquer rota de API que aceite telefone. **Um helper único** (`normalizeCreditPhone`), nunca `replace` solto.
 
 **1.2 — Validar na entrada, com máscara.**
-O campo do PDV aceita qualquer texto. Passa a ter máscara e a recusar o que não for telefone — com uma saída explícita para venda anônima ("sem cliente"), que é um caso legítimo e não pode ser bloqueado.
+O campo do PDV aceita qualquer texto. Passa a ter máscara e a recusar o que não for telefone — sem bloquear a venda anônima, que é um caso legítimo.
+
+> **Feito em parte, e com uma correção de rumo:** a máscara e a validação entraram, mas junto veio um botão "Sem cliente" que obriga o operador a declarar o que a tela já sabe. O desenho certo — o Prazo só existir quando há cliente identificado, e "Cadastrar" aparecer quando a busca não acha — está em **`docs/PLANO_CLIENTE_NA_VENDA.md`** (aprovado em 01/08/2026, ainda não implementado).
 
 **1.3 — Acabar com o casamento por nome.**
 `syncCustomerFromOrder` deixa de fazer `where('nome','==',nome)`. Sem telefone válido, o cliente vira id determinístico (`{ownerId}_n_{slug}`) e é **marcado como não identificado** — não se funde com ninguém.
