@@ -56,3 +56,6 @@ pglite-debug.log
 
 # Manifestos locais gerados antes de backfills de integridade.
 .integridade-backups/
+
+# Copia local de instalador; nao versionar.
+baixar-e-instalar-impressao copy.bat

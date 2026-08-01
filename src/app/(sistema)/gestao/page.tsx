@@ -2112,7 +2112,7 @@ export default function GestaoPage() {
                 <div className="shrink-0 flex flex-wrap items-center gap-2 border-b bg-white px-3 py-2">
                   <div className="relative min-w-[180px] flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => setAddonSearchTerm(e.target.value)} className="pl-9" />
+                    <Input placeholder="Buscar adicionais..." value={addonSearchTerm} onChange={(e) => { setAddonSearchTerm(e.target.value); if (e.target.value) setHighlightedAddonId(null); }} className="pl-9" />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                   {/* Controles do container selecionado, na linha dos botões */}
