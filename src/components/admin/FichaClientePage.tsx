@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   ArrowLeft, Pencil, Search, ShoppingBag, Wallet, TrendingUp, CalendarDays, Receipt, ChevronDown, Loader2, Ban,
+  Download, Printer,
 } from 'lucide-react';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { getPhoneVariants, isCreditEnabled, normalizeCreditPhone } from '@/lib/customer-credit';
@@ -17,6 +18,10 @@ import {
   foiCancelada, ordenarCompras, resumoDeCompras, rotuloDaForma, rotuloDoCanal,
   type CompraDoCliente,
 } from '@/lib/clientes/resumo-compras';
+import { buildComprasCsv, buildComprasItensCsv } from '@/lib/clientes/compras-export';
+import { printCompras } from '@/lib/clientes/compras-receipt';
+import { baixarCsv, nomeDeArquivo } from '@/lib/csv';
+import { useToast } from '@/hooks/use-toast';
 import { PrazoPage } from '@/components/admin/PrazoPage';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
@@ -84,6 +89,33 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
     () => (db && ownerId ? doc(db, 'store_profiles', ownerId) : null), [db, ownerId],
   );
   const { data: storeProfile } = useDoc<any>(storeProfileRef);
+
+  const { toast } = useToast();
+  const clienteExport = { nome: cliente?.nome, celular: cliente?.celular };
+
+  // O papel e a planilha saem com o que está NA TELA (filtros aplicados). Se a
+  // lista está filtrada por período ou forma e o arquivo viesse completo, o
+  // cliente conferiria uma coisa e levaria outra.
+  const rotuloDoFiltro = () => [
+    PERIODOS.find((p) => p.id === periodo)?.label || 'Tudo',
+    forma !== 'todas' ? forma : null,
+    canal !== 'todos' ? canal : null,
+  ].filter(Boolean).join(' · ');
+
+  const exportarCompras = () => {
+    baixarCsv(buildComprasCsv(filtradas, clienteExport), nomeDeArquivo('compras', cliente?.nome));
+    toast({ title: 'Compras exportadas', description: `${filtradas.length} compra(s) na planilha.` });
+  };
+
+  const exportarItens = () => {
+    baixarCsv(buildComprasItensCsv(filtradas, clienteExport), nomeDeArquivo('itens-comprados', cliente?.nome));
+    toast({ title: 'Itens exportados', description: 'Uma linha por item comprado.' });
+  };
+
+  const imprimir = () => {
+    printCompras({ storeInfo: storeProfile, cliente: clienteExport, compras: filtradas, filtro: rotuloDoFiltro() });
+    toast({ title: 'Histórico enviado para a impressora' });
+  };
 
   // As compras do cliente por DUAS chaves: o `clienteId` gravado no pedido (o
   // vínculo firme, só nos novos) e o telefone (o legado). A tela conta quantas
@@ -364,6 +396,35 @@ export function FichaClientePage({ db, user, cliente, onBack, onEditCliente, reg
                 <option key={c} value={c}>{c === 'todos' ? 'Todos os canais' : c}</option>
               ))}
             </select>
+            <div className="ml-auto flex gap-1">
+              <button
+                type="button"
+                onClick={exportarCompras}
+                disabled={filtradas.length === 0}
+                className="flex items-center gap-1 rounded-lg border border-emerald-300 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+                title="Baixar as compras desta lista em planilha"
+              >
+                <Download className="h-3.5 w-3.5" /> Compras (CSV)
+              </button>
+              <button
+                type="button"
+                onClick={exportarItens}
+                disabled={filtradas.length === 0}
+                className="flex items-center gap-1 rounded-lg border border-emerald-300 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+                title="Uma linha por item comprado"
+              >
+                <Download className="h-3.5 w-3.5" /> Itens (CSV)
+              </button>
+              <button
+                type="button"
+                onClick={imprimir}
+                disabled={filtradas.length === 0}
+                className="flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-40"
+                title="Imprimir o histórico como está na tela"
+              >
+                <Printer className="h-3.5 w-3.5" /> Imprimir
+              </button>
+            </div>
           </div>
 
           <div className="rounded-2xl border bg-white shadow-sm">
