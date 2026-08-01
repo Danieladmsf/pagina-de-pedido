@@ -112,6 +112,22 @@ describe('comprovante de fechamento', () => {
     expect(html).toContain('<td class="r">R$ 80,00</td>');
   });
 
+  it('freelancer pago pela metade sai com o que ainda se deve', () => {
+    // Números do fechamento real da sessão 2 (01/08/2026): diária de 70,50,
+    // vale de 20,00 no meio do turno, 30,00 pagos no fechamento. O restante
+    // (20,50) TEM que aparecer no papel — é a dívida que segue viva.
+    const html = buildFechamentoCaixaHtml({
+      ...fechamento,
+      totalFreelancers: 30,
+      freelancers: [{ nome: 'Freela Teste', devido: 50.5, pago: 30, restante: 20.5 }],
+    });
+    expect(html).toContain('FREELANCERS / EXTRAS');
+    expect(html).toContain('<td>Freela Teste</td>');
+    expect(html).toContain('R$ 50,50');
+    expect(html).toContain('R$ 20,50');
+    expect(html).toContain('Pago no fechamento');
+  });
+
   it('sobra e quebra na conferência da gaveta', () => {
     const sobra = buildFechamentoCaixaHtml({ ...fechamento, apuracao: { apurado: 350, diferenca: 10 } });
     expect(sobra).toContain('Apurado na Gaveta Fisicamente');
