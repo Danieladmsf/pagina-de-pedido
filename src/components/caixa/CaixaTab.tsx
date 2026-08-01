@@ -14,6 +14,12 @@ import { useToast } from '@/hooks/use-toast';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { brl, normalizeSearch } from '@/lib/utils';
 import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
+import {
+  chaveDoFreelancer,
+  freelancersComSaldo as calcularFreelancersComSaldo,
+  totalDoFreelancer,
+  type FreelancerDoCaixa,
+} from '@/lib/caixa/freelancers';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
@@ -31,13 +37,7 @@ import { usePdvAccess } from '@/contexts/PdvAccessContext';
 
 const ITEMS_PER_PAGE = 15;
 
-interface FreelancerEntry {
-  name: string;
-  tipo: 'diaria' | 'comissao' | 'diaria_comissao';
-  diaria: number;
-  comissao: number;
-  entregas: number;
-}
+type FreelancerEntry = FreelancerDoCaixa;
 
 interface PaymentSelection {
   include: boolean;
@@ -414,9 +414,10 @@ export function CaixaTab({
           destTipo = destinatarioTipoInput;
           destId = destinatarioIdInput;
           const labelTipo = destinatarioTipoInput === 'motoboy' ? 'Motoboy' : 'Freelancer';
-          const name = destinatarioTipoInput === 'motoboy' 
-            ? storeProfile?.motoboys?.find((m:any) => m.id === destinatarioIdInput)?.name 
-            : destinatarioIdInput;
+          // O seletor guarda a CHAVE (id do cadastro); o nome é só para o título.
+          const name = destinatarioTipoInput === 'motoboy'
+            ? storeProfile?.motoboys?.find((m:any) => m.id === destinatarioIdInput)?.name
+            : freelancersComSaldo.find(f => f.chave === destinatarioIdInput)?.name;
           titulo = justificativaInput || `Adiantamento / Vale para ${labelTipo}: ${name || 'Desconhecido'}`;
         } else {
           titulo = justificativaInput || (
@@ -679,6 +680,8 @@ export function CaixaTab({
     return ((storeProfile?.freelancers as any[]) || [])
       .filter((f) => f?.active && f?.workDays?.includes(diaAtual) && f?.name)
       .map((f) => ({
+        // O id do cadastro vem junto: é ele que amarra o vale ao repasse.
+        ...(f.id && { id: String(f.id) }),
         name: f.name,
         tipo: 'diaria' as const,
         diaria: Number(f.dailyRate) || 0,
@@ -694,26 +697,13 @@ export function CaixaTab({
     setFreelancers(prev => (prev.length === 0 ? freelancersDoDia : prev));
   }, [caixaAberto?.id, freelancersDoDia]);
 
-  const getFreelancerTotal = (f: FreelancerEntry) => {
-    if (f.tipo === 'diaria') return f.diaria;
-    if (f.tipo === 'comissao') return f.comissao * f.entregas;
-    return f.diaria + (f.comissao * f.entregas);
-  };
+  const getFreelancerTotal = totalDoFreelancer;
 
-  const freelancersComSaldo = useMemo(() => {
-    return freelancers.map(f => {
-      const total = getFreelancerTotal(f);
-      const adiantamentos = lancamentos
-        .filter(l => l.tipo === 'sangria' && l.destinatarioTipo === 'freelancer' && l.destinatarioId === f.name)
-        .reduce((s, l) => s + Math.abs(l.valor), 0);
-      return {
-        ...f,
-        total,
-        jaPago: adiantamentos,
-        saldo: Math.max(0, total - adiantamentos)
-      };
-    });
-  }, [freelancers, lancamentos]);
+  // Regra de identidade (id do cadastro, nome só para legado) em lib/caixa.
+  const freelancersComSaldo = useMemo(
+    () => calcularFreelancersComSaldo(freelancers, lancamentos),
+    [freelancers, lancamentos],
+  );
 
   const totalFreelancersCalc = useMemo(() => {
     return freelancersComSaldo.reduce((s, f) => s + f.saldo, 0);
@@ -737,7 +727,7 @@ export function CaixaTab({
     setFreelancerPayments(prev => {
       if (Object.keys(prev).length > 0 || freelancersComSaldo.length === 0) return prev;
       return Object.fromEntries(
-        freelancersComSaldo.map((f, index) => [f.name || `freelancer-${index}`, { include: f.saldo > 0, amount: f.saldo }])
+        freelancersComSaldo.map((f, index) => [f.chave || `freelancer-${index}`, { include: f.saldo > 0, amount: f.saldo }])
       );
     });
   }, [showFechamentoModal, motoboysSessao, freelancersComSaldo]);
@@ -759,7 +749,7 @@ export function CaixaTab({
 
   const freelancersFechamento = useMemo(() => {
     return freelancersComSaldo.map((f, index) => {
-      const paymentKey = f.name || `freelancer-${index}`;
+      const paymentKey = f.chave || `freelancer-${index}`;
       const payment = freelancerPayments[paymentKey];
       const include = payment?.include ?? f.saldo > 0;
       const amount = payment?.amount ?? f.saldo;
@@ -1620,13 +1610,13 @@ export function CaixaTab({
                     <Label>Selecione o Freelancer</Label>
                     <Select value={destinatarioIdInput} onValueChange={(val) => {
                       setDestinatarioIdInput(val);
-                      const f = freelancersComSaldo.find(fr => fr.name === val);
+                      const f = freelancersComSaldo.find(fr => fr.chave === val);
                       if (f) setValorInput(f.saldo);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione o freelancer" /></SelectTrigger>
                       <SelectContent>
                         {freelancersComSaldo.map(f => (
-                          <SelectItem key={f.name} value={f.name}>
+                          <SelectItem key={f.chave} value={f.chave}>
                             {f.name} (Saldo: {brl(f.saldo)})
                           </SelectItem>
                         ))}

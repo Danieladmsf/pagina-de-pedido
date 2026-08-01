@@ -306,6 +306,10 @@ export function useCaixa(options?: UseCaixaOptions) {
       incluidoNoFechamento?: boolean;
     }>;
     detalhesFreelancers?: Array<{
+      /** Id do cadastro; ausente em quem foi digitado na mão no fechamento. */
+      id?: string;
+      /** Id quando existe, nome como último recurso — é o que vai no destinatarioId. */
+      chave?: string;
       name: string;
       tipo: string;
       diaria: number;
@@ -398,7 +402,10 @@ export function useCaixa(options?: UseCaixaOptions) {
             formaPagamento: '--',
             data: serverTimestamp(),
             ...autoria,
-            destinatarioId: f.name,
+            // Id do cadastro manda; o nome só entra em quem não tem cadastro.
+            // Gravar nome como id fazia o vale sumir do abatimento quando o
+            // dono renomeava a pessoa na Retaguarda — e ela era paga 2x.
+            destinatarioId: f.chave || f.id || f.name,
             destinatarioTipo: 'freelancer',
           });
         }
