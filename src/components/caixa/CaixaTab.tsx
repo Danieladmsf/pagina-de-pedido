@@ -665,6 +665,35 @@ export function CaixaTab({
     setFreelancers(prev => prev.map((f, i) => i === idx ? { ...f, [field]: value } : f));
   };
 
+  /**
+   * Freelancers escalados para hoje, vindos do cadastro da Retaguarda.
+   *
+   * Ficam disponíveis desde a ABERTURA do caixa, não só no fechamento: quem
+   * está trabalhando hoje costuma pedir vale no meio do turno, e antes disso
+   * o seletor de sangria vivia vazio ("Nenhum freelancer registrado hoje")
+   * mesmo com o freelancer cadastrado, ativo e escalado.
+   */
+  const freelancersDoDia = useMemo<FreelancerEntry[]>(() => {
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+    const diaAtual = diasSemana[new Date().getDay()];
+    return ((storeProfile?.freelancers as any[]) || [])
+      .filter((f) => f?.active && f?.workDays?.includes(diaAtual) && f?.name)
+      .map((f) => ({
+        name: f.name,
+        tipo: 'diaria' as const,
+        diaria: Number(f.dailyRate) || 0,
+        comissao: 0,
+        entregas: 0,
+      }));
+  }, [storeProfile]);
+
+  // Carrega a escala do dia uma vez por sessão de caixa. Só preenche lista
+  // vazia: o operador pode ter adicionado/removido gente na mão.
+  useEffect(() => {
+    if (!caixaAberto?.id || freelancersDoDia.length === 0) return;
+    setFreelancers(prev => (prev.length === 0 ? freelancersDoDia : prev));
+  }, [caixaAberto?.id, freelancersDoDia]);
+
   const getFreelancerTotal = (f: FreelancerEntry) => {
     if (f.tipo === 'diaria') return f.diaria;
     if (f.tipo === 'comissao') return f.comissao * f.entregas;
@@ -837,23 +866,10 @@ export function CaixaTab({
       return;
     }
 
-    if (freelancers.length === 0 && storeProfile?.freelancers) {
-      const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
-      const diaAtual = diasSemana[new Date().getDay()];
-      
-      const freelancersDoDia = storeProfile.freelancers
-        .filter((f: any) => f.active && f.workDays?.includes(diaAtual))
-        .map((f: any) => ({
-          name: f.name,
-          tipo: 'diaria',
-          diaria: Number(f.dailyRate) || 0,
-          comissao: 0,
-          entregas: 0
-        }));
-
-      if (freelancersDoDia.length > 0) {
-        setFreelancers(freelancersDoDia);
-      }
+    // Rede de segurança: a escala do dia já entra na abertura do caixa, mas se
+    // o cadastro só chegou depois (perfil carregou tarde), preenche aqui.
+    if (freelancers.length === 0 && freelancersDoDia.length > 0) {
+      setFreelancers(freelancersDoDia);
     }
     setMotoboyPayments({});
     setFreelancerPayments({});
