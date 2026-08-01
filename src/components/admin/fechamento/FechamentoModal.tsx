@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Receipt, ChevronDown, Tag, Wallet } from 'lucide-react';
 import { brl } from '@/lib/utils';
 import type { UseFechamentoReturn } from './useFechamento';
+import type { IdentidadeDaVenda } from '@/lib/vendas/identidade-cliente';
 
 interface FechamentoModalProps {
   open: boolean;
@@ -33,6 +34,13 @@ interface FechamentoModalProps {
     /** Quanto ainda cabe no limite, quando conhecido. */
     available?: number | null;
   };
+  /**
+   * Estado da identificação do cliente (Balcão e Mesa). Quando vem preenchido,
+   * o Prazo obedece a ele: some quando não há cliente e aparece BLOQUEADO, com
+   * o motivo, quando o cliente existe mas não pode comprar fiado. Delivery e
+   * Encomendas não passam e seguem com o comportamento antigo.
+   */
+  identidade?: IdentidadeDaVenda;
   isSubmitting?: boolean;
   onConfirm: () => void;
 }
@@ -60,6 +68,7 @@ export function FechamentoModal({
   warnings,
   items,
   prazoCustomer,
+  identidade,
   isSubmitting = false,
   onConfirm,
 }: FechamentoModalProps) {
@@ -91,23 +100,54 @@ export function FechamentoModal({
     </div>
   );
 
+  // O Prazo é fiado: sem cliente identificado ele não existe, e some da grade —
+  // é o que `identidade.prazoVisivel` diz. Já um cliente que EXISTE mas não pode
+  // comprar fiado (prazo desativado, limite estourado) mantém o botão visível e
+  // desabilitado, com o motivo: aí o operador precisa saber por que não pode.
+  // Delivery e Encomendas não passam `identidade` e seguem como sempre.
+  const escondePrazo = (fp: any) => fp.id === 'conta_casa' && !!identidade && !identidade.prazoVisivel;
+  const prazoBloqueado = (fp: any) => fp.id === 'conta_casa' && identidade?.prazoBloqueado === true;
+
+  // Segurança: se a identidade mudou depois de o Prazo ter sido escolhido (o
+  // operador limpou o cliente e reabriu o fechamento), a escolha morre junto.
+  useEffect(() => {
+    if (!identidade || identidade.prazoVisivel) return;
+    if (f.selectedPayment === 'conta_casa') f.setSelectedPayment('');
+    f.setPaymentSplits((prev: any[]) => prev.filter((split) => split.methodId !== 'conta_casa'));
+  }, [identidade?.prazoVisivel]);
+
   const renderFormas = () => (
-    f.formasPagamento.map((fp: any) => (
-      <button
-        key={fp.id}
-        type="button"
-        onClick={() => { f.setSelectedPayment(fp.id); f.setValorRecebido(''); }}
-        className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-2.5 text-[11px] font-bold transition ${
-          f.selectedPayment === fp.id
-            ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100'
-            : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
-        }`}
-      >
-        <span className="text-xl">{fp.icon}</span>
-        {fp.label}
-      </button>
-    ))
+    f.formasPagamento.filter((fp: any) => !escondePrazo(fp)).map((fp: any) => {
+      const bloqueado = prazoBloqueado(fp);
+      return (
+        <button
+          key={fp.id}
+          type="button"
+          disabled={bloqueado}
+          title={bloqueado ? identidade?.motivoPrazo || undefined : undefined}
+          onClick={() => { if (bloqueado) return; f.setSelectedPayment(fp.id); f.setValorRecebido(''); }}
+          className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-2.5 text-[11px] font-bold transition ${
+            bloqueado
+              ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300'
+              : f.selectedPayment === fp.id
+                ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100'
+                : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+          }`}
+        >
+          <span className={`text-xl ${bloqueado ? 'opacity-40' : ''}`}>{fp.icon}</span>
+          {fp.label}
+        </button>
+      );
+    })
   );
+
+  // Explica o bloqueio uma vez, embaixo da grade — o `title` do botão sozinho
+  // não aparece em tablet, que é onde o PDV roda.
+  const motivoPrazoBloqueado = identidade?.prazoBloqueado && identidade.motivoPrazo ? (
+    <p className="text-[11px] font-medium text-slate-500">
+      📝 <span className="font-bold">Prazo indisponível:</span> {identidade.motivoPrazo}
+    </p>
+  ) : null;
 
   // Pagamento simples: grade de formas + Múltiplos, e o painel de dinheiro/troco.
   const pagamentoSimples = (
@@ -235,7 +275,10 @@ export function FechamentoModal({
           {prazoCustomer?.matched && typeof prazoCustomer.available === 'number' && (
             <span className="block text-[11px]">Disponível no limite: <span className="font-bold">{brl(prazoCustomer.available)}</span></span>
           )}
-          {!prazoCustomer?.matched && (
+          {/* Balcão e Mesa não chegam mais aqui sem cadastro: o Prazo só aparece
+              com cliente identificado. O aviso sobrevive para Delivery e
+              Encomendas, que ainda resolvem o cadastro no confirmar. */}
+          {!prazoCustomer?.matched && !identidade && (
             <span className="block text-[11px]">Se não houver cadastro com esse número, o sistema pede o cadastro ao confirmar.</span>
           )}
         </>
@@ -305,6 +348,7 @@ export function FechamentoModal({
           <div className={`space-y-3 md:col-start-2 md:row-start-1 ${spanPagamento}`}>
             {rotulo(f.isSplitMode ? 'Pagamento dividido' : 'Como vai pagar', Wallet)}
             {f.isSplitMode ? pagamentoDividido : pagamentoSimples}
+            {motivoPrazoBloqueado}
             {avisoPrazo}
           </div>
 

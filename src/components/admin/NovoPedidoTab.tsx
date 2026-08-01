@@ -30,6 +30,7 @@ import { brl, neighborhoodMatchesQuery } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
+import { resolverIdentidadeDaVenda } from '@/lib/vendas/identidade-cliente';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
@@ -162,7 +163,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   const [customerLookupStatus, setCustomerLookupStatus] = useState<CustomerLookupStatus>('idle');
   const [matchedCustomerName, setMatchedCustomerName] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const [anonymousSale, setAnonymousSale] = useState(false);
   const { promoItemsMap, promoOnlyIds, hasActivePromos } = usePromotions(db, ownerId);
 
   const groupedItems = useMemo(
@@ -288,7 +288,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         }
 
         setSelectedCustomer(customerData);
-        setAnonymousSale(false);
         setCustomerLookupStatus('found');
       } catch (err) {
         if (ignore) return;
@@ -363,12 +362,23 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
   };
 
   // Autocomplete de cliente (carga da lista + matches) centralizado no hook.
-  const { activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
+  const { allCustomers, activeField: activeLookupField, setActiveField: setActiveLookupField, matches: customerMatches } =
     useCustomerLookup(db, role === 'owner' ? ownerId : undefined, customerName, customerPhone);
+
+  // Quem é o cliente desta venda — e, por consequência, se o Prazo existe.
+  // Ver lib/vendas/identidade-cliente e docs/PLANO_CLIENTE_NA_VENDA.md.
+  const identidade = useMemo(
+    () => resolverIdentidadeDaVenda({
+      nome: customerName,
+      telefone: customerPhone,
+      clientes: allCustomers,
+      clienteSelecionado: selectedCustomer,
+    }),
+    [customerName, customerPhone, allCustomers, selectedCustomer],
+  );
 
   const applyCustomer = (c: any) => {
     setSelectedCustomer(c);
-    setAnonymousSale(false);
     const name = getCustomerDisplayName(c);
     const phone = String(c.celular || '');
     if (name) setCustomerName(name);
@@ -405,12 +415,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     setMatchedCustomerName('');
     setActiveLookupField(null);
     setSelectedCustomer(null);
-    setAnonymousSale(false);
-  };
-
-  const chooseAnonymousSale = () => {
-    clearCustomerFields();
-    setAnonymousSale(true);
   };
 
   const handleCheckout = () => {
@@ -441,7 +445,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
       toast({
         variant: 'destructive',
         title: 'Telefone inválido',
-        description: 'Informe DDD + telefone (10 ou 11 dígitos), ou escolha "Sem cliente".',
+        description: 'Informe DDD + telefone (10 ou 11 dígitos), ou deixe o campo vazio para venda sem cliente.',
       });
       return;
     }
@@ -484,7 +488,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         customerName: customerName || 'Cliente Balcão',
         customerPhone,
       }) : null);
-      const hasCustomerIdentity = !anonymousSale && (!!customerName.trim() || isValidCreditPhone(customerPhone));
+      const hasCustomerIdentity = identidade.estado !== 'anonimo' && identidade.estado !== 'incompleto';
       if (role === 'owner' && hasCustomerIdentity) {
         // A IDENTIDADE DO CLIENTE NUNCA DERRUBA A VENDA. Em 01/08/2026 esta
         // chamada estava sem proteção: ao ler o id determinístico de um cliente
@@ -617,7 +621,6 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         setCustomerName('');
         setCustomerPhone('');
         setSelectedCustomer(null);
-        setAnonymousSale(false);
         setDeliveryFeeInput('');
         setAddressObj({ street: '', number: '', neighborhood: '', city: '' });
         setDynamicFee(null);
@@ -864,7 +867,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 const nameField = (
                   <div className="relative">
                     <Input autoComplete="new-password" placeholder="Nome do Cliente" value={customerName}
-                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); setAnonymousSale(false); }}
+                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); }}
                       onFocus={() => setActiveLookupField('name')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'name' ? null : f)), 150)}
                       className="h-7 text-xs" />
@@ -874,7 +877,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                 const phoneField = (
                   <div className="relative">
                     <Input autoComplete="new-password" inputMode="tel" placeholder="Telefone / WhatsApp" value={customerPhone}
-                      onChange={e => { setCustomerPhone(maskCreditPhoneInput(e.target.value)); setSelectedCustomer(null); setAnonymousSale(false); }}
+                      onChange={e => { setCustomerPhone(maskCreditPhoneInput(e.target.value)); setSelectedCustomer(null); }}
                       onFocus={() => setActiveLookupField('phone')}
                       onBlur={() => window.setTimeout(() => setActiveLookupField(f => (f === 'phone' ? null : f)), 150)}
                       className={`h-7 text-xs ${orderType === 'delivery' ? 'border-blue-300 focus-visible:ring-blue-400 font-semibold' : ''}`} />
@@ -885,28 +888,50 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
                   ? (<>{phoneField}{nameField}</>)
                   : (<>{nameField}{phoneField}</>);
               })()}
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={chooseAnonymousSale}
-                  className={`rounded border px-2 py-1 text-[10px] font-bold transition-colors ${anonymousSale ? 'border-slate-500 bg-slate-700 text-white' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  Sem cliente
-                </button>
-                {anonymousSale && <span className="text-[10px] font-semibold text-slate-500">Venda anônima selecionada</span>}
-              </div>
-              {selectedCustomer && isCreditEnabled(selectedCustomer) && (() => {
-                const limit = Number(selectedCustomer.creditLimit) || 0;
-                const balance = Number(selectedCustomer.creditBalance) || 0;
-                return (
-                  <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
-                    <span>📝 Prazo ativo</span>
-                    {limit > 0 && (
-                      <span className="font-semibold text-amber-600">· disponível {brl((limit - balance))} de {brl(limit)}</span>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* O estado da identificação fala por si: não digitar nada JÁ é a
+                  venda anônima, então não existe botão para declarar isso. Falta
+                  cadastro? O caminho aparece aqui, antes do fechamento — e não
+                  como surpresa no confirmar. */}
+              {identidade.estado === 'nao_encontrado' && (
+                <div className="flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1.5">
+                  <span className="text-[10px] font-semibold text-blue-800">Sem cadastro com esses dados</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuickRegisterModal({
+                      isOpen: true,
+                      name: customerName || '',
+                      phone: normalizeCreditPhone(customerPhone),
+                      address: [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', '),
+                    })}
+                    className="rounded border border-blue-500 bg-blue-600 px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-blue-700"
+                  >
+                    Cadastrar cliente
+                  </button>
+                </div>
+              )}
+              {identidade.estado === 'conflito' && (
+                <p className="rounded border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] font-bold text-rose-700">
+                  Há mais de um cadastro com este telefone. Resolva na aba Clientes para poder vender a prazo.
+                </p>
+              )}
+              {identidade.estado === 'vinculado' && identidade.prazoVisivel && (
+                <div className={`flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] font-bold ${
+                  identidade.prazoBloqueado
+                    ? 'border-slate-200 bg-slate-50 text-slate-500'
+                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                }`}>
+                  {identidade.prazoBloqueado ? (
+                    <span>📝 {identidade.motivoPrazo}</span>
+                  ) : (
+                    <>
+                      <span>📝 Prazo ativo</span>
+                      {identidade.disponivel !== null && (
+                        <span className="font-semibold text-amber-600">· disponível {brl(identidade.disponivel)}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
               {orderType === 'delivery' && customerLookupStatus !== 'idle' && (
                 <p
                   aria-live="polite"
@@ -1129,13 +1154,12 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         items={cart}
         caixaAberto={caixaAberto}
         prazoCustomer={{
-          name: customerName,
+          name: identidade.cliente?.nome || customerName,
           phone: customerPhone,
-          matched: !!selectedCustomer,
-          available: selectedCustomer && Number(selectedCustomer.creditLimit) > 0
-            ? Math.max(0, (Number(selectedCustomer.creditLimit) || 0) - (Number(selectedCustomer.creditBalance) || 0))
-            : null,
+          matched: identidade.estado === 'vinculado',
+          available: identidade.disponivel,
         }}
+        identidade={identidade}
         isSubmitting={isSubmitting}
         onConfirm={handleConfirmCheckout}
       />

@@ -29,6 +29,7 @@ import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/custo
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
+import { resolverIdentidadeDaVenda } from '@/lib/vendas/identidade-cliente';
 import { useFechamento } from './fechamento/useFechamento';
 import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
@@ -288,6 +289,18 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       c.archived !== true && creditPhonesAreEqual(String(c.celular || ''), customerPhone));
     return exactMatches.length === 1 ? exactMatches[0] : null;
   }, [customerPhone, allCustomers]);
+
+  // Mesma regra do Balcao: o Prazo e consequencia de ter cliente identificado.
+  // Ver lib/vendas/identidade-cliente e docs/PLANO_CLIENTE_NA_VENDA.md.
+  const identidade = useMemo(
+    () => resolverIdentidadeDaVenda({
+      nome: customerName,
+      telefone: customerPhone,
+      clientes: allCustomers,
+      clienteSelecionado: creditCustomer,
+    }),
+    [customerName, customerPhone, allCustomers, creditCustomer],
+  );
 
   const applyCustomer = (c: any) => {
     if (!can(permissions, 'actions.mesas.gerenciarMesa')) {
@@ -1309,18 +1322,41 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
                       className="h-8 text-xs" />
                     {activeLookupField === 'phone' && suggestionsDropdown}
                   </div>
-                  {creditCustomer && isCreditEnabled(creditCustomer) && (() => {
-                    const limit = Number(creditCustomer.creditLimit) || 0;
-                    const balance = Number(creditCustomer.creditBalance) || 0;
-                    return (
-                      <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
-                        <span>📝 Prazo ativo</span>
-                        {limit > 0 && (
-                          <span className="font-semibold text-amber-600">· disponível {brl((limit - balance))} de {brl(limit)}</span>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  {identidade.estado === 'nao_encontrado' && (
+                    <div className="flex items-center justify-between gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1.5">
+                      <span className="text-[10px] font-semibold text-blue-800">Sem cadastro com esses dados</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuickRegisterModal({ isOpen: true, name: customerName || '', phone: normalizeCreditPhone(customerPhone), address: '' })}
+                        className="rounded border border-blue-500 bg-blue-600 px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-blue-700"
+                      >
+                        Cadastrar cliente
+                      </button>
+                    </div>
+                  )}
+                  {identidade.estado === 'conflito' && (
+                    <p className="rounded border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] font-bold text-rose-700">
+                      Mais de um cadastro com este telefone. Resolva na aba Clientes para vender a prazo.
+                    </p>
+                  )}
+                  {identidade.estado === 'vinculado' && identidade.prazoVisivel && (
+                    <div className={`flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] font-bold ${
+                      identidade.prazoBloqueado
+                        ? 'border-slate-200 bg-slate-50 text-slate-500'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    }`}>
+                      {identidade.prazoBloqueado ? (
+                        <span>📝 {identidade.motivoPrazo}</span>
+                      ) : (
+                        <>
+                          <span>📝 Prazo ativo</span>
+                          {identidade.disponivel !== null && (
+                            <span className="font-semibold text-amber-600">· disponível {brl(identidade.disponivel)}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>}
               <div className="flex-1 overflow-y-auto p-3 bg-slate-50 custom-scrollbar">
@@ -1481,13 +1517,12 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         items={cart}
         caixaAberto={caixaAberto}
         prazoCustomer={{
-          name: customerName,
+          name: identidade.cliente?.nome || customerName,
           phone: customerPhone,
-          matched: !!creditCustomer,
-          available: creditCustomer && Number(creditCustomer.creditLimit) > 0
-            ? Math.max(0, (Number(creditCustomer.creditLimit) || 0) - (Number(creditCustomer.creditBalance) || 0))
-            : null,
+          matched: identidade.estado === 'vinculado',
+          available: identidade.disponivel,
         }}
+        identidade={identidade}
         isSubmitting={isSubmitting}
         onConfirm={handleConfirmCheckout}
         confirmLabel="✅ Encerrar Mesa"
