@@ -34,8 +34,15 @@ import {
   Trophy,
   CreditCard,
   CalendarDays,
+  HandPlatter,
 } from 'lucide-react';
 import { brl } from '@/lib/utils';
+import {
+  CANAIS_EM_ORDEM,
+  CANAL_LABELS,
+  canalDaVenda,
+  type CanalDaVenda,
+} from '@/lib/order-channel';
 
 interface DashboardTabProps {
   db: any;
@@ -56,10 +63,19 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string; 
   canceled: { label: 'Cancelado', color: 'text-rose-700', bg: 'bg-rose-100', Icon: XCircle },
 };
 
-const ORDER_TYPE_LABELS: Record<string, { label: string; Icon: any }> = {
-  delivery: { label: 'Delivery', Icon: Bike },
-  pickup: { label: 'Retirada', Icon: Store },
-  dine_in: { label: 'Mesa', Icon: UtensilsCrossed },
+/**
+ * Cor e ícone por canal. O rótulo e a regra de classificação moram em
+ * `lib/order-channel` — aqui é só a pintura. As cores das três fatias que já
+ * existiam (entrega, retirada, mesa) foram mantidas para a tela não trocar de
+ * significado da noite para o dia.
+ */
+const CANAL_ESTILO: Record<CanalDaVenda, { color: string; Icon: any }> = {
+  delivery_entrega: { color: '#10b981', Icon: Bike },
+  delivery_retirada: { color: '#3b82f6', Icon: ShoppingBag },
+  delivery_local: { color: '#06b6d4', Icon: HandPlatter },
+  balcao: { color: '#8b5cf6', Icon: Store },
+  mesa: { color: '#f59e0b', Icon: UtensilsCrossed },
+  encomenda: { color: '#ec4899', Icon: Package },
 };
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -205,21 +221,23 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       statusCount[s] = (statusCount[s] || 0) + 1;
     });
 
-    // Tipo de pedido
-    const typeCount: Record<string, number> = { delivery: 0, pickup: 0, dine_in: 0 };
-    const typeRevenue: Record<string, number> = { delivery: 0, pickup: 0, dine_in: 0 };
+    // Canal da venda. O `orderType` sozinho juntava numa fatia só coisas que a
+    // loja opera de formas diferentes: "Retirada" era o balcão do PDV e o pedido
+    // do cardápio para buscar, e "Mesa" era a comanda do salão e o pedido do
+    // cardápio para comer no local. Quem separa é `canalDaVenda`.
+    const canalCount: Record<string, number> = {};
+    const canalRevenue: Record<string, number> = {};
     valid.forEach(o => {
-      const t = o.orderType || (o.tableNumber ? 'dine_in' : 'pickup');
-      typeCount[t] = (typeCount[t] || 0) + 1;
-      typeRevenue[t] = (typeRevenue[t] || 0) + (o.totalAmount || 0);
+      const canal = canalDaVenda(o);
+      canalCount[canal] = (canalCount[canal] || 0) + 1;
+      canalRevenue[canal] = (canalRevenue[canal] || 0) + (o.totalAmount || 0);
     });
-    const typeData = Object.entries(typeCount)
-      .filter(([, v]) => v > 0)
-      .map(([k, v]) => ({
-        name: ORDER_TYPE_LABELS[k]?.label || k,
-        value: v,
-        revenue: typeRevenue[k] || 0,
-      }));
+    const typeData = CANAIS_EM_ORDEM.filter(canal => (canalCount[canal] || 0) > 0).map(canal => ({
+      canal,
+      name: CANAL_LABELS[canal],
+      value: canalCount[canal],
+      revenue: canalRevenue[canal] || 0,
+    }));
 
     // Forma de pagamento
     const paymentCount: Record<string, number> = {};
@@ -525,8 +543,8 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                           outerRadius={80}
                           paddingAngle={2}
                         >
-                          {stats.typeData.map((_, idx) => (
-                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          {stats.typeData.map((t) => (
+                            <Cell key={t.canal} fill={CANAL_ESTILO[t.canal].color} />
                           ))}
                         </Pie>
                         <Tooltip
@@ -547,18 +565,31 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                       </span>
                     </div>
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {stats.typeData.map((t, idx) => {
+                  <div className="mt-3 space-y-1.5">
+                    {stats.typeData.map((t) => {
                       const total = stats.typeData.reduce((s, x) => s + x.value, 0) || 1;
                       const pct = Math.round((t.value / total) * 100);
+                      const { color, Icon: CanalIcon } = CANAL_ESTILO[t.canal];
+                      // "Delivery · Retirada" vira prefixo apagado + o que muda em
+                      // destaque: as três fatias do cardápio começam igual.
+                      const [prefixo, nome] = t.name.includes(' · ')
+                        ? t.name.split(' · ')
+                        : [null, t.name];
                       return (
-                        <div key={t.name} className="flex items-center gap-2">
+                        <div key={t.canal} className="flex items-center gap-2.5">
                           <span
-                            className="h-2.5 w-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
-                          />
+                            className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${color}1a`, color }}
+                          >
+                            <CanalIcon className="h-3.5 w-3.5" />
+                          </span>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-slate-700 truncate">{t.name}</div>
+                            <div className="text-sm font-semibold text-slate-700 truncate">
+                              {prefixo && (
+                                <span className="font-normal text-muted-foreground">{prefixo} · </span>
+                              )}
+                              {nome}
+                            </div>
                             <div className="text-[11px] text-muted-foreground">
                               {t.value} pedido{t.value === 1 ? '' : 's'} · {pct}%
                             </div>
@@ -633,8 +664,8 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                 {stats.recentOrders.map((o) => {
                   const status = STATUS_LABELS[o.status] || STATUS_LABELS.received;
                   const StatusIcon = status.Icon;
-                  const type = ORDER_TYPE_LABELS[o.orderType || (o.tableNumber ? 'dine_in' : 'pickup')];
-                  const TypeIcon = type?.Icon || ShoppingBag;
+                  const canal = canalDaVenda(o);
+                  const TypeIcon = CANAL_ESTILO[canal]?.Icon || ShoppingBag;
                   const dt = new Date(o.orderDateTime || o.createdAt || 0);
                   return (
                     <div key={o.id} className="flex items-center gap-3 py-3">
@@ -649,7 +680,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                         <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                           <span className="flex items-center gap-1">
                             <TypeIcon className="h-3 w-3" />
-                            {type?.label || 'Pedido'}
+                            {CANAL_LABELS[canal]}
                           </span>
                           <span>·</span>
                           <span>{dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>

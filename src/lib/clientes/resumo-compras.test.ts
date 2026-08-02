@@ -26,10 +26,11 @@ describe('rotuloDaForma', () => {
 
 describe('rotuloDoCanal', () => {
   it('traduz orderType/source para o vocabulário da loja', () => {
-    expect(rotuloDoCanal(compra({ orderType: 'dine_in' }))).toBe('Mesa');
-    expect(rotuloDoCanal(compra({ orderType: 'delivery' }))).toBe('Delivery');
+    expect(rotuloDoCanal(compra({ orderType: 'dine_in', source: 'pdv' }))).toBe('Mesa');
+    expect(rotuloDoCanal(compra({ orderType: 'delivery' }))).toBe('Delivery · Entrega');
     expect(rotuloDoCanal(compra({ orderType: 'pickup', source: 'pdv' }))).toBe('Balcão');
-    expect(rotuloDoCanal(compra({ orderType: 'pickup', source: 'cardapio' }))).toBe('Retirada');
+    expect(rotuloDoCanal(compra({ orderType: 'pickup', source: 'cardapio' }))).toBe('Delivery · Retirada');
+    expect(rotuloDoCanal(compra({ orderType: 'dine_in', source: 'cardapio' }))).toBe('Delivery · Comer no local');
     expect(rotuloDoCanal(compra({ origem: 'encomenda' }))).toBe('Encomenda');
   });
 });

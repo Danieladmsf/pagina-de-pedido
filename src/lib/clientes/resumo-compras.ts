@@ -9,6 +9,8 @@
  * Função pura, sem Firestore e sem React — a tela decide como carregar.
  */
 
+import { rotuloDoCanalDaVenda } from '@/lib/order-channel';
+
 export type CompraDoCliente = {
   id: string;
   orderCode?: string;
@@ -67,13 +69,15 @@ export function rotuloDaForma(paymentMethod?: string): string {
   return semTroco.charAt(0).toUpperCase() + semTroco.slice(1).toLowerCase();
 }
 
-/** De onde veio a compra, no vocabulário do dono da loja. */
+/**
+ * De onde veio a compra, no vocabulário do dono da loja.
+ *
+ * A regra é uma só no app inteiro (`lib/order-channel`): o que aqui era "Mesa"
+ * e "Retirada" separa a comanda do salão do pedido feito no cardápio, do mesmo
+ * jeito que o Dashboard mostra.
+ */
 export function rotuloDoCanal(compra: CompraDoCliente): string {
-  if (compra?.origem === 'encomenda') return 'Encomenda';
-  const tipo = String(compra?.orderType || '');
-  if (tipo === 'dine_in') return 'Mesa';
-  if (tipo === 'delivery') return 'Delivery';
-  return compra?.source === 'pdv' ? 'Balcão' : 'Retirada';
+  return rotuloDoCanalDaVenda(compra);
 }
 
 function acumular(mapa: Map<string, QuebraPorChave>, chave: string, valor: number) {
