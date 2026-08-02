@@ -104,14 +104,18 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
     }
     setSalvando(true);
     try {
+      const motoboysLimpos = motoboys.map((m) => ({ ...m, name: m.name.trim(), fee: Number(m.fee) || 0 }));
+      const diaristasLimpos = diaristas.map((f) => ({ ...f, name: f.name.trim(), dailyRate: Number(f.dailyRate) || 0 }));
       await setDoc(
         doc(db, 'store_profiles', user.uid),
-        {
-          motoboys: motoboys.map((m) => ({ ...m, name: m.name.trim(), fee: Number(m.fee) || 0 })),
-          freelancers: diaristas.map((f) => ({ ...f, name: f.name.trim(), dailyRate: Number(f.dailyRate) || 0 })),
-        },
+        { motoboys: motoboysLimpos, freelancers: diaristasLimpos },
         { merge: true },
       );
+      // O rascunho passa a ser o que foi gravado: sem isso, um nome digitado
+      // com espaço no fim deixaria a barra de "alterações não salvas" para
+      // sempre na tela, porque o trim só acontece na gravação.
+      setMotoboys(motoboysLimpos);
+      setDiaristas(diaristasLimpos);
       toast({ title: 'Equipe salva!' });
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message });
