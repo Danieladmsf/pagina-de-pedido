@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bike, Loader2, AlertCircle, ChevronDown, ChevronUp, Clock, MapPin, ReceiptText, CalendarRange } from 'lucide-react';
+import { Bike, Loader2, AlertCircle, ChevronDown, ChevronUp, Clock, MapPin, ReceiptText, CalendarRange, Users } from 'lucide-react';
 import { useCaixa } from '@/hooks/useCaixa';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { brl } from '@/lib/utils';
 import { getOrderCode } from '@/lib/order-code';
+import { freelancersComSaldo, repassesDeFreelancers } from '@/lib/caixa/freelancers';
 
 interface FreelanceTabProps {
   orders: any[];
@@ -179,6 +180,42 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     });
   }, [storeProfile, pedidosFiltrados, lancamentosFiltrados]);
 
+  // Diaristas: quanto saiu da gaveta para cada um no período (regra pura em
+  // lib/caixa/freelancers, a mesma identidade por id que o fechamento usa).
+  const freelancersPeriodo = useMemo(
+    () => repassesDeFreelancers(storeProfile?.freelancers || [], lancamentosFiltrados),
+    [storeProfile, lancamentosFiltrados],
+  );
+
+  /**
+   * Quanto ainda falta pagar HOJE, só com o caixa aberto.
+   *
+   * Em período histórico isso não existe: sem saber que dias a pessoa
+   * trabalhou, "a pagar" seria chute. O saldo do dia é do fechamento, e aqui
+   * ele é calculado pela MESMA função, para as duas telas nunca divergirem.
+   */
+  const saldoDeHoje = useMemo(() => {
+    if (periodo !== 'sessao' || caixaAtual?.status !== 'aberto') return new Map<string, number>();
+    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+    const diaAtual = diasSemana[new Date().getDay()];
+    const escalados = (storeProfile?.freelancers || [])
+      .filter((f: any) => f?.active && f?.workDays?.includes(diaAtual) && f?.name)
+      .map((f: any) => ({
+        ...(f.id && { id: String(f.id) }),
+        name: f.name,
+        tipo: 'diaria' as const,
+        diaria: Number(f.dailyRate) || 0,
+        comissao: 0,
+        entregas: 0,
+      }));
+    return new Map(freelancersComSaldo(escalados, lancamentosSessao).map((f) => [f.chave, f.saldo]));
+  }, [periodo, caixaAtual, storeProfile, lancamentosSessao]);
+
+  const totalPagoFreelancers = useMemo(
+    () => freelancersPeriodo.reduce((s, f) => s + f.pago, 0),
+    [freelancersPeriodo],
+  );
+
   if (loading || (periodo !== 'sessao' && loadingAllLanc)) {
     return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -214,11 +251,11 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border shadow-sm shrink-0">
         <div>
           <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
-            <Bike className="h-5 w-5 text-blue-600" /> Gestão de Entregas (Freelance)
+            <Bike className="h-5 w-5 text-blue-600" /> Equipe freelance
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {periodo === 'sessao' 
-              ? 'Acompanhe as entregas e vales limitados à sessão de caixa atual.'
+            {periodo === 'sessao'
+              ? 'Entregas, diárias e vales limitados à sessão de caixa atual.'
               : 'Visualizando acumulado de múltiplos dias e sessões.'}
           </p>
         </div>
@@ -257,6 +294,10 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
           </div>
         </div>
       </div>
+
+      <h3 className="flex items-center gap-2 pt-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <Bike className="h-4 w-4 text-blue-500" /> Motoboys / entregas
+      </h3>
 
       {motoboysSessao.length === 0 ? (
         <Card className="border-dashed shadow-none bg-slate-50/50">
@@ -417,6 +458,154 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
                         )}
                       </div>
 
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <h3 className="flex items-center justify-between gap-2 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <span className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-purple-500" /> Freelancers diaristas
+        </span>
+        {totalPagoFreelancers > 0 && (
+          <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-purple-700">
+            {brl(totalPagoFreelancers)} pagos no período
+          </span>
+        )}
+      </h3>
+
+      {freelancersPeriodo.length === 0 ? (
+        <Card className="border-dashed shadow-none bg-slate-50/50">
+          <CardContent className="py-12 flex flex-col items-center text-center">
+            <Users className="h-10 w-10 text-slate-300 mb-3" />
+            <p className="text-slate-500 font-medium">Nenhum freelancer diarista cadastrado.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Cadastre em Perfil da Loja → Motoboys, na seção "Freelancers diaristas".
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {freelancersPeriodo.map((f) => {
+            const idCartao = `freela-${f.chave}`;
+            const isExpanded = expandedId === idCartao;
+            const faltaHoje = saldoDeHoje.get(f.chave) || 0;
+            return (
+              <Card
+                key={idCartao}
+                className={`shadow-sm overflow-hidden transition-all duration-200 ${isExpanded ? 'ring-2 ring-purple-500/20 border-purple-200' : ''} ${!f.cadastrado ? 'border-amber-300' : ''}`}
+              >
+                <div
+                  className={`p-4 cursor-pointer hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : ''}`}
+                  onClick={() => setExpandedId(isExpanded ? null : idCartao)}
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${!f.cadastrado ? 'bg-amber-100 text-amber-600' : f.pago > 0 ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-400'}`}>
+                        <Users className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-lg text-slate-800 leading-none">{f.name}</span>
+                          {!f.cadastrado && (
+                            <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-bold">
+                              Fora do cadastro
+                            </Badge>
+                          )}
+                          {f.cadastrado && !f.ativo && (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-200 text-xs font-bold">
+                              Inativo
+                            </Badge>
+                          )}
+                          {f.diasComPagamento > 1 && (
+                            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-bold">
+                              {f.diasComPagamento} dias
+                            </Badge>
+                          )}
+                          {faltaHoje > 0 && (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs font-bold">
+                              Falta hoje: {brl(faltaHoje)}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-slate-500 mt-1.5 flex flex-wrap items-center gap-3">
+                          {f.diaria > 0 && (
+                            <>
+                              <span>Diária: <strong className="text-slate-700">{brl(f.diaria)}</strong></span>
+                              <span className="text-slate-300">•</span>
+                            </>
+                          )}
+                          <span>
+                            {f.lancamentos.length === 0
+                              ? 'Nenhum pagamento no período'
+                              : `${f.lancamentos.length} pagamento${f.lancamentos.length > 1 ? 's' : ''}`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between md:justify-end gap-6 pl-15 md:pl-0">
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-0.5">Pago no período</span>
+                        <span className={`text-2xl font-black leading-none ${f.pago > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                          {brl(f.pago)}
+                        </span>
+                      </div>
+                      <div className="text-slate-400 bg-white shadow-sm border rounded-full p-1">
+                        {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <CardContent className="p-0 bg-white">
+                    <div className="p-4 bg-slate-50/30 flex flex-col max-h-[400px]">
+                      <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center justify-between shrink-0">
+                        <span className="flex items-center gap-1.5"><ReceiptText className="h-4 w-4 text-rose-500" /> Pagamentos e Vales</span>
+                        <span className="text-xs bg-rose-50 border-rose-100 border px-2 py-0.5 rounded-full text-rose-600 font-bold">- {brl(f.pago)}</span>
+                      </h4>
+                      {f.lancamentos.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">
+                          {!f.cadastrado
+                            ? 'Nenhum pagamento neste período.'
+                            : 'Nenhum vale ou acerto registrado neste período.'}
+                        </p>
+                      ) : (
+                        <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 pb-2 flex-1">
+                          {f.lancamentos.map((val: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-start gap-2 text-sm bg-white p-2.5 rounded-lg border border-slate-100 shadow-sm shrink-0">
+                              <div>
+                                <div className="text-xs text-slate-500 flex items-center gap-1 mb-1">
+                                  <Clock className="h-3 w-3" />
+                                  {val.data?.toDate ? val.data.toDate().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---'}
+                                </div>
+                                <p className="text-xs text-slate-600 font-medium">{val.titulo || 'Retirada / Vale'}</p>
+                              </div>
+                              <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                <span className="text-xs font-bold text-rose-600">-{brl(Math.abs(val.valor))}</span>
+                                {(() => {
+                                  const fp = (val.formaPagamento || '').trim();
+                                  if (!fp || fp === '--') {
+                                    return <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Acerto fechamento</span>;
+                                  }
+                                  const low = fp.toLowerCase();
+                                  const isDinheiro = low.includes('dinheiro');
+                                  return (
+                                    <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${isDinheiro ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-violet-700 bg-violet-50 border-violet-200'}`}>
+                                      {fp}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 )}

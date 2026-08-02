@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   chaveDoFreelancer,
   freelancersComSaldo,
+  nomeNoTitulo,
+  repassesDeFreelancers,
   totalDoFreelancer,
+  type FreelancerCadastrado,
   type FreelancerDoCaixa,
   type LancamentoDeRepasse,
 } from './freelancers';
@@ -116,5 +119,123 @@ describe('freelancersComSaldo', () => {
     const [f] = freelancersComSaldo([diarista()], [vale('freela-1', 90)]);
     expect(f.jaPago).toBe(90);
     expect(f.saldo).toBe(0);
+  });
+});
+
+describe('nomeNoTitulo', () => {
+  it('lê o nome dos dois títulos que o caixa grava', () => {
+    expect(nomeNoTitulo('Adiantamento / Vale para Freelancer: Ana Paula')).toBe('Ana Paula');
+    expect(nomeNoTitulo('Freelancer: Ana Paula (diaria)')).toBe('Ana Paula');
+  });
+
+  it('devolve vazio no que não reconhece', () => {
+    expect(nomeNoTitulo('Sangria de Caixa')).toBe('');
+    expect(nomeNoTitulo(undefined)).toBe('');
+  });
+});
+
+describe('repassesDeFreelancers', () => {
+  const cadastro: FreelancerCadastrado[] = [
+    { id: 'freela-1', name: 'Freela Teste', dailyRate: 70.5, active: true },
+    { id: 'freela-2', name: 'Ana', dailyRate: 100, active: false },
+  ];
+  const em = (dia: string, hora = '12:00') => new Date(`2026-08-${dia}T${hora}:00`);
+
+  const pagamento = (destinatarioId: string, valor: number, data: Date, titulo?: string): LancamentoDeRepasse => ({
+    tipo: 'sangria',
+    destinatarioTipo: 'freelancer',
+    destinatarioId,
+    valor: -Math.abs(valor),
+    data,
+    titulo,
+  });
+
+  it('a equipe aparece mesmo sem movimento no período', () => {
+    const lista = repassesDeFreelancers(cadastro, []);
+    expect(lista.map((r) => r.name)).toEqual(['Ana', 'Freela Teste']);
+    expect(lista.every((r) => r.pago === 0 && r.cadastrado)).toBe(true);
+    expect(lista.find((r) => r.name === 'Ana')?.ativo).toBe(false);
+  });
+
+  it('soma o que saiu da gaveta e conta os dias distintos', () => {
+    const lista = repassesDeFreelancers(cadastro, [
+      pagamento('freela-1', 25, em('01', '19:00')),
+      pagamento('freela-1', 45.5, em('01', '20:00')),
+      pagamento('freela-1', 70.5, em('02')),
+    ]);
+    const f = lista[0];
+    expect(f.name).toBe('Freela Teste');
+    expect(f.pago).toBe(141);
+    expect(f.diasComPagamento).toBe(2);
+    expect(f.lancamentos).toHaveLength(3);
+  });
+
+  it('pagamento de quem não está no cadastro não some da tela', () => {
+    // Freelancer digitado na mão no fechamento: destinatarioId é o nome.
+    const lista = repassesDeFreelancers(cadastro, [
+      pagamento('Ajudante do sábado', 80, em('01'), 'Freelancer: Ajudante do sábado (diaria)'),
+    ]);
+    const avulso = lista.find((r) => !r.cadastrado);
+    expect(avulso?.name).toBe('Ajudante do sábado');
+    expect(avulso?.pago).toBe(80);
+  });
+
+  it('freelancer excluído do cadastro aparece com o nome do título, não com o id', () => {
+    const lista = repassesDeFreelancers([], [
+      pagamento('0.4728349271046599', 70.5, em('01'), 'Adiantamento / Vale para Freelancer: Freela Teste'),
+    ]);
+    expect(lista).toHaveLength(1);
+    expect(lista[0].name).toBe('Freela Teste');
+    expect(lista[0].cadastrado).toBe(false);
+    // O agrupamento continua sendo pelo id — o nome é só para ler.
+    expect(lista[0].chave).toBe('0.4728349271046599');
+  });
+
+  it('lançamento legado pelo nome cai no cadastro certo', () => {
+    const lista = repassesDeFreelancers(cadastro, [pagamento('Freela Teste', 20, em('01'))]);
+    const f = lista.find((r) => r.chave === 'freela-1');
+    expect(f?.pago).toBe(20);
+    expect(lista.filter((r) => !r.cadastrado)).toHaveLength(0);
+  });
+
+  it('nome repetido no cadastro: legado vira avulso em vez de escolher um dono', () => {
+    const repetido: FreelancerCadastrado[] = [
+      { id: 'a', name: 'Ana', dailyRate: 100 },
+      { id: 'b', name: 'Ana', dailyRate: 120 },
+    ];
+    const lista = repassesDeFreelancers(repetido, [pagamento('Ana', 50, em('01'))]);
+    expect(lista.filter((r) => r.cadastrado).every((r) => r.pago === 0)).toBe(true);
+    expect(lista.find((r) => !r.cadastrado)?.pago).toBe(50);
+  });
+
+  it('ignora sangria de motoboy e despesa avulsa', () => {
+    const lista = repassesDeFreelancers(cadastro, [
+      { tipo: 'sangria', destinatarioTipo: 'motoboy', destinatarioId: 'freela-1', valor: -50, data: em('01') },
+      { tipo: 'sangria', valor: -80, data: em('01') },
+    ]);
+    expect(lista.every((r) => r.pago === 0)).toBe(true);
+    expect(lista).toHaveLength(2);
+  });
+
+  it('ordena por quem recebeu mais, depois por nome', () => {
+    const lista = repassesDeFreelancers(cadastro, [pagamento('freela-2', 30, em('01'))]);
+    expect(lista.map((r) => r.name)).toEqual(['Ana', 'Freela Teste']);
+  });
+
+  it('valor somado não arrasta resíduo de ponto flutuante', () => {
+    const lista = repassesDeFreelancers([cadastro[0]], [
+      pagamento('freela-1', 7.67, em('01')),
+      pagamento('freela-1', 0.1, em('01')),
+      pagamento('freela-1', 0.2, em('01')),
+    ]);
+    expect(lista[0].pago).toBe(7.97);
+  });
+
+  it('lançamento sem data não inventa um dia trabalhado', () => {
+    const lista = repassesDeFreelancers([cadastro[0]], [
+      { tipo: 'sangria', destinatarioTipo: 'freelancer', destinatarioId: 'freela-1', valor: -40 },
+    ]);
+    expect(lista[0].pago).toBe(40);
+    expect(lista[0].diasComPagamento).toBe(0);
   });
 });
