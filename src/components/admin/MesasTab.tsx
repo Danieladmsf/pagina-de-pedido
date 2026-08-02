@@ -927,7 +927,7 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
     try {
       // Splits + paymentString + desconto/acréscimo vêm do fechamento
       // centralizado (components/admin/fechamento) — igual em todos os canais.
-      const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
+      const { splitsToProcess, paymentString, payments, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
 
       const linkedName = (customerName || '').trim();
       const phone = customerPhone || quickRegisterModal?.phone || '';
@@ -977,6 +977,8 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
       const finalizeData: any = {
         status: 'delivered',
         paymentMethod: paymentString,
+        // Pagamento em dado (uma linha por forma) ao lado da frase do cupom.
+        payments,
         subtotal: cartTotal,
         discount: discount || 0,
         surcharge: surcharge || 0,

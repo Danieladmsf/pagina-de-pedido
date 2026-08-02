@@ -299,6 +299,17 @@ await allowed('finalizarPedido permite concluir sem ajuste', updateDoc(doc(final
   status: 'delivered', paymentMethod: 'pix',
 }));
 await admin.doc('orders/order-a').update({ status: 'received' });
+// Desde 02/08/2026 o fechamento grava o pagamento em dado (`payments`) ao lado
+// da frase. Fora da lista de campos, o dono finalizava e o funcionário era
+// barrado — por isso o caso mora aqui e não só no teste de unidade.
+await allowed('finalizarPedido grava o pagamento estruturado', updateDoc(doc(finalizeOperator, 'orders/order-a'), {
+  status: 'delivered', paymentMethod: 'Pix: R$ 6.00 | Dinheiro: R$ 4.00',
+  payments: [
+    { formaId: 'pix', forma: 'Pix', valor: 6 },
+    { formaId: 'dinheiro', forma: 'Dinheiro', valor: 4 },
+  ],
+}));
+await admin.doc('orders/order-a').update({ status: 'received' });
 await denied('ajuste financeiro exige descontoAcrescimo', updateDoc(doc(finalizeOperator, 'orders/order-a'), {
   status: 'delivered', paymentMethod: 'pix', discount: 2, totalAmount: 8,
 }));
@@ -313,6 +324,12 @@ await denied('operador nunca lança Conta da Casa no caixa', setDoc(doc(finalize
 await allowed('mesa fecha sem ajuste mesmo gravando zeros explícitos', updateDoc(doc(mesaOperator, 'orders/table-a'), {
   status: 'delivered', paymentMethod: 'pix', subtotal: 30,
   discount: 0, surcharge: 0, totalAmount: 30,
+}));
+await admin.doc('orders/table-a').update({ status: 'pending' });
+await allowed('mesa fecha gravando o pagamento estruturado', updateDoc(doc(mesaOperator, 'orders/table-a'), {
+  status: 'delivered', paymentMethod: 'Pix: R$ 30.00', subtotal: 30,
+  discount: 0, surcharge: 0, totalAmount: 30,
+  payments: [{ formaId: 'pix', forma: 'Pix', valor: 30 }],
 }));
 await admin.doc('orders/table-a').update({ status: 'pending' });
 await denied('mesa sem descontoAcrescimo não altera valor', updateDoc(doc(mesaOperator, 'orders/table-a'), {

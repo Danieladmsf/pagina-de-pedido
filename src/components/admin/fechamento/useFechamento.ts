@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type SetStateAction } from 'react';
 import type { FormaPagamento } from './payment-methods';
+import { pagamentosDoPedido, type PagamentoDoPedido } from '@/lib/payment-breakdown';
 
 export type PaymentSplit = { methodId: string; label: string; amount: number; received?: number };
 
@@ -24,6 +25,12 @@ export interface FechamentoParams {
 export interface CheckoutResult {
   splitsToProcess: PaymentSplit[];
   paymentString: string;
+  /**
+   * O mesmo pagamento em dado, não em frase — é o que o pedido grava em
+   * `payments`. A `paymentString` continua sendo gravada para o cupom e para
+   * quem lê pedido antigo, mas relatório nenhum precisa interpretá-la.
+   */
+  payments: PagamentoDoPedido[];
   discount: number;
   surcharge: number;
   /** Total efetivamente cobrado (desconto/acréscimo e feeOff já aplicados). */
@@ -241,6 +248,7 @@ export function useFechamento({
     return {
       splitsToProcess,
       paymentString,
+      payments: pagamentosDoPedido(splitsToProcess),
       discount: descontoAplicado,
       surcharge: acrescimoAplicado,
       finalTotal: chargedTotal,

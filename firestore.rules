@@ -167,7 +167,7 @@ service cloud.firestore {
           && changed.hasOnly(['status', 'stockDeducted', 'stockDeductedItems'])
           && pdvAllowsAction(pdv, 'delivery', 'cancelarPedido'))
         || (nextStatus == 'delivered'
-          && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
+          && changed.hasOnly(['status', 'paymentMethod', 'payments', 'discount', 'surcharge',
             'payDeliveryToMotoboy', 'totalAmount',
             'customerIdentityPending',
             'stockDeducted', 'stockDeductedItems'])
@@ -209,7 +209,7 @@ service cloud.firestore {
               && resource.data.get('accepted', false) != true
               && pdvAllowsAction(pdv, 'mesas', 'aceitarPedidoOnline'))))
         || (nextStatus == 'delivered'
-          && changed.hasOnly(['status', 'paymentMethod', 'discount', 'surcharge',
+          && changed.hasOnly(['status', 'paymentMethod', 'payments', 'discount', 'surcharge',
             'subtotal', 'totalAmount', 'customerName', 'customerPhone', 'clienteId',
             'customerIdentityPending',
             'stockDeducted', 'stockDeductedItems'])

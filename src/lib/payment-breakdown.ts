@@ -18,6 +18,15 @@ import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
 
 export type ParteDoPagamento = { forma: string; valor: number };
 
+/**
+ * O que o pedido passa a gravar no campo `payments` desde 02/08/2026.
+ *
+ * `formaId` é a chave (`pix`, `dinheiro`, `conta_casa`) e manda; `forma` é o
+ * rótulo que a loja usa na tela — mesma regra do resto do sistema, vínculo pelo
+ * id e texto só para leitura humana.
+ */
+export type PagamentoDoPedido = { formaId: string; forma: string; valor: number };
+
 export type FaturamentoDaForma = {
   forma: string;
   total: number;
@@ -25,7 +34,11 @@ export type FaturamentoDaForma = {
   vendas: number;
 };
 
-export type VendaParaFaturamento = { paymentMethod?: string; totalAmount?: number };
+export type VendaParaFaturamento = {
+  paymentMethod?: string;
+  totalAmount?: number;
+  payments?: PagamentoDoPedido[];
+};
 
 /**
  * Nomes canônicos. O cardápio público grava o id da forma em minúsculo
@@ -112,6 +125,42 @@ export function partesDoPagamento(
   return partes.map(p => ({ forma: p.forma, valor: p.valor === null ? porParte : p.valor }));
 }
 
+/**
+ * Monta o `payments` que o pedido grava, a partir das partes do fechamento.
+ *
+ * O fechamento SEMPRE soube quanto entrou em cada forma (é ele quem monta a
+ * frase). Antes essa estrutura era jogada fora e só a frase ia para o banco.
+ */
+export function pagamentosDoPedido(
+  splits: { methodId?: string; label?: string; amount?: unknown }[],
+): PagamentoDoPedido[] {
+  return (Array.isArray(splits) ? splits : [])
+    .map(split => ({
+      formaId: String(split?.methodId || '').trim(),
+      forma: nomeDaForma(split?.label || split?.methodId || ''),
+      valor: emDinheiro(split?.amount),
+    }))
+    .filter(pagamento => pagamento.formaId !== '' && pagamento.valor > 0);
+}
+
+/**
+ * As partes de UMA venda, preferindo o que foi gravado estruturado.
+ *
+ * Venda com `payments` não passa pelo interpretador de frase: o dado veio
+ * pronto. Sem ele (todo pedido anterior a 02/08/2026, e o pedido do cardápio
+ * que ainda não foi fechado), cai na leitura do texto.
+ */
+export function partesDaVenda(venda: VendaParaFaturamento): ParteDoPagamento[] {
+  const gravadas = (Array.isArray(venda?.payments) ? venda.payments : [])
+    .map(pagamento => ({
+      forma: nomeDaForma(pagamento?.forma || pagamento?.formaId || ''),
+      valor: emDinheiro(pagamento?.valor),
+    }))
+    .filter(parte => parte.valor > 0);
+  if (gravadas.length > 0) return gravadas;
+  return partesDoPagamento(venda?.paymentMethod, venda?.totalAmount);
+}
+
 /** Soma o faturamento de cada forma, da que mais entrou para a que menos. */
 export function faturamentoPorPagamento(
   vendas: VendaParaFaturamento[],
@@ -120,7 +169,7 @@ export function faturamentoPorPagamento(
 
   for (const venda of Array.isArray(vendas) ? vendas : []) {
     const formasDaVenda = new Set<string>();
-    for (const parte of partesDoPagamento(venda?.paymentMethod, venda?.totalAmount)) {
+    for (const parte of partesDaVenda(venda)) {
       const atual = porForma.get(parte.forma) || { total: 0, vendas: 0 };
       atual.total = somaDinheiro(atual.total, parte.valor);
       if (!formasDaVenda.has(parte.forma)) {

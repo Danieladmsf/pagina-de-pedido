@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { faturamentoPorPagamento, nomeDaForma, partesDoPagamento } from './payment-breakdown';
+import {
+  faturamentoPorPagamento,
+  nomeDaForma,
+  pagamentosDoPedido,
+  partesDaVenda,
+  partesDoPagamento,
+} from './payment-breakdown';
 
 describe('nomeDaForma', () => {
   it('junta o que a base gravou de jeitos diferentes', () => {
@@ -60,7 +66,62 @@ describe('partesDoPagamento', () => {
   });
 });
 
+describe('pagamentosDoPedido', () => {
+  it('converte as partes do fechamento no que o pedido grava', () => {
+    expect(pagamentosDoPedido([
+      { methodId: 'pix', label: 'Pix', amount: 59.3 },
+      { methodId: 'conta_casa', label: 'Prazo', amount: 40.7 },
+    ])).toEqual([
+      { formaId: 'pix', forma: 'Pix', valor: 59.3 },
+      { formaId: 'conta_casa', forma: 'Prazo', valor: 40.7 },
+    ]);
+  });
+
+  it('arredonda o centavo e descarta parte vazia', () => {
+    expect(pagamentosDoPedido([
+      { methodId: 'dinheiro', label: 'Dinheiro', amount: 11.599999999999994 },
+      { methodId: 'pix', label: 'Pix', amount: 0 },
+      { methodId: '', label: 'Sem forma', amount: 10 },
+    ])).toEqual([{ formaId: 'dinheiro', forma: 'Dinheiro', valor: 11.6 }]);
+  });
+});
+
+describe('partesDaVenda', () => {
+  it('venda com payments não passa pelo interpretador de frase', () => {
+    const venda = {
+      // A frase está ERRADA de propósito: se o `payments` mandar, ela é ignorada.
+      paymentMethod: 'Dinheiro',
+      totalAmount: 100,
+      payments: [
+        { formaId: 'pix', forma: 'Pix', valor: 70 },
+        { formaId: 'debito', forma: 'Débito', valor: 30 },
+      ],
+    };
+    expect(partesDaVenda(venda)).toEqual([
+      { forma: 'Pix', valor: 70 },
+      { forma: 'Débito', valor: 30 },
+    ]);
+  });
+
+  it('sem payments (todo pedido até 02/08/2026), lê a frase', () => {
+    expect(partesDaVenda({ paymentMethod: 'Pix: R$ 30.00 | Dinheiro: R$ 20.00', totalAmount: 50 }))
+      .toEqual([{ forma: 'Pix', valor: 30 }, { forma: 'Dinheiro', valor: 20 }]);
+    expect(partesDaVenda({ paymentMethod: 'Pix', totalAmount: 50, payments: [] }))
+      .toEqual([{ forma: 'Pix', valor: 50 }]);
+  });
+});
+
 describe('faturamentoPorPagamento', () => {
+  it('mistura pedido novo (payments) e antigo (frase) na mesma conta', () => {
+    expect(faturamentoPorPagamento([
+      { paymentMethod: 'Pix', totalAmount: 100, payments: [{ formaId: 'pix', forma: 'Pix', valor: 100 }] },
+      { paymentMethod: 'Pix: R$ 25.00 | Dinheiro: R$ 15.00', totalAmount: 40 },
+    ])).toEqual([
+      { forma: 'Pix', total: 125, vendas: 2 },
+      { forma: 'Dinheiro', total: 15, vendas: 1 },
+    ]);
+  });
+
   it('a parte de cada venda dividida entra na sua forma', () => {
     const linhas = faturamentoPorPagamento([
       { paymentMethod: 'Pix', totalAmount: 100 },

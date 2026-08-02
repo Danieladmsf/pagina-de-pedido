@@ -463,7 +463,7 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
     try {
       // Splits + paymentString + desconto/acréscimo vêm do fechamento
       // centralizado (components/admin/fechamento) — igual em todos os canais.
-      const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
+      const { splitsToProcess, paymentString, payments, discount, surcharge, finalTotal: totalCobrado } = fechamento.buildCheckout();
 
       const fullDeliveryAddress = orderType === 'delivery' ? [addressObj.street, addressObj.number, addressObj.neighborhood, addressObj.city].filter(Boolean).join(', ') : '';
 
@@ -568,6 +568,9 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         distanceKm: (distanceInfo && typeof distanceInfo.distanceKm === 'number') ? distanceInfo.distanceKm : null,
         totalAmount: totalCobrado || 0,
         paymentMethod: paymentString || '',
+        // Pagamento em dado (uma linha por forma, com o valor), ao lado da
+        // frase que o cupom imprime. Relatório soma, não interpreta texto.
+        payments,
         orderDateTime: new Date().toISOString(),
         // Marca do servidor: é por ela que relatórios e filtros por data acham o
         // pedido. Sem isso as vendas do PDV sumiam de qualquer consulta por período.

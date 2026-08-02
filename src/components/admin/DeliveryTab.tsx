@@ -395,7 +395,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       // Splits + paymentString + desconto/acréscimo + regra do Prazo (frete
       // pago direto ao motoboy) vêm do fechamento centralizado
       // (components/admin/fechamento) — igual em todos os canais.
-      const { splitsToProcess, paymentString, discount, surcharge, finalTotal: totalCobrado, feeOffApplied } = fechamento.buildCheckout();
+      const { splitsToProcess, paymentString, payments, discount, surcharge, finalTotal: totalCobrado, feeOffApplied } = fechamento.buildCheckout();
 
       const contaCasa = await resolveContaCasa(db, {
         splits: splitsToProcess,
@@ -417,7 +417,9 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       // 1. Atualizar status do pedido para 'delivered' e salvar paymentMethod composto.
       // Desconto/acréscimo dados agora acumulam sobre os que o pedido já tinha e
       // totalAmount passa a ser o valor efetivamente cobrado (cupom já imprime).
-      const updates: any = { status: 'delivered', paymentMethod: paymentString };
+      // `payments` é o pagamento em dado (uma linha por forma, com o valor);
+      // `paymentMethod` continua sendo a frase, para cupom e leitura de legado.
+      const updates: any = { status: 'delivered', paymentMethod: paymentString, payments };
       // O listener do dono resolve o legado antes da atualizacao de status. Aqui
       // so propagamos ids ja validados (pedido ou Conta da Casa), nunca um chute.
       const clienteId = contaCasaCustomerId || paymentModalOrder.clienteId;
