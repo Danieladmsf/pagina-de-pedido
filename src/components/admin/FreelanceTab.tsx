@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bike, Loader2, AlertCircle, ChevronDown, ChevronUp, Clock, MapPin, ReceiptText, CalendarRange, Users } from 'lucide-react';
+import { Bike, Loader2, AlertCircle, ChevronDown, ChevronUp, Clock, MapPin, ReceiptText, CalendarRange, Users, Wallet, TrendingUp } from 'lucide-react';
 import { useCaixa } from '@/hooks/useCaixa';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { brl } from '@/lib/utils';
+import { emDinheiro } from '@/lib/dinheiro';
 import { getOrderCode } from '@/lib/order-code';
 import { freelancersComSaldo, repassesDeFreelancers } from '@/lib/caixa/freelancers';
 import { EquipeEntregas } from '@/components/admin/entregas/EquipeEntregas';
@@ -232,12 +233,34 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
     () => motoboysSessao.reduce((s: number, m: any) => s + m.jaPago, 0),
     [motoboysSessao],
   );
+  const emEntregaAgora = useMemo(
+    () => (orders || []).filter((o: any) => o.status === 'out_for_delivery' && o.motoboyId).length,
+    [orders],
+  );
+  const aPagarPessoas = useMemo(
+    () => motoboysSessao.filter((m: any) => m.saldo > 0).length,
+    [motoboysSessao],
+  );
+  // Quanto a operação de entrega custou por pedido entregue: é o número que
+  // diz se a taxa cobrada do cliente está pagando o motoboy.
+  const custoPorEntrega = useMemo(
+    () => (totalEntregas > 0 ? emDinheiro((totalPagoMotoboys + totalAPagarMotoboys) / totalEntregas) : 0),
+    [totalEntregas, totalPagoMotoboys, totalAPagarMotoboys],
+  );
 
   const carregando = loading || (periodo !== 'sessao' && loadingAllLanc);
   const semCaixaNaSessao = periodo === 'sessao' && !caixaAtual;
 
+  /** Chave da pessoa → o que ela fez/recebeu no período, para a aba Equipe. */
+  const resumoPorPessoa = useMemo(() => {
+    const mapa = new Map<string, { entregas?: number; pago: number; saldo?: number }>();
+    motoboysSessao.forEach((m: any) => mapa.set(m.id, { entregas: m.entregas, pago: m.jaPago, saldo: m.saldo }));
+    freelancersPeriodo.forEach((f) => mapa.set(f.chave, { pago: f.pago, saldo: saldoDeHoje.get(f.chave) }));
+    return mapa;
+  }, [motoboysSessao, freelancersPeriodo, saldoDeHoje]);
+
   return (
-    <div className="space-y-4 max-w-4xl pb-10">
+    <div className="space-y-4 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border shadow-sm shrink-0">
         <div>
           <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
@@ -308,7 +331,12 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
       )}
 
       {visao === 'equipe' && podeEditarEquipe ? (
-        <EquipeEntregas storeProfile={storeProfile} />
+        <EquipeEntregas
+          storeProfile={storeProfile}
+          // O cadastro mostra o que cada um já recebeu: é o ganho de ter
+          // juntado as duas telas, em vez de só empilhar uma na outra.
+          resumoPorPessoa={resumoPorPessoa}
+        />
       ) : carregando ? (
         <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
       ) : semCaixaNaSessao ? (
@@ -335,22 +363,59 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
         </div>
       ) : (
       <>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { rotulo: 'Entregas', valor: String(totalEntregas), cor: 'text-slate-800' },
-          { rotulo: 'A pagar (motoboys)', valor: brl(totalAPagarMotoboys), cor: totalAPagarMotoboys > 0 ? 'text-emerald-600' : 'text-slate-300' },
-          { rotulo: 'Pago a motoboys', valor: brl(totalPagoMotoboys), cor: 'text-slate-800' },
-          { rotulo: 'Pago a diaristas', valor: brl(totalPagoFreelancers), cor: 'text-slate-800' },
-        ].map((item) => (
-          <div key={item.rotulo} className="rounded-xl border bg-white p-3 shadow-sm">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">{item.rotulo}</span>
-            <span className={`mt-1 block text-xl font-black leading-none ${item.cor}`}>{item.valor}</span>
+          {
+            rotulo: 'Entregas',
+            valor: String(totalEntregas),
+            detalhe: emEntregaAgora > 0 ? `${emEntregaAgora} em rota agora` : `${motoboysSessao.length} na frota`,
+            Icone: MapPin,
+            tom: 'text-blue-600 bg-blue-50 border-blue-100',
+          },
+          {
+            rotulo: 'A pagar',
+            valor: brl(totalAPagarMotoboys),
+            detalhe: aPagarPessoas > 0 ? `${aPagarPessoas} ${aPagarPessoas === 1 ? 'pessoa' : 'pessoas'} com saldo` : 'ninguém pendente',
+            Icone: Wallet,
+            tom: totalAPagarMotoboys > 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-slate-400 bg-slate-50 border-slate-100',
+          },
+          {
+            rotulo: 'Já pago no período',
+            valor: brl(totalPagoMotoboys + totalPagoFreelancers),
+            detalhe: `${brl(totalPagoMotoboys)} frota · ${brl(totalPagoFreelancers)} diaristas`,
+            Icone: ReceiptText,
+            tom: 'text-rose-600 bg-rose-50 border-rose-100',
+          },
+          {
+            rotulo: 'Custo por entrega',
+            valor: totalEntregas > 0 ? brl(custoPorEntrega) : '—',
+            detalhe: totalEntregas > 0 ? `média de ${totalEntregas} ${totalEntregas === 1 ? 'entrega' : 'entregas'}` : 'sem entregas no período',
+            Icone: TrendingUp,
+            tom: 'text-violet-600 bg-violet-50 border-violet-100',
+          },
+        ].map(({ rotulo, valor, detalhe, Icone, tom }) => (
+          <div key={rotulo} className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{rotulo}</span>
+              <span className={`flex h-7 w-7 items-center justify-center rounded-lg border ${tom}`}>
+                <Icone className="h-3.5 w-3.5" />
+              </span>
+            </div>
+            <span className="mt-2 block text-2xl font-black leading-none text-slate-800">{valor}</span>
+            <span className="mt-1.5 block truncate text-[11px] text-slate-400">{detalhe}</span>
           </div>
         ))}
       </div>
 
-      <h3 className="flex items-center gap-2 pt-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-        <Bike className="h-4 w-4 text-blue-500" /> Motoboys / entregas
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+      <section className="space-y-3">
+      <h3 className="flex items-center justify-between gap-2 pt-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <span className="flex items-center gap-2"><Bike className="h-4 w-4 text-blue-500" /> Motoboys / entregas</span>
+        {totalAPagarMotoboys > 0 && (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-emerald-700">
+            {brl(totalAPagarMotoboys)} a pagar
+          </span>
+        )}
       </h3>
 
       {motoboysSessao.length === 0 ? (
@@ -405,10 +470,16 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
                             </Badge>
                           )}
                         </div>
-                        <div className="text-sm text-slate-500 mt-1.5 flex items-center gap-3">
+                        <div className="text-sm text-slate-500 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                           <span>Ganhos: <strong className="text-slate-700">{brl(m.total)}</strong></span>
                           <span className="text-slate-300">•</span>
                           <span>Pagos/Vales: <strong className="text-rose-600">-{brl(m.jaPago)}</strong></span>
+                          {m.entregas > 0 && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span>{brl(emDinheiro(m.total / m.entregas))}/entrega</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -425,6 +496,22 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
                       </div>
                     </div>
                   </div>
+
+                  {/* Quanto do que ele ganhou já saiu da gaveta: um número
+                      sozinho não mostra se falta muito ou quase nada. */}
+                  {m.total > 0 && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full transition-all ${m.saldo > 0 ? 'bg-blue-400' : 'bg-emerald-500'}`}
+                          style={{ width: `${Math.min(100, Math.round((m.jaPago / m.total) * 100))}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[10px] font-bold text-slate-400">
+                        {Math.min(100, Math.round((m.jaPago / m.total) * 100))}% pago
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Área Expandida com Histórico */}
@@ -521,7 +608,10 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
         </div>
       )}
 
-      <h3 className="flex items-center justify-between gap-2 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+      </section>
+
+      <section className="space-y-3">
+      <h3 className="flex items-center justify-between gap-2 pt-1 text-xs font-bold uppercase tracking-wider text-slate-400">
         <span className="flex items-center gap-2">
           <Users className="h-4 w-4 text-purple-500" /> Freelancers diaristas
         </span>
@@ -538,7 +628,7 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
             <Users className="h-10 w-10 text-slate-300 mb-3" />
             <p className="text-slate-500 font-medium">Nenhum freelancer diarista cadastrado.</p>
             <p className="text-xs text-slate-400 mt-1">
-              Cadastre em Perfil da Loja → Motoboys, na seção "Freelancers diaristas".
+              Cadastre na visão "Equipe", aqui em cima.
             </p>
           </CardContent>
         </Card>
@@ -614,6 +704,22 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
                       </div>
                     </div>
                   </div>
+
+                  {/* A barra só existe com caixa aberto: fora dele não dá para
+                      saber quantos dias a pessoa trabalhou no período. */}
+                  {faltaHoje > 0 && f.diaria > 0 && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-purple-400 transition-all"
+                          style={{ width: `${Math.min(100, Math.round(((f.diaria - faltaHoje) / f.diaria) * 100))}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-[10px] font-bold text-slate-400">
+                        {brl(f.diaria - faltaHoje)} de {brl(f.diaria)} hoje
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {isExpanded && (
@@ -668,6 +774,8 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
           })}
         </div>
       )}
+      </section>
+      </div>
       </>
       )}
     </div>

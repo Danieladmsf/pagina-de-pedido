@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { Bike, Loader2, Plus, Trash2, Users } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,7 +65,16 @@ const lerDiaristas = (perfil: any): DiaristaCadastro[] =>
     active: f.active !== false,
   }));
 
-export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
+/** O que a pessoa fez/recebeu no período escolhido na aba (vem pronto de lá). */
+export type ResumoDaPessoa = { entregas?: number; pago: number; saldo?: number };
+
+export function EquipeEntregas({
+  storeProfile,
+  resumoPorPessoa,
+}: {
+  storeProfile: any;
+  resumoPorPessoa?: Map<string, ResumoDaPessoa>;
+}) {
   const db = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
@@ -144,8 +152,33 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
       ),
     );
 
+  const custoFixoDiario = motoboys.reduce((s, m) => s + (Number(m.fee) || 0), 0);
+  const custoSemanalDiaristas = diaristas
+    .filter((f) => f.active)
+    .reduce((s, f) => s + (Number(f.dailyRate) || 0) * (f.workDays?.length || 0), 0);
+
+  /** Rodapé do cartão: o que essa pessoa já recebeu no período da aba. */
+  const RodapeDoPeriodo = ({ chave, entregasLabel }: { chave: string; entregasLabel?: boolean }) => {
+    const r = resumoPorPessoa?.get(chave);
+    if (!r) return null;
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200/70 pt-2 text-[11px] text-slate-400">
+        {entregasLabel && <span>{r.entregas || 0} {r.entregas === 1 ? 'entrega' : 'entregas'}</span>}
+        <span>
+          Recebeu <strong className={r.pago > 0 ? 'text-rose-600' : 'text-slate-500'}>{brl(r.pago)}</strong> no período
+        </span>
+        {!!r.saldo && r.saldo > 0 && (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">
+            {brl(r.saldo)} a pagar
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5 pb-28">
+      <div className="grid items-start gap-5 2xl:grid-cols-2">
       {/* ───────────── Motoboys ───────────── */}
       <section className="bg-white rounded-2xl border shadow-sm overflow-hidden">
         <header className="px-5 py-4 border-b bg-gradient-to-r from-blue-50/60 to-white flex items-center gap-3">
@@ -154,11 +187,12 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-bold text-slate-800">Frota própria</h3>
-            <p className="text-xs text-muted-foreground">Motoboys fixos, com taxa por dia trabalhado.</p>
+            <p className="text-xs text-muted-foreground">
+              {custoFixoDiario > 0
+                ? `${motoboys.length} ${motoboys.length === 1 ? 'motoboy' : 'motoboys'} · ${brl(custoFixoDiario)} de taxa por dia trabalhado`
+                : 'Motoboys fixos, com taxa por dia trabalhado.'}
+            </p>
           </div>
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] shrink-0">
-            {motoboys.length} {motoboys.length === 1 ? 'motoboy' : 'motoboys'}
-          </Badge>
           <Button
             onClick={() => setMotoboys((p) => [...p, { id: novoId(), name: '', phone: '', licensePlate: '', fee: 0 }])}
             className="gap-1.5 h-8 text-xs bg-blue-600 hover:bg-blue-700 shrink-0"
@@ -179,7 +213,8 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
                   <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-black text-blue-700">
                     {iniciais(m.name)}
                   </div>
-                  <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="min-w-0 flex-1">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Nome</Label>
                       <Input value={m.name} onChange={(e) => mudarMotoboy(m.id, 'name', e.target.value)} placeholder="João" className="h-8 text-sm" />
@@ -196,6 +231,8 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
                       <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Taxa por dia</Label>
                       <CurrencyInput value={m.fee} onChange={(val) => mudarMotoboy(m.id, 'fee', val)} />
                     </div>
+                  </div>
+                  <RodapeDoPeriodo chave={m.id} entregasLabel />
                   </div>
                   <Button
                     variant="ghost"
@@ -220,11 +257,12 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-bold text-slate-800">Freelancers diaristas</h3>
-            <p className="text-xs text-muted-foreground">Diária fixa e escala da semana. Quem está escalado no dia aparece no caixa.</p>
+            <p className="text-xs text-muted-foreground">
+              {custoSemanalDiaristas > 0
+                ? `${diaristas.filter((f) => f.active).length} ${diaristas.filter((f) => f.active).length === 1 ? 'ativo' : 'ativos'} · até ${brl(custoSemanalDiaristas)} por semana na escala atual`
+                : 'Diária fixa e escala da semana. Quem está escalado no dia aparece no caixa.'}
+            </p>
           </div>
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] shrink-0">
-            {diaristas.filter((f) => f.active).length} {diaristas.filter((f) => f.active).length === 1 ? 'ativo' : 'ativos'}
-          </Badge>
           <Button
             onClick={() =>
               setDiaristas((p) => [...p, { id: novoId(), name: '', whatsapp: '', dailyRate: 0, workDays: [...DIAS], active: true }])
@@ -251,7 +289,7 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
                     {iniciais(f.name)}
                   </div>
                   <div className="flex-1 space-y-2.5">
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Nome</Label>
                         <Input value={f.name} onChange={(e) => mudarDiarista(f.id, 'name', e.target.value)} placeholder="Pedro" className="h-8 text-sm" />
@@ -310,6 +348,7 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
                         </span>
                       )}
                     </div>
+                    <RodapeDoPeriodo chave={f.id} />
                   </div>
                   <Button
                     variant="ghost"
@@ -325,6 +364,8 @@ export function EquipeEntregas({ storeProfile }: { storeProfile: any }) {
           )}
         </div>
       </section>
+
+      </div>
 
       {/* Barra de salvar: só aparece quando há mudança, para a tela não viver
           pedindo "salvar" sem motivo. */}
