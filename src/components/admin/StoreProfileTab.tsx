@@ -22,7 +22,7 @@ import { resolvePrintMode, type PrintMode } from '@/lib/receipt-print';
 interface StoreProfileTabProps {
   db: any;
   user: any;
-  activeSection?: 'geral' | 'taxas' | 'horarios' | 'motoboys' | 'pagamentos' | 'impressora';
+  activeSection?: 'geral' | 'taxas' | 'horarios' | 'pagamentos' | 'impressora';
 }
 
 const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -74,8 +74,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
   const [newClosureReason, setNewClosureReason] = useState('');
   const [calMonth, setCalMonth] = useState(() => ({ year: new Date().getFullYear(), month: new Date().getMonth() }));
 
-  const [motoboys, setMotoboys] = useState<{ id: string, name: string, phone: string, licensePlate: string, fee: number }[]>([]);
-  const [freelancers, setFreelancers] = useState<{ id: string, name: string, whatsapp: string, dailyRate: number, workDays: string[], active: boolean }[]>([]);
   const [feeRules, setFeeRules] = useState<{ maxKm: number, fee: number }[]>([
     { maxKm: 3, fee: 5 },
     { maxKm: 6, fee: 8 },
@@ -114,18 +112,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
             printMode: resolvePrintMode(data),
           }));
           if (data.workingHours) setWorkingHours(data.workingHours);
-          if (data.motoboys) {
-            setMotoboys(data.motoboys.map((m: any) => ({ ...m, fee: Number(m.fee) || 0 })));
-          }
-          if (data.freelancers) {
-            setFreelancers(data.freelancers.map((f: any) => ({ 
-              ...f, 
-              whatsapp: f.whatsapp || '',
-              dailyRate: Number(f.dailyRate) || 0, 
-              workDays: f.workDays || [],
-              active: f.active !== false // true por padrão
-            })));
-          }
           if (data.feeRules) setFeeRules(data.feeRules);
           if (data.customAddressRules) setCustomAddressRules(data.customAddressRules);
           if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
@@ -189,8 +175,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           maxDeliveryRadius: formData.maxDeliveryRadius,
         },
         workingHours,
-        motoboys,
-        freelancers,
+        // motoboys/freelancers NÃO entram aqui: quem edita é a aba Gestão de
+        // Entregas. Regravá-los a cada save do perfil desfazia, com dado velho,
+        // o que tivesse sido cadastrado lá.
         feeRules: feeRules.sort((a, b) => a.maxKm - b.maxKm),
         customAddressRules,
         paymentMethods,
@@ -300,37 +287,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
     fetchNeighborhoodsFromCities(updatedCities);
   };
 
-  // Motoboys
-  const addMotoboy = () => {
-    setMotoboys([...motoboys, { id: Math.random().toString(), name: '', phone: '', licensePlate: '', fee: 0 }]);
-  };
-  const updateMotoboy = (id: string, field: string, value: any) => {
-    setMotoboys(motoboys.map(m => m.id === id ? { ...m, [field]: value } : m));
-  };
-  const removeMotoboy = (id: string) => {
-    setMotoboys(motoboys.filter(m => m.id !== id));
-  };
-
-  // Freelancers
-  const addFreelancer = () => {
-    setFreelancers([...freelancers, { id: Math.random().toString(), name: '', whatsapp: '', dailyRate: 0, workDays: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'], active: true }]);
-  };
-  const updateFreelancer = (id: string, field: string, value: any) => {
-    setFreelancers(freelancers.map(f => f.id === id ? { ...f, [field]: value } : f));
-  };
-  const toggleFreelancerDay = (id: string, day: string) => {
-    setFreelancers(freelancers.map(f => {
-      if (f.id !== id) return f;
-      const newDays = f.workDays.includes(day) 
-        ? f.workDays.filter(d => d !== day) 
-        : [...f.workDays, day];
-      return { ...f, workDays: newDays };
-    }));
-  };
-  const removeFreelancer = (id: string) => {
-    setFreelancers(freelancers.filter(f => f.id !== id));
-  };
-
   // Regras por KM
   const addFeeRule = () => {
     const lastRule = feeRules[feeRules.length - 1];
@@ -405,14 +361,12 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
           {activeTab === 'geral' && 'Dados e Contato'}
           {activeTab === 'taxas' && 'Taxas, Prazos e KM'}
           {activeTab === 'horarios' && 'Horários de Funcionamento'}
-          {activeTab === 'motoboys' && 'Motoboys e Freelancers'}
           {activeTab === 'pagamentos' && 'Formas de Pagamento'}
         </h1>
         <p className="text-muted-foreground mt-1 font-medium">
           {activeTab === 'geral' && 'Gerencie as informações básicas de contato e endereço do seu negócio.'}
           {activeTab === 'taxas' && 'Configure taxas de entrega por KM, tempo de preparo e cidades atendidas.'}
           {activeTab === 'horarios' && 'Defina os horários em que seu estabelecimento aceita pedidos.'}
-          {activeTab === 'motoboys' && 'Gerencie sua frota de entregadores, taxas pagas e escalas.'}
           {activeTab === 'pagamentos' && 'Configure as formas de pagamento aceitas no seu Delivery, Retirada e Salão.'}
         </p>
       </div>
@@ -1410,119 +1364,6 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
             </>
           );
         })()}
-
-        {activeTab === 'motoboys' && (
-          <>
-            {/* SEÇÃO 1 — Frota Própria */}
-            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20 flex items-center justify-center">
-                  <Bike className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-base font-bold text-slate-800">Frota própria</h2>
-                  <p className="text-xs text-muted-foreground">Motoboys fixos da sua equipe com taxa e dados de contato.</p>
-                </div>
-                {motoboys.length > 0 && (
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> {motoboys.length} motoboy{motoboys.length > 1 ? 's' : ''}
-                  </Badge>
-                )}
-                <Button onClick={addMotoboy} size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700"><Plus className="w-4 h-4 mr-1"/> Adicionar</Button>
-              </header>
-              <div className="p-6">
-                {motoboys.length === 0 ? (
-                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum motoboy cadastrado. Clique em "Adicionar" para começar.</div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {motoboys.map((m, idx) => (
-                      <div key={m.id} className="flex items-center gap-2 py-1.5 px-3 rounded-md border bg-slate-50/50">
-                        <div className="grid grid-cols-4 gap-2 flex-1">
-                          <div className="space-y-0.5">
-                            <Label>Nome</Label>
-                            <Input value={m.name} onChange={(e) => updateMotoboy(m.id, 'name', e.target.value)} placeholder="João" className="h-7 text-xs" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label>WhatsApp</Label>
-                            <Input value={m.phone} onChange={(e) => updateMotoboy(m.id, 'phone', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label>Placa</Label>
-                            <Input value={m.licensePlate} onChange={(e) => updateMotoboy(m.id, 'licensePlate', e.target.value.toUpperCase())} placeholder="ABC-1234" maxLength={8} className="h-7 text-xs" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label>Taxa (R$)</Label>
-                            <CurrencyInput value={m.fee} onChange={(val) => updateMotoboy(m.id, 'fee', val)} />
-                          </div>
-                        </div>
-                        <Button variant="ghost" onClick={() => removeMotoboy(m.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* SEÇÃO 2 — Freelancers */}
-            <section className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-              <header className="px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500/15 to-fuchsia-500/15 border border-purple-500/20 flex items-center justify-center">
-                  <Users className="h-5 w-5 text-purple-600" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-base font-bold text-slate-800">Freelancers diaristas</h2>
-                  <p className="text-xs text-muted-foreground">Entregadores avulsos com diária fixa e escala de dias da semana.</p>
-                </div>
-                {freelancers.length > 0 && (
-                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] gap-1">
-                    {freelancers.filter(f => f.active).length} ativo{freelancers.filter(f => f.active).length !== 1 ? 's' : ''}
-                  </Badge>
-                )}
-                <Button onClick={addFreelancer} size="sm" className="h-8 text-xs bg-purple-600 hover:bg-purple-700"><Plus className="w-4 h-4 mr-1"/> Adicionar</Button>
-              </header>
-              <div className="p-6">
-                {freelancers.length === 0 ? (
-                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">Nenhum freelancer cadastrado. Clique em "Adicionar" para começar.</div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {freelancers.map((f, idx) => (
-                      <div key={f.id} className="py-2 px-3 rounded-md border bg-purple-50/50 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Switch checked={f.active} onCheckedChange={(checked) => updateFreelancer(f.id, 'active', checked)} className="data-[state=checked]:bg-green-500 scale-90" />
-                          <Label className="text-[10px] font-bold text-slate-700 flex-1">{f.active ? 'Ativo' : 'Inativo'}</Label>
-                          <Button variant="ghost" onClick={() => removeFreelancer(f.id)} className="text-red-500 hover:bg-red-50 h-7 w-7 p-0 shrink-0"><Trash2 className="w-3 h-3"/></Button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-0.5">
-                            <Label>Nome</Label>
-                            <Input value={f.name} onChange={(e) => updateFreelancer(f.id, 'name', e.target.value)} placeholder="Pedro" className="h-7 text-xs" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label>WhatsApp</Label>
-                            <Input value={f.whatsapp} onChange={(e) => updateFreelancer(f.id, 'whatsapp', formatPhone(e.target.value))} placeholder="(00) 90000-0000" className="h-7 text-xs" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <Label>Valor (R$)</Label>
-                            <CurrencyInput value={f.dailyRate} onChange={(val) => updateFreelancer(f.id, 'dailyRate', val)} />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 pt-1 border-t border-purple-200/30">
-                          <Label className="text-[10px] uppercase font-bold text-slate-500 shrink-0">Dias:</Label>
-                          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map(day => (
-                            <div key={day} className="flex items-center space-x-0.5 bg-white px-1.5 py-0.5 rounded border text-[10px]">
-                              <Checkbox id={`day-${f.id}-${day}`} checked={f.workDays?.includes(day)} onCheckedChange={() => toggleFreelancerDay(f.id, day)} className="h-3 w-3" />
-                              <Label htmlFor={`day-${f.id}-${day}`} className="text-[10px] cursor-pointer">{day}</Label>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-          </>
-        )}
 
         {activeTab === 'pagamentos' && (
           <>

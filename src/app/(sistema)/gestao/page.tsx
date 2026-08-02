@@ -91,8 +91,11 @@ export default function GestaoPage() {
     [isTabAllowed],
   );
   const [storedActiveTab, setActiveTab] = useState<string>('dashboard');
-  const activeTab = isTabAllowed(storedActiveTab)
-    ? storedActiveTab
+  // O cadastro de motoboys virou parte da aba Gestão de Entregas. Quem voltar
+  // pelo histórico do navegador na aba antiga cai lá, e não numa tela vazia.
+  const tabPedida = storedActiveTab === 'perfil_motoboys' ? 'freelance' : storedActiveTab;
+  const activeTab = isTabAllowed(tabPedida)
+    ? tabPedida
     : allowedTabs[0] ?? '';
 
 
@@ -2627,7 +2630,7 @@ export default function GestaoPage() {
               isAdminSecretLoading={adminSecretLoading}
             />
           )}
-          {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && (
+          {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && activeTab !== 'perfil_motoboys' && (
             <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
           )}
 
@@ -2637,7 +2640,13 @@ export default function GestaoPage() {
 
           {activeTab === 'freelance' && (
             <div className="mt-6">
-              <FreelanceTab orders={ordersRaw || []} storeProfile={storeProfile} />
+              <FreelanceTab
+                orders={ordersRaw || []}
+                storeProfile={storeProfile}
+                // O cadastro da equipe saiu do Perfil da Loja, mas continua
+                // valendo a mesma permissão de quem podia editar o perfil.
+                podeEditarEquipe={isTabAllowed('perfil_geral')}
+              />
             </div>
           )}
           </div>

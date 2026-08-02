@@ -66,7 +66,8 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_geral', label: 'Dados e Contato', icon: Contact },
     { id: 'perfil_taxas', label: 'Taxas e Prazos', icon: Percent },
     { id: 'perfil_horarios', label: 'Horários', icon: Clock },
-    { id: 'perfil_motoboys', label: 'Motoboys', icon: Bike },
+    // Motoboys/diaristas moraram aqui até 02/08/2026: o cadastro foi para a aba
+    // Gestão de Entregas, junto do acompanhamento de quem já recebeu.
     { id: 'perfil_pagamentos', label: 'Pagamentos', icon: Wallet },
     { id: 'perfil_impressora', label: 'Impressora', icon: Printer },
     { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },

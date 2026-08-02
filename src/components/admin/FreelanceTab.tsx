@@ -9,10 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { brl } from '@/lib/utils';
 import { getOrderCode } from '@/lib/order-code';
 import { freelancersComSaldo, repassesDeFreelancers } from '@/lib/caixa/freelancers';
+import { EquipeEntregas } from '@/components/admin/entregas/EquipeEntregas';
 
 interface FreelanceTabProps {
   orders: any[];
   storeProfile: any;
+  /** Quem podia editar o Perfil da Loja continua sendo quem edita a equipe. */
+  podeEditarEquipe?: boolean;
 }
 
 const getDateValue = (value: any) => {
@@ -28,9 +31,10 @@ const getDateTime = (value: any) => {
   return Number.isFinite(time) ? time : 0;
 };
 
-export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
+export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: FreelanceTabProps) {
   const { caixaAtual, lancamentos: lancamentosSessao, loading } = useCaixa();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [visao, setVisao] = useState<'acompanhamento' | 'equipe'>('acompanhamento');
   const [periodo, setPeriodo] = useState('sessao');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -216,50 +220,38 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
     [freelancersPeriodo],
   );
 
-  if (loading || (periodo !== 'sessao' && loadingAllLanc)) {
-    return <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
+  const totalEntregas = useMemo(
+    () => motoboysSessao.reduce((s: number, m: any) => s + m.entregas, 0),
+    [motoboysSessao],
+  );
+  const totalAPagarMotoboys = useMemo(
+    () => motoboysSessao.reduce((s: number, m: any) => s + m.saldo, 0),
+    [motoboysSessao],
+  );
+  const totalPagoMotoboys = useMemo(
+    () => motoboysSessao.reduce((s: number, m: any) => s + m.jaPago, 0),
+    [motoboysSessao],
+  );
 
-  if (periodo === 'sessao' && !caixaAtual) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-        <AlertCircle className="h-12 w-12 text-slate-300" />
-        <p className="text-slate-500 font-medium">Não há caixa aberto no momento.</p>
-        <p className="text-xs text-slate-400">Abra o caixa ou selecione outro período no filtro acima.</p>
-        <div className="pt-4">
-          <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Selecionar Período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="sessao">Sessão Atual</SelectItem>
-              <SelectItem value="hoje">Hoje</SelectItem>
-              <SelectItem value="7d">Últimos 7 dias</SelectItem>
-              <SelectItem value="15d">Últimos 15 dias</SelectItem>
-              <SelectItem value="30d">Últimos 30 dias</SelectItem>
-              <SelectItem value="all">Todo o período</SelectItem>
-              <SelectItem value="custom">Período personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    );
-  }
+  const carregando = loading || (periodo !== 'sessao' && loadingAllLanc);
+  const semCaixaNaSessao = periodo === 'sessao' && !caixaAtual;
 
   return (
     <div className="space-y-4 max-w-4xl pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border shadow-sm shrink-0">
         <div>
           <h2 className="text-xl font-bold text-slate-700 flex items-center gap-2">
-            <Bike className="h-5 w-5 text-blue-600" /> Equipe freelance
+            <Bike className="h-5 w-5 text-blue-600" /> Gestão de Entregas
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {periodo === 'sessao'
-              ? 'Entregas, diárias e vales limitados à sessão de caixa atual.'
-              : 'Visualizando acumulado de múltiplos dias e sessões.'}
+            {visao === 'equipe'
+              ? 'Cadastro dos motoboys e diaristas que trabalham com você.'
+              : periodo === 'sessao'
+                ? 'Entregas, diárias e vales limitados à sessão de caixa atual.'
+                : 'Visualizando acumulado de múltiplos dias e sessões.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${visao === 'equipe' ? 'hidden' : ''}`}>
           <CalendarRange className="h-4 w-4 text-slate-400" />
           <Select value={periodo} onValueChange={setPeriodo}>
             <SelectTrigger className="w-[180px] bg-slate-50">
@@ -293,6 +285,68 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
             />
           </div>
         </div>
+      </div>
+
+      {podeEditarEquipe && (
+        <div className="inline-flex rounded-xl border bg-white p-1 shadow-sm">
+          {([
+            { id: 'acompanhamento', label: 'Acompanhamento' },
+            { id: 'equipe', label: 'Equipe' },
+          ] as const).map((aba) => (
+            <button
+              key={aba.id}
+              type="button"
+              onClick={() => setVisao(aba.id)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
+                visao === aba.id ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              {aba.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visao === 'equipe' && podeEditarEquipe ? (
+        <EquipeEntregas storeProfile={storeProfile} />
+      ) : carregando ? (
+        <div className="py-20 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+      ) : semCaixaNaSessao ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+          <AlertCircle className="h-12 w-12 text-slate-300" />
+          <p className="text-slate-500 font-medium">Não há caixa aberto no momento.</p>
+          <p className="text-xs text-slate-400">Abra o caixa ou selecione outro período no filtro acima.</p>
+          <div className="pt-4">
+            <Select value={periodo} onValueChange={setPeriodo}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Selecionar Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sessao">Sessão Atual</SelectItem>
+                <SelectItem value="hoje">Hoje</SelectItem>
+                <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="15d">Últimos 15 dias</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="all">Todo o período</SelectItem>
+                <SelectItem value="custom">Período personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      ) : (
+      <>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { rotulo: 'Entregas', valor: String(totalEntregas), cor: 'text-slate-800' },
+          { rotulo: 'A pagar (motoboys)', valor: brl(totalAPagarMotoboys), cor: totalAPagarMotoboys > 0 ? 'text-emerald-600' : 'text-slate-300' },
+          { rotulo: 'Pago a motoboys', valor: brl(totalPagoMotoboys), cor: 'text-slate-800' },
+          { rotulo: 'Pago a diaristas', valor: brl(totalPagoFreelancers), cor: 'text-slate-800' },
+        ].map((item) => (
+          <div key={item.rotulo} className="rounded-xl border bg-white p-3 shadow-sm">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">{item.rotulo}</span>
+            <span className={`mt-1 block text-xl font-black leading-none ${item.cor}`}>{item.valor}</span>
+          </div>
+        ))}
       </div>
 
       <h3 className="flex items-center gap-2 pt-2 text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -613,6 +667,8 @@ export function FreelanceTab({ orders, storeProfile }: FreelanceTabProps) {
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );
