@@ -182,8 +182,14 @@ export function FreelanceTab({ orders, storeProfile, podeEditarEquipe = true }: 
       m.jaPago = adiantamentos;
       m.saldo = Math.max(0, m.total - m.jaPago);
       return m;
+    })
+    // Quem está na rua primeiro, depois quem tem dinheiro a receber: a lista
+    // vinha na ordem do cadastro, que não diz nada para quem está operando.
+    .sort((a: any, b: any) => {
+      const naRua = (m: any) => (orders || []).some((o: any) => o.motoboyId === m.id && o.status === 'out_for_delivery');
+      return Number(naRua(b)) - Number(naRua(a)) || b.saldo - a.saldo || String(a.name).localeCompare(String(b.name), 'pt-BR');
     });
-  }, [storeProfile, pedidosFiltrados, lancamentosFiltrados]);
+  }, [storeProfile, pedidosFiltrados, lancamentosFiltrados, orders]);
 
   // Diaristas: quanto saiu da gaveta para cada um no período (regra pura em
   // lib/caixa/freelancers, a mesma identidade por id que o fechamento usa).

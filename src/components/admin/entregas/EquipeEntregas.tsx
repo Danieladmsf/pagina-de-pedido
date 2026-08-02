@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
-import { Bike, Loader2, Plus, Trash2, Users } from 'lucide-react';
+import { Bike, Loader2, MessageCircle, Plus, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,6 +35,12 @@ const formatarTelefone = (valor: string) => {
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+};
+
+/** Link de conversa direta. Só com DDD + número completo (10 ou 11 dígitos). */
+const linkWhatsApp = (telefone: string) => {
+  const d = (telefone || '').replace(/\D/g, '');
+  return d.length === 10 || d.length === 11 ? `https://wa.me/55${d}` : null;
 };
 
 const iniciais = (nome: string) =>
@@ -157,20 +163,33 @@ export function EquipeEntregas({
     .filter((f) => f.active)
     .reduce((s, f) => s + (Number(f.dailyRate) || 0) * (f.workDays?.length || 0), 0);
 
-  /** Rodapé do cartão: o que essa pessoa já recebeu no período da aba. */
-  const RodapeDoPeriodo = ({ chave, entregasLabel }: { chave: string; entregasLabel?: boolean }) => {
+  /** Rodapé do cartão: o que essa pessoa já recebeu no período + falar com ela. */
+  const RodapeDoPeriodo = ({ chave, telefone, entregasLabel }: { chave: string; telefone: string; entregasLabel?: boolean }) => {
     const r = resumoPorPessoa?.get(chave);
-    if (!r) return null;
+    const zap = linkWhatsApp(telefone);
+    if (!r && !zap) return null;
     return (
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200/70 pt-2 text-[11px] text-slate-400">
-        {entregasLabel && <span>{r.entregas || 0} {r.entregas === 1 ? 'entrega' : 'entregas'}</span>}
-        <span>
-          Recebeu <strong className={r.pago > 0 ? 'text-rose-600' : 'text-slate-500'}>{brl(r.pago)}</strong> no período
-        </span>
-        {!!r.saldo && r.saldo > 0 && (
+        {r && entregasLabel && <span>{r.entregas || 0} {r.entregas === 1 ? 'entrega' : 'entregas'}</span>}
+        {r && (
+          <span>
+            Recebeu <strong className={r.pago > 0 ? 'text-rose-600' : 'text-slate-500'}>{brl(r.pago)}</strong> no período
+          </span>
+        )}
+        {!!r?.saldo && r.saldo > 0 && (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">
             {brl(r.saldo)} a pagar
           </span>
+        )}
+        {zap && (
+          <a
+            href={zap}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto inline-flex items-center gap-1 font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
+          >
+            <MessageCircle className="h-3 w-3" /> Chamar no WhatsApp
+          </a>
         )}
       </div>
     );
@@ -232,7 +251,7 @@ export function EquipeEntregas({
                       <CurrencyInput value={m.fee} onChange={(val) => mudarMotoboy(m.id, 'fee', val)} />
                     </div>
                   </div>
-                  <RodapeDoPeriodo chave={m.id} entregasLabel />
+                  <RodapeDoPeriodo chave={m.id} telefone={m.phone} entregasLabel />
                   </div>
                   <Button
                     variant="ghost"
@@ -348,7 +367,7 @@ export function EquipeEntregas({
                         </span>
                       )}
                     </div>
-                    <RodapeDoPeriodo chave={f.id} />
+                    <RodapeDoPeriodo chave={f.id} telefone={f.whatsapp} />
                   </div>
                   <Button
                     variant="ghost"
