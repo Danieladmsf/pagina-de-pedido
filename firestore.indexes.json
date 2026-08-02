@@ -1,0 +1,47 @@
+{
+  "//": "Índices do Firestore versionados. Até 02/08/2026 eles só existiam no console: um projeto novo (ou outra loja em outro projeto) subiria sem eles e as consultas com filtro combinado falhariam em produção. Exportado do projeto real e ampliado com os dois índices que o PDV passou a usar. Deploy: firebase deploy --only firestore:indexes",
+  "indexes": [
+    {
+      "//": "PDV: pedidos ainda abertos, de qualquer data (status not-in ['delivered','canceled']).",
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "PDV: pedidos da sessão de caixa selecionada (orderDateTime >= abertura).",
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "orderDateTime", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "//": "TTL da trava de envio do WhatsApp — já existia no projeto; listado aqui para o deploy não removê-lo.",
+      "collectionGroup": "whatsapp_send_claims",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "//": "TTL dos eventos de webhook do WhatsApp — idem.",
+      "collectionGroup": "whatsapp_webhook_events",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" }
+      ]
+    }
+  ]
+}

@@ -151,11 +151,6 @@ export default function PdvPage() {
     return query(collection(db, 'menuItems'), where('ownerId', '==', ownerId));
   }, [db, isRealUser, ownerId]);
 
-  const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser || !canReadOperationalOrders) return null;
-    return query(collection(db, 'orders'), where('ownerId', '==', ownerId));
-  }, [canReadOperationalOrders, db, isRealUser, ownerId]);
-
   const addonsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser) return null;
     return query(collection(db, 'addons'), where('ownerId', '==', ownerId));
@@ -198,6 +193,57 @@ export default function PdvPage() {
   const visibleActiveTab = permissionsResolved
     ? (eligibleTabs.includes(activeTab) ? activeTab : getPdvFallbackTab(eligibleTabs, activeTab))
     : null;
+
+  // O PDV lia `orders` inteiro — toda a história da loja, em cada abertura de
+  // tela, o dia todo, em cada máquina. Com um ano de vendas isso é milhares de
+  // documentos por carregamento numa máquina que já usa long-polling forçado.
+  // Agora são três assinaturas com propósito, e a tela consome a união delas.
+  //
+  // 1) ABERTOS — sem recorte de data DE PROPÓSITO: comanda de mesa de ontem e
+  //    entrega em rota precisam aparecer, e é daqui que sai o alerta de pedido
+  //    novo. `not-in` em vez de listar os status abertos: status novo que
+  //    aparecer amanhã continua sendo tratado como aberto, não some da tela.
+  const ordersAbertosQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser || !canReadOperationalOrders) return null;
+    return query(
+      collection(db, 'orders'),
+      where('ownerId', '==', ownerId),
+      where('status', 'not-in', ['delivered', 'canceled']),
+    );
+  }, [canReadOperationalOrders, db, isRealUser, ownerId]);
+
+  // 2) SESSÃO — a janela do caixa aberto (ou do caixa antigo que se está
+  //    olhando). O filtro usa `orderDateTime`, string ISO gravada no cliente:
+  //    comparação de texto já é cronológica e, ao contrário do `createdAt`, ela
+  //    não fica pendente entre gravar e o servidor confirmar — a venda recém
+  //    feita não sumiria da lista por um instante.
+  //    A janela sai do caixa ABERTO, nunca do caixa antigo que se está olhando:
+  //    esta assinatura é a operação de agora. Caixa antigo é história, e história
+  //    é a assinatura (3) — que só existe dentro da aba Caixa.
+  const janelaDaSessaoISO = React.useMemo(() => {
+    const abertura = (caixaAberto as any)?.dataAbertura?.toDate?.();
+    if (!abertura) return null;
+    // Mesma margem de 1 minuto que o filtro da tela já aplicava.
+    return new Date(abertura.getTime() - 60000).toISOString();
+  }, [caixaAberto]);
+
+  const ordersDaSessaoQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser || !canReadOperationalOrders || !janelaDaSessaoISO) return null;
+    return query(
+      collection(db, 'orders'),
+      where('ownerId', '==', ownerId),
+      where('orderDateTime', '>=', janelaDaSessaoISO),
+    );
+  }, [canReadOperationalOrders, db, isRealUser, janelaDaSessaoISO, ownerId]);
+
+  // 3) HISTÓRIA INTEIRA — só enquanto a aba Caixa está aberta. É ela que soma a
+  //    dívida de motoboy de TODAS as sessões (CaixaTab: motoboysComSaldoPendente)
+  //    e acha o pedido de uma venda de caixa antigo. Recortar isso por data
+  //    daria menos dívida do que a real, calado. Nas outras abas, não carrega.
+  const ordersHistoricoQuery = useMemoFirebase(() => {
+    if (!db || !isRealUser || !canReadOperationalOrders || visibleActiveTab !== 'caixa') return null;
+    return query(collection(db, 'orders'), where('ownerId', '==', ownerId));
+  }, [canReadOperationalOrders, db, isRealUser, ownerId, visibleActiveTab]);
 
   const selectPdvTab = React.useCallback((
     requested: PdvTabId,
@@ -299,7 +345,41 @@ export default function PdvPage() {
   const { data: categories, isLoading: loadingCats } = useCollection(categoriesQuery);
   const { data: addonCategories, isLoading: loadingAddonCats } = useCollection(addonCategoriesQuery);
   const { data: items, isLoading: loadingItems } = useCollection(itemsQuery);
-  const { data: ordersRaw, isLoading: loadingOrders, error: ordersError } = useCollection(ordersQuery);
+  const { data: ordersAbertos } = useCollection(ordersAbertosQuery);
+  const { data: ordersDaSessao } = useCollection(ordersDaSessaoQuery);
+  const { data: ordersHistorico } = useCollection(ordersHistoricoQuery);
+
+  const uniaoDePedidos = (listas: (any[] | null)[]) => {
+    const porId = new Map<string, any>();
+    for (const lista of listas) {
+      for (const order of lista || []) porId.set(order.id, order);
+    }
+    return [...porId.values()];
+  };
+
+  /**
+   * O que está ACONTECENDO na loja: pedidos abertos + a sessão de caixa aberta.
+   *
+   * ⚠️ É esta lista — e não `ordersRaw` — que alimenta o vigia de pedido novo,
+   * porque ele não só apita: ele ABATE ESTOQUE e sincroniza cliente de todo
+   * pedido que aparecer nela pela primeira vez. Ela só cresce quando entra
+   * pedido de verdade. Ligar o vigia em `ordersRaw` faria abrir a aba Caixa
+   * (que carrega a história) baixar estoque de centenas de vendas antigas.
+   */
+  const ordersOperacionais = React.useMemo(() => {
+    // Nulo até a primeira leitura chegar: devolver [] faria o vigia gravar "já
+    // vi tudo" com a lista vazia e, na leitura seguinte, tratar a loja inteira
+    // como pedido novo.
+    if (!ordersAbertos && !ordersDaSessao) return null;
+    return uniaoDePedidos([ordersDaSessao, ordersAbertos]);
+  }, [ordersAbertos, ordersDaSessao]);
+
+  // O que a TELA mostra: o operacional mais a história, que só existe enquanto a
+  // aba Caixa está aberta (é lá que se olha caixa antigo e dívida de motoboy).
+  const ordersRaw = React.useMemo(() => {
+    if (!ordersOperacionais && !ordersHistorico) return null;
+    return uniaoDePedidos([ordersHistorico, ordersOperacionais]);
+  }, [ordersHistorico, ordersOperacionais]);
 
   // Encomendas ficam em coleção própria (não em `orders`). Assinamos aqui — só
   // na confeitaria — para o contador da aba e para o Caixa abrir os itens pelo
@@ -374,7 +454,9 @@ export default function PdvPage() {
   // Refs para a varredura de re-tentativa de WhatsApp (evita closure velha no setInterval).
   const whatsappSendRef = useRef<((order: any, status: string) => Promise<any>) | null>(null);
   const ordersForSweepRef = useRef<any[] | null>(null);
-  ordersForSweepRef.current = (ordersRaw as any[]) || null;
+  // Re-tentativa de WhatsApp também é assunto do que está em operação: não faz
+  // sentido varrer a história inteira a cada 30s para achar pedido de 30 min.
+  ordersForSweepRef.current = ordersOperacionais;
 
   useEffect(() => {
     if (!user || !isRealUser || role !== 'owner' || whatsappWebhookSyncRef.current) return;
@@ -412,15 +494,15 @@ export default function PdvPage() {
   // escolher a mesa real onde o cliente sentou (padrão dos PDVs profissionais).
 
   useEffect(() => {
-    if (!ordersRaw || !db || !user) return;
-    const currentIds = new Set((ordersRaw as any[]).map(o => o.id));
+    // Ver o comentário de `ordersOperacionais`: aqui NÃO pode entrar a história.
+    if (!ordersOperacionais || !db || !user) return;
     if (seenOrderIdsRef.current === null) {
-      seenOrderIdsRef.current = currentIds;
+      seenOrderIdsRef.current = new Set(ordersOperacionais.map(o => o.id));
       return;
     }
-    
+
     // Todos os pedidos novos que entraram agora
-    const allNewOnes = (ordersRaw as any[]).filter(o => !seenOrderIdsRef.current!.has(o.id));
+    const allNewOnes = ordersOperacionais.filter(o => !seenOrderIdsRef.current!.has(o.id));
     
     // Filtro para apitar: apenas pendentes. Pedidos criados no PDV de mesa
     // (source: 'pdv') já imprimem o ticket localmente — não reimprimir aqui.
@@ -481,8 +563,11 @@ export default function PdvPage() {
     };
     void processIncomingOrders();
 
-    seenOrderIdsRef.current = currentIds;
-  }, [ordersRaw, toast, db, user, storeProfile]);
+    // Só ACRESCENTA: id visto uma vez nunca volta a ser "novo". Sem isso, um
+    // pedido que saísse da lista (o caixa fechou e a janela andou) e voltasse
+    // seria processado de novo — abatendo estoque duas vezes.
+    for (const order of ordersOperacionais) seenOrderIdsRef.current.add(order.id);
+  }, [ordersOperacionais, toast, db, user, storeProfile]);
 
   // (Alerta de nova encomenda e pedido de permissão de notificação também foram
   // para o <OrderAlertsWatcher/> — tocam em qualquer tela, PDV ou Retaguarda.)
