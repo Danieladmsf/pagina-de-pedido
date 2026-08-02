@@ -520,7 +520,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <Bike className="h-4 w-4 text-teal-600" />
-                Pedidos por Tipo
+                Pedidos por Canal
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-2">
