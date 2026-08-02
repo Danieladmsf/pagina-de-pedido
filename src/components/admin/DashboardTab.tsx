@@ -43,6 +43,7 @@ import {
   canalDaVenda,
   type CanalDaVenda,
 } from '@/lib/order-channel';
+import { faturamentoPorPagamento } from '@/lib/payment-breakdown';
 
 interface DashboardTabProps {
   db: any;
@@ -76,6 +77,15 @@ const CANAL_ESTILO: Record<CanalDaVenda, { color: string; Icon: any }> = {
   balcao: { color: '#8b5cf6', Icon: Store },
   mesa: { color: '#f59e0b', Icon: UtensilsCrossed },
   encomenda: { color: '#ec4899', Icon: Package },
+};
+
+/** Mesmas cores da aba Caixa: a forma de pagamento não muda de cor entre telas. */
+const FORMA_CORES: Record<string, string> = {
+  Dinheiro: '#f59e0b',
+  Pix: '#14b8a6',
+  Débito: '#64748b',
+  Crédito: '#8b5cf6',
+  Prazo: '#d946ef',
 };
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -239,18 +249,11 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       revenue: canalRevenue[canal] || 0,
     }));
 
-    // Forma de pagamento
-    const paymentCount: Record<string, number> = {};
-    valid.forEach(o => {
-      const raw = (o.paymentMethod || 'Não definido').toString();
-      let primary = raw.split(/[+,;]/)[0].trim().split('(')[0].trim() || 'Não definido';
-      if (primary === 'conta_casa') primary = 'Prazo';
-      paymentCount[primary] = (paymentCount[primary] || 0) + (o.totalAmount || 0);
-    });
-    const paymentData = Object.entries(paymentCount)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 6);
+    // Faturamento por forma de pagamento. A venda dividida é uma frase só no
+    // banco ("Pix: R$ 59.30 | Débito: R$ 38.40"), e agrupar por essa frase fazia
+    // cada combinação virar uma linha própria na tela — com o valor do Pix
+    // daquela venda fora do Pix. `faturamentoPorPagamento` quebra nas partes.
+    const paymentData = faturamentoPorPagamento(valid);
 
     // Top produtos
     const productAgg: Record<string, { name: string; qty: number; revenue: number }> = {};
@@ -620,22 +623,23 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                 </p>
               ) : (
                 stats.paymentData.map((p, idx) => {
-                  const total = stats.paymentData.reduce((s, x) => s + x.value, 0) || 1;
-                  const pct = (p.value / total) * 100;
+                  const total = stats.paymentData.reduce((s, x) => s + x.total, 0) || 1;
+                  const pct = (p.total / total) * 100;
+                  const cor = FORMA_CORES[p.forma] || PIE_COLORS[idx % PIE_COLORS.length];
                   return (
-                    <div key={p.name} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-slate-700 truncate pr-2">{p.name}</span>
-                        <span className="font-bold text-slate-800 shrink-0">{brl(p.value)}</span>
+                    <div key={p.forma} className="space-y-1">
+                      <div className="flex items-baseline justify-between text-sm gap-2">
+                        <span className="font-semibold text-slate-700 truncate">{p.forma}</span>
+                        <span className="font-bold text-slate-800 shrink-0">{brl(p.total)}</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: PIE_COLORS[idx % PIE_COLORS.length],
-                          }}
+                          style={{ width: `${pct}%`, backgroundColor: cor }}
                         />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {p.vendas} venda{p.vendas === 1 ? '' : 's'} · {Math.round(pct)}% do faturamento
                       </div>
                     </div>
                   );
