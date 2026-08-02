@@ -197,7 +197,7 @@ export function EquipeEntregas({
 
   return (
     <div className="space-y-5 pb-28">
-      <div className="grid items-start gap-5 2xl:grid-cols-2">
+      <div className="grid items-start gap-5 xl:grid-cols-2">
       {/* ───────────── Motoboys ───────────── */}
       <section className="bg-white rounded-2xl border shadow-sm overflow-hidden">
         <header className="px-5 py-4 border-b bg-gradient-to-r from-blue-50/60 to-white flex items-center gap-3">
