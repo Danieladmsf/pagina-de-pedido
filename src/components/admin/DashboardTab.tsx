@@ -44,6 +44,7 @@ import {
   type CanalDaVenda,
 } from '@/lib/order-channel';
 import { faturamentoPorPagamento } from '@/lib/payment-breakdown';
+import { resumoDaBaseDeClientes } from '@/lib/clientes/base-clientes';
 
 interface DashboardTabProps {
   db: any;
@@ -290,6 +291,10 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
   const totalProducts = items?.length || 0;
   const totalCategories = categories?.length || 0;
   const totalClientes = clientes?.length || 0;
+  // Quantos ainda compram e quantos entraram agora. O card mostrava, embaixo do
+  // total de clientes, quantos PRODUTOS e CATEGORIAS a loja tem — dado do
+  // cardápio num card de cliente, que se lia como "categorias de clientes".
+  const baseDeClientes = useMemo(() => resumoDaBaseDeClientes(clientes || []), [clientes]);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
@@ -379,7 +384,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
           <KpiCard
             label="Base de Clientes"
             value={totalClientes.toString()}
-            sub={`${totalProducts} produtos · ${totalCategories} categorias`}
+            sub={`${baseDeClientes.ativos} ativos · ${baseDeClientes.novosNoMes} novo${baseDeClientes.novosNoMes === 1 ? '' : 's'} no mês`}
             Icon={Users}
             color="amber"
           />
@@ -483,6 +488,12 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                 <Trophy className="h-4 w-4 text-amber-500" />
                 Top Produtos
               </CardTitle>
+              {/* O tamanho do cardápio morava embaixo do total de CLIENTES.
+                  Aqui ele é contexto do que está sendo mostrado: os 5 mais
+                  vendidos, de quantos produtos ao todo. */}
+              <p className="text-[11px] text-muted-foreground">
+                {totalProducts} produto{totalProducts === 1 ? '' : 's'} · {totalCategories} categoria{totalCategories === 1 ? '' : 's'} no cardápio
+              </p>
             </CardHeader>
             <CardContent className="pt-2 space-y-2">
               {stats.topProducts.length === 0 ? (
