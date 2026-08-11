@@ -65,7 +65,7 @@ export function MenuVitrine({ items, promoItemsMap, comboEmoji, isVisible, onSel
     const fillers = needed > 0 ? normals.slice(0, needed) : [];
     return [...offers, ...fillers].slice(0, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, promoItemsMap, enableInventory]);
+  }, [items, promoItemsMap, enableInventory, isVisible]);
 
   // A primeira renderizacao precisa ser deterministica para que o HTML do
   // servidor seja igual ao do navegador. O embaralhamento acontece somente

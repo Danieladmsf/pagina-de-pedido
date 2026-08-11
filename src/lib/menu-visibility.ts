@@ -25,6 +25,71 @@ export function isItemVisibleInChannel(item: any, channel: SalesChannel) {
   return item?.[channelById[channel].field] !== false;
 }
 
+/**
+ * Botão Ligada/Desligada da aba Categorias. Desligada some do cardápio inteiro:
+ * seções, abas, vitrine, páginas de oferta e também PDV/Mesa — o botão não fala
+ * de canal, então "Desligada" tem que valer em tudo. Quem quer esconder só do
+ * cardápio online usa os toggles Delivery/Local do produto.
+ */
+export function isCategoryOn(category: any) {
+  return category?.isAvailable !== false;
+}
+
+const DIAS_DA_SEMANA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+const limparDia = (d: string) =>
+  String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/**
+ * Ligada E dentro da janela de horário configurada (o ícone de relógio da aba
+ * Categorias). A janela é do cardápio online — o PDV usa só `isCategoryOn`,
+ * senão o balcão ficaria impedido de vender fora do horário do delivery.
+ */
+export function isCategoryVisibleNow(category: any, now: Date, timezone = 'America/Sao_Paulo') {
+  if (!isCategoryOn(category)) return false;
+  if (!category?.availability?.enabled) return true;
+
+  let local = now;
+  try {
+    local = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  } catch {
+    local = new Date(now);
+  }
+
+  const { days, startTime, endTime } = category.availability;
+  const hoje = DIAS_DA_SEMANA[local.getDay()];
+  if (days) {
+    const noDia = days
+      .map((d: string) => limparDia(d))
+      .some((d: string) => d === hoje || d.includes(hoje) || hoje.includes(d));
+    if (!noDia) return false;
+  }
+
+  const [abreHora, abreMin] = String(startTime || '00:00').split(':').map(Number);
+  const [fechaHora, fechaMin] = String(endTime || '23:59').split(':').map(Number);
+  const agora = local.getHours() * 60 + local.getMinutes();
+  const abre = abreHora * 60 + abreMin;
+  const fecha = fechaHora * 60 + fechaMin;
+
+  return fecha <= abre ? agora >= abre || agora <= fecha : agora >= abre && agora <= fecha;
+}
+
+/** Categorias que o cliente pode ver agora, já na ordem de exibição. */
+export function getVisibleCategories(categories: any[] | null | undefined, now: Date, timezone?: string) {
+  return (categories || [])
+    .filter((cat) => isCategoryVisibleNow(cat, now, timezone))
+    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+}
+
+/**
+ * O produto acompanha a categoria dele. Combo tem seção própria e produto sem
+ * categoria não tem a quem obedecer — esses dois seguem visíveis.
+ */
+export function isItemInVisibleCategory(item: any, visibleCategoryIds: Set<string>) {
+  if (item?.isCombo) return true;
+  if (!item?.categoryId) return true;
+  return visibleCategoryIds.has(item.categoryId);
+}
+
 export function hasAnyVisibleChannel(item: any) {
   return MENU_VISIBILITY_CHANNELS.some((channel) => isItemVisibleInChannel(item, channel.id));
 }

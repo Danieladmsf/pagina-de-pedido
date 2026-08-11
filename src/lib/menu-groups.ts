@@ -1,5 +1,5 @@
 import { normalizeSearch } from '@/lib/utils';
-import { isItemVisibleInChannel, type SalesChannel } from '@/lib/menu-visibility';
+import { isCategoryOn, isItemVisibleInChannel, type SalesChannel } from '@/lib/menu-visibility';
 import type { PromoItemInfo } from '@/hooks/usePromotions';
 
 // Agrupamento do cardápio para os canais internos (PDV/Mesa). Idêntico entre
@@ -24,9 +24,16 @@ export function buildAdminMenuGroups(
 ): MenuGroup[] {
   const { promoItemsMap, promoOnlyIds, hasActivePromos } = promo;
 
+  // Categoria desligada leva os produtos dela junto — inclusive os que estariam
+  // na seção de Promoções. Combo não obedece categoria (tem seção própria).
+  const categoriasDesligadas = new Set(
+    (categories || []).filter((cat: any) => !isCategoryOn(cat)).map((cat: any) => cat.id)
+  );
+
   const filteredItems = (items || []).filter((item: any) => {
     if (item.isAvailable === false) return false;
     if (!isItemVisibleInChannel(item, channel)) return false;
+    if (!item.isCombo && categoriasDesligadas.has(item.categoryId)) return false;
     return normalizeSearch(item.name).includes(normalizeSearch(searchTerm));
   });
 

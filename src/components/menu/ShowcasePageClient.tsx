@@ -17,6 +17,7 @@ import { themeToCssVars } from '@/lib/themes';
 import { applyPromoPrice, itemNeedsCustomization } from '@/lib/cart';
 import { brl } from '@/lib/utils';
 import { checkCartStock, isOutOfStock } from '@/lib/inventory';
+import { getVisibleCategories, isItemInVisibleCategory } from '@/lib/menu-visibility';
 import { useToast } from '@/hooks/use-toast';
 
 type ShowcaseMode = 'combos' | 'promocoes' | 'ofertas';
@@ -76,10 +77,17 @@ export function ShowcasePageClient({
   const data = useStoreMenuData(storeSlug, urlParam);
   const {
     isLoading, now, storeId, storeInfo, storeProfile,
-    items, addons, addonCategories, deliveryVisibleItems,
+    items, categories, addons, addonCategories, deliveryVisibleItems,
     promoItemsMap, hasActivePromos, theme, comboEmoji, isStoreOpen,
     isVisibleForCustomerMenu,
   } = data;
+
+  // Categoria desligada tira o produto daqui também — senão a promoção
+  // devolvia à home o produto que a dona já tinha tirado do cardápio.
+  const visibleCategoryIds = useMemo(
+    () => new Set(getVisibleCategories(categories, now, storeProfile?.general?.timezone).map((c: any) => c.id)),
+    [categories, now, storeProfile]
+  );
 
   const { toast } = useToast();
   const inventoryOn = !!storeProfile?.general?.enableInventory;
@@ -93,12 +101,13 @@ export function ShowcasePageClient({
     return items.filter((item: any) => {
       if (item.isAvailable === false) return false;
       if (!isVisibleForCustomerMenu(item)) return false;
+      if (!isItemInVisibleCategory(item, visibleCategoryIds)) return false;
       if (item.startDate && now < new Date(item.startDate)) return false;
       if (item.endDate && now > new Date(item.endDate)) return false;
       if (isOfertas) return !!item.isCombo || !!promoItemsMap[item.id];
       return isCombos ? !!item.isCombo : !!promoItemsMap[item.id];
     });
-  }, [items, isVisibleForCustomerMenu, now, isCombos, isOfertas, promoItemsMap]);
+  }, [items, isVisibleForCustomerMenu, visibleCategoryIds, now, isCombos, isOfertas, promoItemsMap]);
 
   const handleAddClick = useCallback((e: React.MouseEvent, item: any) => {
     e.preventDefault();

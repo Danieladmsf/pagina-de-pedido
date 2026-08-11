@@ -23,7 +23,7 @@ import { useSearchParams } from 'next/navigation';
 import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
-import { isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { getVisibleCategories, isItemInVisibleCategory, isItemVisibleInChannel } from '@/lib/menu-visibility';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
@@ -426,50 +426,20 @@ export function MenuPageClient({
     };
   }, [db, storeId]);
 
-  const visibleCategories = useMemo(() => {
-    if (!categories) return [];
-    
-    const timezone = storeProfile?.general?.timezone || 'America/Sao_Paulo';
-    let localNow = new Date();
-    try {
-      localNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-    } catch (e) {
-      localNow = new Date(now);
-    }
-    
-    const dayOfWeek = localNow.getDay(); // 0 is Sunday
-    const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-    const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const currentDayCleaned = cleanDaysOfWeek[dayOfWeek];
+  const visibleCategories = useMemo(
+    () => getVisibleCategories(categories, now, storeProfile?.general?.timezone),
+    [categories, storeProfile, now]
+  );
 
-    const currentHour = localNow.getHours();
-    const currentMin = localNow.getMinutes();
-    const currentMins = currentHour * 60 + currentMin;
-
-    return categories.filter((cat: any) => {
-      if (cat.isAvailable === false) return false;
-      if (!cat.availability?.enabled) return true;
-      
-      const { days, startTime, endTime } = cat.availability;
-      if (days) {
-        const cleanedDays = days.map((d: string) => cleanDay(d));
-        const isAvailableToday = cleanedDays.some((d: string) => 
-          d === currentDayCleaned || d.includes(currentDayCleaned) || currentDayCleaned.includes(d)
-        );
-        if (!isAvailableToday) return false;
-      }
-      
-      const [openHour, openMin] = (startTime || '00:00').split(':').map(Number);
-      const [closeHour, closeMin] = (endTime || '23:59').split(':').map(Number);
-      
-      const openMins = openHour * 60 + openMin;
-      const closeMins = closeHour * 60 + closeMin;
-      
-      return closeMins <= openMins
-        ? (currentMins >= openMins || currentMins <= closeMins)
-        : (currentMins >= openMins && currentMins <= closeMins);
-    }).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-  }, [categories, storeProfile, now]);
+  // `now` bate de 10 em 10s, então `visibleCategories` vira um array novo a cada
+  // tique. A chave por conteúdo mantém o Set (e quem depende dele) com a mesma
+  // identidade enquanto a lista não muda de verdade — sem isso a Vitrine
+  // reembaralharia sozinha a cada 10 segundos.
+  const visibleCategoryKey = visibleCategories.map((c: any) => c.id).join(',');
+  const visibleCategoryIds = useMemo(
+    () => new Set(visibleCategoryKey ? visibleCategoryKey.split(',') : []),
+    [visibleCategoryKey]
+  );
 
   useEffect(() => {
     const el = categoryScrollRef.current;
@@ -497,36 +467,42 @@ export function MenuPageClient({
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
-    
-    // Only show items whose category is visible
-    const visibleCategoryIds = new Set(visibleCategories.map(c => c.id));
 
     return items.filter(item => {
       if (item.isAvailable === false) return false;
       if (!isVisibleForCustomerMenu(item)) return false;
-      
+
       if (item.startDate || item.endDate) {
         if (item.startDate && now < new Date(item.startDate)) return false;
         if (item.endDate && now > new Date(item.endDate)) return false;
       }
-      
+
       // Combos sempre aparecem (tem secao propria "Combos"); os demais itens so
       // aparecem se a categoria deles estiver visivel.
-      const isVisibleCategory = item.isCombo || (item.categoryId ? visibleCategoryIds.has(item.categoryId) : true);
-      if (!isVisibleCategory) return false;
+      if (!isItemInVisibleCategory(item, visibleCategoryIds)) return false;
 
       // Hide promo-only items from regular categories
       if (promoOnlyIds.has(item.id)) return false;
-      
+
       const cleanSearchQuery = removeAccents(searchQuery.toLowerCase());
       const cleanItemName = removeAccents(item.name.toLowerCase());
       const cleanItemDesc = removeAccents(item.description.toLowerCase());
-      const matchesSearch = !searchQuery || cleanItemName.includes(cleanSearchQuery) || 
+      const matchesSearch = !searchQuery || cleanItemName.includes(cleanSearchQuery) ||
                            cleanItemDesc.includes(cleanSearchQuery);
 
       return matchesSearch;
     });
-  }, [searchQuery, items, visibleCategories, promoOnlyIds, isVisibleForCustomerMenu]);
+  }, [searchQuery, items, visibleCategoryIds, promoOnlyIds, isVisibleForCustomerMenu]);
+
+  // A Vitrine é a maior peça da home: produto de categoria desligada (ou fora do
+  // horário dela) não pode continuar girando lá depois que a dona desligou a
+  // categoria — era por aqui que a categoria "voltava" ao cardápio. Filtra por
+  // aqui, e não na lista `items`, porque a Vitrine ainda precisa do catálogo
+  // inteiro para calcular o estoque de combo.
+  const isVisibleInVitrine = useCallback(
+    (item: any) => isVisibleForCustomerMenu(item) && isItemInVisibleCategory(item, visibleCategoryIds),
+    [isVisibleForCustomerMenu, visibleCategoryIds]
+  );
 
   const deliveryVisibleItems = useMemo(() => {
     return (items || []).filter(isVisibleForCustomerMenu);
@@ -1127,7 +1103,7 @@ export function MenuPageClient({
           items={items}
           promoItemsMap={promoItemsMap}
           comboEmoji={comboEmoji}
-          isVisible={isVisibleForCustomerMenu}
+          isVisible={isVisibleInVitrine}
           onSelectItem={(item) => setSelectedItem(applyPromoPrice(item, promoItemsMap))}
           enableInventory={storeProfile?.general?.enableInventory || false}
         />

@@ -44,7 +44,7 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
-import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isToggleActive } from '@/lib/menu-visibility';
+import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isItemVisibleInChannel, isToggleActive } from '@/lib/menu-visibility';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -316,6 +316,31 @@ export default function GestaoPage() {
       return (a.name || '').localeCompare(b.name || '', 'pt-BR');
     });
   }, [categories]);
+
+  /**
+   * Diagnóstico de cada categoria para a lista da aba Categorias: ligar a
+   * categoria não liga os produtos dentro dela, então dava pra deixar tudo
+   * "Ligada" em verde e mesmo assim não aparecer nada no cardápio. Aqui contamos
+   * quantos produtos dela o cliente enxerga de fato, e marcamos nome repetido
+   * (desligar uma "Tortas" deixava a outra "Tortas" no ar).
+   */
+  const diagnosticoCategorias = React.useMemo(() => {
+    const contagemPorNome = new Map<string, number>();
+    for (const cat of categories || []) {
+      const chave = (cat.name || '').trim().toLowerCase();
+      contagemPorNome.set(chave, (contagemPorNome.get(chave) || 0) + 1);
+    }
+    const mapa: Record<string, { total: number; visiveis: number; nomeRepetido: boolean }> = {};
+    for (const cat of categories || []) {
+      const doCat = (items || []).filter((it: any) => !it.isCombo && it.categoryId === cat.id);
+      mapa[cat.id] = {
+        total: doCat.length,
+        visiveis: doCat.filter((it: any) => it.isAvailable !== false && isItemVisibleInChannel(it, 'delivery')).length,
+        nomeRepetido: (contagemPorNome.get((cat.name || '').trim().toLowerCase()) || 0) > 1,
+      };
+    }
+    return mapa;
+  }, [categories, items]);
 
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
@@ -1412,10 +1437,39 @@ export default function GestaoPage() {
                                         <GripVertical className="h-5 w-5 text-muted-foreground" />
                                       </div>
                                       <div>
-                                        {cat.name}
+                                        <span className="inline-flex items-center gap-1.5">
+                                          {cat.name}
+                                          {diagnosticoCategorias[cat.id]?.nomeRepetido && (
+                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                                              nome repetido
+                                            </span>
+                                          )}
+                                        </span>
                                         {cat.availability?.enabled && (
                                           <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
                                             {cat.availability.days?.map((d: string) => d.substring(0, 3)).join(', ')} ({cat.availability.startTime || '00:00'} às {cat.availability.endTime || '23:59'})
+                                          </p>
+                                        )}
+                                        {/* Ligada, mas o cliente não vê nada: os produtos de dentro é que
+                                            estão desligados. Sem esse aviso o botão verde parecia quebrado. */}
+                                        {cat.isAvailable !== false && diagnosticoCategorias[cat.id]?.total > 0 && diagnosticoCategorias[cat.id]?.visiveis === 0 && (
+                                          <p className="mt-1 text-[11px] font-medium text-amber-600">
+                                            Ligada, mas não aparece no cardápio: {diagnosticoCategorias[cat.id].total === 1 ? 'o único produto está desligado' : `os ${diagnosticoCategorias[cat.id].total} produtos estão desligados`}.{' '}
+                                            <button
+                                              type="button"
+                                              className="underline underline-offset-2 hover:text-amber-700"
+                                              onClick={() => {
+                                                setProductCategoryFilter(cat.id);
+                                                handleTabChange('produtos');
+                                              }}
+                                            >
+                                              Ver produtos
+                                            </button>
+                                          </p>
+                                        )}
+                                        {cat.isAvailable !== false && diagnosticoCategorias[cat.id]?.total === 0 && (
+                                          <p className="mt-1 text-[11px] font-medium text-slate-400">
+                                            Ligada, mas ainda não tem produto dentro.
                                           </p>
                                         )}
                                       </div>
