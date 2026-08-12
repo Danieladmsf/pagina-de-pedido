@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { PdvAccessProvider } from '@/contexts/PdvAccessContext';
 import { OrderAlertsWatcher } from '@/components/system/OrderAlertsWatcher';
+import { AudienceBadge } from '@/components/system/AudienceBadge';
 
 // Guard de autenticação único do sistema interno (PDV + Gestão). É a mesma
 // lógica que vivia na antiga página raiz; centralizada aqui, as duas rotas não
@@ -65,6 +66,7 @@ export default function SistemaLayout({ children }: { children: React.ReactNode 
   return (
     <PdvAccessProvider>
       <OrderAlertsWatcher />
+      <AudienceBadge />
       {children}
     </PdvAccessProvider>
   );

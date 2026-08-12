@@ -18,6 +18,15 @@
         { "fieldPath": "ownerId", "order": "ASCENDING" },
         { "fieldPath": "orderDateTime", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "Placar de audiência: visitas ao cardápio desde a abertura do caixa (at >= abertura).",
+      "collectionGroup": "store_visits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "storeId", "order": "ASCENDING" },
+        { "fieldPath": "at", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

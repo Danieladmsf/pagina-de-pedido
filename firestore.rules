@@ -639,6 +639,19 @@ service cloud.firestore {
       allow create, delete: if isAdmin() && request.auth.uid == profileId;
     }
 
+    // Visita ao cardápio: um registro por sessão de navegador, é o que alimenta
+    // o placar da sessão de caixa. Append-only de propósito — ninguém edita nem
+    // apaga, e `at` é obrigatoriamente a hora do servidor, então não dá para
+    // plantar visita com data escolhida.
+    match /store_visits/{visitId} {
+      allow create: if request.resource.data.keys().hasOnly(['storeId', 'at'])
+        && request.resource.data.storeId is string
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+      allow get, list: if isOwnerOf(resource.data.storeId)
+        || operatorCanPdvTab(resource.data.storeId, 'delivery');
+    }
+
     match /active_sessions/{sessionId} {
       // Ping de presença do cardápio: o cliente pode ainda não estar logado,
       // então a escrita é aberta mas restrita ao formato do ping.

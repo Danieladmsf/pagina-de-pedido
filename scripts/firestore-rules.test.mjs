@@ -18,6 +18,7 @@ import {
   getDocs,
   getFirestore,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -193,6 +194,8 @@ await Promise.all([
   }),
   admin.doc('active_sessions/session-a').set({ storeId: 'owner-a', lastActive: Date.now() }),
   admin.doc('active_sessions/session-b').set({ storeId: 'owner-b', lastActive: Date.now() }),
+  admin.doc('store_visits/visit-a').set({ storeId: 'owner-a', at: new Date() }),
+  admin.doc('store_visits/visit-b').set({ storeId: 'owner-b', at: new Date() }),
   // Dados da loja B + operador da loja B, para os testes cross-tenant.
   admin.doc('cash_registers/register-b').set({
     ownerId: 'owner-b', status: 'aberto', sessao: 1, saldoInicial: 0,
@@ -379,6 +382,25 @@ await allowed('sessões são consultáveis com filtro da própria loja', getDocs
   where('storeId', '==', 'owner-a'),
 )));
 await denied('sessões de outra loja são negadas', getDoc(doc(statusOperator, 'active_sessions/session-b')));
+
+// ── Placar de audiência: visita é append-only e a data vem do servidor ──
+await allowed('visitante anônimo registra a visita', setDoc(doc(anonymous, 'store_visits/visit-anon'), {
+  storeId: 'owner-a', at: serverTimestamp(),
+}));
+await denied('visita com data escolhida é negada', setDoc(doc(anonymous, 'store_visits/visit-forjada'), {
+  storeId: 'owner-a', at: new Date('2020-01-01'),
+}));
+await denied('visita com campo extra é negada', setDoc(doc(anonymous, 'store_visits/visit-extra'), {
+  storeId: 'owner-a', at: serverTimestamp(), fake: true,
+}));
+await denied('ninguém edita visita registrada', updateDoc(doc(anonymous, 'store_visits/visit-a'), { storeId: 'owner-b' }));
+await denied('nem o dono apaga visita registrada', deleteDoc(doc(owner, 'store_visits/visit-a')));
+await denied('visitante não lê o placar da loja', getDoc(doc(anonymous, 'store_visits/visit-a')));
+await allowed('a loja lê o próprio placar', getDocs(query(
+  collection(statusOperator, 'store_visits'),
+  where('storeId', '==', 'owner-a'),
+)));
+await denied('placar de outra loja é negado', getDoc(doc(statusOperator, 'store_visits/visit-b')));
 
 // ── Cenários de ataque adicionais: escalação de privilégio e cross-tenant ──
 await denied('operador não rouba pedido mudando o ownerId', updateDoc(doc(statusOperator, 'orders/order-a'), { ownerId: 'owner-b' }));

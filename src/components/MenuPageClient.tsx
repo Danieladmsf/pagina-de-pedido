@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, doc, setDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
@@ -24,6 +24,7 @@ import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { getVisibleCategories, isItemInVisibleCategory, isItemVisibleInChannel } from '@/lib/menu-visibility';
+import { PING_INTERVALO_MS, ehIdDeLojaResolvido, marcarVisitaDaSessao } from '@/lib/audience';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
@@ -396,34 +397,56 @@ export function MenuPageClient({
 
 
 
-  // Controle de Presença (Cliente Online)
+  // Presença: "quantos estão no cardápio agora" no painel da loja.
+  //
+  // Só pinga com o ID real da loja. A resolução do link curto tem fallback para
+  // o próprio slug quando a busca falha, e esse valor vazava para o banco
+  // (`storeId: "2cdrdn"`): o painel filtra pelo ownerId e aquele cliente nunca
+  // era contado. `lastActive` é a hora do SERVIDOR — com o relógio do aparelho
+  // do cliente, celular adiantado ficava online para sempre.
   React.useEffect(() => {
-    if (!db || !storeId) return;
+    if (!db || !ehIdDeLojaResolvido(storeId)) return;
     const sessionId = Math.random().toString(36).substring(2, 15);
     const sessionRef = doc(db, 'active_sessions', sessionId);
+    let encerrada = false;
 
-    const ping = async () => {
-      try {
-        await setDoc(sessionRef, {
-          storeId: storeId || 'default',
-          lastActive: Date.now()
-        });
-      } catch (e) {}
+    const ping = () => {
+      if (encerrada) return;
+      setDoc(sessionRef, { storeId, lastActive: serverTimestamp() }).catch(() => {});
     };
 
     ping();
-    const interval = setInterval(ping, 30000); // 30s
+    const interval = setInterval(ping, PING_INTERVALO_MS);
 
-    const handleUnload = () => {
+    const encerrar = () => {
+      if (encerrada) return;
+      encerrada = true;
       deleteDoc(sessionRef).catch(() => {});
     };
-    window.addEventListener('beforeunload', handleUnload);
+
+    // `beforeunload` não dispara ao trocar de app no celular; `pagehide` é o
+    // evento que a mobilidade respeita. O painel ainda faz a faxina do que
+    // escapar (aba morta por crash, bateria, rede caindo no meio).
+    window.addEventListener('beforeunload', encerrar);
+    window.addEventListener('pagehide', encerrar);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('beforeunload', handleUnload);
-      handleUnload();
+      window.removeEventListener('beforeunload', encerrar);
+      window.removeEventListener('pagehide', encerrar);
+      encerrar();
     };
+  }, [db, storeId]);
+
+  // Visita: o placar da sessão de caixa. Diferente da presença, este registro
+  // não é apagado — é ele que permite contar quem passou pelo cardápio ao longo
+  // do dia sem depender de alguém continuar com a página aberta. Uma visita por
+  // sessão de navegador, então recarregar a página não infla o número.
+  React.useEffect(() => {
+    if (!db || !ehIdDeLojaResolvido(storeId)) return;
+    const storage = typeof window === 'undefined' ? null : window.sessionStorage;
+    if (!marcarVisitaDaSessao(storage, storeId)) return;
+    addDoc(collection(db, 'store_visits'), { storeId, at: serverTimestamp() }).catch(() => {});
   }, [db, storeId]);
 
   const visibleCategories = useMemo(

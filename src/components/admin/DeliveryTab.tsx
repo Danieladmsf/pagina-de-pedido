@@ -24,6 +24,7 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
+import { usePublicAudience } from '@/hooks/usePublicAudience';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
@@ -111,31 +112,10 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
   };
   
-  // Clientes Online
-  const [onlineCount, setOnlineCount] = useState(0);
-
-  // Rastreia usuários ativos no cardápio
-  useEffect(() => {
-    if (!db || !ownerId) return;
-    
-    // Observa sessões ativas da loja
-    const q = query(collection(db, 'active_sessions'), where('storeId', '==', ownerId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Filtra localmente os que deram sinal de vida no último 1 minuto (60000 ms)
-      const activeThreshold = Date.now() - 60000;
-      let count = 0;
-      
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.lastActive && data.lastActive >= activeThreshold) {
-          count++;
-        }
-      });
-      setOnlineCount(count);
-    });
-
-    return () => unsubscribe();
-  }, [db, ownerId]);
+  // Clientes com o cardápio aberto agora. A contagem (corte por tempo, relógio
+  // local para não congelar e faxina das sessões mortas) mora no hook, que é o
+  // mesmo do placar flutuante — a conta existia aqui e divergia.
+  const { online: onlineCount } = usePublicAudience(ownerId);
 
   const normalizedOrderSearch = searchTerm.trim().toLowerCase();
   const filteredOrders = onlyDeliveryAppOrders.filter(o =>
