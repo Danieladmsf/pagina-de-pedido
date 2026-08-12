@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CaixaFechadoCard from '@/components/shared/CaixaFechadoCard';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Plus, X, Minus, ShoppingCart, Tag, Pencil } from 'lucide-react';
+import { CheckCircle2, User, MapPin, Phone, Printer, Info, CreditCard, Banknote, QrCode, Wallet, Bike, Plus, X, Minus, ShoppingCart, Tag, Pencil } from 'lucide-react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -24,7 +24,6 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { reconcileOrderStock, InsufficientStockError, isOutOfStock } from '@/lib/inventory';
 import { MenuItemDialog } from '@/components/menu/MenuItemDialog';
 import { useCategoryScrollSpy } from '@/hooks/useCategoryScrollSpy';
-import { usePublicAudience } from '@/hooks/usePublicAudience';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { resolveFormasPagamento } from './fechamento/payment-methods';
@@ -112,10 +111,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     toast({ variant: 'destructive', title: 'Permissão removida pelo administrador' });
   };
   
-  // Clientes com o cardápio aberto agora. A contagem (corte por tempo, relógio
-  // local para não congelar e faxina das sessões mortas) mora no hook, que é o
-  // mesmo do placar flutuante — a conta existia aqui e divergia.
-  const { online: onlineCount } = usePublicAudience(ownerId);
 
   const normalizedOrderSearch = searchTerm.trim().toLowerCase();
   const filteredOrders = onlyDeliveryAppOrders.filter(o =>
@@ -647,12 +642,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
           )}
         </div>
         
+        {/* "Clientes online" saiu daqui: virou o placar flutuante, que mostra o
+            mesmo número junto das visitas da sessão e acompanha todas as telas.
+            Dois lugares dizendo a mesma coisa era ruído. */}
         <div className="bg-white p-2.5 rounded-lg shadow-sm border flex justify-between items-center font-bold text-base">
           <div className="bg-red-500 text-white px-4 py-2 rounded-md">
             Total: {brl(filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0))}
-          </div>
-          <div className="bg-green-500 text-white px-4 py-2 rounded-md flex items-center gap-2">
-            {onlineCount} Cliente{onlineCount !== 1 ? 's' : ''} online <Clock className="h-5 w-5" />
           </div>
         </div>
       </div>
