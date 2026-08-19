@@ -151,9 +151,12 @@ export default function GestaoPage() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   
-  // Estados para configuração de disponibilidade da categoria
+  // Estados para edição da categoria (nome + disponibilidade)
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [isCategoryConfigModalOpen, setIsCategoryConfigModalOpen] = useState(false);
+  // Nome de origem da categoria aberta: o título do modal mostra ele para não
+  // ficar mudando letra a letra enquanto o dono digita o nome novo.
+  const [categoryOriginalName, setCategoryOriginalName] = useState('');
   // Exclusão de categoria: antes apagava só a categoria e os produtos ficavam
   // soltos (sumiam do cardápio e continuavam à venda no PDV, em "Outros").
   const [deletingCategory, setDeletingCategory] = useState<any>(null);
@@ -342,6 +345,18 @@ export default function GestaoPage() {
     return mapa;
   }, [categories, items]);
 
+  /**
+   * Renomear no modal não pode criar uma segunda "Tortas" sem o dono perceber.
+   * Não trava o salvar (às vezes é de propósito), só avisa enquanto ele digita.
+   */
+  const nomeDeCategoriaRepetido = React.useMemo(() => {
+    const alvo = (editingCategory?.name || '').trim().toLowerCase();
+    if (!alvo) return false;
+    return (categories || []).some(
+      (c: any) => c.id !== editingCategory?.id && (c.name || '').trim().toLowerCase() === alvo
+    );
+  }, [categories, editingCategory]);
+
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
     let result = items.filter(item => !item.isCombo);
@@ -379,6 +394,16 @@ export default function GestaoPage() {
   /** Produtos que hoje estão numa categoria (combos também carregam categoryId). */
   const itemsOfCategory = (categoryId?: string) =>
     !categoryId ? [] : (items || []).filter((it: any) => it.categoryId === categoryId);
+
+  /**
+   * Abre o modal da categoria (nome + disponibilidade). Trabalha numa cópia
+   * para o que o dono digita só valer depois do Salvar.
+   */
+  const openCategoryConfig = (cat: any) => {
+    setEditingCategory({ ...cat });
+    setCategoryOriginalName(cat?.name || '');
+    setIsCategoryConfigModalOpen(true);
+  };
 
   /**
    * Exclui a categoria SEM deixar produto solto: ou move os produtos pra outra
@@ -1309,15 +1334,38 @@ export default function GestaoPage() {
                   </DialogContent>
                 </Dialog>
 
-                {/* Modal de Configuração da Categoria (Disponibilidade) */}
+                {/* Modal da Categoria: nome e disponibilidade no mesmo lugar.
+                    Antes só dava para mexer no horário, e arrumar um nome errado
+                    obrigava a excluir a categoria e criar tudo de novo. */}
                 <Dialog open={isCategoryConfigModalOpen} onOpenChange={setIsCategoryConfigModalOpen}>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Configurar Categoria: {editingCategory?.name}</DialogTitle>
+                      <DialogTitle>Configurar Categoria: {categoryOriginalName}</DialogTitle>
                     </DialogHeader>
                     {editingCategory && (
                       <div className="py-4 space-y-6">
-                        <div className="flex items-center justify-between">
+                        <div className="space-y-2">
+                          <Label htmlFor="editCatName" className="font-bold flex items-center gap-2 text-base">
+                            <Tag className="w-4 h-4 text-primary" />
+                            Nome da Categoria
+                          </Label>
+                          <Input
+                            id="editCatName"
+                            value={editingCategory.name || ''}
+                            onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                            placeholder="Ex: Lanches, Bebidas..."
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            O nome novo aparece no cardápio e no PDV assim que salvar. Os produtos continuam dentro dela.
+                          </p>
+                          {nomeDeCategoriaRepetido && (
+                            <p className="text-xs font-medium text-amber-600">
+                              Já existe outra categoria com esse nome — no cardápio as duas vão parecer a mesma.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between border-t pt-5">
                           <Label className="font-bold flex items-center gap-2 text-base">
                             <Clock className="w-4 h-4 text-primary" /> 
                             Limitar Disponibilidade
@@ -1394,17 +1442,29 @@ export default function GestaoPage() {
                       <Button variant="outline" onClick={() => setIsCategoryConfigModalOpen(false)}>Cancelar</Button>
                       <Button onClick={async () => {
                         if (!db || !editingCategory) return;
+                        const nome = (editingCategory.name || '').trim();
+                        if (!nome) {
+                          toast({ variant: 'destructive', title: 'A categoria precisa de um nome' });
+                          return;
+                        }
                         try {
+                          // Produto e combo apontam para o id da categoria, então
+                          // renomear não mexe em nada do que está dentro dela.
                           await updateDoc(doc(db, 'categories', editingCategory.id), {
+                            name: nome,
                             availability: editingCategory.availability || null
                           });
                           setIsCategoryConfigModalOpen(false);
-                          toast({ title: 'Configurações salvas!' });
+                          toast({
+                            title: nome !== categoryOriginalName
+                              ? `Agora se chama "${nome}"`
+                              : 'Configurações salvas!',
+                          });
                         } catch (err: any) {
                           toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message });
                         }
                       }} className="bg-primary text-white">
-                        Salvar Configurações
+                        Salvar
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -1489,10 +1549,10 @@ export default function GestaoPage() {
                                         />
                                         <span className={`text-[10px] font-medium uppercase ${cat.isAvailable !== false ? 'text-green-600' : 'text-red-500'}`}>{cat.isAvailable !== false ? 'Ligada' : 'Desligada'}</span>
                                       </div>
-                                      <Button variant="ghost" size="icon" onClick={() => {
-                                        setEditingCategory(cat);
-                                        setIsCategoryConfigModalOpen(true);
-                                      }} className={cat.availability?.enabled ? 'text-primary' : 'text-muted-foreground'}>
+                                      <Button variant="ghost" size="icon" onClick={() => openCategoryConfig(cat)} title="Editar nome">
+                                        <Pencil className="h-4 w-4 text-blue-500" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" onClick={() => openCategoryConfig(cat)} title="Dias e horários" className={cat.availability?.enabled ? 'text-primary' : 'text-muted-foreground'}>
                                         <Clock className="h-4 w-4" />
                                       </Button>
                                       <Button variant="ghost" size="icon" onClick={() => {
@@ -1501,7 +1561,7 @@ export default function GestaoPage() {
                                         setDeleteCategoryTarget(
                                           (categories || []).find((c: any) => c.id !== cat.id)?.id || ''
                                         );
-                                      }}>
+                                      }} title="Excluir">
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                       </Button>
                                     </div>
