@@ -9,6 +9,11 @@ import {
   ehIdDeLojaResolvido,
   marcarVisitaDaSessao,
   paraMillis,
+  CHAVE_DISPOSITIVO_INTERNO,
+  CHAVE_VISITOR_ID,
+  ehVisitaDaPropriaLoja,
+  marcarDispositivoDaLoja,
+  obterVisitorId,
 } from './audience';
 
 /**
@@ -143,5 +148,83 @@ describe('marcarVisitaDaSessao', () => {
   it('funciona sem storage nenhum (SSR)', () => {
     expect(marcarVisitaDaSessao(null, 'loja')).toBe(true);
     expect(marcarVisitaDaSessao(null, 'loja')).toBe(false);
+  });
+});
+
+describe('obterVisitorId', () => {
+  function storageFalso(): Storage {
+    const dados = new Map<string, string>();
+    return {
+      getItem: (k: string) => dados.get(k) ?? null,
+      setItem: (k: string, v: string) => void dados.set(k, v),
+      removeItem: (k: string) => void dados.delete(k),
+      clear: () => dados.clear(),
+      key: () => null,
+      length: 0,
+    } as unknown as Storage;
+  }
+
+  it('mantém o mesmo id entre visitas do mesmo navegador', () => {
+    const s = storageFalso();
+    const primeiro = obterVisitorId(s);
+    expect(primeiro).toBeTruthy();
+    expect(obterVisitorId(s)).toBe(primeiro);
+    expect(s.getItem(CHAVE_VISITOR_ID)).toBe(primeiro);
+  });
+
+  it('navegadores diferentes recebem ids diferentes', () => {
+    expect(obterVisitorId(storageFalso())).not.toBe(obterVisitorId(storageFalso()));
+  });
+
+  it('storage bloqueado ainda devolve um id estável na visita', () => {
+    const quebrado = {
+      getItem: () => { throw new Error('modo privado'); },
+      setItem: () => { throw new Error('modo privado'); },
+    } as unknown as Storage;
+    const id = obterVisitorId(quebrado);
+    expect(id).toBeTruthy();
+    expect(obterVisitorId(quebrado)).toBe(id);
+  });
+});
+
+describe('ehVisitaDaPropriaLoja', () => {
+  function storageFalso(): Storage {
+    const dados = new Map<string, string>();
+    return {
+      getItem: (k: string) => dados.get(k) ?? null,
+      setItem: (k: string, v: string) => void dados.set(k, v),
+      removeItem: (k: string) => void dados.delete(k),
+      clear: () => dados.clear(),
+      key: () => null,
+      length: 0,
+    } as unknown as Storage;
+  }
+
+  const LOJA = '5Hg3VG3qYAZNsobVnReK9aPntjx1';
+
+  it('cliente comum continua contando', () => {
+    expect(ehVisitaDaPropriaLoja(storageFalso(), LOJA, null)).toBe(false);
+  });
+
+  it('dono logado NESTA loja não conta como visita', () => {
+    expect(ehVisitaDaPropriaLoja(storageFalso(), LOJA, LOJA)).toBe(true);
+  });
+
+  it('dono de OUTRA loja olhando o cardápio é cliente como qualquer um', () => {
+    expect(ehVisitaDaPropriaLoja(storageFalso(), LOJA, 'gT3lDZMY7uR2pV8NDxc5a5UOYkP2')).toBe(false);
+  });
+
+  it('aparelho reconhecido continua de fora depois de deslogar', () => {
+    const s = storageFalso();
+    marcarDispositivoDaLoja(s, LOJA);
+    expect(ehVisitaDaPropriaLoja(s, LOJA, null)).toBe(true);
+    // ...mas só para a loja que o marcou.
+    expect(ehVisitaDaPropriaLoja(s, 'outra-loja-qualquer', null)).toBe(false);
+  });
+
+  it('storage com lixo não derruba a checagem', () => {
+    const s = storageFalso();
+    s.setItem(CHAVE_DISPOSITIVO_INTERNO, '{nao é json}');
+    expect(ehVisitaDaPropriaLoja(s, LOJA, null)).toBe(false);
   });
 });

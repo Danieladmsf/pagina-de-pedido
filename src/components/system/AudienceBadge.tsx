@@ -1,17 +1,22 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useRouter } from 'next/navigation';
+import { useUser } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { useCaixaAbertoEm } from '@/hooks/useCaixaAbertoEm';
 import { usePublicAudience } from '@/hooks/usePublicAudience';
+import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
 import { AudienceCard } from '@/components/system/AudienceCard';
+import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
+import { resumoDoDia, visitantesParaAvatares } from '@/lib/visitantes';
 
 const CHAVE_RECOLHIDO = 'audience-badge-recolhido';
 
 /**
  * Placar flutuante da audiência do cardápio: quantas pessoas visitaram a loja
- * desde que o caixa abriu e quantas estão com o cardápio aberto agora.
+ * desde que o caixa abriu, quem são elas e quantas estão com o cardápio aberto
+ * agora.
  *
  * Vive no layout do sistema (junto do OrderAlertsWatcher) para acompanhar tanto
  * o PDV quanto a Retaguarda sem remontar na troca de tela. Some com o caixa
@@ -20,9 +25,10 @@ const CHAVE_RECOLHIDO = 'audience-badge-recolhido';
  * Aqui só mora a busca dos dados — o desenho é o `AudienceCard`.
  */
 export function AudienceBadge() {
-  const db = useFirestore();
+  const { user } = useUser();
+  const router = useRouter();
   const { ownerId } = usePdvAccess();
-  const [caixaAbertoEm, setCaixaAbertoEm] = useState<Date | null>(null);
+  const caixaAbertoEm = useCaixaAbertoEm(ownerId);
   const [recolhido, setRecolhido] = useState(false);
 
   useEffect(() => {
@@ -33,30 +39,15 @@ export function AudienceBadge() {
     }
   }, []);
 
-  // Sessão de caixa aberta. `cash_registers` é a fonte — quem abriu o caixa
-  // gravou ali o `dataAbertura` que define o início da contagem.
-  useEffect(() => {
-    if (!db || !ownerId) return;
-    const q = query(
-      collection(db, 'cash_registers'),
-      where('ownerId', '==', ownerId),
-      where('status', '==', 'aberto')
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const abertura = snap.docs
-          .map((d) => d.data()?.dataAbertura?.toDate?.() as Date | undefined)
-          .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
-          .sort((a, b) => b.getTime() - a.getTime())[0];
-        setCaixaAbertoEm(abertura ?? null);
-      },
-      () => setCaixaAbertoEm(null)
-    );
-    return () => unsubscribe();
-  }, [db, ownerId]);
-
   const { online, visitasNaSessao, semAcesso } = usePublicAudience(ownerId, caixaAbertoEm);
+  const { visitantes } = useVisitantesDaLoja(ownerId, caixaAbertoEm);
+
+  const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId || ''), [user, ownerId]);
+  const pessoas = useMemo(() => visitantesParaAvatares(visitantes), [visitantes]);
+  const resumo = useMemo(
+    () => resumoDoDia(visitantes, caixaAbertoEm?.getTime() ?? 0),
+    [visitantes, caixaAbertoEm]
+  );
 
   const desde = useMemo(() => {
     if (!caixaAbertoEm) return '';
@@ -81,6 +72,11 @@ export function AudienceBadge() {
         visitas={visitasNaSessao ?? 0}
         online={online}
         desde={desde}
+        pessoas={pessoas}
+        carrinhosParados={resumo.abandonados}
+        valorParado={resumo.valorAbandonado}
+        loadPhoto={loadPhoto}
+        onAbrirVisitantes={() => router.push('/visitantes')}
         recolhido={recolhido}
         onAlternar={alternar}
       />

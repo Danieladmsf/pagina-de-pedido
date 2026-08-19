@@ -116,3 +116,93 @@ const marcadasEmMemoria = new Set<string>();
 export function _limparMarcasEmMemoria() {
   marcadasEmMemoria.clear();
 }
+
+/**
+ * Identidade do NAVEGADOR, não da aba: fica no `localStorage` e sobrevive a
+ * fechar a aba, ao pedido e ao dia seguinte. É o que separa "118 aberturas de
+ * cardápio" de "quantas pessoas diferentes passaram aqui" — sem ele, a mesma
+ * pessoa clicando o link do WhatsApp três vezes vira três visitantes.
+ *
+ * Anônimo de propósito: um id aleatório sem nada da pessoa dentro. O nome e o
+ * telefone só entram quando ela mesma se apresenta no carrinho.
+ */
+export const CHAVE_VISITOR_ID = 'visitante:id';
+
+let visitorIdEmMemoria: string | null = null;
+
+function novoId(): string {
+  const cripto = typeof globalThis !== 'undefined' ? (globalThis.crypto as Crypto | undefined) : undefined;
+  if (cripto?.randomUUID) return cripto.randomUUID();
+  return `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Devolve o id do visitante, criando na primeira vez. Storage bloqueado (aba
+ * anônima, iOS com cookies travados) cai para a memória do processo: o número
+ * ainda funciona dentro da visita, só não reconhece a pessoa amanhã.
+ */
+export function obterVisitorId(storage: Storage | null | undefined): string {
+  if (!storage) {
+    if (!visitorIdEmMemoria) visitorIdEmMemoria = novoId();
+    return visitorIdEmMemoria;
+  }
+  try {
+    const salvo = storage.getItem(CHAVE_VISITOR_ID);
+    if (salvo) return salvo;
+    const id = novoId();
+    storage.setItem(CHAVE_VISITOR_ID, id);
+    return id;
+  } catch {
+    if (!visitorIdEmMemoria) visitorIdEmMemoria = novoId();
+    return visitorIdEmMemoria;
+  }
+}
+
+/**
+ * Aparelho da própria loja não conta como cliente.
+ *
+ * O botão "Abrir cardápio público" da Retaguarda abre uma ABA NOVA a cada
+ * clique, e aba nova era visita nova: a loja inflava o próprio placar só de
+ * conferir preço. Quem está logado como dono da loja é reconhecido na hora; o
+ * aparelho fica marcado para continuar de fora mesmo depois, deslogado, quando
+ * não dá mais para saber quem é.
+ */
+export const CHAVE_DISPOSITIVO_INTERNO = 'visitante:interno';
+
+export function marcarDispositivoDaLoja(storage: Storage | null | undefined, storeId: string) {
+  if (!storage || !storeId) return;
+  try {
+    const atual = lerDispositivosDaLoja(storage);
+    if (atual.includes(storeId)) return;
+    storage.setItem(CHAVE_DISPOSITIVO_INTERNO, JSON.stringify([...atual, storeId]));
+  } catch {
+    /* sem storage: a checagem por login ainda vale nesta visita */
+  }
+}
+
+function lerDispositivosDaLoja(storage: Storage): string[] {
+  try {
+    const bruto = storage.getItem(CHAVE_DISPOSITIVO_INTERNO);
+    if (!bruto) return [];
+    const lista = JSON.parse(bruto);
+    return Array.isArray(lista) ? lista.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * `true` quando a visita é da própria loja: ou quem está logado É o dono desta
+ * loja, ou este aparelho já foi reconhecido antes. Confere o uid contra o id
+ * DESTA loja — dono de outra loja olhando o cardápio é cliente como qualquer um.
+ */
+export function ehVisitaDaPropriaLoja(
+  storage: Storage | null | undefined,
+  storeId: string,
+  uidLogado?: string | null
+): boolean {
+  if (!storeId) return false;
+  if (uidLogado && uidLogado === storeId) return true;
+  if (!storage) return false;
+  return lerDispositivosDaLoja(storage).includes(storeId);
+}

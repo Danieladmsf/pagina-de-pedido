@@ -196,6 +196,7 @@ await Promise.all([
   admin.doc('active_sessions/session-b').set({ storeId: 'owner-b', lastActive: Date.now() }),
   admin.doc('store_visits/visit-a').set({ storeId: 'owner-a', at: new Date() }),
   admin.doc('store_visits/visit-b').set({ storeId: 'owner-b', at: new Date() }),
+  admin.doc('store_visitors/owner-b__v-9').set({ storeId: 'owner-b', visitorId: 'v-9', ultimaVez: new Date() }),
   // Dados da loja B + operador da loja B, para os testes cross-tenant.
   admin.doc('cash_registers/register-b').set({
     ownerId: 'owner-b', status: 'aberto', sessao: 1, saldoInicial: 0,
@@ -401,6 +402,46 @@ await allowed('a loja lê o próprio placar', getDocs(query(
   where('storeId', '==', 'owner-a'),
 )));
 await denied('placar de outra loja é negado', getDoc(doc(statusOperator, 'store_visits/visit-b')));
+await allowed('visita nova carrega o id do visitante', setDoc(doc(anonymous, 'store_visits/visit-com-id'), {
+  storeId: 'owner-a', at: serverTimestamp(), visitorId: 'v-123',
+}));
+
+// ── Perfil do visitante: o id do documento amarra loja + visitante ──
+await allowed('cardápio cria o perfil do visitante', setDoc(doc(anonymous, 'store_visitors/owner-a__v-1'), {
+  storeId: 'owner-a', visitorId: 'v-1', primeiraVez: serverTimestamp(), ultimaVez: serverTimestamp(), sessoes: 1,
+}));
+await allowed('perfil acumula o que a pessoa olhou e o carrinho', setDoc(doc(anonymous, 'store_visitors/owner-a__v-1'), {
+  storeId: 'owner-a', visitorId: 'v-1', ultimaVez: serverTimestamp(), nome: 'Ana',
+  telefone: '16999998888', clienteId: 'cliente-a',
+  linhaDoTempo: [{ tipo: 'viu', at: 1, produtoId: 'item-a' }],
+  carrinho: { itens: [{ id: 'item-a', nome: 'Bolo', qtd: 1, valor: 30 }], valor: 30 },
+}, { merge: true }));
+await denied('perfil com id que não bate com a loja é negado', setDoc(doc(anonymous, 'store_visitors/owner-a__v-2'), {
+  storeId: 'owner-b', visitorId: 'v-2', ultimaVez: serverTimestamp(),
+}));
+await denied('perfil com id que não bate com o visitante é negado', setDoc(doc(anonymous, 'store_visitors/owner-a__v-3'), {
+  storeId: 'owner-a', visitorId: 'outro', ultimaVez: serverTimestamp(),
+}));
+await denied('perfil com hora escolhida é negado', setDoc(doc(anonymous, 'store_visitors/owner-a__v-4'), {
+  storeId: 'owner-a', visitorId: 'v-4', ultimaVez: new Date('2020-01-01'),
+}));
+await denied('perfil com campo extra é negado', setDoc(doc(anonymous, 'store_visitors/owner-a__v-5'), {
+  storeId: 'owner-a', visitorId: 'v-5', ultimaVez: serverTimestamp(), saldo: 999,
+}));
+await denied('linha do tempo sem fim é negada', setDoc(doc(anonymous, 'store_visitors/owner-a__v-6'), {
+  storeId: 'owner-a', visitorId: 'v-6', ultimaVez: serverTimestamp(),
+  linhaDoTempo: Array.from({ length: 41 }, (_, i) => ({ tipo: 'viu', at: i })),
+}));
+await denied('"cliente desde" não se reescreve', setDoc(doc(anonymous, 'store_visitors/owner-a__v-1'), {
+  storeId: 'owner-a', visitorId: 'v-1', primeiraVez: serverTimestamp(), ultimaVez: serverTimestamp(),
+}, { merge: true }));
+await denied('ninguém apaga o perfil do visitante', deleteDoc(doc(owner, 'store_visitors/owner-a__v-1')));
+await denied('visitante não lê o perfil que ele mesmo escreveu', getDoc(doc(anonymous, 'store_visitors/owner-a__v-1')));
+await allowed('a loja lê os próprios visitantes', getDocs(query(
+  collection(statusOperator, 'store_visitors'),
+  where('storeId', '==', 'owner-a'),
+)));
+await denied('visitantes de outra loja são negados', getDoc(doc(statusOperator, 'store_visitors/owner-b__v-9')));
 
 // ── Cenários de ataque adicionais: escalação de privilégio e cross-tenant ──
 await denied('operador não rouba pedido mudando o ownerId', updateDoc(doc(statusOperator, 'orders/order-a'), { ownerId: 'owner-b' }));

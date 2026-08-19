@@ -27,6 +27,15 @@
         { "fieldPath": "storeId", "order": "ASCENDING" },
         { "fieldPath": "at", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "Visitantes da sessão de caixa, do mais recente para o mais antigo (fotos do placar e tela de oportunidades).",
+      "collectionGroup": "store_visitors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "storeId", "order": "ASCENDING" },
+        { "fieldPath": "ultimaVez", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

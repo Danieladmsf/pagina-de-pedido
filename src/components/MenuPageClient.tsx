@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc, useUser } from '@/firebase';
 import { collection, query, where, doc, setDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { CartDrawer } from '@/components/cart/CartDrawer';
 import { ActiveOrdersBanner } from '@/components/customer/ActiveOrdersBanner';
@@ -24,7 +24,15 @@ import { getTheme, themeToCssVars, ensureBrandFontsLoaded } from '@/lib/themes';
 import { brl, removeAccents } from '@/lib/utils';
 import { useCart } from '@/components/providers/CartProvider';
 import { getVisibleCategories, isItemInVisibleCategory, isItemVisibleInChannel } from '@/lib/menu-visibility';
-import { PING_INTERVALO_MS, ehIdDeLojaResolvido, marcarVisitaDaSessao } from '@/lib/audience';
+import {
+  PING_INTERVALO_MS,
+  ehIdDeLojaResolvido,
+  ehVisitaDaPropriaLoja,
+  marcarDispositivoDaLoja,
+  marcarVisitaDaSessao,
+  obterVisitorId,
+} from '@/lib/audience';
+import { useVisitorTracking } from '@/hooks/useVisitorTracking';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
@@ -106,6 +114,7 @@ export function MenuPageClient({
   const db = useFirestore();
   const { toast } = useToast();
   const { cart, addToCart, updateQuantity, totalItems, totalPrice } = useCart();
+  const { user, isUserLoading } = useUser();
   const searchParams = useSearchParams();
   const [activeCategoryId, setActiveCategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -397,6 +406,40 @@ export function MenuPageClient({
 
 
 
+  // Identidade do NAVEGADOR (não da aba): é o que separa "quantas vezes o
+  // cardápio foi aberto" de "quantas pessoas diferentes passaram aqui".
+  const [visitorId, setVisitorId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setVisitorId(obterVisitorId(typeof window === 'undefined' ? null : window.localStorage));
+  }, []);
+
+  // Aparelho da própria loja não é cliente. O botão "Abrir cardápio público" da
+  // Retaguarda abre uma ABA NOVA a cada clique, e aba nova era visita nova: a
+  // loja inflava o próprio placar só de conferir preço. Espera o login ficar
+  // conhecido antes de decidir — decidir cedo contaria o dono como cliente.
+  const daPropriaLoja = React.useMemo(() => {
+    if (isUserLoading || !ehIdDeLojaResolvido(storeId)) return false;
+    const storage = typeof window === 'undefined' ? null : window.localStorage;
+    const interno = ehVisitaDaPropriaLoja(storage, storeId, user?.uid);
+    if (interno) marcarDispositivoDaLoja(storage, storeId);
+    return interno;
+  }, [isUserLoading, storeId, user?.uid]);
+
+  const podeRegistrar = !isUserLoading && !daPropriaLoja && ehIdDeLojaResolvido(storeId);
+
+  // Uma visita por sessão de navegador: recarregar a página ou navegar entre
+  // cardápio e ofertas não infla o placar. A decisão é tomada UMA vez e vale
+  // tanto para o placar quanto para o perfil do visitante.
+  const [sessaoNova, setSessaoNova] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    if (isUserLoading || !ehIdDeLojaResolvido(storeId) || sessaoNova !== null) return;
+    if (daPropriaLoja) {
+      setSessaoNova(false);
+      return;
+    }
+    setSessaoNova(marcarVisitaDaSessao(typeof window === 'undefined' ? null : window.sessionStorage, storeId));
+  }, [isUserLoading, storeId, daPropriaLoja, sessaoNova]);
+
   // Presença: "quantos estão no cardápio agora" no painel da loja.
   //
   // Só pinga com o ID real da loja. A resolução do link curto tem fallback para
@@ -405,7 +448,7 @@ export function MenuPageClient({
   // era contado. `lastActive` é a hora do SERVIDOR — com o relógio do aparelho
   // do cliente, celular adiantado ficava online para sempre.
   React.useEffect(() => {
-    if (!db || !ehIdDeLojaResolvido(storeId)) return;
+    if (!db || !podeRegistrar) return;
     const sessionId = Math.random().toString(36).substring(2, 15);
     const sessionRef = doc(db, 'active_sessions', sessionId);
     let encerrada = false;
@@ -436,18 +479,49 @@ export function MenuPageClient({
       window.removeEventListener('pagehide', encerrar);
       encerrar();
     };
-  }, [db, storeId]);
+  }, [db, podeRegistrar, storeId]);
 
   // Visita: o placar da sessão de caixa. Diferente da presença, este registro
   // não é apagado — é ele que permite contar quem passou pelo cardápio ao longo
-  // do dia sem depender de alguém continuar com a página aberta. Uma visita por
-  // sessão de navegador, então recarregar a página não infla o número.
+  // do dia sem depender de alguém continuar com a página aberta. Vai com o
+  // `visitorId` para o painel conseguir dizer quantas PESSOAS são.
   React.useEffect(() => {
-    if (!db || !ehIdDeLojaResolvido(storeId)) return;
-    const storage = typeof window === 'undefined' ? null : window.sessionStorage;
-    if (!marcarVisitaDaSessao(storage, storeId)) return;
-    addDoc(collection(db, 'store_visits'), { storeId, at: serverTimestamp() }).catch(() => {});
-  }, [db, storeId]);
+    if (!db || !podeRegistrar || sessaoNova !== true || !visitorId) return;
+    addDoc(collection(db, 'store_visits'), { storeId, at: serverTimestamp(), visitorId }).catch(() => {});
+  }, [db, podeRegistrar, sessaoNova, storeId, visitorId]);
+
+  // O que a pessoa olhou, o que ficou no carrinho e se o pedido saiu.
+  const tracker = useVisitorTracking({
+    db,
+    storeId: ehIdDeLojaResolvido(storeId) ? storeId : null,
+    visitorId,
+    ativo: podeRegistrar && sessaoNova !== null,
+    sessaoNova: sessaoNova === true,
+  });
+
+  // Cliente que já pediu antes é reconhecido assim que abre o cardápio: o
+  // nome e o telefone dele ficam no aparelho desde o último pedido. É o que faz
+  // as fotos aparecerem no placar da loja sem esperar um novo pedido.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const perfil = JSON.parse(window.localStorage.getItem('customer_profile') || '{}');
+      const telefone = perfil?.phone || window.localStorage.getItem('customer_phone') || '';
+      if (perfil?.name || telefone) tracker.identificar({ nome: perfil?.name, telefone });
+    } catch {
+      /* storage bloqueado: a pessoa só será reconhecida ao se identificar no carrinho */
+    }
+  }, [tracker]);
+
+  // Um efeito só em vez de instrumentar cada card: o diálogo do produto abre
+  // pela vitrine, pela busca, pelo combo e pela promoção.
+  React.useEffect(() => {
+    if (selectedItem) tracker.verProduto(selectedItem);
+  }, [selectedItem, tracker]);
+
+  React.useEffect(() => {
+    tracker.atualizarCarrinho(cart);
+  }, [cart, tracker]);
 
   const visibleCategories = useMemo(
     () => getVisibleCategories(categories, now, storeProfile?.general?.timezone),
@@ -992,6 +1066,7 @@ export function MenuPageClient({
             <div className="hidden">
             <CartDrawer
               storeOwnerId={storeId}
+              tracker={tracker}
               deliveryFee={storeProfile?.fees?.deliveryFee || (storeInfo as any)?.deliveryFee || 0}
               storeAddress={storeProfile?.general?.address || (storeInfo as any)?.storeAddress || ''}
               deliveryCities={storeProfile?.general?.deliveryCities || storeProfile?.fees?.deliveryCities || []}

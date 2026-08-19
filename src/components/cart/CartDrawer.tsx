@@ -25,6 +25,7 @@ import { getPhoneVariants, isValidCreditPhone, maskCreditPhoneInput, normalizeCr
 import { proposedCustomerId, syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import { getSalesChannelLabel, isItemVisibleInChannel, SalesChannel } from '@/lib/menu-visibility';
 import { generateOrderCode } from '@/lib/order-code';
+import type { VisitorTracker } from '@/hooks/useVisitorTracking';
 
 interface PaymentMethodConfig {
   id: string;
@@ -52,6 +53,8 @@ interface CartDrawerProps {
   themeId?: string | null;
   promoItemsMap?: Record<string, { promoPrice: number }>;
   disableDelivery?: boolean;
+  /** Registro do comportamento no cardápio (quem é, o que levou). Ausente = não registra. */
+  tracker?: VisitorTracker;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodConfig[] = [
@@ -96,7 +99,7 @@ const formatDate = (val: string) => {
   return f;
 };
 
-export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryCities = [], deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false }: CartDrawerProps) {
+export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, deliveryCities = [], deliveryFeeRules, customAddressRules, maxDeliveryRadius = 0, freeDeliveryOver = 0, paymentMethods, pixKey, pixName, isStoreOpen = true, menuItems = [], enableInventory = false, themeId, promoItemsMap, disableDelivery = false, tracker }: CartDrawerProps) {
   const cartTheme = getTheme(themeId);
   const [contaCasaEnabled, setContaCasaEnabled] = useState(false);
   
@@ -119,6 +122,14 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerBirthDate, setCustomerBirthDate] = useState('');
   const [orderType, setOrderType] = useState<'delivery' | 'pickup' | 'dine_in'>(disableDelivery ? 'pickup' : 'delivery');
+
+  // Quem digitou nome e telefone no carrinho já pode ser chamado de volta mesmo
+  // que não finalize — é justamente esse o caso que vale a ligação da loja.
+  useEffect(() => {
+    if (!tracker || !isValidCreditPhone(customerPhone)) return;
+    const t = setTimeout(() => tracker.identificar({ nome: customerName, telefone: customerPhone }), 1200);
+    return () => clearTimeout(t);
+  }, [tracker, customerName, customerPhone]);
 
   // Synchronize history state for back-button handling in CartDrawer
   useEffect(() => {
@@ -792,6 +803,17 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
       });
 
       toast({ title: "Pedido Enviado!", description: `Pedido #${orderCode} foi recebido.` });
+
+      // A visita virou venda: sai da fila de "carrinho parado" da loja. O
+      // vínculo vai pelo ID do pedido e pelo ID do cliente — nome e telefone
+      // ficam só para a loja ler e chamar no WhatsApp.
+      tracker?.registrarPedido({
+        orderId: orderRef.id,
+        valor: safeGrandTotal,
+        nome: customerName,
+        telefone: normalizedPhone,
+        clienteId,
+      });
 
       // Salva o telefone no localStorage e notifica outros componentes
       try {

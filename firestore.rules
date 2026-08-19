@@ -644,10 +644,55 @@ service cloud.firestore {
     // apaga, e `at` é obrigatoriamente a hora do servidor, então não dá para
     // plantar visita com data escolhida.
     match /store_visits/{visitId} {
-      allow create: if request.resource.data.keys().hasOnly(['storeId', 'at'])
+      allow create: if request.resource.data.keys().hasOnly(['storeId', 'at', 'visitorId'])
         && request.resource.data.storeId is string
-        && request.resource.data.at == request.time;
+        && request.resource.data.at == request.time
+        && (!('visitorId' in request.resource.data) || request.resource.data.visitorId is string);
       allow update, delete: if false;
+      allow get, list: if isOwnerOf(resource.data.storeId)
+        || operatorCanPdvTab(resource.data.storeId, 'delivery');
+    }
+
+    // Perfil do visitante do cardápio: o que olhou, o que ficou no carrinho e se
+    // o pedido saiu. Diferente da visita (append-only), este documento é
+    // REESCRITO conforme a pessoa navega — é o estado atual, um por pessoa.
+    //
+    // Quem escreve é o cardápio público, e ali o cliente não tem login. A trava
+    // possível é o formato + o id do documento: `{loja}__{visitante}` amarra o
+    // conteúdo ao caminho, então ninguém escreve no perfil de outro sem
+    // adivinhar o id aleatório dele. Leitura, essa sim, é só da própria loja.
+    match /store_visitors/{visitanteId} {
+      function visitanteBemFormado() {
+        return request.resource.data.keys().hasOnly([
+            'storeId', 'visitorId', 'primeiraVez', 'ultimaVez', 'sessoes',
+            'nome', 'telefone', 'clienteId', 'linhaDoTempo', 'carrinho',
+            'pedidos', 'ultimoPedidoId', 'ultimoPedidoValor', 'ultimoPedidoMs'
+          ])
+          && request.resource.data.storeId is string
+          && request.resource.data.visitorId is string
+          && visitanteId == request.resource.data.storeId + '__' + request.resource.data.visitorId
+          && request.resource.data.ultimaVez == request.time
+          && (!('linhaDoTempo' in request.resource.data)
+              || (request.resource.data.linhaDoTempo is list
+                  && request.resource.data.linhaDoTempo.size() <= 40))
+          && (!('nome' in request.resource.data)
+              || (request.resource.data.nome is string && request.resource.data.nome.size() <= 80))
+          && (!('telefone' in request.resource.data)
+              || (request.resource.data.telefone is string && request.resource.data.telefone.size() <= 20))
+          && (!('clienteId' in request.resource.data) || request.resource.data.clienteId is string)
+          && (!('carrinho' in request.resource.data) || request.resource.data.carrinho is map);
+      }
+
+      allow create: if visitanteBemFormado()
+        && (!('primeiraVez' in request.resource.data)
+            || request.resource.data.primeiraVez == request.time);
+      // `primeiraVez` é a data de "cliente desde": entra uma vez e não se reescreve.
+      allow update: if visitanteBemFormado()
+        && (('primeiraVez' in resource.data)
+            ? request.resource.data.primeiraVez == resource.data.primeiraVez
+            : (!('primeiraVez' in request.resource.data)
+               || request.resource.data.primeiraVez == request.time));
+      allow delete: if false;
       allow get, list: if isOwnerOf(resource.data.storeId)
         || operatorCanPdvTab(resource.data.storeId, 'delivery');
     }
