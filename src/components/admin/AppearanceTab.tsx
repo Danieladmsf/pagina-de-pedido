@@ -12,6 +12,9 @@ interface AppearanceTabProps {
   db: any;
   user: any;
   storeProfile: any;
+  /** Perfil ainda chegando. Sem isto o link curto era sorteado de novo antes
+   *  de saber que a loja já tinha um — e o link publicado mudava sozinho. */
+  isLoading?: boolean;
 }
 
 const DESKTOP_BANNER_PROMPT = `Crie um banner horizontal para header web.
@@ -51,27 +54,52 @@ function generateShortCode(length = 6): string {
   return result;
 }
 
-export function AppearanceTab({ db, user, storeProfile }: AppearanceTabProps) {
+export function AppearanceTab({ db, user, storeProfile, isLoading = false }: AppearanceTabProps) {
   const { toast } = useToast();
   const currentThemeId = storeProfile?.theme || 'padrao';
   const [shortSlug, setShortSlug] = useState<string>('');
+  const reservaTentadaRef = useRef(false);
 
-  // Generate or load short slug
+  // Link curto da loja. Duas travas aqui, as duas por bug real:
+  //  1. Só sorteia depois que o perfil chegou. Antes, o primeiro render (perfil
+  //     ainda null) já sorteava e gravava um código novo por cima do que a loja
+  //     usava — link publicado e QR Code viravam pó.
+  //  2. RESERVA antes de gravar no perfil. A ordem inversa deixava o perfil
+  //     apontando para um código que podia ser de outra loja.
   useEffect(() => {
-    if (!db || !user?.uid) return;
-    const existing = storeProfile?.shortSlug;
-    if (existing) { setShortSlug(existing); return; }
-    // Generate a new one
-    const code = generateShortCode();
-    setShortSlug(code);
-    // Persist short slug
+    if (!db || !user?.uid || isLoading) return;
+    if (reservaTentadaRef.current) return;
+    reservaTentadaRef.current = true;
+
+    const existente = storeProfile?.shortSlug;
+    if (existente) {
+      setShortSlug(existente);
+      // Perfis antigos gravaram o código sem nunca conseguir reservá-lo (a
+      // coleção não tinha regra e negava tudo em silêncio). Recupera a reserva;
+      // recusa aqui só significa que o código já é de outra loja.
+      setDoc(doc(db, 'store_slugs', existente), { storeId: user.uid }).catch(() => {});
+      return;
+    }
+
     (async () => {
-      try {
-        await setDoc(doc(db, 'store_profiles', user.uid), { shortSlug: code }, { merge: true });
-        await setDoc(doc(db, 'store_slugs', code), { storeId: user.uid });
-      } catch (e) { console.warn('Failed to persist short slug:', e); }
+      for (let tentativa = 0; tentativa < 5; tentativa += 1) {
+        const code = generateShortCode();
+        try {
+          await setDoc(doc(db, 'store_slugs', code), { storeId: user.uid });
+        } catch {
+          continue; // código já é de outra loja: sorteia outro
+        }
+        try {
+          await setDoc(doc(db, 'store_profiles', user.uid), { shortSlug: code }, { merge: true });
+          setShortSlug(code);
+        } catch (e) {
+          console.warn('[link curto] reservou o código mas não gravou no perfil:', e);
+        }
+        return;
+      }
+      console.warn('[link curto] não foi possível reservar um código.');
     })();
-  }, [db, user?.uid, storeProfile?.shortSlug]);
+  }, [db, user?.uid, isLoading, storeProfile?.shortSlug]);
 
   useEffect(() => { ensureBrandFontsLoaded(); }, []);
 

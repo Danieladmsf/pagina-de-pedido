@@ -93,7 +93,6 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
         categoryId,
         description: manualDescription.trim() ? manualDescription : `Itens do combo: ${selectedItems.map(i => i.name).join(', ')}`,
         ownerId: user.uid,
-        isAvailable: true,
         isCombo: true,
         comboItems: selectedItems,
         originalPrice,
@@ -109,7 +108,10 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
         toast({ title: 'Combo atualizado com sucesso!' });
       } else {
         const ref = doc(collection(db, 'menuItems'));
-        await setDoc(ref, { id: ref.id, ...data });
+        // isAvailable só nasce aqui. Quem manda nele depois é o botão
+        // Delivery/Local da aba Produtos — reescrever no editar religava o
+        // combo que a loja tinha desligado.
+        await setDoc(ref, { id: ref.id, ...data, isAvailable: true });
         toast({ title: 'Combo criado com sucesso!' });
       }
       setEditingCombo(null);

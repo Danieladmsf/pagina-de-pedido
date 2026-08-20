@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { buildAdminMenuGroups } from './menu-groups';
 import {
+  getMotivosOcultoNoCardapio,
   getVisibleCategories,
   isCategoryOn,
   isCategoryVisibleNow,
   isItemInVisibleCategory,
+  pareceLigadoMasNaoAparece,
 } from './menu-visibility';
 
 /**
@@ -129,5 +131,68 @@ describe('buildAdminMenuGroups: categoria desligada no PDV e nas Mesas', () => {
     const comAvulso = [...items, { id: '4', name: 'Taxa', categoryId: 'sumiu' }];
     const grupos = buildAdminMenuGroups(comAvulso, categories, 'pickup', '', promoVazia);
     expect(grupos.find((g) => g.id === '__none__')?.items.map((i: any) => i.id)).toEqual(['4']);
+  });
+});
+
+/**
+ * O relato das lojas era "categorias e produtos ligam e desligam sozinhos, e no
+ * dia seguinte só alguns itens". Auditando a produção, nada no app escreve
+ * esses campos fora do botão da aba Produtos: o que muda sozinho é o ESTOQUE
+ * (zerou ao vender o último, voltou quando um pedido foi cancelado) e a
+ * categoria desligada, que leva os produtos junto. A aba Produtos não mostrava
+ * nem um nem outro — os dois botões continuavam verdes. Estes testes travam o
+ * diagnóstico que passou a aparecer na linha do produto.
+ */
+describe('getMotivosOcultoNoCardapio', () => {
+  const ligada = { id: 'bolos', name: 'Bolos', isAvailable: true };
+  const desligada = { id: 'bolos', name: 'Bolos', isAvailable: false };
+  const produto = { id: '1', name: 'Bolo de Pote', categoryId: 'bolos' };
+
+  it('não acusa nada quando o produto está mesmo no ar', () => {
+    expect(getMotivosOcultoNoCardapio(produto, { category: ligada })).toEqual([]);
+  });
+
+  it('acusa estoque zerado mesmo com os dois botões verdes', () => {
+    const motivos = getMotivosOcultoNoCardapio(produto, { category: ligada, esgotado: true });
+    expect(motivos).toEqual(['esgotado']);
+    expect(pareceLigadoMasNaoAparece(motivos)).toBe(true);
+  });
+
+  it('acusa categoria desligada mesmo com os dois botões verdes', () => {
+    const motivos = getMotivosOcultoNoCardapio(produto, { category: desligada });
+    expect(motivos).toEqual(['categoria_desligada']);
+    expect(pareceLigadoMasNaoAparece(motivos)).toBe(true);
+  });
+
+  it('acusa "só no PDV" quando Local está ligado e Delivery não', () => {
+    const soLocal = { ...produto, showDelivery: false, showPickup: true, showDineIn: true };
+    expect(getMotivosOcultoNoCardapio(soLocal, { category: ligada })).toEqual(['sem_delivery']);
+  });
+
+  it('produto com os dois botões cinza se explica sozinho — não vira aviso', () => {
+    const off = { ...produto, showDelivery: false, showPickup: false, showDineIn: false, isAvailable: false };
+    const motivos = getMotivosOcultoNoCardapio(off, { category: ligada });
+    expect(motivos).toEqual(['desligado']);
+    expect(pareceLigadoMasNaoAparece(motivos)).toBe(false);
+  });
+
+  it('pega o legado com isAvailable dessincronizado dos canais', () => {
+    const legado = { ...produto, isAvailable: false, showDelivery: true, showPickup: true };
+    expect(getMotivosOcultoNoCardapio(legado, { category: ligada })).toContain('desligado');
+  });
+
+  it('soma os motivos: esgotado dentro de categoria desligada', () => {
+    const motivos = getMotivosOcultoNoCardapio(produto, { category: desligada, esgotado: true });
+    expect(motivos).toEqual(['categoria_desligada', 'esgotado']);
+  });
+
+  it('combo não obedece categoria (tem seção própria)', () => {
+    const combo = { id: '9', name: 'Combo Festa', categoryId: 'bolos', isCombo: true };
+    expect(getMotivosOcultoNoCardapio(combo, { category: desligada })).toEqual([]);
+  });
+
+  it('produto sem categoria não tem a quem obedecer', () => {
+    const avulso = { id: '5', name: 'Taxa de Entrega' };
+    expect(getMotivosOcultoNoCardapio(avulso, { category: desligada })).toEqual([]);
   });
 });

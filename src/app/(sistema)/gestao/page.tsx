@@ -44,7 +44,8 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
-import { MENU_VISIBILITY_TOGGLES, getToggleUpdate, hasAnyVisibleToggle, isItemVisibleInChannel, isToggleActive } from '@/lib/menu-visibility';
+import { MENU_VISIBILITY_TOGGLES, MOTIVO_OCULTO_LABEL, getMotivosOcultoNoCardapio, getToggleUpdate, hasAnyVisibleToggle, isItemVisibleInChannel, isToggleActive, pareceLigadoMasNaoAparece } from '@/lib/menu-visibility';
+import { isOutOfStock } from '@/lib/inventory';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -553,6 +554,12 @@ export default function GestaoPage() {
   const [editingAddon, setEditingAddon] = useState<any>(null);
   const [editingAddonContainers, setEditingAddonContainers] = useState<Set<string>>(new Set());
   const [uploadingImageProductId, setUploadingImageProductId] = useState<string | null>(null);
+  // Chaves "produtoId:toggle" com escrita em voo. O Firestore pinta o botão na
+  // hora (latency compensation), então sem isto o dono via "ligado" antes de
+  // existir gravação — e se a rede caísse ou o PC fosse desligado no fim do
+  // expediente, a mudança morria com a aba sem nenhum aviso.
+  const [salvandoVisibilidade, setSalvandoVisibilidade] = useState<Set<string>>(new Set());
+  const [salvandoCategoria, setSalvandoCategoria] = useState<Set<string>>(new Set());
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
   const [addonSearchTerm, setAddonSearchTerm] = useState('');
   const [addonCategoryFilter, setAddonCategoryFilter] = useState('all');
@@ -1045,17 +1052,49 @@ export default function GestaoPage() {
                         </TableCell>
                       </TableRow>
                     ) : filteredItems.map((item) => {
-                      const catName = categories?.find(c => c.id === item.categoryId)?.name || 'Sem Categoria';
+                      const itemCategory = categories?.find(c => c.id === item.categoryId);
+                      const catName = itemCategory?.name || 'Sem Categoria';
                       const itemAddons = addons?.filter(a => item.addonIds?.includes(a.id)) || [];
                       const allOff = !hasAnyVisibleToggle(item);
+                      // Estoque e categoria escondem o produto sem mexer em botão nenhum:
+                      // a linha ficava toda verde e o produto sumido do cardápio. É o que
+                      // as lojas relatavam como "desliga sozinho" (vendeu o último) e
+                      // "liga sozinho" (pedido cancelado devolveu o estoque).
+                      const esgotado = isOutOfStock(item, {
+                        enableInventory: !!storeProfile?.general?.enableInventory,
+                        allItems: items || [],
+                      });
+                      const motivosOculto = getMotivosOcultoNoCardapio(item, { category: itemCategory, esgotado });
+                      const avisarOculto = pareceLigadoMasNaoAparece(motivosOculto);
+                      // Trava a linha inteira, não só o botão clicado: Delivery e Local
+                      // acionados em sequência antes do re-render recalculavam isAvailable
+                      // a partir do item vencido.
+                      const salvandoLinha = MENU_VISIBILITY_TOGGLES.some((t) => salvandoVisibilidade.has(`${item.id}:${t.id}`));
                       const visibilityChannels = MENU_VISIBILITY_TOGGLES.map((toggle) => ({
                         label: toggle.label,
                         trackClass: toggle.trackClass,
                         active: isToggleActive(item, toggle),
+                        saving: salvandoLinha,
                         onToggle: async () => {
                           if (!db) return;
+                          const chave = `${item.id}:${toggle.id}`;
                           const newVal = !isToggleActive(item, toggle);
-                          await updateDoc(doc(db, 'menuItems', item.id), getToggleUpdate(item, toggle, newVal));
+                          setSalvandoVisibilidade((atual) => new Set(atual).add(chave));
+                          try {
+                            await updateDoc(doc(db, 'menuItems', item.id), getToggleUpdate(item, toggle, newVal));
+                          } catch (err: any) {
+                            toast({
+                              variant: 'destructive',
+                              title: 'Não deu para salvar',
+                              description: `"${item.name}" continua como estava. Confira a internet e tente de novo.`,
+                            });
+                          } finally {
+                            setSalvandoVisibilidade((atual) => {
+                              const proximo = new Set(atual);
+                              proximo.delete(chave);
+                              return proximo;
+                            });
+                          }
                         },
                       }));
                        
@@ -1072,7 +1111,38 @@ export default function GestaoPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium text-slate-800">{item.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-800">{item.name}</span>
+                              {esgotado && (
+                                <Badge className="bg-red-500 hover:bg-red-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">
+                                  Esgotado
+                                </Badge>
+                              )}
+                            </div>
+                            {avisarOculto && (
+                              <p className="mt-1 text-[11px] font-medium text-amber-600">
+                                Não aparece no cardápio: {motivosOculto.map((m) => MOTIVO_OCULTO_LABEL[m]).join(' e ')}.{' '}
+                                {/* Um atalho só, para o motivo mais pesado: com os dois links
+                                    lado a lado a linha da tabela fica ilegível. */}
+                                {motivosOculto.includes('categoria_desligada') ? (
+                                  <button
+                                    type="button"
+                                    className="underline underline-offset-2 hover:text-amber-700"
+                                    onClick={() => handleTabChange('categorias')}
+                                  >
+                                    Ver categoria
+                                  </button>
+                                ) : motivosOculto.includes('esgotado') ? (
+                                  <button
+                                    type="button"
+                                    className="underline underline-offset-2 hover:text-amber-700"
+                                    onClick={() => handleTabChange('estoque')}
+                                  >
+                                    Repor estoque
+                                  </button>
+                                ) : null}
+                              </p>
+                            )}
                             {itemAddons.length > 0 && (
                               <div className="mt-1">
                                 <Badge className="text-[10px] bg-teal-500 hover:bg-teal-600 font-normal">
@@ -1112,9 +1182,10 @@ export default function GestaoPage() {
                                   aria-pressed={channel.active}
                                   aria-label={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
                                   title={`${channel.active ? 'Desligar' : 'Ligar'} ${channel.label}`}
+                                  disabled={channel.saving}
                                   className={`relative h-6 w-11 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                     channel.active ? `${channel.trackClass} border-transparent` : 'border-slate-300 bg-slate-200 hover:bg-slate-300'
-                                  }`}
+                                  } ${channel.saving ? 'cursor-wait opacity-50' : ''}`}
                                   onClick={channel.onToggle}
                                 >
                                   <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${channel.active ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -1540,12 +1611,32 @@ export default function GestaoPage() {
                                       <div className="flex items-center gap-1.5 mr-4 border-r pr-4">
                                         <Switch 
                                           checked={cat.isAvailable !== false} 
+                                          disabled={salvandoCategoria.has(cat.id)}
                                           onCheckedChange={async (checked) => {
                                             if (!db) return;
-                                            await updateDoc(doc(db, 'categories', cat.id), { isAvailable: checked });
-                                            toast({ title: checked ? 'Categoria ativada' : 'Categoria desativada' });
+                                            // Sem o try/catch a chave voltava sozinha quando a
+                                            // gravação falhava: o Firestore mostra a mudança
+                                            // local antes do servidor confirmar e desfaz na
+                                            // recusa, sem nada na tela explicando.
+                                            setSalvandoCategoria((atual) => new Set(atual).add(cat.id));
+                                            try {
+                                              await updateDoc(doc(db, 'categories', cat.id), { isAvailable: checked });
+                                              toast({ title: checked ? 'Categoria ativada' : 'Categoria desativada' });
+                                            } catch (err: any) {
+                                              toast({
+                                                variant: 'destructive',
+                                                title: 'Não deu para salvar',
+                                                description: `"${cat.name}" continua como estava. Confira a internet e tente de novo.`,
+                                              });
+                                            } finally {
+                                              setSalvandoCategoria((atual) => {
+                                                const proximo = new Set(atual);
+                                                proximo.delete(cat.id);
+                                                return proximo;
+                                              });
+                                            }
                                           }} 
-                                          className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500"
+                                          className="scale-75 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-red-500 disabled:cursor-wait disabled:opacity-50"
                                         />
                                         <span className={`text-[10px] font-medium uppercase ${cat.isAvailable !== false ? 'text-green-600' : 'text-red-500'}`}>{cat.isAvailable !== false ? 'Ligada' : 'Desligada'}</span>
                                       </div>
@@ -2732,7 +2823,7 @@ export default function GestaoPage() {
 
 
           {activeTab === 'perfil_aparencia' && (
-            <AppearanceTab db={db} user={user} storeProfile={storeProfile} />
+            <AppearanceTab db={db} user={user} storeProfile={storeProfile} isLoading={storeProfileLoading} />
           )}
 
           {activeTab === 'usuarios' && (

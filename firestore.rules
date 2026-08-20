@@ -639,6 +639,23 @@ service cloud.firestore {
       allow create, delete: if isAdmin() && request.auth.uid == profileId;
     }
 
+    // Reserva do link curto da loja (/{codigo}). A coleção não tem regra
+    // nenhuma até aqui, então toda gravação era negada em silêncio — o
+    // AppearanceTab engolia o erro num console.warn e a coleção ficou vazia.
+    // O papel dela é ser a TRAVA de unicidade do código: quem chega depois não
+    // pode roubar o código de outra loja. `create` só passa em documento que
+    // ainda não existe e `update` exige já ser o dono do código, então a
+    // reserva alheia é intocável.
+    match /store_slugs/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isAdmin() && request.resource.data.storeId == request.auth.uid;
+      allow update: if isAdmin()
+        && resource.data.storeId == request.auth.uid
+        && request.resource.data.storeId == request.auth.uid;
+      allow delete: if isAdmin() && resource.data.storeId == request.auth.uid;
+    }
+
     // Visita ao cardápio: um registro por sessão de navegador, é o que alimenta
     // o placar da sessão de caixa. Append-only de propósito — ninguém edita nem
     // apaga, e `at` é obrigatoriamente a hora do servidor, então não dá para

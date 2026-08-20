@@ -549,6 +549,20 @@ await denied('owner não apaga lançamento', deleteDoc(doc(owner, 'stock_movemen
 await denied('operador não altera lançamento', updateDoc(doc(balcaoOperator, 'stock_movements/move-a'), { delta: 1 }));
 await denied('operador não apaga lançamento', deleteDoc(doc(balcaoOperator, 'stock_movements/move-a')));
 
+// ── Reserva do link curto (/{codigo}) ──
+// A coleção não tinha regra nenhuma: toda gravação era negada em silêncio e o
+// AppearanceTab engolia o erro. Agora ela é a trava de unicidade do código, e o
+// que não pode acontecer é uma loja tomar o código de outra — o link publicado
+// da primeira passaria a apontar para o cardápio da segunda.
+await allowed('dono reserva um código livre', setDoc(doc(owner, 'store_slugs/livre1'), { storeId: 'owner-a' }));
+await allowed('dono regrava a própria reserva', setDoc(doc(owner, 'store_slugs/livre1'), { storeId: 'owner-a' }));
+await denied('outra loja não toma o código já reservado', setDoc(doc(otherOwner, 'store_slugs/livre1'), { storeId: 'owner-b' }));
+await denied('dono não reserva código em nome de outra loja', setDoc(doc(owner, 'store_slugs/livre2'), { storeId: 'owner-b' }));
+await denied('anônimo não reserva código', setDoc(doc(anonymous, 'store_slugs/livre3'), { storeId: 'anon-a' }));
+await allowed('qualquer um resolve um código para achar a loja', getDoc(doc(anonymous, 'store_slugs/livre1')));
+await denied('outra loja não apaga a reserva alheia', deleteDoc(doc(otherOwner, 'store_slugs/livre1')));
+await allowed('dono libera a própria reserva', deleteDoc(doc(owner, 'store_slugs/livre1')));
+
 console.log('Firestore Rules: todos os cenários passaram.');
 
 await Promise.all(apps.map((app) => deleteClientApp(app)));

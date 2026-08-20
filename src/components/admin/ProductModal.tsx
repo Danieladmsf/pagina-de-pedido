@@ -146,7 +146,6 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         categoryId,
         description,
         ownerId: user.uid,
-        isAvailable: editingProduct?.id ? editingProduct.isAvailable : true,
         isMarmita,
         fixedItems: isMarmita ? fixedItems : [],
         addonGroups,
@@ -160,7 +159,10 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
         const ref = doc(collection(db, 'menuItems'));
-        await setDoc(ref, { id: ref.id, ...data });
+        // isAvailable só nasce aqui. Esta tela não mexe em visibilidade: ela
+        // regravava o valor lido quando o modal abriu, então salvar um preço
+        // podia desfazer o liga/desliga feito no meio tempo em outro aparelho.
+        await setDoc(ref, { id: ref.id, ...data, isAvailable: true });
 
         // Estoque inicial só existe na CRIAÇÃO — aqui não há valor antigo para
         // sobrescrever, então não repete o bug de desfazer venda. Entra pelo

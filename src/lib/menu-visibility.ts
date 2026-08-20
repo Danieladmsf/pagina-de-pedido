@@ -140,3 +140,55 @@ export function getToggleUpdate(item: any, toggle: VisibilityToggle, active: boo
     isAvailable: hasAnyVisibleChannel(merged),
   };
 }
+
+/**
+ * Por que este produto não aparece no cardápio online.
+ *
+ * A aba Produtos só mostra os dois botões (Delivery/Local), e o dono conclui
+ * que "verde = está no ar". Não está: categoria desligada e estoque zerado
+ * escondem o produto sem tocar em botão nenhum, e é isso que as lojas relatam
+ * como "liga e desliga sozinho" — some ao vender o último e volta quando um
+ * pedido é cancelado. A lista precisa dizer o motivo real.
+ *
+ * `esgotado` chega pronto de fora (lib/inventory) de propósito: a regra de
+ * estoque é uma só e não pode ser reimplementada aqui.
+ */
+export type MotivoOculto = 'categoria_desligada' | 'desligado' | 'sem_delivery' | 'esgotado';
+
+export const MOTIVO_OCULTO_LABEL: Record<MotivoOculto, string> = {
+  categoria_desligada: 'a categoria está desligada',
+  desligado: 'está desligado',
+  sem_delivery: 'o Delivery está desligado (só sai no PDV)',
+  esgotado: 'o estoque está zerado',
+};
+
+export function getMotivosOcultoNoCardapio(
+  item: any,
+  opts: { category?: any; esgotado?: boolean } = {},
+): MotivoOculto[] {
+  const motivos: MotivoOculto[] = [];
+
+  // Mesmas duas exceções de isItemInVisibleCategory: combo tem seção própria e
+  // produto sem categoria não tem a quem obedecer.
+  if (!item?.isCombo && item?.categoryId && opts.category && !isCategoryOn(opts.category)) {
+    motivos.push('categoria_desligada');
+  }
+
+  // isAvailable === false entra junto para o caso legado em que ele ficou
+  // dessincronizado dos canais: quem manda no cardápio é ele.
+  if (item?.isAvailable === false || !hasAnyVisibleToggle(item)) motivos.push('desligado');
+  else if (!isItemVisibleInChannel(item, 'delivery')) motivos.push('sem_delivery');
+
+  if (opts.esgotado) motivos.push('esgotado');
+
+  return motivos;
+}
+
+/**
+ * O dono olha a linha, vê botão verde e conclui que está no ar — mas não está.
+ * É esse recorte que merece aviso na lista; item com os dois botões cinza já se
+ * explica sozinho.
+ */
+export function pareceLigadoMasNaoAparece(motivos: MotivoOculto[]) {
+  return motivos.length > 0 && !motivos.includes('desligado');
+}
