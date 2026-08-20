@@ -49,8 +49,14 @@ export type LinhaDeProduto = {
   participacao: number;
   porPeso: boolean;
   ehCombo: boolean;
-  /** O produto ainda existe no cardápio de hoje. */
-  noCardapio: boolean;
+  /** De qual catálogo o produto veio. */
+  origem: 'cardapio' | 'encomenda';
+  /**
+   * Vendeu no período mas o produto não existe mais em `menuItems`. Só faz
+   * sentido para item de cardápio — encomenda tem catálogo próprio e nunca
+   * esteve lá.
+   */
+  foraDoCardapio: boolean;
   ultimaVenda: Date | null;
 };
 
@@ -92,7 +98,12 @@ function normalizarNome(nome: string): string {
     .toLowerCase();
 }
 
-function chaveDoItem(item: ItemDaVenda): string | null {
+/**
+ * A chave de agrupamento de uma linha de venda. Exportada porque a curva do
+ * produto precisa reconhecer exatamente o mesmo item que o ranking agrupou —
+ * duas regras de chave seriam duas respostas para a mesma pergunta.
+ */
+export function chaveDoItem(item: ItemDaVenda): string | null {
   const id = String(item?.id || '').trim();
   if (id) return id;
   const nome = normalizarNome(String(item?.name || ''));
@@ -110,6 +121,8 @@ type Acumulado = {
   vendas: number;
   porPeso: boolean;
   ehCombo: boolean;
+  origem: 'cardapio' | 'encomenda';
+  grupo: string;
   ultimaVenda: Date | null;
 };
 
@@ -170,6 +183,8 @@ export function rankingDeProdutos(
         vendas: 0,
         porPeso: false,
         ehCombo: false,
+        origem: item?.origem === 'encomenda' ? 'encomenda' : 'cardapio',
+        grupo: String(item?.grupo || ''),
         ultimaVenda: null,
       };
 
@@ -201,7 +216,10 @@ export function rankingDeProdutos(
 
   const linhas: LinhaDeProduto[] = [...porChave.values()]
     .map((a) => {
-      const doCardapio = a.produtoId ? produtoPorId.get(a.produtoId) : undefined;
+      const deEncomenda = a.origem === 'encomenda';
+      // Produto de encomenda nunca é procurado no `menuItems`: o catálogo dele
+      // é outro, e "não achei lá" não significa que saiu do cardápio.
+      const doCardapio = !deEncomenda && a.produtoId ? produtoPorId.get(a.produtoId) : undefined;
       const valor = emDinheiro(a.valor);
       return {
         chave: a.chave,
@@ -209,7 +227,9 @@ export function rankingDeProdutos(
         // O nome de hoje é o do cardápio; o da venda é a reserva para o que já
         // saiu do cardápio (ou nunca teve ID).
         nome: String(doCardapio?.name || '').trim() || a.nome || 'Produto sem nome',
-        categoria: categoriaDoProduto(a.produtoId),
+        categoria: deEncomenda
+          ? `Encomenda · ${a.grupo || 'Itens'}`
+          : categoriaDoProduto(a.produtoId),
         quantidade: a.quantidade,
         gramas: a.gramas,
         valor,
@@ -217,7 +237,8 @@ export function rankingDeProdutos(
         participacao: totalValor > 0 ? valor / totalValor : 0,
         porPeso: a.porPeso || doCardapio?.saleUnit === 'kg',
         ehCombo: a.ehCombo || doCardapio?.isCombo === true,
-        noCardapio: !!doCardapio,
+        origem: a.origem,
+        foraDoCardapio: !deEncomenda && !doCardapio,
         ultimaVenda: a.ultimaVenda,
       };
     })

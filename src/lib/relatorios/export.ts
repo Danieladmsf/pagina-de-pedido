@@ -11,6 +11,7 @@
 import { csvArquivo, csvDate, csvLine, csvNumber } from '@/lib/csv';
 import type { Balancete } from './balancete';
 import type { RankingDeProdutos } from './ranking';
+import { GRANULARIDADES, type SerieDoProduto } from './serie-produto';
 
 type Contexto = { loja?: string; periodo?: string };
 
@@ -39,6 +40,7 @@ export function csvDoRanking(ranking: RankingDeProdutos, ctx: Contexto): string 
       '#',
       'Produto',
       'Categoria',
+      'Situação',
       'Quantidade',
       'Peso (kg)',
       'Faturamento',
@@ -54,6 +56,9 @@ export function csvDoRanking(ranking: RankingDeProdutos, ctx: Contexto): string 
         indice + 1,
         linha.nome,
         linha.categoria,
+        // Coluna própria em vez de sufixo no nome: assim a planilha continua
+        // conseguindo agrupar por produto.
+        linha.foraDoCardapio ? 'fora do cardápio' : '',
         linha.quantidade,
         linha.porPeso ? csvNumber(linha.gramas / 1000) : '',
         csvNumber(linha.valor),
@@ -65,7 +70,7 @@ export function csvDoRanking(ranking: RankingDeProdutos, ctx: Contexto): string 
   });
 
   linhas.push(
-    csvLine(['', 'TOTAL', '', ranking.totalQuantidade, '', csvNumber(ranking.totalValor), csvNumber(100), '', '']),
+    csvLine(['', 'TOTAL', '', '', ranking.totalQuantidade, '', csvNumber(ranking.totalValor), csvNumber(100), '', '']),
   );
 
   // O outro lado da pergunta: o que ficou parado. Vai no mesmo arquivo porque na
@@ -104,6 +109,51 @@ export function csvDoBalancete(balancete: Balancete, ctx: Contexto): string {
   linhas.push(
     csvLine(['TOTAL', csvNumber(balancete.total), balancete.totalVendas, csvNumber(balancete.ticketMedio), '']),
     csvLine(['Média mensal', csvNumber(balancete.mediaMensal), '', '', '']),
+  );
+
+  return csvArquivo(linhas);
+}
+
+export function csvDaSerie(
+  serie: SerieDoProduto,
+  ctx: Contexto & { produto: string },
+): string {
+  const unidade = GRANULARIDADES.find((g) => g.id === serie.granularidade)?.singular || 'período';
+  const linhas: string[] = cabecalho(`Vendas de ${ctx.produto} por ${unidade}`, ctx, [
+    csvLine(['Produto', ctx.produto]),
+    ...(serie.melhor ? [csvLine([`Melhor ${unidade}`, serie.melhor.rotuloLongo])] : []),
+  ]);
+
+  linhas.push(
+    csvLine([
+      unidade.charAt(0).toUpperCase() + unidade.slice(1),
+      'Quantidade',
+      ...(serie.porPeso ? ['Peso (kg)'] : []),
+      'Faturamento',
+      'Vendas',
+    ]),
+  );
+
+  for (const ponto of serie.pontos) {
+    linhas.push(
+      csvLine([
+        ponto.emAndamento ? `${ponto.rotuloLongo} (em andamento)` : ponto.rotuloLongo,
+        ponto.quantidade,
+        ...(serie.porPeso ? [csvNumber(ponto.gramas / 1000)] : []),
+        csvNumber(ponto.valor),
+        ponto.vendas,
+      ]),
+    );
+  }
+
+  linhas.push(
+    csvLine([
+      'TOTAL',
+      serie.totalQuantidade,
+      ...(serie.porPeso ? [csvNumber(serie.totalGramas / 1000)] : []),
+      csvNumber(serie.totalValor),
+      serie.totalVendas,
+    ]),
   );
 
   return csvArquivo(linhas);

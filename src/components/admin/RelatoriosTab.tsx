@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { collection, query, where } from 'firebase/firestore';
 import {
   ResponsiveContainer,
   BarChart,
@@ -15,10 +16,12 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  CakeSlice,
   CalendarDays,
   ChevronDown,
   ChevronRight,
   Download,
+  LineChart,
   Minus,
   PackageX,
   Scale,
@@ -27,11 +30,14 @@ import {
   Trophy,
   Wallet,
 } from 'lucide-react';
+import { useCollection, useMemoFirebase } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CurvaDoProduto } from '@/components/admin/relatorios/CurvaDoProduto';
 import { brl } from '@/lib/utils';
 import { emDinheiro } from '@/lib/dinheiro';
 import { baixarCsv } from '@/lib/csv';
+import { emKg, emPorcento } from '@/lib/relatorios/formato';
 import {
   PRESETS_DO_RELATORIO,
   janelaDoRelatorio,
@@ -43,17 +49,30 @@ import {
   filtrarRanking,
   ordenarRanking,
   rankingDeProdutos,
+  type LinhaDeProduto,
   type OrdemDoRanking,
 } from '@/lib/relatorios/ranking';
 import { balanceteMensal } from '@/lib/relatorios/balancete';
+import { encomendasComoVendas } from '@/lib/relatorios/encomendas';
 import { csvDoBalancete, csvDoRanking, nomeDoArquivo } from '@/lib/relatorios/export';
 
 interface RelatoriosTabProps {
+  db: any;
+  ownerId: string;
   orders: any[];
   items: any[];
   categories: any[];
   storeProfile: any;
 }
+
+/** De onde vem a venda que entra na conta. */
+const ORIGENS = [
+  { id: 'tudo', label: 'Tudo' },
+  { id: 'cardapio', label: 'Só cardápio' },
+  { id: 'encomendas', label: 'Só encomendas' },
+] as const;
+
+type FiltroOrigem = (typeof ORIGENS)[number]['id'];
 
 const JANELAS_DO_BALANCETE: { id: string; label: string; meses: number | null }[] = [
   { id: '3', label: '3 meses', meses: 3 },
@@ -73,37 +92,61 @@ function hojeNoInput() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const emKg = (gramas: number) =>
-  `${(gramas / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
-
-const emPorcento = (fracao: number) => `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
-
 const dataCurta = (d: Date | null) => (d ? d.toLocaleDateString('pt-BR') : null);
 
-export function RelatoriosTab({ orders, items, categories, storeProfile }: RelatoriosTabProps) {
+export function RelatoriosTab({ db, ownerId, orders, items, categories, storeProfile }: RelatoriosTabProps) {
   const [periodo, setPeriodo] = useState<PeriodoDoRelatorio>({ preset: 'mes_atual' });
   const [ordem, setOrdem] = useState<OrdemDoRanking>('quantidade');
   const [busca, setBusca] = useState('');
   const [janelaBalancete, setJanelaBalancete] = useState('6');
   const [mostrarSemVenda, setMostrarSemVenda] = useState(false);
+  const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigem>('tudo');
+  const [produtoAberto, setProdutoAberto] = useState<LinhaDeProduto | null>(null);
 
   const nomeDaLoja = storeProfile?.general?.name || storeProfile?.storeName || 'Minha Loja';
+
+  // A coleção só existe na confeitaria — mesma trava que o Caixa usa para não
+  // consultar encomenda numa loja que não tem encomenda.
+  const ehConfeitaria = storeProfile?.theme === 'confeitaria';
+  const encomendasQuery = useMemoFirebase(
+    () =>
+      db && ownerId && ehConfeitaria
+        ? query(collection(db, 'encomendas'), where('ownerId', '==', ownerId))
+        : null,
+    [db, ownerId, ehConfeitaria],
+  );
+  const { data: encomendasRaw } = useCollection(encomendasQuery);
+  // O catálogo entra para o relatório usar os nomes que a LOJA deu às seções:
+  // aqui o slot interno "tortas" é "Brigadeiros" e "docinhos" é "Doces Finos".
+  const catalogoDeEncomenda = storeProfile?.encomendas?.catalog;
+  const vendasDeEncomenda = useMemo(
+    () => encomendasComoVendas(encomendasRaw, { catalogo: catalogoDeEncomenda }),
+    [encomendasRaw, catalogoDeEncomenda],
+  );
+  const temEncomendas = vendasDeEncomenda.length > 0;
+
+  const vendas = useMemo(() => {
+    const doCardapio = Array.isArray(orders) ? orders : [];
+    if (!temEncomendas || filtroOrigem === 'cardapio') return doCardapio;
+    if (filtroOrigem === 'encomendas') return vendasDeEncomenda;
+    return [...doCardapio, ...vendasDeEncomenda];
+  }, [orders, vendasDeEncomenda, temEncomendas, filtroOrigem]);
 
   const janela = useMemo(() => janelaDoRelatorio(periodo), [periodo]);
 
   const resumo = useMemo(() => {
-    const dentro = vendasNaJanela(orders, janela);
+    const dentro = vendasNaJanela(vendas, janela);
     const faturamento = emDinheiro(dentro.reduce((soma, v) => soma + (Number(v.venda.totalAmount) || 0), 0));
     return {
       faturamento,
       vendas: dentro.length,
       ticketMedio: dentro.length ? emDinheiro(faturamento / dentro.length) : 0,
     };
-  }, [orders, janela]);
+  }, [vendas, janela]);
 
   const ranking = useMemo(
-    () => rankingDeProdutos(orders, { janela, catalogo: items, categorias: categories }),
-    [orders, janela, items, categories],
+    () => rankingDeProdutos(vendas, { janela, catalogo: items, categorias: categories }),
+    [vendas, janela, items, categories],
   );
 
   const linhas = useMemo(
@@ -118,7 +161,7 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
   );
 
   const mesesPedidos = JANELAS_DO_BALANCETE.find((j) => j.id === janelaBalancete)?.meses ?? 6;
-  const balancete = useMemo(() => balanceteMensal(orders, { meses: mesesPedidos }), [orders, mesesPedidos]);
+  const balancete = useMemo(() => balanceteMensal(vendas, { meses: mesesPedidos }), [vendas, mesesPedidos]);
 
   const baixarRanking = () => {
     baixarCsv(
@@ -144,10 +187,18 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
               O que mais sai, o que ficou parado e quanto entrou mês a mês.
             </p>
           </div>
-          <Badge variant="outline" className="gap-2 px-3 py-1.5 text-xs font-semibold bg-white">
-            <CalendarDays className="h-3.5 w-3.5 text-emerald-600" />
-            {janela.rotulo}
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap">
+            {temEncomendas && filtroOrigem !== 'cardapio' && (
+              <Badge variant="outline" className="gap-2 px-3 py-1.5 text-xs font-semibold bg-white">
+                <CakeSlice className="h-3.5 w-3.5 text-pink-500" />
+                {filtroOrigem === 'encomendas' ? 'Só encomendas' : 'Encomendas incluídas'}
+              </Badge>
+            )}
+            <Badge variant="outline" className="gap-2 px-3 py-1.5 text-xs font-semibold bg-white">
+              <CalendarDays className="h-3.5 w-3.5 text-emerald-600" />
+              {janela.rotulo}
+            </Badge>
+          </div>
         </div>
 
         {/* Período do ranking */}
@@ -193,6 +244,28 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
                   className="h-8 px-2 text-xs rounded-md border border-input bg-background"
                   aria-label="Data final"
                 />
+              </div>
+            )}
+
+            {temEncomendas && (
+              <div className="flex items-center gap-2 ml-auto pl-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Contar
+                </span>
+                {ORIGENS.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setFiltroOrigem(o.id)}
+                    className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                      filtroOrigem === o.id
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
               </div>
             )}
           </CardContent>
@@ -373,7 +446,8 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
               </CardTitle>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {ranking.produtosDiferentes} produto{ranking.produtosDiferentes === 1 ? '' : 's'} diferente
-                {ranking.produtosDiferentes === 1 ? '' : 's'} em {janela.descricao}
+                {ranking.produtosDiferentes === 1 ? '' : 's'} em {janela.descricao} · clique num produto para ver
+                quando ele mais saiu
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -438,7 +512,12 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
                       {linhas.map((linha, indice) => {
                         const posicao = ordem === 'nome' ? null : indice + 1;
                         return (
-                          <tr key={linha.chave} className="hover:bg-slate-50">
+                          <tr
+                            key={linha.chave}
+                            onClick={() => setProdutoAberto(linha)}
+                            className="hover:bg-emerald-50/60 cursor-pointer group"
+                            title={`Ver quando ${linha.nome} mais saiu`}
+                          >
                             <td className="px-3 py-2">
                               <span
                                 className={`h-7 w-7 rounded-lg flex items-center justify-center font-black text-xs ${
@@ -463,7 +542,12 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
                                     combo
                                   </span>
                                 )}
-                                {!linha.noCardapio && (
+                                {linha.origem === 'encomenda' && (
+                                  <span className="text-[9px] font-bold uppercase tracking-wide bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded shrink-0">
+                                    encomenda
+                                  </span>
+                                )}
+                                {linha.foraDoCardapio && (
                                   <span
                                     className="text-[9px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shrink-0"
                                     title="Vendeu no período, mas não está mais no cardápio de hoje"
@@ -471,6 +555,7 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
                                     fora do cardápio
                                   </span>
                                 )}
+                                <LineChart className="h-3.5 w-3.5 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                               </div>
                               <div className="text-[11px] text-muted-foreground md:hidden">{linha.categoria}</div>
                             </td>
@@ -597,9 +682,18 @@ export function RelatoriosTab({ orders, items, categories, storeProfile }: Relat
           )}
         </Card>
       </div>
+
+      <CurvaDoProduto
+        linha={produtoAberto}
+        vendas={vendas}
+        periodoDoRanking={periodo}
+        loja={nomeDaLoja}
+        onFechar={() => setProdutoAberto(null)}
+      />
     </div>
   );
 }
+
 
 function Variacao({ valor, parcial = false }: { valor: number | null; parcial?: boolean }) {
   if (valor === null) {

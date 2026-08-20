@@ -66,7 +66,12 @@ describe('rankingDeProdutos', () => {
 
     expect(r.linhas).toHaveLength(2);
     const semId = r.linhas.find((l) => l.produtoId === null);
-    expect(semId).toMatchObject({ quantidade: 4, noCardapio: false, categoria: 'Fora do cardápio' });
+    expect(semId).toMatchObject({
+      quantidade: 4,
+      foraDoCardapio: true,
+      origem: 'cardapio',
+      categoria: 'Fora do cardápio',
+    });
   });
 
   it('venda cancelada não entra em nenhum total', () => {

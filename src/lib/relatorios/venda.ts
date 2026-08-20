@@ -21,6 +21,14 @@ export type ItemDaVenda = {
   /** 'kg' = vendido por peso; a linha vale o peso, não a unidade. */
   saleUnit?: string;
   weightGrams?: number | null;
+  /**
+   * De qual catálogo o item veio. Encomenda tem catálogo próprio (bolo por
+   * sabor, docinho por slug), então o produto dela não pode ser procurado em
+   * `menuItems` nem marcado como "fora do cardápio" por não estar lá.
+   */
+  origem?: 'encomenda';
+  /** Seção do catálogo de encomenda ('Bolos', 'Docinhos', ...). */
+  grupo?: string;
 };
 
 export type VendaDoRelatorio = {
@@ -53,9 +61,15 @@ export function dataDaVenda(venda: VendaDoRelatorio | null | undefined): Date | 
   return Number.isNaN(numero) ? null : new Date(numero);
 }
 
-/** Cancelada não entra em nenhum total — nem de faturamento, nem de produto. */
+/**
+ * Cancelada não entra em nenhum total — nem de faturamento, nem de produto.
+ *
+ * As duas grafias existem no banco: `orders` grava `canceled` e `encomendas`
+ * grava `cancelada`. Reconhecer só uma deixava 6 das 11 encomendas da loja
+ * (mais da metade) somando faturamento que nunca aconteceu.
+ */
 export const foiCancelada = (venda: VendaDoRelatorio | null | undefined): boolean =>
-  venda?.status === 'canceled';
+  venda?.status === 'canceled' || venda?.status === 'cancelada';
 
 /** As vendas válidas que caem na janela, já com a data resolvida. */
 export function vendasNaJanela(

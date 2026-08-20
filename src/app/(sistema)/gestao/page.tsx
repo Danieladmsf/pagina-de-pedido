@@ -889,6 +889,8 @@ export default function GestaoPage() {
         {activeTab === 'relatorios' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <RelatoriosTab
+              db={db}
+              ownerId={ownerId}
               orders={ordersRaw || []}
               items={items || []}
               categories={categories || []}
