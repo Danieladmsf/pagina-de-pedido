@@ -283,6 +283,10 @@ export function getRetaguardaPermissionForTab(tabId: string): RetaguardaPermissi
 
   const byTabId: Record<string, RetaguardaPermissionKey> = {
     dashboard: 'dashboard',
+    // Relatórios anda junto do Dashboard: é o mesmo dado financeiro agregado,
+    // com o mesmo motivo para continuar exclusivo do dono. Chave própria só
+    // faria sentido se um dia der para liberar um sem o outro.
+    relatorios: 'dashboard',
     produtos: 'produtos',
     // Estoque anda junto de Produtos: quem cuida do cadastro cuida da contagem.
     estoque: 'produtos',

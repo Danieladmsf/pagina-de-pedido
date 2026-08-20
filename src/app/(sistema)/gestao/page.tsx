@@ -23,6 +23,7 @@ import {
 } from '@/lib/menu-item-delete';
 import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
+import { RelatoriosTab } from '@/components/admin/RelatoriosTab';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,7 @@ import { UsuariosTab } from '@/components/admin/UsuariosTab';
 
 const GESTAO_TAB_ORDER = [
   'dashboard',
+  'relatorios',
   'produtos',
   'estoque',
   'categorias',
@@ -883,6 +885,17 @@ export default function GestaoPage() {
           </div>
         )}
 
+
+        {activeTab === 'relatorios' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <RelatoriosTab
+              orders={ordersRaw || []}
+              items={items || []}
+              categories={categories || []}
+              storeProfile={storeProfile}
+            />
+          </div>
+        )}
 
         {/* Módulo Administrativo (Nova Gestão) */}
         {activeTab === 'whatsapp' && (

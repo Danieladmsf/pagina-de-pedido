@@ -78,4 +78,12 @@ describe('permissões de operador', () => {
     expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'estoque')).toBe(false);
     expect(canAccessRetaguardaTab('owner', permissions.retaguarda, 'estoque')).toBe(true);
   });
+
+  it('Relatórios segue a permissão do Dashboard e continua exclusivo do dono', () => {
+    const permissions = normalizeOperatorPermissions({ retaguarda: { dashboard: true } });
+
+    expect(getRetaguardaPermissionForTab('relatorios')).toBe('dashboard');
+    expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'relatorios')).toBe(false);
+    expect(canAccessRetaguardaTab('owner', permissions.retaguarda, 'relatorios')).toBe(true);
+  });
 });
