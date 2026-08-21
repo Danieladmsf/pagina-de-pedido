@@ -1,4 +1,4 @@
-import type { PdvPermissions } from '@/lib/pdv-permissions';
+import { can, PDV_PERMISSION_PATHS, type PdvPermissions } from '@/lib/pdv-permissions';
 
 /**
  * O que o dono liga e desliga para cada funcionário na Retaguarda.
@@ -323,6 +323,31 @@ export function canAccessRetaguardaTab(
 ): boolean {
   const permission = getRetaguardaPermissionForTab(tabId);
   return !!permission && canAccessRetaguarda(role, permissions, permission);
+}
+
+/**
+ * Um gestor delegado nunca entrega mais do que tem.
+ *
+ * Quando o dono liga o módulo Usuários para um funcionário, esse funcionário
+ * passa a criar e editar colegas. A trava aqui é a regra clássica de não
+ * escalada: cada capacidade marcada para o outro precisa existir no perfil de
+ * quem está concedendo. Sem isso, bastaria criar um colega com tudo ligado e
+ * entrar com ele.
+ */
+export function excedePermissoes(
+  pedidas: OperatorPermissions,
+  doGestor: OperatorPermissions,
+): boolean {
+  for (const path of PDV_PERMISSION_PATHS) {
+    if (can(pedidas.pdv, path) && !can(doGestor.pdv, path)) return true;
+  }
+  for (const key of RETAGUARDA_PERMISSION_KEYS) {
+    const pedida = pedidas.retaguarda[key];
+    const gestor = doGestor.retaguarda[key];
+    if (pedida.ver && !gestor.ver) return true;
+    if (pedida.editar && !gestor.editar) return true;
+  }
+  return false;
 }
 
 export function canEditRetaguardaTab(

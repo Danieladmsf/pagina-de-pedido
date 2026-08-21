@@ -9,7 +9,10 @@ import {
   suggestAlternativeHandles,
   validateOperatorPassword,
 } from '@/lib/operator-login';
-import { normalizeOperatorPermissions } from '@/lib/user-permissions';
+import {
+  excedePermissoes,
+  normalizeOperatorPermissions,
+} from '@/lib/user-permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -125,7 +128,15 @@ function bearerToken(request: Request): string {
   return match[1].trim();
 }
 
-async function requireOwner(request: Request) {
+/**
+ * Quem pode mexer nos usuarios da loja.
+ *
+ * O dono sempre pode. Um funcionario tambem pode, quando o dono ligou o modulo
+ * "Usuarios e acesso" para ele - `ver` para consultar a lista e `editar` para
+ * criar/alterar. Nesse caso valem duas travas que o dono nao tem: ele nao mexe
+ * no proprio acesso e nao concede nada que ele mesmo nao possua.
+ */
+async function requireGestor(request: Request, precisaEditar: boolean) {
   const auth = getOptionalAdminAuth();
   const db = getOptionalAdminDb();
   if (!auth || !db) {
@@ -142,19 +153,65 @@ async function requireOwner(request: Request) {
     throw new UsuariosApiError(401, 'Nao foi possivel validar a sessao do usuario.');
   }
 
-  const ownerSnapshot = await db.collection(OWNER_COLLECTION).doc(decodedToken.uid).get();
-  if (!ownerSnapshot.exists) {
-    throw new UsuariosApiError(403, 'Somente o master pode gerenciar usuarios.');
+  const actorUid = decodedToken.uid;
+  const ownerSnapshot = await db.collection(OWNER_COLLECTION).doc(actorUid).get();
+  if (ownerSnapshot.exists) {
+    const storeName = ownerSnapshot.data()?.storeName;
+    return {
+      auth,
+      db,
+      ownerUid: actorUid,
+      actorUid,
+      isOwner: true,
+      actorPermissions: null,
+      storeName: typeof storeName === 'string' ? storeName : '',
+    };
   }
 
-  const storeName = ownerSnapshot.data()?.storeName;
+  const actorRole = await db.collection(OPERATOR_COLLECTION).doc(actorUid).get();
+  const actorData = actorRole.data();
+  if (!actorRole.exists || actorData?.active !== true || typeof actorData.ownerId !== 'string') {
+    throw new UsuariosApiError(403, 'Este acesso nao pode gerenciar usuarios.');
+  }
+
+  const actorPermissions = normalizeOperatorPermissions(actorData.permissions);
+  const modulo = actorPermissions.retaguarda.usuarios;
+  if (!modulo.ver || (precisaEditar && !modulo.editar)) {
+    throw new UsuariosApiError(403, precisaEditar
+      ? 'Seu acesso permite consultar os usuarios, mas nao alterar.'
+      : 'Seu acesso nao inclui Usuarios.');
+  }
+
+  const donoSnapshot = await db.collection(OWNER_COLLECTION).doc(actorData.ownerId).get();
+  const storeName = donoSnapshot.data()?.storeName;
 
   return {
     auth,
     db,
-    ownerUid: decodedToken.uid,
+    ownerUid: actorData.ownerId,
+    actorUid,
+    isOwner: false,
+    actorPermissions,
     storeName: typeof storeName === 'string' ? storeName : '',
   };
+}
+
+/** Recusa o gestor delegado que tenta conceder mais do que ele proprio tem. */
+function garantirSemEscalada(
+  actorPermissions: ReturnType<typeof normalizeOperatorPermissions> | null,
+  pedidas: ReturnType<typeof normalizeOperatorPermissions>,
+) {
+  if (!actorPermissions) return;
+  if (excedePermissoes(pedidas, actorPermissions)) {
+    throw new UsuariosApiError(403, 'Voce so pode liberar o que o seu proprio acesso ja tem.');
+  }
+}
+
+/** O gestor delegado nao mexe no proprio acesso - seria autopromocao. */
+function garantirQueNaoEhEleMesmo(isOwner: boolean, actorUid: string, alvoUid: string) {
+  if (!isOwner && actorUid === alvoUid) {
+    throw new UsuariosApiError(403, 'Voce nao pode alterar o proprio acesso.');
+  }
 }
 
 async function requireOwnedOperator(
@@ -277,7 +334,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const { auth, db, ownerUid } = await requireOwner(request);
+    const { auth, db, ownerUid } = await requireGestor(request, false);
     const snapshot = await db
       .collection(OPERATOR_COLLECTION)
       .where('ownerId', '==', ownerUid)
@@ -297,7 +354,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { auth, db, ownerUid, storeName } = await requireOwner(request);
+    const { auth, db, ownerUid, actorUid, storeName, actorPermissions } = await requireGestor(request, true);
     const body = await readJsonObject(request);
     if ('ownerId' in body || 'role' in body || 'master' in body || 'uid' in body) {
       throw new UsuariosApiError(400, 'O papel e o proprietario nao podem ser definidos pelo cliente.');
@@ -315,6 +372,7 @@ export async function POST(request: Request) {
     }
     const password = querSenha ? normalizePassword(body.password) : undefined;
     const permissions = sanitizePermissions(body.permissions);
+    garantirSemEscalada(actorPermissions, permissions);
 
     let authUser: UserRecord;
     try {
@@ -348,9 +406,9 @@ export async function POST(request: Request) {
         login,
         permissions,
         createdAt: FieldValue.serverTimestamp(),
-        createdBy: ownerUid,
+        createdBy: actorUid,
         updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: ownerUid,
+        updatedBy: actorUid,
       });
     } catch (error) {
       // Nao deixa um login orfao se a vinculacao segura com a loja falhar.
@@ -385,9 +443,10 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { auth, db, ownerUid } = await requireOwner(request);
+    const { auth, db, ownerUid, actorUid, isOwner, actorPermissions } = await requireGestor(request, true);
     const body = await readJsonObject(request);
     const operatorUid = normalizeUid(body.uid);
+    garantirQueNaoEhEleMesmo(isOwner, actorUid, operatorUid);
     if ('ownerId' in body || 'email' in body || 'role' in body || 'master' in body) {
       throw new UsuariosApiError(400, 'E-mail, papel e proprietario nao podem ser alterados.');
     }
@@ -424,7 +483,7 @@ export async function PATCH(request: Request) {
         await ownedOperator.reference.update({
           passwordUpdatedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
-          updatedBy: ownerUid,
+          updatedBy: actorUid,
         });
         return noStoreJson({ ok: true, passwordChanged: true });
       }
@@ -457,6 +516,7 @@ export async function PATCH(request: Request) {
         throw new UsuariosApiError(400, 'Permissoes invalidas.');
       }
       updates.permissions = sanitizePermissions(body.permissions, ownedOperator.data.permissions);
+      garantirSemEscalada(actorPermissions, updates.permissions);
     }
     if (Object.keys(updates).length === 0) {
       throw new UsuariosApiError(400, 'Nenhuma alteracao foi informada.');
@@ -470,7 +530,7 @@ export async function PATCH(request: Request) {
     const auditedUpdates = (values: DocumentData): DocumentData => ({
       ...values,
       updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: ownerUid,
+      updatedBy: actorUid,
     });
     const updateAuthUser = async (values: UpdateRequest): Promise<UserRecord> => {
       try {
@@ -567,8 +627,9 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { auth, db, ownerUid } = await requireOwner(request);
+    const { auth, db, ownerUid, actorUid, isOwner } = await requireGestor(request, true);
     const operatorUid = normalizeUid(new URL(request.url).searchParams.get('uid'));
+    garantirQueNaoEhEleMesmo(isOwner, actorUid, operatorUid);
     const ownedOperator = await requireOwnedOperator(db, ownerUid, operatorUid);
 
     // Primeiro corta o acesso nas rules. Se uma etapa posterior falhar, nunca
@@ -576,7 +637,7 @@ export async function DELETE(request: Request) {
     await ownedOperator.reference.update({
       active: false,
       updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: ownerUid,
+      updatedBy: actorUid,
     });
 
     try {

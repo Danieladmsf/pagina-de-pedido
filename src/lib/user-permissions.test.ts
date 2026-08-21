@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { can } from '@/lib/pdv-permissions';
 import {
+  excedePermissoes,
   canAccessRetaguarda,
   canAccessRetaguardaTab,
   canEditRetaguarda,
@@ -123,6 +124,32 @@ describe('permissões de operador', () => {
     expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'relatorios')).toBe(false);
     expect(canAccessRetaguardaTab('operator', permissions.retaguarda, 'estoque')).toBe(false);
     expect(canAccessRetaguardaTab('owner', permissions.retaguarda, 'estoque')).toBe(true);
+  });
+
+  it('gestor delegado não entrega mais do que ele tem', () => {
+    const gestor = normalizeOperatorPermissions({
+      pdv: { tabs: { caixa: true }, actions: { caixa: { abrirCaixa: true } } },
+      retaguarda: { usuarios: { ver: true, editar: true }, produtos: { ver: true } },
+    });
+
+    const igual = normalizeOperatorPermissions({
+      pdv: { tabs: { caixa: true } },
+      retaguarda: { produtos: { ver: true } },
+    });
+    const comAbaQueEleNaoTem = normalizeOperatorPermissions({
+      pdv: { tabs: { delivery: true } },
+    });
+    const comEdicaoQueEleNaoTem = normalizeOperatorPermissions({
+      retaguarda: { produtos: { ver: true, editar: true } },
+    });
+    const comAcaoQueEleNaoTem = normalizeOperatorPermissions({
+      pdv: { tabs: { caixa: true }, actions: { caixa: { fecharCaixa: true } } },
+    });
+
+    expect(excedePermissoes(igual, gestor)).toBe(false);
+    expect(excedePermissoes(comAbaQueEleNaoTem, gestor)).toBe(true);
+    expect(excedePermissoes(comEdicaoQueEleNaoTem, gestor)).toBe(true);
+    expect(excedePermissoes(comAcaoQueEleNaoTem, gestor)).toBe(true);
   });
 
   it('a aba respeita as duas decisões do módulo', () => {

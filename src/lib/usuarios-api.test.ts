@@ -389,6 +389,156 @@ describe('/api/usuarios', () => {
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
+  it('funcionário com o módulo Usuários lista a equipe da loja', async () => {
+    const { auth, users } = createFakeAuth('gestor-1');
+    users.set('colega', {
+      uid: 'colega', email: 'colega@loja.com', emailVerified: false, disabled: false,
+      metadata: { creationTime: '2026-08-19T00:00:00.000Z' },
+    });
+    const { db } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: true,
+        permissions: { retaguarda: { usuarios: { ver: true, editar: false } } },
+      },
+      colega: { ownerId: 'owner-1', name: 'Colega', active: true },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await GET(apiRequest('GET'));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.usuarios.map((u: any) => u.uid)).toContain('colega');
+  });
+
+  it('quem só consulta Usuários não cria ninguém', async () => {
+    const { auth } = createFakeAuth('gestor-1');
+    const { db, roles } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: true,
+        permissions: { retaguarda: { usuarios: { ver: true, editar: false } } },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Novo', login: 'novo', password: 'senha123',
+      permissions: { pdv: { tabs: { caixa: true } } },
+    }));
+
+    expect(response.status).toBe(403);
+    expect(roles.has('operator-new')).toBe(false);
+  });
+
+  it('gestor delegado não cria colega com mais acesso do que ele tem', async () => {
+    const { auth } = createFakeAuth('gestor-1');
+    const { db, roles } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: true,
+        permissions: {
+          pdv: { tabs: { caixa: true } },
+          retaguarda: { usuarios: { ver: true, editar: true } },
+        },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Novo', login: 'novo', password: 'senha123',
+      permissions: { retaguarda: { clientes: { ver: true, editar: true } } },
+    }));
+
+    expect(response.status).toBe(403);
+    expect(roles.has('operator-new')).toBe(false);
+  });
+
+  it('gestor delegado cria colega dentro do próprio limite', async () => {
+    const { auth } = createFakeAuth('gestor-1');
+    const { db, roles } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: true,
+        permissions: {
+          pdv: { tabs: { caixa: true }, actions: { caixa: { abrirCaixa: true } } },
+          retaguarda: { usuarios: { ver: true, editar: true } },
+        },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Novo', login: 'novo', password: 'senha123',
+      permissions: { pdv: { tabs: { caixa: true }, actions: { caixa: { abrirCaixa: true } } } },
+    }));
+    const saved = roles.get('operator-new')!;
+
+    expect(response.status).toBe(201);
+    expect(saved.ownerId).toBe('owner-1');
+    expect(saved.createdBy).toBe('gestor-1');
+  });
+
+  it('gestor delegado não mexe no próprio acesso', async () => {
+    const { auth, users } = createFakeAuth('gestor-1');
+    users.set('gestor-1', {
+      uid: 'gestor-1', email: 'gerente@loja.com', emailVerified: false, disabled: false,
+      metadata: { creationTime: '2026-08-19T00:00:00.000Z' },
+    });
+    const { db, roles } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: true,
+        permissions: {
+          pdv: { tabs: { caixa: true } },
+          retaguarda: { usuarios: { ver: true, editar: true } },
+        },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await PATCH(apiRequest('PATCH', {
+      uid: 'gestor-1',
+      permissions: { retaguarda: { clientes: { ver: true, editar: true } } },
+    }));
+
+    expect(response.status).toBe(403);
+    expect(roles.get('gestor-1')?.permissions?.retaguarda?.clientes).toBeUndefined();
+  });
+
+  it('funcionário sem o módulo Usuários continua fora', async () => {
+    const { auth } = createFakeAuth('op-1');
+    const { db } = createFakeDb(['owner-1'], {
+      'op-1': {
+        ownerId: 'owner-1', name: 'Operador', active: true,
+        permissions: { pdv: { tabs: { caixa: true } } },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await GET(apiRequest('GET'));
+
+    expect(response.status).toBe(403);
+  });
+
+  it('funcionário desativado não gerencia ninguém, mesmo com o módulo ligado', async () => {
+    const { auth } = createFakeAuth('gestor-1');
+    const { db } = createFakeDb(['owner-1'], {
+      'gestor-1': {
+        ownerId: 'owner-1', name: 'Gerente', active: false,
+        permissions: { retaguarda: { usuarios: { ver: true, editar: true } } },
+      },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await GET(apiRequest('GET'));
+
+    expect(response.status).toBe(403);
+  });
+
   it('nao altera um operador pertencente a outro master', async () => {
     const { auth } = createFakeAuth();
     const { db, roles } = createFakeDb(['owner-1'], {

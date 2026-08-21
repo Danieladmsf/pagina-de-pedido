@@ -51,6 +51,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
   generateOperatorPassword,
   resolveOperatorLogin,
@@ -415,6 +416,11 @@ function getRetaguardaEditLabels(permissions: OperatorPermissions): string[] {
 
 export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: UsuariosTabProps) {
   const { toast } = useToast();
+  // O dono pode delegar esta tela a um funcionário. Quando isso acontece, duas
+  // coisas mudam: ele não mexe no próprio acesso (a API recusa, a tela avisa) e
+  // a senha da Retaguarda continua sendo assunto só do dono.
+  const { role, actorId } = usePdvAccess();
+  const ehDono = role === 'owner';
   const [usuarios, setUsuarios] = useState<ManagedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -758,7 +764,9 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
         <ShieldCheck className="h-4 w-4" />
         <AlertTitle>Cada funcionário vê só o que você liberar</AlertTitle>
         <AlertDescription>
-          Tudo é escolha sua, tela por tela — inclusive faturamento e configurações. Desativar um funcionário bloqueia o acesso na hora, sem apagar o histórico.
+          {ehDono
+            ? 'Tudo é escolha sua, tela por tela — inclusive faturamento e configurações. Desativar um funcionário bloqueia o acesso na hora, sem apagar o histórico.'
+            : 'Você pode liberar para a equipe apenas o que o seu próprio acesso já tem. Desativar alguém bloqueia o acesso na hora, sem apagar o histórico.'}
         </AlertDescription>
       </Alert>
 
@@ -805,6 +813,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
               {usuarios.map((usuario) => {
                 const isBusy = busyAction?.uid === usuario.uid;
                 const createdAt = formatCreatedAt(usuario.createdAt);
+                const ehVoceMesmo = !ehDono && usuario.uid === actorId;
                 return (
                   <Card key={usuario.uid} className={usuario.active ? '' : 'bg-slate-50 opacity-80'}>
                     <CardHeader className="space-y-3">
@@ -864,14 +873,19 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                       </div>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-2 border-t pt-4">
-                      <Button size="sm" variant="outline" onClick={() => openEditUser(usuario)} disabled={hasPendingAction}>
+                      {ehVoceMesmo && (
+                        <p className="w-full text-xs text-slate-500">
+                          Este é o seu acesso. Só o dono da loja pode alterá-lo.
+                        </p>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => openEditUser(usuario)} disabled={hasPendingAction || ehVoceMesmo}>
                         <Pencil className="h-4 w-4" /> Editar
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => abrirTrocaDeSenha(usuario)}
-                        disabled={hasPendingAction || usuario.authMissing}
+                        disabled={hasPendingAction || usuario.authMissing || ehVoceMesmo}
                       >
                         <KeyRound className="h-4 w-4" /> Trocar senha
                       </Button>
@@ -891,7 +905,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                         size="sm"
                         variant="outline"
                         onClick={() => setConfirmation({ kind: 'toggle-active', usuario })}
-                        disabled={hasPendingAction || usuario.authMissing}
+                        disabled={hasPendingAction || usuario.authMissing || ehVoceMesmo}
                       >
                         {isBusy && busyAction?.action === 'toggle-active'
                           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -903,7 +917,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                         variant="ghost"
                         className="text-red-600 hover:bg-red-50 hover:text-red-700"
                         onClick={() => setConfirmation({ kind: 'remove', usuario })}
-                        disabled={hasPendingAction}
+                        disabled={hasPendingAction || ehVoceMesmo}
                       >
                         {isBusy && busyAction?.action === 'remove' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Remover
@@ -917,8 +931,12 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
         </>
       )}
 
-      <Separator className="my-1" />
-      <AdminPasswordSection db={db} user={user} adminSecret={adminSecret} isLoading={isAdminSecretLoading} />
+      {ehDono && (
+        <>
+          <Separator className="my-1" />
+          <AdminPasswordSection db={db} user={user} adminSecret={adminSecret} isLoading={isAdminSecretLoading} />
+        </>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => !isSaving && setDialogOpen(open)}>
         <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
