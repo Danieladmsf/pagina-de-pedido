@@ -33,6 +33,7 @@ import {
   obterVisitorId,
 } from '@/lib/audience';
 import { useVisitorTracking } from '@/hooks/useVisitorTracking';
+import { codigoDoVisitante, extrairMarca, MARCA_PARAM } from '@/lib/contato-link';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
@@ -512,6 +513,33 @@ export function MenuPageClient({
       /* storage bloqueado: a pessoa só será reconhecida ao se identificar no carrinho */
     }
   }, [tracker]);
+
+  // Reconhecimento pela marca do link: quando é a PRÓPRIA loja que manda o
+  // endereço (resposta automática, campanha, aviso de pedido), ele sai marcado
+  // para aquele contato. Nenhum site consegue ler o telefone de quem abriu a
+  // página — esta é a única forma de dar nome a quem chega pelo link.
+  //
+  // Quem abre a marca é o servidor: o telefone não passa por aqui. E a marca sai
+  // do endereço logo depois, para não ser compartilhada junto com o link.
+  React.useEffect(() => {
+    if (!podeRegistrar || !visitorId) return;
+    const marca = extrairMarca(searchParams);
+    if (!marca) return;
+
+    fetch('/api/cardapio/identificar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId, visitorId, marca }),
+    }).catch(() => {});
+
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(MARCA_PARAM);
+      window.history.replaceState(null, '', url.toString());
+    } catch {
+      /* sem history: a marca só fica visível na barra de endereço */
+    }
+  }, [podeRegistrar, visitorId, storeId, searchParams]);
 
   // Um efeito só em vez de instrumentar cada card: o diálogo do produto abre
   // pela vitrine, pela busca, pelo combo e pela promoção.
@@ -1595,6 +1623,7 @@ export function MenuPageClient({
           storeSlug={storeSlug}
           theme={theme}
           isStoreOpen={isStoreOpenRightNow.isOpen}
+          codigoVisitante={visitorId ? codigoDoVisitante(visitorId) : null}
         />
       )}
 

@@ -16,6 +16,10 @@ import {
 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import {
+  canAccessRetaguarda,
+  EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+} from '@/lib/user-permissions';
 import { useCaixaAbertoEm } from '@/hooks/useCaixaAbertoEm';
 import { usePublicAudience } from '@/hooks/usePublicAudience';
 import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
@@ -24,6 +28,7 @@ import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { matchUniqueActiveCustomerByPhone, normalizeCreditPhone } from '@/lib/customer-credit';
 import {
+  chamouNoWhatsapp,
   ehIdentificado,
   estadoDoVisitante,
   eventosDaSessao,
@@ -52,7 +57,13 @@ export function VisitantesPage() {
   const db = useFirestore();
   const router = useRouter();
   const { user } = useUser();
-  const { ownerId } = usePdvAccess();
+  const { ownerId, role, operatorPermissions } = usePdvAccess();
+  // Visitantes é um módulo como os outros: o dono liga ou desliga por pessoa.
+  const podeVerVisitantes = canAccessRetaguarda(
+    role,
+    operatorPermissions?.retaguarda ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+    'visitantes',
+  );
   const caixaAbertoEm = useCaixaAbertoEm(ownerId);
   const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, caixaAbertoEm);
   const { online, visitasNaSessao } = usePublicAudience(ownerId, caixaAbertoEm);
@@ -104,10 +115,13 @@ export function VisitantesPage() {
     return `${caixaAbertoEm.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${hora}`;
   }, [caixaAbertoEm]);
 
-  if (semAcesso) {
+  if (!podeVerVisitantes || semAcesso) {
     return (
       <Moldura onVoltar={() => router.back()}>
-        <Aviso titulo="Sem acesso a esta tela" texto="Peça ao dono da loja para liberar o acesso ao Delivery." />
+        <Aviso
+          titulo="Sem acesso a esta tela"
+          texto="Seu acesso não inclui Visitantes. O dono libera isso em Usuários e acesso, na Retaguarda."
+        />
       </Moldura>
     );
   }
@@ -361,6 +375,7 @@ function CartaoDeVisitante({
   const eventos = useMemo(() => eventosDaSessao(visitante, inicioMs), [visitante, inicioMs]);
   const carrinho = visitante.carrinho;
   const ultimaVez = paraMillis(visitante.ultimaVez);
+  const jaChamou = chamouNoWhatsapp(visitante);
 
   return (
     <div
@@ -384,6 +399,11 @@ function CartaoDeVisitante({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="font-bold text-slate-800">{nome || 'Visitante sem cadastro'}</p>
             <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-black', rotulo.classe)}>{rotulo.texto}</span>
+            {jaChamou && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                <WhatsAppIcon className="h-2.5 w-2.5" /> Já te chamou
+              </span>
+            )}
           </div>
 
           <p className="mt-0.5 text-xs text-slate-500">
@@ -396,6 +416,14 @@ function CartaoDeVisitante({
               </span>
             )}
           </p>
+
+          {/* Link é encaminhável: se a cliente mandou o endereço para uma amiga,
+              quem chegou foi a amiga. A loja precisa saber disso antes de ligar. */}
+          {visitante.viaLink && (
+            <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+              Reconhecido pelo link que a loja enviou — confirme o nome ao falar.
+            </p>
+          )}
 
           {/* O que ficou na sacola: é a frase que a dona usa no WhatsApp. */}
           {estado === 'abandonou' && carrinho && (
@@ -431,7 +459,7 @@ function CartaoDeVisitante({
               className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-600"
             >
               <WhatsAppIcon className="h-3.5 w-3.5" />
-              Chamar
+              {jaChamou ? 'Responder' : 'Chamar'}
             </a>
           )}
           <button
@@ -473,6 +501,9 @@ function CartaoDeVisitante({
                         )}
                         {e.tipo === 'pedido' && (
                           <span className="font-bold text-emerald-700">enviou o pedido · {brl(e.valor || 0)}</span>
+                        )}
+                        {e.tipo === 'whatsapp' && (
+                          <span className="font-bold text-emerald-700">chamou a loja no WhatsApp</span>
                         )}
                       </span>
                     </li>

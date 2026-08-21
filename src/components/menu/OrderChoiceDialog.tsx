@@ -6,6 +6,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CakeSlice, ChevronRight, ShoppingBag, X } from 'lucide-react';
 import { themeToCssVars, type ThemePreset } from '@/lib/themes';
 import { ORDER_LINK_CARD_LABELS, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
+import { textoDoPedidoPeloWhatsapp } from '@/lib/contato-link';
 
 // Tela de escolha do "link de pedidos": aparece quando o cliente entra pelo link
 // que a loja mandou e o dono configurou "Tela de escolha" em Mensagens
@@ -37,6 +38,7 @@ export function OrderChoiceDialog({
   storeSlug,
   theme,
   isStoreOpen,
+  codigoVisitante,
 }: {
   open: boolean;
   /** Quais opções mostrar — vem do proprio link (?pedir=de). */
@@ -46,10 +48,16 @@ export function OrderChoiceDialog({
   storeSlug?: string;
   theme: ThemePreset;
   isStoreOpen: boolean;
+  /**
+   * Código curto desta visita. Vai dentro da mensagem para a loja saber que o
+   * número que acabou de chamar é a pessoa que estava vendo os produtos — é o
+   * único jeito: o site não tem como ler o telefone de quem abriu a página.
+   */
+  codigoVisitante?: string | null;
 }) {
   const storeName = storeProfile?.general?.name || 'nossa loja';
   const logoUrl = storeProfile?.general?.logoUrl || '';
-  const whatsappUrl = `https://wa.me/${storeWhatsappDigits(storeProfile)}?text=${encodeURIComponent('Olá! Gostaria de fazer um pedido.')}`;
+  const whatsappUrl = `https://wa.me/${storeWhatsappDigits(storeProfile)}?text=${encodeURIComponent(textoDoPedidoPeloWhatsapp(codigoVisitante))}`;
 
   const cardClass =
     'group relative flex w-full items-center gap-3.5 rounded-2xl border border-black/[0.07] bg-white p-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition-all hover:-translate-y-px hover:border-primary/35 hover:shadow-[0_8px_20px_-8px_rgba(16,24,40,0.22)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0';

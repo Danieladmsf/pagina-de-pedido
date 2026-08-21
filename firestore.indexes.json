@@ -36,6 +36,15 @@
         { "fieldPath": "storeId", "order": "ASCENDING" },
         { "fieldPath": "ultimaVez", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "Webhook do WhatsApp: acha a visita pelo código curto que voltou na mensagem do cliente.",
+      "collectionGroup": "store_visitors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "storeId", "order": "ASCENDING" },
+        { "fieldPath": "codigo", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

@@ -20,7 +20,7 @@
  */
 
 /** Eventos guardados na linha do tempo do visitante. */
-export type TipoEvento = 'viu' | 'carrinho' | 'pedido';
+export type TipoEvento = 'viu' | 'carrinho' | 'pedido' | 'whatsapp';
 
 export interface EventoVisitante {
   tipo: TipoEvento;
@@ -71,6 +71,14 @@ export interface Visitante {
   ultimoPedidoId?: string;
   ultimoPedidoValor?: number;
   ultimoPedidoMs?: number;
+  /**
+   * Identidade PROVÁVEL: veio da marca do link que a loja mandou, não da pessoa
+   * digitando. Link é encaminhável — quem recebeu de uma amiga chega com o
+   * contato de quem encaminhou. Vale para chamar, não para cobrar.
+   */
+  viaLink?: boolean;
+  /** Código curto que o cliente leva ao sair do cardápio para o WhatsApp da loja. */
+  codigo?: string;
 }
 
 /** Quantos eventos ficam guardados por pessoa. */
@@ -329,6 +337,15 @@ export function empilharEvento(
     return atual;
   }
   return [...atual, evento].slice(-limite);
+}
+
+/**
+ * A pessoa chamou a loja no WhatsApp saindo do cardápio (o código dela voltou
+ * numa mensagem). Muda o que a dona faz: em vez de puxar conversa, é só abrir a
+ * que já está lá esperando.
+ */
+export function chamouNoWhatsapp(v: Visitante): boolean {
+  return (v.linhaDoTempo || []).some((e) => e.tipo === 'whatsapp');
 }
 
 /** Eventos da sessão de caixa atual, do mais novo para o mais velho. */

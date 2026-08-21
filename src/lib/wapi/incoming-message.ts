@@ -27,6 +27,12 @@ export type IncomingMessage = {
   address: string;
   text: string;
   timestamp: number;
+  /**
+   * Nome que a pessoa usa no WhatsApp, quando o provedor manda. E o unico nome
+   * disponivel para contato fora da agenda da loja — sem ele, quem chega pelo
+   * codigo do cardapio aparece so como um numero no painel.
+   */
+  pushName: string;
 };
 
 function normalizePhone(phone: string) {
@@ -367,10 +373,28 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
     ) || 0
   );
 
+  const pushName = firstString(
+    payload?.pushName,
+    payload?.notifyName,
+    payload?.senderName,
+    payload?.sender?.pushName,
+    payload?.sender?.name,
+    payload?.contact?.name,
+    payload?.chat?.name,
+    data?.pushName,
+    data?.notifyName,
+    data?.senderName,
+    data?.sender?.pushName,
+    data?.sender?.name,
+    data?.contact?.name,
+    data?.chat?.name,
+  );
+
   return {
     phone: hasPhone ? phone : '',
     address: hasPhone ? phone : lid,
     text,
     timestamp,
+    pushName: String(pushName || '').trim().slice(0, 80),
   };
 }

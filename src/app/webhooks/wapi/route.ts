@@ -16,6 +16,9 @@ import {
   renderWhatsAppTemplate,
   formatNextOpeningTime,
 } from '@/lib/whatsapp-messages';
+import { VALIDADE_PADRAO_DIAS, adicionarMarca, extrairCodigoDaMensagem } from '@/lib/contato-link';
+import { criarMarcaDeContato } from '@/lib/contato-link.server';
+import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,6 +55,20 @@ function getConnectedPhone(payload: any) {
   return getWapiConnectedPhone(payload);
 }
 
+/**
+ * Acrescenta a marca de contato ao link do cardápio. Best-effort: qualquer
+ * problema (servidor sem a chave, telefone estranho) devolve o link como estava
+ * — mensagem de cliente não pode deixar de sair por causa disso.
+ */
+function marcarParaContato(link: string, empresaId: string, telefone: string): string {
+  if (!link || !telefone) return link;
+  try {
+    return adicionarMarca(link, criarMarcaDeContato(empresaId, telefone, VALIDADE_PADRAO_DIAS));
+  } catch {
+    return link;
+  }
+}
+
 function buildAutoReply(params: {
   storeProfile: any;
   empresaId: string;
@@ -63,7 +80,12 @@ function buildAutoReply(params: {
   const storeProfile = params.storeProfile || {};
   const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
   const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja';
-  const storeLink = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
+  const storeLinkBase = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
+  // O link sai marcado para ESTE contato: quem clicar é reconhecido no painel
+  // sem digitar nada (o site não tem como ler o telefone de quem abre a página).
+  // Sem telefone — contato fora da agenda, que chega só como @lid — o link vai
+  // limpo, como sempre foi.
+  const storeLink = marcarParaContato(storeLinkBase, params.empresaId, params.incoming.phone);
   const openState = getStoreOpenState(storeProfile);
 
   let template = '';
@@ -397,6 +419,26 @@ export async function POST(request: Request) {
     setWapiAutoRead(instanceId, webhookAuth.token, false).catch((error) => {
       console.warn('[W-API webhook] Falha ao desligar leitura automatica no connect:', { instanceId, empresaId, error });
     });
+  }
+
+  // A outra ponta do reconhecimento: quem saiu do cardápio para o WhatsApp leva
+  // um código na mensagem. Ele volta aqui e amarra o número de quem escreveu à
+  // visita que estava vendo os produtos.
+  if (adminRef && empresaId) {
+    try {
+      const incoming = extractIncomingMessage(payload, event, hook);
+      const codigo = extrairCodigoDaMensagem(incoming?.text || '');
+      if (codigo) {
+        await identificarVisitantePeloCodigo(adminDb, {
+          storeId: empresaId,
+          codigo,
+          telefone: incoming?.phone || '',
+          nome: incoming?.pushName || '',
+        });
+      }
+    } catch (error) {
+      console.warn('[W-API webhook] Falha ao reconhecer visitante pelo codigo:', { empresaId, error });
+    }
   }
 
   let autoReplySent = false;

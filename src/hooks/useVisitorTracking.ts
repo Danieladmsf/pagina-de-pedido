@@ -12,6 +12,7 @@ import {
   type EventoVisitante,
 } from '@/lib/visitantes';
 import { normalizeCreditPhone } from '@/lib/customer-credit';
+import { codigoDoVisitante } from '@/lib/contato-link';
 
 /**
  * Grava o que a pessoa fez no cardápio: quais produtos abriu, o que ficou no
@@ -135,6 +136,10 @@ export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova }
       // `increment` em vez de somar no cliente: duas abas abertas não se
       // atropelam e o contador não depende da leitura ter dado certo.
       if (sessaoNova) campos.sessoes = increment(1);
+      // Código curto desta visita: é por ele que a loja liga a mensagem que
+      // chega no WhatsApp à pessoa que estava olhando os produtos.
+      const codigo = codigoDoVisitante(visitorId);
+      if (codigo && existente?.codigo !== codigo) campos.codigo = codigo;
       // Carrinho de uma visita antiga não pode aparecer como oportunidade de
       // hoje: quem voltou amanhã começa com a sacola limpa na tela da dona.
       if (sessaoNova && existente?.carrinho) campos.carrinho = { itens: [], valor: 0, emMs: Date.now() };
@@ -234,6 +239,9 @@ export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova }
         telefone: telefone || identidade.current.telefone,
         clienteId: clienteId || identidade.current.clienteId,
       };
+      // Telefone digitado pela pessoa é identidade CONFIRMADA: derruba o
+      // "provável" que tinha vindo da marca do link.
+      if (campos.telefone) campos.viaLink = false;
       gravar(campos);
     },
     [ref, gravar]

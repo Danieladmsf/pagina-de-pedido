@@ -10,6 +10,9 @@ import { sendWapiDocumentMessage, sendWapiImageMessage, sendWapiTextMessage } fr
 import { saveWhatsAppMessageLog, saveWhatsAppMessageLogAdmin } from '@/lib/wapi/integration-store';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { normalizeWapiPhone } from '@/lib/wapi/operator-access';
+import { VALIDADE_PADRAO_DIAS, marcarLinksDoCardapio } from '@/lib/contato-link';
+import { criarMarcaDeContato } from '@/lib/contato-link.server';
+import { slugifyStoreName } from '@/lib/whatsapp-messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +43,34 @@ async function claimOrderNotification(empresaId: string, orderId?: string, type?
   } catch {
     // Documento já existe → outro disparo já reivindicou esta mensagem.
     return { duplicate: true, claimRef: null as any };
+  }
+}
+
+/**
+ * Marca o link do cardápio para o contato que vai receber a mensagem.
+ *
+ * Aqui é o cano por onde passa TODA mensagem que a loja manda (aviso de pedido,
+ * campanha, envio manual), então é o lugar certo para a marca: quem clicar no
+ * link é reconhecido no painel sem digitar nada — nenhum site consegue ler o
+ * telefone de quem abre a página.
+ *
+ * Só mexe em endereço DESTA loja e só quando a mensagem realmente tem um. Falha
+ * em silêncio: mensagem de cliente não deixa de sair por causa disso.
+ */
+async function marcarLinkDaLoja(empresaId: string, phone: string, texto: string): Promise<string> {
+  if (!texto || !phone || !texto.includes('http')) return texto;
+  try {
+    const db = getOptionalAdminDb();
+    if (!db) return texto;
+    const perfil = (await db.collection('store_profiles').doc(empresaId).get()).data() as any;
+    if (!perfil) return texto;
+
+    const caminho = `/${slugifyStoreName(perfil?.general?.name || perfil?.storeName || 'loja')}-${perfil?.shortSlug || empresaId}`;
+    if (!texto.includes(caminho)) return texto;
+
+    return marcarLinksDoCardapio(texto, caminho, criarMarcaDeContato(empresaId, phone, VALIDADE_PADRAO_DIAS));
+  } catch {
+    return texto;
   }
 }
 
@@ -84,15 +115,18 @@ export async function POST(request: Request) {
           });
           messagePreview = body.caption || body.fileName || 'Documento enviado';
         } else if (body.imageUrl) {
+          const caption = body.caption
+            ? await marcarLinkDaLoja(empresaId, phone, String(body.caption))
+            : undefined;
           result = await sendWapiImageMessage(integration.wapiInstanceId, token, {
             phone,
             image: String(body.imageUrl),
-            caption: body.caption ? String(body.caption) : undefined,
+            caption,
             delayMessage: Number(body.delayMessage || 3),
           });
-          messagePreview = body.caption || 'Imagem enviada';
+          messagePreview = caption || 'Imagem enviada';
         } else {
-          const message = String(body.message || '').trim();
+          const message = await marcarLinkDaLoja(empresaId, phone, String(body.message || '').trim());
           if (!message) {
             if (claimRef) { try { await claimRef.delete(); } catch { /* ignore */ } }
             return ok({ error: 'Mensagem obrigatoria.' }, 400);
