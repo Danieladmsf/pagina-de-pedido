@@ -8,6 +8,54 @@
 
 ---
 
+## 0-B. Tudo virou interruptor do dono (21/08/2026)
+
+O dono pediu o contrário do que este plano assumia em vários pontos: **nada
+reservado ao master por decisão do código**. "Ao invés de predefinir algumas
+coisas, por que não deixar tudo para escolher na página?"
+
+O que mudou:
+
+| Antes | Agora |
+|---|---|
+| 13 módulos, 9 travados em "Só o dono" | 16 módulos, nenhum travado |
+| Módulo = booleano (só consulta) | Módulo = `{ ver, editar }`, duas decisões |
+| Relatórios pendurado no Dashboard; Estoque em Produtos | chave própria para cada um |
+| Visitantes sem chave (saía de carona na aba Delivery) | módulo próprio (menu, tela e placar) |
+| Perfil da loja em 6 sub-chaves imaginadas | **uma** chave: o documento é salvo inteiro, separar seria promessa falsa |
+| `verCaixasAnteriores` e `vendaPrazo` forçados a `false` no código | escolha do dono |
+| Retaguarda do funcionário = casca read-only separada | mesma tela do dono, com o catálogo em leitura para quem não pode alterar |
+| Gerir usuários = só o master | delegável, com trava de não escalada |
+| Senha do funcionário = link por e-mail | o dono escolhe (ou sorteia) a senha na tela; apelido dispensa e-mail |
+
+**As duas metades de cada interruptor.** Toda permissão nova tem gate de
+interface *e* regra no Firestore lendo `permissions.retaguarda`. "Ver" sem
+"alterar" é recusado no servidor, não só escondido na tela.
+
+**O que sustenta o refactor:** `PdvAccessContext.storeUser` — a sessão de quem
+está logado com o `uid` da loja. Resolve de uma vez os ~45 pontos em que as
+telas descobriam o tenant por `user.uid` (§5 previa trocar um a um).
+
+**Pendências desta rodada:**
+
+1. `npm run test:rules` **não rodou** na máquina do dono: o node.exe não
+   consegue abrir conexão nem para 127.0.0.1 (firewall/antivírus — testado com
+   um servidor HTTP local do próprio node). As regras estão commitadas mas
+   **não devem ir para produção** antes da suíte passar em algum lugar.
+2. O gate da tela `VisitantesPage` ficou no working tree: o arquivo tinha WIP
+   de outra sessão e commitá-lo sozinho quebraria o build.
+3. Módulos liberados só para "ver" que ainda não têm tela de leitura própria
+   (Clientes, WhatsApp, Campanhas, Encomendas, Entregas, Perfil) mostram a tela
+   real com uma faixa de "modo consulta"; quem tentar salvar é recusado pelo
+   servidor. Dar a esses módulos uma versão de leitura de verdade é o próximo
+   passo natural.
+
+Os itens 1-4 da seção 0 (31/07) continuam válidos: leitura legada por sessão
+anônima em `clientes`, histórico de `orders`/caixa acessível a quem opera
+venda, `store_profiles` público e baixa pública de estoque.
+
+---
+
 ## 0. Atualização de implementação e auditoria (31/07/2026)
 
 Já existem no código: `PdvAccessContext` com `ownerId` resolvido, perfil fail-closed por operador, guard de owner/operador, API server-side de usuários com Firebase Auth, convite por e-mail, tela “Usuários e acesso”, catálogo read-only para operador, autorização granular no PDV e suíte de regras para o emulador.
