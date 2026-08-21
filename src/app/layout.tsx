@@ -5,9 +5,14 @@ import { AuthInit } from '@/components/providers/AuthInit';
 import { CartProvider } from '@/components/providers/CartProvider';
 import { PWARegister } from '@/components/providers/PWARegister';
 import { Toaster } from '@/components/ui/toaster';
+import { SITE_URL } from '@/lib/site';
 
 
 export const metadata = {
+  // Base para as URLs relativas de metadata (canonical, og:image). Sem ela o
+  // Next avisa no build e o og:image sai como caminho relativo, que rede social
+  // e buscador não conseguem baixar.
+  metadataBase: new URL(SITE_URL),
   title: 'Cardápio Digital',
   description: 'Cardápio digital e gestão de pedidos',
   manifest: '/manifest.json',

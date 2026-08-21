@@ -1,6 +1,5 @@
-'use client';
-
-import React, { useState } from 'react';
+import React from 'react';
+import type { Metadata } from 'next';
 import {
   Star,
   Zap,
@@ -12,11 +11,62 @@ import {
   Users,
   Cloud,
   Printer,
-  Check,
   ArrowRight,
-  Menu,
-  X,
 } from 'lucide-react';
+import { LandingHeader } from './LandingHeader';
+import { SITE_URL, SITE_NAME } from '@/lib/site';
+
+// Esta página é a vitrine do produto e a única que deve aparecer no Google.
+// Por isso ela é server component: o HTML sai pronto do servidor, com texto,
+// título e descrição. Enquanto era 'use client' inteira, o buscador recebia um
+// <body> vazio e não havia nada para indexar.
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: 'Polaris PDV — Sistema de cardápio digital, delivery e PDV para restaurantes',
+  description:
+    'Polaris PDV reúne cardápio digital com link próprio, delivery com taxa por raio, mesas e comandas, caixa, dashboard e impressão de cupom térmico em uma só plataforma. Funciona em qualquer aparelho com navegador.',
+  keywords: [
+    'polaris pdv',
+    'cardápio digital',
+    'sistema para restaurante',
+    'pdv para lanchonete',
+    'sistema de delivery',
+    'comanda digital',
+    'controle de caixa restaurante',
+    'cardápio online com link',
+  ],
+  applicationName: SITE_NAME,
+  authors: [{ name: SITE_NAME }],
+  alternates: {
+    canonical: '/polaris',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    url: `${SITE_URL}/polaris`,
+    siteName: SITE_NAME,
+    locale: 'pt_BR',
+    title: 'Polaris PDV — o sistema que guia seu restaurante',
+    description:
+      'Cardápio digital, delivery, mesas, caixa e dashboard em uma única plataforma. Crie sua conta e configure a loja em minutos.',
+    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'Polaris PDV' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Polaris PDV — o sistema que guia seu restaurante',
+    description: 'Cardápio digital, delivery, mesas, caixa e dashboard em uma única plataforma.',
+    images: ['/icon-512.png'],
+  },
+};
 
 const FEATURES = [
   {
@@ -61,11 +111,29 @@ const FEATURES = [
   },
 ];
 
-export default function PolarisLandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
+// Dados estruturados: é assim que o buscador entende que a página descreve um
+// software, e não um texto qualquer. Sem isso não há chance de resultado rico.
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Polaris PDV',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: `${SITE_URL}/polaris`,
+  inLanguage: 'pt-BR',
+  description:
+    'Sistema de cardápio digital, delivery, mesas, caixa e dashboard para restaurantes, lanchonetes e pizzarias.',
+  featureList: FEATURES.map((f) => f.title),
+};
 
+export default function PolarisLandingPage() {
   return (
     <div className="min-h-screen bg-black text-white antialiased overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
+
       {/* Background glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute -top-40 -right-40 h-[500px] w-[500px] rounded-full bg-emerald-500/10 blur-[120px]" />
@@ -73,53 +141,15 @@ export default function PolarisLandingPage() {
         <div className="absolute bottom-0 right-1/3 h-[300px] w-[300px] rounded-full bg-violet-500/10 blur-[120px]" />
       </div>
 
-      {/* Header */}
-      <header className="relative z-50 border-b border-white/5 backdrop-blur-md bg-black/60 sticky top-0">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <a href="#" className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <Star className="h-5 w-5 text-black fill-black" />
-            </div>
-            <span className="text-lg font-black tracking-tight">
-              POLARIS<span className="text-emerald-400"> PDV</span>
-            </span>
-          </a>
-
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
-            <a href="#recursos" className="hover:text-white transition-colors">Recursos</a>
-            <a href="#contato" className="hover:text-white transition-colors">Contato</a>
-          </nav>
-
-          <div className="hidden md:flex items-center gap-3">
-            <a href="/login" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">Entrar</a>
-            <a
-              href="/register"
-              className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-sm font-bold px-4 py-2 rounded-lg hover:from-emerald-400 hover:to-cyan-400 transition-all shadow-lg shadow-emerald-500/20"
-            >
-              Criar conta
-            </a>
-          </div>
-
-          <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 rounded-lg hover:bg-white/5">
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-
-        {menuOpen && (
-          <div className="md:hidden border-t border-white/5 bg-black/95 px-6 py-4 flex flex-col gap-3">
-            <a href="#recursos" className="text-sm py-2">Recursos</a>
-            <a href="#contato" className="text-sm py-2">Contato</a>
-            <a href="/login" className="text-sm py-2">Entrar</a>
-            <a href="/register" className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-sm font-bold px-4 py-2 rounded-lg text-center">
-              Criar conta
-            </a>
-          </div>
-        )}
-      </header>
+      <LandingHeader />
 
       {/* Hero */}
       <section className="relative z-10 max-w-7xl mx-auto px-6 pt-20 pb-24 md:pt-32 md:pb-40">
         <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
+          <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-5">
+            Polaris PDV
+          </span>
+
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-[0.95] mb-6">
             O sistema que <span className="bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">guia</span>
             <br />
@@ -127,8 +157,9 @@ export default function PolarisLandingPage() {
           </h1>
 
           <p className="text-lg md:text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed">
-            Cardápio digital, delivery, mesas, caixa e dashboard
-            em uma única plataforma.
+            Cardápio digital com link próprio, delivery, mesas, caixa e dashboard
+            em uma única plataforma — feita para restaurantes, lanchonetes,
+            pizzarias e confeitarias.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3">

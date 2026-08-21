@@ -12,7 +12,7 @@ import { AudienceBadge } from '@/components/system/AudienceBadge';
 // lógica que vivia na antiga página raiz; centralizada aqui, as duas rotas não
 // duplicam o gate. Como layouts não remontam ao navegar entre /pdv e /gestao,
 // a troca de rota não re-passa pelo guard nem pisca o loader.
-export default function SistemaLayout({ children }: { children: React.ReactNode }) {
+export function SistemaGuard({ children }: { children: React.ReactNode }) {
   const db = useFirestore();
   const auth = useAuth();
   const router = useRouter();
