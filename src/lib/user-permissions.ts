@@ -1,24 +1,62 @@
 import type { PdvPermissions } from '@/lib/pdv-permissions';
 
+/**
+ * O que o dono liga e desliga para cada funcionário na Retaguarda.
+ *
+ * Uma chave por tela de verdade — a lista abaixo espelha o menu lateral, item a
+ * item. Nada fica reservado ao dono por decisão do código: se um módulo aparece
+ * aqui, o dono escolhe na tela de Usuários se aquele funcionário entra nele.
+ *
+ * Cada módulo guarda duas decisões separadas: `ver` (abre a tela) e `editar`
+ * (mexe no que está lá). `editar` sem `ver` não existe — a normalização derruba.
+ */
 export const RETAGUARDA_PERMISSION_KEYS = [
+  // Números do negócio
   'dashboard',
+  'relatorios',
+  'visitantes',
+  // Cardápio
   'produtos',
+  'estoque',
   'categorias',
   'adicionais',
-  'clientes',
   'ofertas',
+  // Pessoas
+  'clientes',
+  'prazo',
+  // Marketing
   'whatsapp',
   'campanhas',
+  // Operação
   'encomendas',
-  'freelance',
+  'entregas',
+  // Configurações da loja
+  //
+  // Uma chave só, e não uma por sub-aba, porque o perfil inteiro mora em UM
+  // documento gravado de uma vez: separar "horários" de "taxas" seria promessa
+  // que o servidor não teria como cumprir na hora de salvar.
   'perfil',
-  'permissoes',
   'usuarios',
 ] as const;
 
 export type RetaguardaPermissionKey = (typeof RETAGUARDA_PERMISSION_KEYS)[number];
 
-export type RetaguardaPermissions = Record<RetaguardaPermissionKey, boolean>;
+export interface RetaguardaModulePermission {
+  ver: boolean;
+  editar: boolean;
+}
+
+export type RetaguardaPermissions = Record<RetaguardaPermissionKey, RetaguardaModulePermission>;
+
+/**
+ * Telas que só mostram o que aconteceu: não existe "alterar" nelas, então a
+ * tela de permissões nem oferece o segundo interruptor.
+ */
+export const RETAGUARDA_SOMENTE_LEITURA = new Set<RetaguardaPermissionKey>([
+  'dashboard',
+  'relatorios',
+  'visitantes',
+]);
 
 export interface OperatorPermissions {
   pdv: PdvPermissions;
@@ -30,6 +68,7 @@ export interface OperatorRoleDocument {
   active: boolean;
   name: string;
   email?: string;
+  login?: string;
   permissions?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -89,37 +128,14 @@ const EMPTY_OPERATOR_PDV_PERMISSIONS: PdvPermissions = {
   },
 };
 
-export const EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS: RetaguardaPermissions = {
-  dashboard: false,
-  produtos: false,
-  categorias: false,
-  adicionais: false,
-  clientes: false,
-  ofertas: false,
-  whatsapp: false,
-  campanhas: false,
-  encomendas: false,
-  freelance: false,
-  perfil: false,
-  permissoes: false,
-  usuarios: false,
-};
+const MODULO_BLOQUEADO: RetaguardaModulePermission = { ver: false, editar: false };
 
-// O modelo atual mistura dados operacionais e sensíveis em algumas telas.
-// Até existirem projeções/documentos separados, estes módulos permanecem
-// exclusivos do master para não prometer uma proteção que as rules não podem
-// oferecer por campo dentro do mesmo documento.
-export const OWNER_ONLY_RETAGUARDA_PERMISSIONS = new Set<RetaguardaPermissionKey>([
-  'dashboard',
-  'clientes',
-  'whatsapp',
-  'campanhas',
-  'encomendas',
-  'freelance',
-  'perfil',
-  'permissoes',
-  'usuarios',
-]);
+export const EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS: RetaguardaPermissions =
+  Object.freeze(
+    Object.fromEntries(
+      RETAGUARDA_PERMISSION_KEYS.map((key) => [key, { ...MODULO_BLOQUEADO }]),
+    ) as RetaguardaPermissions,
+  );
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -162,9 +178,7 @@ export function normalizeOperatorPdvPermissions(value: unknown): PdvPermissions 
         suprimento: explicitlyAllowed(caixa.suprimento),
         sangria: explicitlyAllowed(caixa.sangria),
         cancelarVenda: explicitlyAllowed(caixa.cancelarVenda),
-        // Histórico financeiro agregado permanece exclusivo do master nesta
-        // fase, mesmo se um documento adulterado tentar habilitar a folha.
-        verCaixasAnteriores: false,
+        verCaixasAnteriores: explicitlyAllowed(caixa.verCaixasAnteriores),
       },
       delivery: {
         finalizarPedido: explicitlyAllowed(delivery.finalizarPedido),
@@ -177,9 +191,7 @@ export function normalizeOperatorPdvPermissions(value: unknown): PdvPermissions 
       novo_pedido: {
         finalizarVenda: explicitlyAllowed(novoPedido.finalizarVenda),
         descontoAcrescimo: explicitlyAllowed(novoPedido.descontoAcrescimo),
-        // Conta da Casa depende hoje de listar a coleção inteira de clientes.
-        // Até o lookup virar uma projeção/API mínima, permanece owner-only.
-        vendaPrazo: false,
+        vendaPrazo: explicitlyAllowed(novoPedido.vendaPrazo),
       },
       mesas: {
         gerenciarMesa: explicitlyAllowed(mesas.gerenciarMesa),
@@ -187,7 +199,7 @@ export function normalizeOperatorPdvPermissions(value: unknown): PdvPermissions 
         fecharComanda: explicitlyAllowed(mesas.fecharComanda),
         aceitarPedidoOnline: explicitlyAllowed(mesas.aceitarPedidoOnline),
         descontoAcrescimo: explicitlyAllowed(mesas.descontoAcrescimo),
-        vendaPrazo: false,
+        vendaPrazo: explicitlyAllowed(mesas.vendaPrazo),
       },
       encomendas_pedidos: {
         mudarStatus: explicitlyAllowed(encomendas.mudarStatus),
@@ -203,18 +215,26 @@ export function normalizeOperatorPdvPermissions(value: unknown): PdvPermissions 
   };
 }
 
+/**
+ * Aceita o formato atual (`{ ver, editar }`) e o booleano dos primeiros perfis,
+ * quando um módulo liberado significava apenas consulta.
+ */
+function normalizeModulo(value: unknown, key: RetaguardaPermissionKey): RetaguardaModulePermission {
+  if (value === true) return { ver: true, editar: false };
+  if (!isRecord(value)) return { ...MODULO_BLOQUEADO };
+
+  const ver = explicitlyAllowed(value.ver);
+  const editar = ver
+    && !RETAGUARDA_SOMENTE_LEITURA.has(key)
+    && explicitlyAllowed(value.editar);
+  return { ver, editar };
+}
+
 export function normalizeRetaguardaPermissions(value: unknown): RetaguardaPermissions {
   const source = isRecord(value) ? value : {};
-  const normalized = { ...EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS };
-
-  for (const key of RETAGUARDA_PERMISSION_KEYS) {
-    normalized[key] = explicitlyAllowed(source[key]);
-  }
-
-  for (const key of OWNER_ONLY_RETAGUARDA_PERMISSIONS) {
-    normalized[key] = false;
-  }
-  return normalized;
+  return Object.fromEntries(
+    RETAGUARDA_PERMISSION_KEYS.map((key) => [key, normalizeModulo(source[key], key)]),
+  ) as RetaguardaPermissions;
 }
 
 export function normalizeOperatorPermissions(value: unknown): OperatorPermissions {
@@ -228,18 +248,30 @@ export function normalizeOperatorPermissions(value: unknown): OperatorPermission
 export function createEmptyOperatorPermissions(): OperatorPermissions {
   return {
     pdv: normalizeOperatorPdvPermissions(EMPTY_OPERATOR_PDV_PERMISSIONS),
-    retaguarda: { ...EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS },
+    retaguarda: normalizeRetaguardaPermissions({}),
   };
 }
 
+/** O dono vê tudo; o funcionário, o que estiver marcado no perfil dele. */
 export function canAccessRetaguarda(
   role: 'owner' | 'operator',
   permissions: RetaguardaPermissions,
   key: RetaguardaPermissionKey,
 ): boolean {
   if (role === 'owner') return true;
-  if (OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key)) return false;
-  return permissions[key] === true;
+  return permissions[key]?.ver === true;
+}
+
+/** Alterar é uma segunda decisão: entrar na tela não dá direito de mexer. */
+export function canEditRetaguarda(
+  role: 'owner' | 'operator',
+  permissions: RetaguardaPermissions,
+  key: RetaguardaPermissionKey,
+): boolean {
+  if (role === 'owner') return true;
+  if (RETAGUARDA_SOMENTE_LEITURA.has(key)) return false;
+  const modulo = permissions[key];
+  return modulo?.ver === true && modulo.editar === true;
 }
 
 export function hasAnyRetaguardaAccess(
@@ -250,21 +282,39 @@ export function hasAnyRetaguardaAccess(
   return RETAGUARDA_PERMISSION_KEYS.some((key) => canAccessRetaguarda(role, permissions, key));
 }
 
-/**
- * Abas que possuem uma tela dedicada e segura para operador na Retaguarda.
- *
- * Manter esta lista no contrato compartilhado evita que a sidebar anuncie uma
- * rota que o branch read-only de /gestao ainda não sabe renderizar. Em
- * particular, Estoque continua owner-only até ganhar permissão e tela próprias.
- */
-export const OPERATOR_RETAGUARDA_TAB_IDS = [
-  'produtos',
-  'categorias',
-  'addons',
-  'promocoes',
-] as const;
+/** Traduz os IDs históricos da página/Sidebar para o contrato persistido. */
+export function getRetaguardaPermissionForTab(tabId: string): RetaguardaPermissionKey | null {
+  const byTabId: Record<string, RetaguardaPermissionKey> = {
+    dashboard: 'dashboard',
+    relatorios: 'relatorios',
+    visitantes: 'visitantes',
+    produtos: 'produtos',
+    estoque: 'estoque',
+    categorias: 'categorias',
+    addons: 'adicionais',
+    clientes: 'clientes',
+    prazo: 'prazo',
+    promocoes: 'ofertas',
+    whatsapp: 'whatsapp',
+    campanhas: 'campanhas',
+    encomendas: 'encomendas',
+    freelance: 'entregas',
+    // A aba de motoboys virou parte de Entregas em 02/08/2026; quem voltar pelo
+    // histórico do navegador cai na mesma permissão.
+    perfil_motoboys: 'entregas',
+    perfil_geral: 'perfil',
+    perfil_taxas: 'perfil',
+    perfil_horarios: 'perfil',
+    perfil_pagamentos: 'perfil',
+    perfil_impressora: 'perfil',
+    perfil_aparencia: 'perfil',
+    usuarios: 'usuarios',
+    // A tela de Permissões do PDV foi absorvida por Usuários e acesso.
+    permissoes_pdv: 'usuarios',
+  };
 
-export type OperatorRetaguardaTabId = (typeof OPERATOR_RETAGUARDA_TAB_IDS)[number];
+  return byTabId[tabId] ?? null;
+}
 
 export function canAccessRetaguardaTab(
   role: 'owner' | 'operator',
@@ -272,35 +322,14 @@ export function canAccessRetaguardaTab(
   tabId: string,
 ): boolean {
   const permission = getRetaguardaPermissionForTab(tabId);
-  if (!permission || !canAccessRetaguarda(role, permissions, permission)) return false;
-  if (role === 'owner') return true;
-  return (OPERATOR_RETAGUARDA_TAB_IDS as readonly string[]).includes(tabId);
+  return !!permission && canAccessRetaguarda(role, permissions, permission);
 }
 
-/** Traduz os IDs históricos da página/Sidebar para o contrato persistido. */
-export function getRetaguardaPermissionForTab(tabId: string): RetaguardaPermissionKey | null {
-  if (tabId.startsWith('perfil_')) return 'perfil';
-
-  const byTabId: Record<string, RetaguardaPermissionKey> = {
-    dashboard: 'dashboard',
-    // Relatórios anda junto do Dashboard: é o mesmo dado financeiro agregado,
-    // com o mesmo motivo para continuar exclusivo do dono. Chave própria só
-    // faria sentido se um dia der para liberar um sem o outro.
-    relatorios: 'dashboard',
-    produtos: 'produtos',
-    // Estoque anda junto de Produtos: quem cuida do cadastro cuida da contagem.
-    estoque: 'produtos',
-    categorias: 'categorias',
-    addons: 'adicionais',
-    clientes: 'clientes',
-    promocoes: 'ofertas',
-    whatsapp: 'whatsapp',
-    campanhas: 'campanhas',
-    encomendas: 'encomendas',
-    freelance: 'freelance',
-    permissoes_pdv: 'permissoes',
-    usuarios: 'usuarios',
-  };
-
-  return byTabId[tabId] ?? null;
+export function canEditRetaguardaTab(
+  role: 'owner' | 'operator',
+  permissions: RetaguardaPermissions,
+  tabId: string,
+): boolean {
+  const permission = getRetaguardaPermissionForTab(tabId);
+  return !!permission && canEditRetaguarda(role, permissions, permission);
 }

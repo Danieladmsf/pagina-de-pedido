@@ -92,11 +92,12 @@ function createFakeAuth(uid = 'owner-1', options: FakeAuthOptions = {}) {
   const users = new Map<string, any>();
   const auth = {
     verifyIdToken: vi.fn(async () => ({ uid })),
-    createUser: vi.fn(async ({ email, displayName }) => {
+    createUser: vi.fn(async ({ email, displayName, password }) => {
       const user = {
         uid: 'operator-new',
         email,
         displayName,
+        password,
         emailVerified: false,
         disabled: false,
         metadata: { creationTime: '2026-07-19T00:00:00.000Z' },
@@ -212,7 +213,7 @@ describe('/api/usuarios', () => {
     expect(data.usuarios[0]).toMatchObject({ active: false, authDisabled: true });
   });
 
-  it('cria perfil fail-closed e ignora tentativas de liberar capacidades exclusivas', async () => {
+  it('cria perfil fail-closed: só o que foi marcado entra', async () => {
     const { auth } = createFakeAuth();
     const { db, roles } = createFakeDb(['owner-1']);
     vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
@@ -226,7 +227,11 @@ describe('/api/usuarios', () => {
           tabs: { caixa: true },
           actions: { caixa: { abrirCaixa: true, verCaixasAnteriores: true } },
         },
-        retaguarda: { produtos: true, permissoes: true, usuarios: true },
+        retaguarda: {
+          produtos: { ver: true, editar: true },
+          clientes: { ver: true },
+          campanhas: { editar: true },
+        },
       },
     }));
     const saved = roles.get('operator-new')!;
@@ -237,10 +242,151 @@ describe('/api/usuarios', () => {
     expect(saved.permissions.pdv.enabled).toBe(true);
     expect(saved.permissions.pdv.tabs.caixa).toBe(true);
     expect(saved.permissions.pdv.tabs.delivery).toBe(false);
-    expect(saved.permissions.pdv.actions.caixa.verCaixasAnteriores).toBe(false);
-    expect(saved.permissions.retaguarda.produtos).toBe(true);
-    expect(saved.permissions.retaguarda.permissoes).toBe(false);
-    expect(saved.permissions.retaguarda.usuarios).toBe(false);
+    // Nada mais é derrubado por decisão do código: o dono marcou, o dono manda.
+    expect(saved.permissions.pdv.actions.caixa.verCaixasAnteriores).toBe(true);
+    expect(saved.permissions.retaguarda.produtos).toEqual({ ver: true, editar: true });
+    expect(saved.permissions.retaguarda.clientes).toEqual({ ver: true, editar: false });
+    // Alterar sem ver não existe.
+    expect(saved.permissions.retaguarda.campanhas).toEqual({ ver: false, editar: false });
+    expect(saved.permissions.retaguarda.usuarios).toEqual({ ver: false, editar: false });
+  });
+
+  it('cria acesso por apelido com a senha escolhida pelo dono, sem e-mail nenhum', async () => {
+    const { auth, users } = createFakeAuth();
+    const { db, roles } = createFakeDb(['owner-1']);
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Maria Aparecida',
+      login: 'Maria',
+      password: 'trocar123',
+      permissions: { pdv: { tabs: { caixa: true } } },
+    }));
+    const data = await response.json();
+    const saved = roles.get('operator-new')!;
+
+    expect(response.status).toBe(201);
+    expect(saved.login).toBe('maria');
+    expect(saved.email).toBe('maria@usuarios.polarispdv.app');
+    expect(users.get('operator-new').password).toBe('trocar123');
+    expect(data.inviteSent).toBe(false);
+    expect(data.usuario.login).toBe('maria');
+    expect(data.usuario.canReceiveEmail).toBe(false);
+    // Nenhuma chamada ao endpoint de e-mail do Firebase.
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
+  });
+
+  it('recusa apelido sem senha, porque ninguém conseguiria entrar', async () => {
+    const { auth } = createFakeAuth();
+    const { db, roles } = createFakeDb(['owner-1']);
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Maria',
+      login: 'maria',
+      permissions: { pdv: { tabs: { caixa: true } } },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(roles.size).toBe(0);
+  });
+
+  it('recusa senha curta demais para o Firebase Auth', async () => {
+    const { auth } = createFakeAuth();
+    const { db } = createFakeDb(['owner-1']);
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'Maria', login: 'maria', password: '123',
+      permissions: { pdv: { tabs: { caixa: true } } },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(auth.createUser).not.toHaveBeenCalled();
+  });
+
+  it('com e-mail e sem senha, mantém o convite por link', async () => {
+    const { auth } = createFakeAuth();
+    const { db } = createFakeDb(['owner-1']);
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await POST(apiRequest('POST', {
+      name: 'João', login: 'joao@loja.com.br',
+      permissions: { pdv: { tabs: { caixa: true } } },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.inviteSent).toBe(true);
+    expect(data.usuario.canReceiveEmail).toBe(true);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('troca a senha e derruba quem estava dentro com a antiga', async () => {
+    const events: string[] = [];
+    const { auth, users } = createFakeAuth('owner-1', { events });
+    users.set('op-1', {
+      uid: 'op-1', email: 'maria@usuarios.polarispdv.app', emailVerified: false, disabled: false,
+      metadata: { creationTime: '2026-07-19T00:00:00.000Z' },
+    });
+    const { db, roles } = createFakeDb(['owner-1'], {
+      'op-1': { ownerId: 'owner-1', name: 'Maria', active: true },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await PATCH(apiRequest('PATCH', {
+      uid: 'op-1', action: 'set_password', password: 'senhanova1',
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.passwordChanged).toBe(true);
+    expect(auth.updateUser).toHaveBeenCalledWith('op-1', { password: 'senhanova1' });
+    expect(events).toContain('auth:revoke:op-1');
+    expect(roles.get('op-1')?.passwordUpdatedAt).toBeDefined();
+  });
+
+  it('não troca a senha de operador de outra loja', async () => {
+    const { auth, users } = createFakeAuth();
+    users.set('alheio', {
+      uid: 'alheio', email: 'x@y.com', emailVerified: false, disabled: false,
+      metadata: { creationTime: '2026-07-19T00:00:00.000Z' },
+    });
+    const { db } = createFakeDb(['owner-1'], {
+      alheio: { ownerId: 'owner-2', name: 'Alheio', active: true },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await PATCH(apiRequest('PATCH', {
+      uid: 'alheio', action: 'set_password', password: 'senhanova1',
+    }));
+
+    expect(response.status).toBe(404);
+    expect(auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('quem entra por apelido não recebe convite por e-mail', async () => {
+    const { auth, users } = createFakeAuth();
+    users.set('op-1', {
+      uid: 'op-1', email: 'maria@usuarios.polarispdv.app', emailVerified: false, disabled: false,
+      metadata: { creationTime: '2026-07-19T00:00:00.000Z' },
+    });
+    const { db } = createFakeDb(['owner-1'], {
+      'op-1': { ownerId: 'owner-1', name: 'Maria', active: true },
+    });
+    vi.mocked(getOptionalAdminAuth).mockReturnValue(auth as any);
+    vi.mocked(getOptionalAdminDb).mockReturnValue(db as any);
+
+    const response = await PATCH(apiRequest('PATCH', { uid: 'op-1', action: 'resend_invite' }));
+
+    expect(response.status).toBe(409);
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
   it('nao altera um operador pertencente a outro master', async () => {

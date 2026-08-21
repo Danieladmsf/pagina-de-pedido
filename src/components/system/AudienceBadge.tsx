@@ -4,6 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import {
+  canAccessRetaguarda,
+  EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+} from '@/lib/user-permissions';
 import { useCaixaAbertoEm } from '@/hooks/useCaixaAbertoEm';
 import { usePublicAudience } from '@/hooks/usePublicAudience';
 import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
@@ -27,7 +31,12 @@ const CHAVE_RECOLHIDO = 'audience-badge-recolhido';
 export function AudienceBadge() {
   const { user } = useUser();
   const router = useRouter();
-  const { ownerId } = usePdvAccess();
+  const { ownerId, role, operatorPermissions } = usePdvAccess();
+  const podeVerVisitantes = canAccessRetaguarda(
+    role,
+    operatorPermissions?.retaguarda ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
+    'visitantes',
+  );
   const caixaAbertoEm = useCaixaAbertoEm(ownerId);
   const [recolhido, setRecolhido] = useState(false);
 
@@ -54,7 +63,8 @@ export function AudienceBadge() {
     return caixaAbertoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }, [caixaAbertoEm]);
 
-  if (semAcesso || !caixaAbertoEm) return null;
+  // O placar é a porta de entrada da tela de Visitantes: sem a permissão, some.
+  if (!podeVerVisitantes || semAcesso || !caixaAbertoEm) return null;
 
   const alternar = () => {
     const proximo = !recolhido;

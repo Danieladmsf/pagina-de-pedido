@@ -4,9 +4,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye, PackageSearch } from 'lucide-react';
 import { brl } from '@/lib/utils';
-import type { OperatorRetaguardaTabId } from '@/lib/user-permissions';
+/**
+ * Abas de cadastro que ganham esta versão só de leitura quando o funcionário
+ * tem "ver" mas não "alterar". As telas reais dessas abas são de edição do
+ * começo ao fim; mostrar esta lista é mais honesto do que oferecer botões que
+ * o servidor vai recusar.
+ */
+export type CatalogoSomenteLeituraTabId = 'produtos' | 'categorias' | 'addons' | 'promocoes';
 
-const CONFIG: Record<OperatorRetaguardaTabId, { title: string; empty: string }> = {
+const CONFIG: Record<CatalogoSomenteLeituraTabId, { title: string; empty: string }> = {
   produtos: { title: 'Produtos', empty: 'Nenhum produto cadastrado.' },
   categorias: { title: 'Categorias', empty: 'Nenhuma categoria cadastrada.' },
   addons: { title: 'Adicionais', empty: 'Nenhum adicional cadastrado.' },
@@ -29,7 +35,7 @@ export function OperatorCatalogReadOnly({
   promotions,
   isLoading,
 }: {
-  activeTab: OperatorRetaguardaTabId;
+  activeTab: CatalogoSomenteLeituraTabId;
   items: any[];
   categories: any[];
   addons: any[];
@@ -52,7 +58,7 @@ export function OperatorCatalogReadOnly({
           <Eye className="h-4 w-4" /> Visualização somente leitura
         </div>
         <p className="mt-1 text-blue-800">
-          Cadastros, preços e configurações só podem ser alterados pelo master da loja.
+          Você pode consultar este cadastro. Para alterar, o dono precisa liberar em Usuários e acesso.
         </p>
       </div>
 

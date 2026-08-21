@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   BarChart3,
@@ -23,6 +24,7 @@ import {
   Megaphone,
   CakeSlice,
   UserCog,
+  Eye,
 } from 'lucide-react';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
@@ -42,6 +44,7 @@ interface SidebarNavProps {
 
 export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo, theme }: SidebarNavProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const router = useRouter();
   const { role, operatorPermissions } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda
     ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
@@ -51,6 +54,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
+    // Mora fora da Gestão (rota própria), mas é um módulo como os outros: só
+    // aparece no menu para quem tem a permissão de Visitantes.
+    { id: 'visitantes', label: 'Visitantes', icon: Eye, rota: '/visitantes' },
     { id: 'produtos', label: 'Produtos', icon: Box },
     { id: 'estoque', label: 'Estoque', icon: Boxes },
     { id: 'categorias', label: 'Categorias', icon: Tag },
@@ -73,8 +79,9 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
     { id: 'perfil_pagamentos', label: 'Pagamentos', icon: Wallet },
     { id: 'perfil_impressora', label: 'Impressora', icon: Printer },
     { id: 'perfil_aparencia', label: 'Aparência', icon: Palette },
-  ];
-  const showProfile = canShowTab('perfil_geral');
+  ].filter((item) => canShowTab(item.id));
+  // Cada configuração é liberada em separado: o grupo só existe se sobrou item.
+  const showProfile = profileItems.length > 0;
   const showUsers = canShowTab('usuarios');
 
   const displayName = storeName || 'Minha Loja';
@@ -114,7 +121,11 @@ export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeNa
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                const rota = (item as { rota?: string }).rota;
+                if (rota) router.push(rota);
+                else setActiveTab(item.id);
+              }}
               className={`flex items-center w-full rounded-lg transition-colors overflow-hidden shrink-0 ${
                 isActive ? 'bg-emerald-500/20 text-emerald-400' : (item as any).highlight ? 'hover:bg-orange-500/10 text-orange-400' : 'hover:bg-white/5 text-slate-300'
               }`}

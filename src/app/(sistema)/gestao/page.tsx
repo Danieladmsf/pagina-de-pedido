@@ -21,7 +21,7 @@ import {
   deleteMenuItemWithCleanup,
   promotionUpdatesForRemovedItems,
 } from '@/lib/menu-item-delete';
-import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle } from 'lucide-react';
+import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle, Eye } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { RelatoriosTab } from '@/components/admin/RelatoriosTab';
 import { useToast } from '@/hooks/use-toast';
@@ -52,9 +52,8 @@ import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSession
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
   canAccessRetaguardaTab,
+  canEditRetaguardaTab,
   EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
-  OPERATOR_RETAGUARDA_TAB_IDS,
-  type OperatorRetaguardaTabId,
 } from '@/lib/user-permissions';
 import { OperatorCatalogReadOnly } from '@/components/admin/OperatorCatalogReadOnly';
 import { UsuariosTab } from '@/components/admin/UsuariosTab';
@@ -74,7 +73,15 @@ const GESTAO_TAB_ORDER = [
   'freelance',
   'usuarios',
   'perfil_geral',
+  'perfil_taxas',
+  'perfil_horarios',
+  'perfil_pagamentos',
+  'perfil_impressora',
+  'perfil_aparencia',
 ] as const;
+
+/** Abas de cadastro que têm uma versão só de leitura para quem não pode alterar. */
+const CATALOGO_TABS = ['produtos', 'categorias', 'addons', 'promocoes'];
 
 export default function GestaoPage() {
   const db = useFirestore();
@@ -82,11 +89,15 @@ export default function GestaoPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
-  const { role, ownerId, actorId, actorName, operatorName, operatorPermissions } = usePdvAccess();
+  const { role, ownerId, actorId, actorName, operatorName, operatorPermissions, storeUser } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda
     ?? EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS;
   const isTabAllowed = React.useCallback(
     (tabId: string) => canAccessRetaguardaTab(role, retaguardaPermissions, tabId),
+    [retaguardaPermissions, role],
+  );
+  const podeEditarAba = React.useCallback(
+    (tabId: string) => canEditRetaguardaTab(role, retaguardaPermissions, tabId),
     [retaguardaPermissions, role],
   );
   const allowedTabs = React.useMemo(
@@ -195,10 +206,20 @@ export default function GestaoPage() {
     ownerId,
     actorId,
     actorName,
-    enabled: role === 'owner',
+    enabled: role === 'owner' || isTabAllowed('clientes') || isTabAllowed('prazo'),
   });
   
   const isRealUser = !!(user && !user.isAnonymous);
+  // Cadastro liberado só para ver: a tela real é toda de edição, então quem não
+  // pode alterar recebe a lista em leitura no lugar dela.
+  const catalogoSomenteConsulta = CATALOGO_TABS.includes(activeTab) && !podeEditarAba(activeTab);
+  // Demais módulos não têm versão de leitura: o aviso conta o que vai acontecer
+  // se ele tentar salvar (o servidor recusa) em vez de deixar a descoberta pro erro.
+  const moduloSomenteConsulta = !catalogoSomenteConsulta
+    && activeTab !== ''
+    && isTabAllowed(activeTab)
+    && !podeEditarAba(activeTab)
+    && !['dashboard', 'relatorios'].includes(activeTab);
 
 
   // Consultas filtradas pelo UID do dono (Multi-tenancy) com checagem de DB
@@ -213,9 +234,11 @@ export default function GestaoPage() {
   }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!db || !isRealUser || role !== 'owner') return null;
+    const precisaDosPedidos = role === 'owner'
+      || ['dashboard', 'relatorios', 'clientes', 'freelance', 'encomendas'].some(isTabAllowed);
+    if (!db || !isRealUser || !precisaDosPedidos) return null;
     return query(collection(db, 'orders'), where('ownerId', '==', ownerId));
-  }, [db, isRealUser, ownerId, role]);
+  }, [db, isRealUser, isTabAllowed, ownerId, role]);
 
   const addonsQuery = useMemoFirebase(() => {
     if (!db || !isRealUser || !(role === 'owner' || isTabAllowed('produtos') || isTabAllowed('addons'))) return null;
@@ -790,60 +813,6 @@ export default function GestaoPage() {
     );
   }
 
-  if (role === 'operator') {
-    if (!(OPERATOR_RETAGUARDA_TAB_IDS as readonly string[]).includes(activeTab)) {
-      return (
-        <div className="flex h-screen items-center justify-center bg-slate-100 text-sm font-medium text-slate-500">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Redirecionando para o PDV…
-        </div>
-      );
-    }
-
-    return (
-      <div className="admin-scale flex h-screen overflow-hidden bg-slate-100">
-        <SidebarNav
-          activeTab={activeTab}
-          setActiveTab={handleTabChange}
-          isOpen={isSidebarOpen}
-          setIsOpen={setIsSidebarOpen}
-          storeName={storeProfile?.general?.name}
-          storeLogo={storeProfile?.general?.logoUrl}
-          theme={storeProfile?.theme}
-        />
-        <div className="relative z-0 flex min-w-0 flex-1 flex-col">
-          <div className="flex h-14 shrink-0 items-center justify-between bg-[#2a3042] pl-14 pr-4 text-slate-300 shadow-sm">
-            <button
-              onClick={() => router.push('/pdv')}
-              className="flex h-full items-center gap-2 px-6 text-sm font-medium transition-colors hover:bg-white/10"
-            >
-              <Wallet className="h-4 w-4" /> Frente de Caixa
-            </button>
-            <div className="flex items-center gap-4">
-              <span className="hidden text-xs text-slate-400 sm:inline">{operatorName || user.email}</span>
-              <button onClick={handleLogout} className="text-sm font-medium transition-colors hover:text-white">Sair</button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <OperatorCatalogReadOnly
-              activeTab={activeTab as OperatorRetaguardaTabId}
-              items={(items || []) as any[]}
-              categories={(categories || []) as any[]}
-              addons={(addons || []) as any[]}
-              promotions={(promotions || []) as any[]}
-              isLoading={activeTab === 'produtos'
-                ? loadingItems
-                : activeTab === 'categorias'
-                  ? loadingCats
-                  : activeTab === 'addons'
-                    ? loadingAddons
-                    : loadingPromotions}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
@@ -863,6 +832,7 @@ export default function GestaoPage() {
           </div>
 
           <div className="flex items-center gap-4 h-full">
+            {operatorName && <span className="hidden text-xs text-slate-400 sm:inline">{operatorName}</span>}
             <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
               Sair
             </button>
@@ -876,7 +846,7 @@ export default function GestaoPage() {
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <DashboardTab
               db={db}
-              user={user}
+              user={storeUser}
               orders={ordersRaw || []}
               items={items || []}
               categories={categories || []}
@@ -902,24 +872,52 @@ export default function GestaoPage() {
         {/* Módulo Administrativo (Nova Gestão) */}
         {activeTab === 'whatsapp' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <WhatsAppTab user={user} storeProfile={storeProfile} db={db} />
+            <WhatsAppTab user={storeUser} storeProfile={storeProfile} db={db} />
           </div>
         )}
 
         {activeTab === 'campanhas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <CampanhasTab db={db} user={user} storeProfile={storeProfile} />
+            <CampanhasTab db={db} user={storeUser} storeProfile={storeProfile} />
           </div>
         )}
 
         {activeTab === 'encomendas' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              <EncomendasAdminTab db={db} user={user} storeProfile={storeProfile} />
+              <EncomendasAdminTab db={db} user={storeUser} storeProfile={storeProfile} />
             </div>
           </div>
         )}
 
+
+        {catalogoSomenteConsulta && (
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+            <OperatorCatalogReadOnly
+              activeTab={activeTab as 'produtos' | 'categorias' | 'addons' | 'promocoes'}
+              items={(items || []) as any[]}
+              categories={(categories || []) as any[]}
+              addons={(addons || []) as any[]}
+              promotions={(promotions || []) as any[]}
+              isLoading={activeTab === 'produtos'
+                ? loadingItems
+                : activeTab === 'categorias'
+                  ? loadingCats
+                  : activeTab === 'addons'
+                    ? loadingAddons
+                    : loadingPromotions}
+            />
+          </div>
+        )}
+
+        {moduloSomenteConsulta && (
+          <div className="mx-auto mb-2 flex w-full max-w-[1600px] items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+            <Eye className="h-4 w-4 shrink-0" />
+            <span>
+              <strong>Modo consulta.</strong> Você pode olhar esta tela; salvar alterações aqui não é permitido no seu acesso.
+            </span>
+          </div>
+        )}
 
         {activeTab === 'estoque' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -937,10 +935,10 @@ export default function GestaoPage() {
           </div>
         )}
 
-        {activeTab === 'promocoes' && (
+        {activeTab === 'promocoes' && !catalogoSomenteConsulta && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <PromotionsTab
-              db={db} user={user} items={items || []} categories={categories || []} 
+              db={db} user={storeUser} items={items || []} categories={categories || []} 
               setEditingCombo={(combo) => {
                 setEditingCombo(combo);
                 if (combo) {
@@ -964,7 +962,7 @@ export default function GestaoPage() {
               : 'max-w-[1600px] w-full mx-auto px-2 space-y-8 relative pb-12 mt-4'
           }>
 
-          {activeTab === 'produtos' && (
+          {activeTab === 'produtos' && !catalogoSomenteConsulta && (
             <div className={`mt-2 flex-1 min-h-0 flex flex-col ${(editingProduct !== null || editingCombo !== null) ? 'overflow-y-auto custom-scrollbar' : ''}`}>
               {editingCombo === null && (
                 <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
@@ -979,7 +977,7 @@ export default function GestaoPage() {
             {editingProduct !== null ? (
               <div className="pb-4 pr-1">
                 <ProductModal
-                  db={db} user={user} addons={addons || []}
+                  db={db} user={storeUser} addons={addons || []}
                   addonCategories={addonCategories || []}
                   editingProduct={editingProduct} setEditingProduct={setEditingProduct}
                   categories={categories || []}
@@ -988,7 +986,7 @@ export default function GestaoPage() {
             ) : editingCombo !== null ? (
               <div className="pb-4 pr-1">
                 <ComboModal
-                  db={db} user={user} items={items || []}
+                  db={db} user={storeUser} items={items || []}
                   editingCombo={editingCombo} setEditingCombo={setEditingCombo}
                   categories={categories || []}
                 />
@@ -1344,7 +1342,7 @@ export default function GestaoPage() {
             </DialogContent>
           </Dialog>
 
-          {activeTab === 'categorias' && (
+          {activeTab === 'categorias' && !catalogoSomenteConsulta && (
             <div className="mt-2 flex-1 min-h-0 flex flex-col">
               <div className="mb-3 px-2 shrink-0 flex items-baseline gap-3 flex-wrap">
                 <h1 className="text-2xl font-black tracking-tight text-slate-800">Categorias do Cardápio</h1>
@@ -1793,7 +1791,7 @@ export default function GestaoPage() {
             </div>
           )}
 
-          {activeTab === 'addons' && (() => {
+          {activeTab === 'addons' && !catalogoSomenteConsulta && (() => {
             const getAddonLegacyGroup = (addon: any) => (addon.group || '').trim();
             const explicitGroups = (addonCategories || []).map((c: any) => c.name);
             const implicitGroups = (addons || []).map(getAddonLegacyGroup).filter(Boolean);
@@ -2838,7 +2836,7 @@ export default function GestaoPage() {
 
 
           {activeTab === 'perfil_aparencia' && (
-            <AppearanceTab db={db} user={user} storeProfile={storeProfile} isLoading={storeProfileLoading} />
+            <AppearanceTab db={db} user={storeUser} storeProfile={storeProfile} isLoading={storeProfileLoading} />
           )}
 
           {activeTab === 'usuarios' && (
@@ -2851,11 +2849,11 @@ export default function GestaoPage() {
             />
           )}
           {activeTab.startsWith('perfil_') && activeTab !== 'perfil_aparencia' && activeTab !== 'perfil_motoboys' && (
-            <StoreProfileTab db={db} user={user} activeSection={activeTab.replace('perfil_', '') as any} />
+            <StoreProfileTab db={db} user={storeUser} activeSection={activeTab.replace('perfil_', '') as any} />
           )}
 
           {activeTab === 'clientes' && (
-            <ClientesTab db={db} user={user} registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
+            <ClientesTab db={db} user={storeUser} registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} />
           )}
 
           {activeTab === 'freelance' && (

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { doc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { signOut, type User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2, ShieldAlert } from 'lucide-react';
 
@@ -24,6 +24,18 @@ export interface PdvAccessContextValue {
   /** Nome legível de quem está operando (dono ou funcionário) para carimbar vendas. */
   actorName: string;
   operatorPermissions: OperatorPermissions | null;
+  /**
+   * A mesma sessão de quem está logado, mas com o uid da LOJA.
+   *
+   * Dezenas de telas da Retaguarda descobrem de quem são os dados fazendo
+   * `where('ownerId', '==', user.uid)` ou `doc('store_profiles', user.uid)`.
+   * Para o dono isso já é o certo; para um funcionário, seria o uid dele — a
+   * tela abriria vazia ou, pior, gravaria dado fora da loja. Passar este objeto
+   * no lugar de `user` conserta todos esses pontos de uma vez, sem espalhar o
+   * ownerId por cada componente. Quem precisa saber QUEM fez a ação continua
+   * usando actorId/actorName, que não mudam.
+   */
+  storeUser: User;
   isLoading: false;
 }
 
@@ -98,13 +110,27 @@ export function PdvAccessProvider({ children }: { children: React.ReactNode }) {
     [operatorRole?.permissions, role],
   );
 
+  // Proxy em vez de cópia: User tem métodos e getters no protótipo (getIdToken,
+  // reload...), que um spread perderia. Só o uid é trocado.
+  const storeUser = useMemo(() => {
+    if (!user) return null;
+    if (role !== 'operator' || !ownerId || ownerId === user.uid) return user;
+    return new Proxy(user, {
+      get(alvo, prop) {
+        if (prop === 'uid') return ownerId;
+        const valor = Reflect.get(alvo, prop, alvo);
+        return typeof valor === 'function' ? valor.bind(alvo) : valor;
+      },
+    });
+  }, [ownerId, role, user]);
+
   const handleLogout = async () => {
     if (!auth) return;
     await signOut(auth);
     router.push('/login');
   };
 
-  if (!db || !actorId || rolesLoading || (!role && !accessError && !showAccessDenied)) {
+  if (!db || !actorId || !user || !storeUser || rolesLoading || (!role && !accessError && !showAccessDenied)) {
     return <LoadingAccess />;
   }
 
@@ -151,6 +177,7 @@ export function PdvAccessProvider({ children }: { children: React.ReactNode }) {
       ? (operatorName || user?.email || 'Funcionário')
       : (user?.displayName?.trim() || user?.email || 'Administrador'),
     operatorPermissions,
+    storeUser,
     isLoading: false,
   };
 

@@ -100,7 +100,7 @@ function operatorRole(ownerId, overrides = {}) {
         },
         global: { botaoRetaguarda: false, toggleDelivery: false, ...overrides.global },
       },
-      retaguarda: {},
+      retaguarda: overrides.retaguarda || {},
     },
   };
 }
@@ -204,6 +204,30 @@ await Promise.all([
   admin.doc('cash_transactions/sale-b').set({
     ownerId: 'owner-b', caixaId: 'register-b', tipo: 'venda', valor: 20,
   }),
+  // Retaguarda: um operador por tipo de decisão que o dono pode tomar.
+  admin.doc('roles_operador/op-visitantes').set(operatorRole('owner-a', {
+    retaguarda: { visitantes: { ver: true } },
+  })),
+  admin.doc('roles_operador/op-numeros').set(operatorRole('owner-a', {
+    retaguarda: { dashboard: { ver: true }, relatorios: { ver: true } },
+  })),
+  admin.doc('roles_operador/op-cardapio-ve').set(operatorRole('owner-a', {
+    retaguarda: { produtos: { ver: true }, categorias: { ver: true } },
+  })),
+  admin.doc('roles_operador/op-cardapio-edita').set(operatorRole('owner-a', {
+    retaguarda: {
+      produtos: { ver: true, editar: true },
+      categorias: { ver: true, editar: true },
+      estoque: { ver: true, editar: true },
+    },
+  })),
+  admin.doc('roles_operador/op-clientes').set(operatorRole('owner-a', {
+    retaguarda: { clientes: { ver: true, editar: true }, prazo: { ver: true } },
+  })),
+  // Perfil legado: módulo gravado como booleano vale por "só ver".
+  admin.doc('roles_operador/op-legado-bool').set(operatorRole('owner-a', {
+    retaguarda: { produtos: true },
+  })),
   admin.doc('roles_operador/op-b').set(operatorRole('owner-b', {
     tabs: { caixa: true, delivery: true },
     actions: { caixa: { abrirCaixa: true, fecharCaixa: true }, delivery: { finalizarPedido: true } },
@@ -222,6 +246,12 @@ const inactiveOperator = client('operator-inactive', { uid: 'op-inactive' });
 const anonymous = client('anonymous', { uid: 'anon-a', provider: 'anonymous' });
 const stranger = client('stranger', { uid: 'signed-stranger' });
 const operatorB = client('operator-b', { uid: 'op-b' });
+const visitantesOperator = client('operator-visitantes', { uid: 'op-visitantes' });
+const numerosOperator = client('operator-numeros', { uid: 'op-numeros' });
+const cardapioVeOperator = client('operator-cardapio-ve', { uid: 'op-cardapio-ve' });
+const cardapioEditaOperator = client('operator-cardapio-edita', { uid: 'op-cardapio-edita' });
+const clientesOperator = client('operator-clientes', { uid: 'op-clientes' });
+const legadoBoolOperator = client('operator-legado-bool', { uid: 'op-legado-bool' });
 
 await allowed('owner lê o próprio segredo', getDoc(doc(owner, 'admin_secrets/owner-a')));
 await denied('outro owner não lê segredo alheio', getDoc(doc(otherOwner, 'admin_secrets/owner-a')));
@@ -437,11 +467,24 @@ await denied('"cliente desde" não se reescreve', setDoc(doc(anonymous, 'store_v
 }, { merge: true }));
 await denied('ninguém apaga o perfil do visitante', deleteDoc(doc(owner, 'store_visitors/owner-a__v-1')));
 await denied('visitante não lê o perfil que ele mesmo escreveu', getDoc(doc(anonymous, 'store_visitors/owner-a__v-1')));
-await allowed('a loja lê os próprios visitantes', getDocs(query(
+await allowed('quem tem o módulo Visitantes lê os visitantes da loja', getDocs(query(
+  collection(visitantesOperator, 'store_visitors'),
+  where('storeId', '==', 'owner-a'),
+)));
+await denied('aba Delivery não dá mais acesso a visitantes', getDocs(query(
   collection(statusOperator, 'store_visitors'),
   where('storeId', '==', 'owner-a'),
 )));
-await denied('visitantes de outra loja são negados', getDoc(doc(statusOperator, 'store_visitors/owner-b__v-9')));
+await denied('visitantes de outra loja são negados', getDoc(doc(visitantesOperator, 'store_visitors/owner-b__v-9')));
+await allowed('perfil carrega o código do cardápio e a identidade provável do link', setDoc(doc(anonymous, 'store_visitors/owner-a__v-1'), {
+  storeId: 'owner-a', visitorId: 'v-1', ultimaVez: serverTimestamp(), codigo: '7K2M9', viaLink: true,
+}, { merge: true }));
+await denied('código gigante é negado', setDoc(doc(anonymous, 'store_visitors/owner-a__v-7'), {
+  storeId: 'owner-a', visitorId: 'v-7', ultimaVez: serverTimestamp(), codigo: 'C'.repeat(13),
+}));
+await denied('identidade provável tem que ser sim ou não', setDoc(doc(anonymous, 'store_visitors/owner-a__v-8'), {
+  storeId: 'owner-a', visitorId: 'v-8', ultimaVez: serverTimestamp(), viaLink: 'talvez',
+}));
 
 // ── Cenários de ataque adicionais: escalação de privilégio e cross-tenant ──
 await denied('operador não rouba pedido mudando o ownerId', updateDoc(doc(statusOperator, 'orders/order-a'), { ownerId: 'owner-b' }));
@@ -562,6 +605,75 @@ await denied('anônimo não reserva código', setDoc(doc(anonymous, 'store_slugs
 await allowed('qualquer um resolve um código para achar a loja', getDoc(doc(anonymous, 'store_slugs/livre1')));
 await denied('outra loja não apaga a reserva alheia', deleteDoc(doc(otherOwner, 'store_slugs/livre1')));
 await allowed('dono libera a própria reserva', deleteDoc(doc(owner, 'store_slugs/livre1')));
+
+// ── Retaguarda: cada módulo liberado na tela vale no servidor ──
+// O ponto destes cenários é que "ver" e "alterar" são decisões separadas: quem
+// só vê continua sendo recusado ao gravar, e quem não tem o módulo não lê nada.
+await allowed('módulo Dashboard lê o histórico de pedidos', getDocs(query(
+  collection(numerosOperator, 'orders'),
+  where('ownerId', '==', 'owner-a'),
+)));
+await allowed('módulo Dashboard lê o histórico de caixa', getDocs(query(
+  collection(numerosOperator, 'cash_transactions'),
+  where('ownerId', '==', 'owner-a'),
+)));
+await denied('quem só vê números não fecha pedido', updateDoc(doc(numerosOperator, 'orders/order-a'), {
+  status: 'delivered',
+}));
+
+await allowed('cardápio liberado para alterar cria produto', setDoc(doc(cardapioEditaOperator, 'menuItems/item-op'), {
+  ownerId: 'owner-a', name: 'Item do funcionário', price: 10,
+}));
+await allowed('cardápio liberado para alterar muda preço', updateDoc(doc(cardapioEditaOperator, 'menuItems/item-op'), {
+  price: 12,
+}));
+await denied('cardápio liberado para alterar não muda de loja', updateDoc(doc(cardapioEditaOperator, 'menuItems/item-op'), {
+  ownerId: 'owner-b',
+}));
+await allowed('cardápio liberado para alterar exclui o que criou', deleteDoc(doc(cardapioEditaOperator, 'menuItems/item-op')));
+await allowed('cardápio liberado para alterar cria categoria', setDoc(doc(cardapioEditaOperator, 'categories/cat-op'), {
+  ownerId: 'owner-a', name: 'Do funcionário',
+}));
+await allowed('cardápio liberado para alterar exclui categoria', deleteDoc(doc(cardapioEditaOperator, 'categories/cat-op')));
+await denied('só ver o cardápio não deixa mudar preço', updateDoc(doc(cardapioVeOperator, 'menuItems/item-a'), {
+  price: 99,
+}));
+await denied('só ver o cardápio não deixa criar categoria', setDoc(doc(cardapioVeOperator, 'categories/cat-x'), {
+  ownerId: 'owner-a', name: 'Não deveria entrar',
+}));
+await denied('perfil antigo com booleano vale por só ver', updateDoc(doc(legadoBoolOperator, 'menuItems/item-a'), {
+  price: 98,
+}));
+await denied('cardápio de outra loja continua fora de alcance', updateDoc(doc(cardapioEditaOperator, 'menuItems/item-b'), {
+  price: 97,
+}));
+
+await allowed('módulo Clientes lê a base da loja', getDocs(query(
+  collection(clientesOperator, 'clientes'),
+  where('ownerId', '==', 'owner-a'),
+)));
+await allowed('módulo Clientes cadastra cliente', setDoc(doc(clientesOperator, 'clientes/cliente-op'), {
+  ownerId: 'owner-a', nome: 'Cliente do funcionário', celular: '11999990000',
+}));
+await allowed('módulo Clientes corrige o cadastro', updateDoc(doc(clientesOperator, 'clientes/cliente-op'), {
+  nome: 'Cliente corrigido',
+}));
+await denied('cliente não muda de loja', updateDoc(doc(clientesOperator, 'clientes/cliente-op'), {
+  ownerId: 'owner-b',
+}));
+await denied('sem o módulo, a base de clientes continua fechada', getDocs(query(
+  collection(statusOperator, 'clientes'),
+  where('ownerId', '==', 'owner-a'),
+)));
+await denied('Conta da Casa só de leitura não lança dívida', setDoc(
+  doc(clientesOperator, 'clientes/cliente-op/credit_transactions/lanc-op'),
+  { valor: 50, tipo: 'debito' },
+));
+await allowed('módulo Clientes exclui o que cadastrou', deleteDoc(doc(clientesOperator, 'clientes/cliente-op')));
+
+await denied('sem o módulo Perfil, a configuração da loja não muda', updateDoc(doc(statusOperator, 'store_profiles/owner-a'), {
+  general: { name: 'Nome trocado' },
+}));
 
 console.log('Firestore Rules: todos os cenários passaram.');
 

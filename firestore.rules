@@ -103,6 +103,60 @@ service cloud.firestore {
         && operatorPdvPermissions().get('global', {}).get(control, false) == true;
     }
 
+    // ── Retaguarda: o que o dono liberou tela a tela ──
+    //
+    // Duas decisões por módulo: `ver` abre a tela, `editar` deixa gravar. Os
+    // primeiros perfis guardavam um booleano por módulo; ele continua valendo
+    // como "só ver". Como em todo o resto do arquivo, o documento do operador é
+    // lido UMA vez e desce por parâmetro, para não estourar o orçamento de
+    // expressões das regras.
+    function retaguardaDe(d) {
+      return d.get('permissions', {}).get('retaguarda', {});
+    }
+
+    function moduloVer(ret, modulo) {
+      let m = ret.get(modulo, false);
+      return m == true || (m is map && m.get('ver', false) == true);
+    }
+
+    function moduloEditar(ret, modulo) {
+      let m = ret.get(modulo, false);
+      return m is map && m.get('ver', false) == true && m.get('editar', false) == true;
+    }
+
+    function operatorVeModulo(ownerId, modulo) {
+      return isOperator() && operatorVeOk(operatorData(), ownerId, modulo);
+    }
+
+    function operatorVeOk(d, ownerId, modulo) {
+      return operatorDocMatches(d, ownerId) && moduloVer(retaguardaDe(d), modulo);
+    }
+
+    function operatorEditaModulo(ownerId, modulo) {
+      return isOperator() && operatorEditaOk(operatorData(), ownerId, modulo);
+    }
+
+    function operatorEditaOk(d, ownerId, modulo) {
+      return operatorDocMatches(d, ownerId) && moduloEditar(retaguardaDe(d), modulo);
+    }
+
+    /** Pedidos alimentam Dashboard, Relatórios, ficha do cliente e entregas. */
+    function operatorVeHistorico(ownerId) {
+      return isOperator() && operatorHistoricoOk(operatorData(), ownerId);
+    }
+
+    function operatorHistoricoOk(d, ownerId) {
+      let ret = retaguardaDe(d);
+      return operatorDocMatches(d, ownerId) && (
+        moduloVer(ret, 'dashboard')
+        || moduloVer(ret, 'relatorios')
+        || moduloVer(ret, 'clientes')
+        || moduloVer(ret, 'prazo')
+        || moduloVer(ret, 'entregas')
+        || moduloVer(ret, 'encomendas')
+      );
+    }
+
     function valueUsesContaCasa(value) {
       return value is string && value.matches('.*conta_casa.*');
     }
@@ -370,27 +424,33 @@ service cloud.firestore {
     // Adicionamos a lógica de ownerId para isolar os dados
     match /categories/{categoryId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'categorias');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'categorias'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'categorias');
     }
 
     match /menuItems/{menuItemId} {
       allow get, list: if true;
-      allow create, delete: if isAdmin() && (
+      allow create, delete: if (isAdmin() && (
         (request.method == 'create' && request.resource.data.ownerId == request.auth.uid) ||
         (resource.data.ownerId == request.auth.uid)
-      );
+      )) || (request.method == 'create'
+        ? operatorEditaModulo(request.resource.data.ownerId, 'produtos')
+        : operatorEditaModulo(resource.data.ownerId, 'produtos'));
       // Cliente (anônimo) só pode BAIXAR o estoque ao fazer pedido — nunca
       // aumentar nem deixar negativo. Reposição/estorno é só do dono (admin).
       // Operador ativo pode mexer APENAS no estoque (baixa na venda e estorno
       // no cancelamento via lib/inventory) — nunca em preço/nome/etc.
       allow update: if ownerIdIsUnchanged() && (
         isOwnerOf(resource.data.ownerId) ||
+          operatorEditaModulo(resource.data.ownerId, 'produtos') ||
+          // Contagem de estoque é a aba Estoque; preço e nome, a aba Produtos.
+          (operatorEditaModulo(resource.data.ownerId, 'estoque')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
           (operatorCanAdjustInventory(resource.data.ownerId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity'])) ||
           (isAnonymous()
@@ -409,6 +469,8 @@ service cloud.firestore {
     match /stock_movements/{movementId} {
       allow get, list: if isOwnerOf(resource.data.ownerId)
         || (isActiveOperator() && operatorData().ownerId == resource.data.ownerId);
+      // A regra acima já cobre o operador da loja; a aba Estoque não precisa de
+      // uma leitura própria porque o histórico é o mesmo documento.
       // Formato primeiro, permissão depois: operatorCanAdjustInventory percorre
       // 6 checagens com leitura de documento e é o que mais gasta orçamento de
       // avaliação das rules. Conferir os campos antes faz o payload malformado
@@ -420,30 +482,31 @@ service cloud.firestore {
             && request.resource.data.stockAfter >= 0))
         && request.resource.data.itemId is string
         && (isOwnerOf(request.resource.data.ownerId)
+          || operatorEditaModulo(request.resource.data.ownerId, 'estoque')
           || operatorCanAdjustInventory(request.resource.data.ownerId));
       allow update, delete: if false;
     }
 
     match /addons/{addonId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'adicionais');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'adicionais'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'adicionais');
     }
 
     match /addonCategories/{categoryId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'adicionais');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'adicionais'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'adicionais');
     }
 
     match /customers/{userId} {
@@ -458,7 +521,8 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
         isOwnerOf(resource.data.ownerId) ||
-        operatorCanReadOrders(resource.data.ownerId)
+        operatorCanReadOrders(resource.data.ownerId) ||
+        operatorVeHistorico(resource.data.ownerId)
       );
       // Separado em três declarações em vez de um `||` só. Cada `allow` é
       // avaliado por si, então as ~25 checagens de delivery e as de mesa não se
@@ -486,14 +550,17 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (
         resource.data.customerUid == request.auth.uid ||
         isOwnerOf(resource.data.ownerId) ||
-        operatorCanPdvTab(resource.data.ownerId, 'encomendas_pedidos')
+        operatorCanPdvTab(resource.data.ownerId, 'encomendas_pedidos') ||
+        operatorVeModulo(resource.data.ownerId, 'encomendas')
       );
       allow create: if isSignedIn() && (
         request.resource.data.customerUid == request.auth.uid ||
-        isOwnerOf(request.resource.data.ownerId)
+        isOwnerOf(request.resource.data.ownerId) ||
+        operatorEditaModulo(request.resource.data.ownerId, 'encomendas')
       );
       allow update: if ownerIdIsUnchanged() && (
-        isOwnerOf(resource.data.ownerId) || (
+        isOwnerOf(resource.data.ownerId)
+        || operatorEditaModulo(resource.data.ownerId, 'encomendas') || (
           isOperatorOf(resource.data.ownerId)
           && !usesContaCasa(resource.data)
           && !usesContaCasa(request.resource.data) && (
@@ -540,7 +607,8 @@ service cloud.firestore {
       // próximo número e saldos acumulados. A aba/histórico fica escondida na
       // UI, mas a leitura bruta não é separável sem uma projeção server-side.
       allow get, list: if isOwnerOf(resource.data.ownerId)
-        || operatorCanOperateCash(resource.data.ownerId);
+        || operatorCanOperateCash(resource.data.ownerId)
+        || operatorVeHistorico(resource.data.ownerId);
       allow create: if isOwnerOf(request.resource.data.ownerId) || (
         request.resource.data.status == 'aberto'
         && request.resource.data.keys().hasOnly(['ownerId', 'status', 'sessao',
@@ -561,7 +629,8 @@ service cloud.firestore {
 
     match /cash_transactions/{transactionId} {
       allow get, list: if isOwnerOf(resource.data.ownerId)
-        || operatorCanOperateCash(resource.data.ownerId);
+        || operatorCanOperateCash(resource.data.ownerId)
+        || operatorVeHistorico(resource.data.ownerId);
       allow create: if isOwnerOf(request.resource.data.ownerId)
         || operatorCanCreateCashTransaction(
           request.resource.data.ownerId, request.resource.data);
@@ -590,14 +659,21 @@ service cloud.firestore {
       // abortava a venda inteira. Ler um documento inexistente não revela
       // dado nenhum; só o dono logado pode perguntar.
       allow get: if isAnonymous()
-        || (resource == null && isAdmin())
-        || isOwnerOf(resource.data.ownerId);
+        || (resource == null && (isAdmin()
+          || (isActiveOperator() && moduloVer(retaguardaDe(operatorData()), 'clientes'))))
+        || isOwnerOf(resource.data.ownerId)
+        || operatorVeModulo(resource.data.ownerId, 'clientes')
+        || operatorVeModulo(resource.data.ownerId, 'prazo');
       allow list: if isAnonymous()
-        || isOwnerOf(resource.data.ownerId);
+        || isOwnerOf(resource.data.ownerId)
+        || operatorVeModulo(resource.data.ownerId, 'clientes')
+        || operatorVeModulo(resource.data.ownerId, 'prazo');
       // Base, condições de crédito e sincronização são owner-only. O cliente
       // anônimo mantém apenas a leitura legada necessária ao my-orders.
-      allow create: if isOwnerOf(request.resource.data.ownerId);
-      allow update: if isOwnerOf(resource.data.ownerId)
+      allow create: if isOwnerOf(request.resource.data.ownerId)
+        || operatorEditaModulo(request.resource.data.ownerId, 'clientes');
+      allow update: if (isOwnerOf(resource.data.ownerId)
+          || operatorEditaModulo(resource.data.ownerId, 'clientes'))
         && ownerIdIsUnchanged()
         && (
           resource.data.get('mergeInProgress', null) == null
@@ -606,15 +682,20 @@ service cloud.firestore {
             'creditEnabled', 'mergeInProgress'
           ])
         );
-      allow delete: if isOwnerOf(resource.data.ownerId);
+      allow delete: if isOwnerOf(resource.data.ownerId)
+        || operatorEditaModulo(resource.data.ownerId, 'clientes');
 
       match /credit_transactions/{transactionId} {
         // Cliente anônimo lê o extrato legado no my-orders; somente o dono faz
         // lançamentos ou altera a Conta da Casa.
         allow get, list: if isAnonymous()
-          || isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId);
+          || isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId)
+          || operatorVeModulo(
+            get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId, 'prazo');
         allow create, update, delete: if
-          isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId)
+          (isOwnerOf(get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId)
+            || operatorEditaModulo(
+              get(/databases/$(database)/documents/clientes/$(clienteId)).data.ownerId, 'prazo'))
           && get(/databases/$(database)/documents/clientes/$(clienteId)).data.get('archived', false) != true
           && get(/databases/$(database)/documents/clientes/$(clienteId)).data.get('mergeInProgress', null) == null;
       }
@@ -626,6 +707,9 @@ service cloud.firestore {
       // isCaixaAberto (abrir/fechar caixa) e general.disableDelivery (botão
       // liga/desliga delivery do PDV). Todo o resto é só do dono.
       allow update: if (isAdmin() && request.auth.uid == profileId) ||
+        // Configurações da loja: um documento só, salvo de uma vez. Por isso a
+        // permissão também é uma só (Perfil da loja), e não por sub-aba.
+        operatorEditaModulo(profileId, 'perfil') ||
         (isOperatorOf(profileId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCaixaAberto'])
           && ((request.resource.data.isCaixaAberto == true
@@ -649,10 +733,11 @@ service cloud.firestore {
     match /store_slugs/{code} {
       allow get: if true;
       allow list: if false;
-      allow create: if isAdmin() && request.resource.data.storeId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.storeId == request.auth.uid
-        && request.resource.data.storeId == request.auth.uid;
+      allow create: if (isAdmin() && request.resource.data.storeId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.storeId, 'perfil');
+      allow update: if resource.data.storeId == request.resource.data.storeId && (
+        (isAdmin() && resource.data.storeId == request.auth.uid)
+        || operatorEditaModulo(resource.data.storeId, 'perfil'));
       allow delete: if isAdmin() && resource.data.storeId == request.auth.uid;
     }
 
@@ -667,7 +752,7 @@ service cloud.firestore {
         && (!('visitorId' in request.resource.data) || request.resource.data.visitorId is string);
       allow update, delete: if false;
       allow get, list: if isOwnerOf(resource.data.storeId)
-        || operatorCanPdvTab(resource.data.storeId, 'delivery');
+        || operatorVeModulo(resource.data.storeId, 'visitantes');
     }
 
     // Perfil do visitante do cardápio: o que olhou, o que ficou no carrinho e se
@@ -683,7 +768,8 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly([
             'storeId', 'visitorId', 'primeiraVez', 'ultimaVez', 'sessoes',
             'nome', 'telefone', 'clienteId', 'linhaDoTempo', 'carrinho',
-            'pedidos', 'ultimoPedidoId', 'ultimoPedidoValor', 'ultimoPedidoMs'
+            'pedidos', 'ultimoPedidoId', 'ultimoPedidoValor', 'ultimoPedidoMs',
+            'viaLink', 'codigo'
           ])
           && request.resource.data.storeId is string
           && request.resource.data.visitorId is string
@@ -697,6 +783,9 @@ service cloud.firestore {
           && (!('telefone' in request.resource.data)
               || (request.resource.data.telefone is string && request.resource.data.telefone.size() <= 20))
           && (!('clienteId' in request.resource.data) || request.resource.data.clienteId is string)
+          && (!('viaLink' in request.resource.data) || request.resource.data.viaLink is bool)
+          && (!('codigo' in request.resource.data)
+              || (request.resource.data.codigo is string && request.resource.data.codigo.size() <= 12))
           && (!('carrinho' in request.resource.data) || request.resource.data.carrinho is map);
       }
 
@@ -711,7 +800,7 @@ service cloud.firestore {
                || request.resource.data.primeiraVez == request.time));
       allow delete: if false;
       allow get, list: if isOwnerOf(resource.data.storeId)
-        || operatorCanPdvTab(resource.data.storeId, 'delivery');
+        || operatorVeModulo(resource.data.storeId, 'visitantes');
     }
 
     match /active_sessions/{sessionId} {
@@ -722,55 +811,69 @@ service cloud.firestore {
       // Leitura agora é isolada por loja. A query do painel deve filtrar por
       // storeId; rules não usam o filtro local como barreira de segurança.
       allow get, list: if isOwnerOf(resource.data.storeId)
-        || operatorCanPdvTab(resource.data.storeId, 'delivery');
+        || operatorVeModulo(resource.data.storeId, 'visitantes');
     }
 
     match /promotions/{promoId} {
       allow get, list: if true;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin()
-        && resource.data.ownerId == request.auth.uid;
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'ofertas');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'ofertas'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'ofertas');
     }
 
     match /campaigns/{campaignId} {
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow get, list: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorVeModulo(resource.data.ownerId, 'campanhas');
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'campanhas');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas');
     }
 
     match /broadcast_lists/{listId} {
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow get, list: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorVeModulo(resource.data.ownerId, 'campanhas');
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'campanhas');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas');
     }
 
     // Disparo agendado/segundo plano. O dono cria e lê (progresso em realtime) e
     // pode cancelar (update/delete). Os writes de envio (cursor/sent/failed/...)
     // são feitos pelo servidor via Admin SDK, que ignora estas regras.
     match /scheduled_campaigns/{campaignId} {
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create: if isAdmin() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isAdmin()
-        && resource.data.ownerId == request.auth.uid
-        && ownerIdIsUnchanged();
-      allow delete: if isAdmin() && resource.data.ownerId == request.auth.uid;
+      allow get, list: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorVeModulo(resource.data.ownerId, 'campanhas');
+      allow create: if (isAdmin() && request.resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(request.resource.data.ownerId, 'campanhas');
+      allow update: if ownerIdIsUnchanged() && (
+        (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas'));
+      allow delete: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorEditaModulo(resource.data.ownerId, 'campanhas');
     }
 
     match /whatsapp_messages/{messageId} {
-      allow get, list: if isAdmin() && resource.data.ownerId == request.auth.uid;
-      allow create: if isAdmin()
-        && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.empresaId == request.auth.uid;
+      allow get, list: if (isAdmin() && resource.data.ownerId == request.auth.uid)
+        || operatorVeModulo(resource.data.ownerId, 'whatsapp')
+        || operatorVeModulo(resource.data.ownerId, 'campanhas');
+      allow create: if (isAdmin()
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.empresaId == request.auth.uid)
+        || (request.resource.data.ownerId == request.resource.data.empresaId
+          && (operatorEditaModulo(request.resource.data.ownerId, 'whatsapp')
+            || operatorEditaModulo(request.resource.data.ownerId, 'campanhas')));
       allow update, delete: if false;
     }
   }

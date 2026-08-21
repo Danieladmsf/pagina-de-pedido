@@ -65,8 +65,8 @@ import {
 import {
   createEmptyOperatorPermissions,
   normalizeOperatorPermissions,
-  OWNER_ONLY_RETAGUARDA_PERMISSIONS,
   RETAGUARDA_PERMISSION_KEYS,
+  RETAGUARDA_SOMENTE_LEITURA,
   type OperatorPermissions,
   type RetaguardaPermissionKey,
 } from '@/lib/user-permissions';
@@ -219,21 +219,99 @@ const GLOBAL_OPTIONS: PdvActionOption[] = [
   { path: 'global.toggleDelivery', label: 'Permitir ligar ou desligar o Delivery' },
 ];
 
-const RETAGUARDA_LABELS: Record<RetaguardaPermissionKey, { label: string; description: string }> = {
-  dashboard: { label: 'Dashboard', description: 'Relatórios e faturamento agregado.' },
-  produtos: { label: 'Produtos', description: 'Consulta do catálogo; alterações continuam bloqueadas.' },
-  categorias: { label: 'Categorias', description: 'Consulta das categorias; alterações continuam bloqueadas.' },
-  adicionais: { label: 'Adicionais', description: 'Consulta dos adicionais; alterações continuam bloqueadas.' },
-  clientes: { label: 'Clientes', description: 'Base de clientes e dados pessoais.' },
-  ofertas: { label: 'Ofertas', description: 'Consulta das promoções; alterações continuam bloqueadas.' },
-  whatsapp: { label: 'WhatsApp', description: 'Configuração e histórico da integração.' },
-  campanhas: { label: 'Campanhas', description: 'Disparos, listas e resultados de campanhas.' },
-  encomendas: { label: 'Encomendas na Retaguarda', description: 'Visão administrativa e agenda completa.' },
-  freelance: { label: 'Freelance', description: 'Cadastros e pagamentos de colaboradores.' },
-  perfil: { label: 'Perfil da Loja', description: 'Configurações operacionais e públicas da loja.' },
-  permissoes: { label: 'Permissões', description: 'Configuração das políticas da loja.' },
-  usuarios: { label: 'Usuários', description: 'Criação e administração de identidades.' },
-};
+interface RetaguardaModuleOption {
+  key: RetaguardaPermissionKey;
+  label: string;
+  description: string;
+  /** Aviso em destaque: ligar isso tem consequência que não é óbvia. */
+  alerta?: string;
+}
+
+interface RetaguardaGroupOption {
+  titulo: string;
+  descricao: string;
+  modulos: RetaguardaModuleOption[];
+}
+
+/** Um item por tela do menu lateral — é o mapa do que existe para liberar. */
+const RETAGUARDA_GROUPS: RetaguardaGroupOption[] = [
+  {
+    titulo: 'Números do negócio',
+    descricao: 'Quanto entrou, o que vendeu e quem passou no cardápio.',
+    modulos: [
+      { key: 'dashboard', label: 'Dashboard', description: 'Vendas do dia, formas de pagamento e canais.' },
+      { key: 'relatorios', label: 'Relatórios', description: 'Faturamento mês a mês e a curva de cada produto.' },
+      { key: 'visitantes', label: 'Visitantes', description: 'Quem abriu o cardápio e o que ficou no carrinho.' },
+    ],
+  },
+  {
+    titulo: 'Cardápio',
+    descricao: 'O que a loja vende, por quanto e o que ainda tem.',
+    modulos: [
+      { key: 'produtos', label: 'Produtos', description: 'Fotos, preços e em quais canais o produto aparece.' },
+      { key: 'estoque', label: 'Estoque', description: 'Entradas, saídas e a contagem de cada item.' },
+      { key: 'categorias', label: 'Categorias', description: 'Seções do cardápio e a ordem delas.' },
+      { key: 'adicionais', label: 'Adicionais', description: 'Grupos de adicional e as opções de cada um.' },
+      { key: 'ofertas', label: 'Ofertas e combos', description: 'Promoções, combos e a vitrine do cardápio.' },
+    ],
+  },
+  {
+    titulo: 'Pessoas',
+    descricao: 'A base de clientes e o fiado da loja.',
+    modulos: [
+      { key: 'clientes', label: 'Clientes', description: 'Cadastro, telefone, endereço e histórico de compras.' },
+      {
+        key: 'prazo',
+        label: 'Conta da Casa (fiado)',
+        description: 'Extrato, saldo devedor e baixa de pagamento.',
+        alerta: 'Alterar aqui mexe em dívida de cliente.',
+      },
+    ],
+  },
+  {
+    titulo: 'Marketing',
+    descricao: 'A conversa com o cliente pelo WhatsApp.',
+    modulos: [
+      { key: 'whatsapp', label: 'WhatsApp', description: 'Conexão do número, mensagens automáticas e histórico.' },
+      {
+        key: 'campanhas',
+        label: 'Campanhas',
+        description: 'Listas, disparos em massa e resultado de cada campanha.',
+        alerta: 'Alterar aqui dispara mensagem para a base inteira.',
+      },
+    ],
+  },
+  {
+    titulo: 'Operação',
+    descricao: 'Encomendas e quem entrega.',
+    modulos: [
+      { key: 'encomendas', label: 'Encomendas', description: 'Agenda completa e a configuração do catálogo de encomenda.' },
+      { key: 'entregas', label: 'Entregas e freelance', description: 'Equipe de entrega, diaristas e o que cada um recebeu.' },
+    ],
+  },
+  {
+    titulo: 'Configurações da loja',
+    descricao: 'O que define como a loja funciona por fora.',
+    modulos: [
+      {
+        key: 'perfil',
+        label: 'Perfil da loja',
+        description: 'Dados, taxas, horários, pagamentos, impressora e aparência.',
+        alerta: 'Alterar aqui muda como a loja aparece e cobra no cardápio.',
+      },
+      {
+        key: 'usuarios',
+        label: 'Usuários e acesso',
+        description: 'Criar funcionários, trocar senha e mudar permissões.',
+        alerta: 'Quem altera aqui pode criar outros acessos.',
+      },
+    ],
+  },
+];
+
+const RETAGUARDA_LABELS = new Map<RetaguardaPermissionKey, string>(
+  RETAGUARDA_GROUPS.flatMap((grupo) => grupo.modulos.map((modulo) => [modulo.key, modulo.label])),
+);
 
 class UsuariosRequestError extends Error {}
 
@@ -297,10 +375,10 @@ function coerceManagedUser(value: unknown): ManagedUser | null {
 
 function hasUsableAccess(permissions: OperatorPermissions): boolean {
   const hasPdvTab = Object.values(permissions.pdv.tabs).some((value) => value === true);
-  const hasReadOnlyModule = RETAGUARDA_PERMISSION_KEYS.some(
-    (key) => !OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key) && permissions.retaguarda[key] === true,
+  const hasRetaguardaModule = RETAGUARDA_PERMISSION_KEYS.some(
+    (key) => permissions.retaguarda[key]?.ver === true,
   );
-  return hasPdvTab || hasReadOnlyModule;
+  return hasPdvTab || hasRetaguardaModule;
 }
 
 function formatCreatedAt(value: string | null): string {
@@ -321,11 +399,18 @@ function getPdvAccessLabels(permissions: OperatorPermissions): string[] {
   return PDV_TAB_OPTIONS.filter((tab) => permissions.pdv.tabs[tab.id] === true).map((tab) => tab.label);
 }
 
-/** Módulos do menu lateral (consulta) que o funcionário enxerga. */
+/** Módulos do menu lateral que o funcionário enxerga. */
 function getRetaguardaAccessLabels(permissions: OperatorPermissions): string[] {
   return RETAGUARDA_PERMISSION_KEYS
-    .filter((key) => !OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key) && permissions.retaguarda[key] === true)
-    .map((key) => RETAGUARDA_LABELS[key].label);
+    .filter((key) => permissions.retaguarda[key]?.ver === true)
+    .map((key) => RETAGUARDA_LABELS.get(key) || key);
+}
+
+/** Módulos em que ele não só entra: também altera. */
+function getRetaguardaEditLabels(permissions: OperatorPermissions): string[] {
+  return RETAGUARDA_PERMISSION_KEYS
+    .filter((key) => permissions.retaguarda[key]?.editar === true)
+    .map((key) => RETAGUARDA_LABELS.get(key) || key);
 }
 
 export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: UsuariosTabProps) {
@@ -431,15 +516,25 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
     setFormError('');
   };
 
-  const updateRetaguardaPermission = (key: RetaguardaPermissionKey, checked: boolean) => {
-    if (OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key)) return;
-    setForm((current) => ({
-      ...current,
-      permissions: normalizeOperatorPermissions({
-        ...current.permissions,
-        retaguarda: { ...current.permissions.retaguarda, [key]: checked },
-      }),
-    }));
+  const updateRetaguardaPermission = (
+    key: RetaguardaPermissionKey,
+    campo: 'ver' | 'editar',
+    checked: boolean,
+  ) => {
+    setForm((current) => {
+      const atual = current.permissions.retaguarda[key];
+      // Ligar "alterar" implica entrar na tela; desligar "ver" leva os dois.
+      const proximo = campo === 'ver'
+        ? { ver: checked, editar: checked ? atual.editar : false }
+        : { ver: checked ? true : atual.ver, editar: checked };
+      return {
+        ...current,
+        permissions: normalizeOperatorPermissions({
+          ...current.permissions,
+          retaguarda: { ...current.permissions.retaguarda, [key]: proximo },
+        }),
+      };
+    });
     setFormError('');
   };
 
@@ -478,7 +573,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
       }
     }
     if (!hasUsableAccess(form.permissions)) {
-      setFormError('Libere ao menos uma aba do PDV ou um módulo de consulta da Retaguarda.');
+      setFormError('Libere ao menos uma aba da Frente de Caixa ou um módulo da Retaguarda.');
       return;
     }
 
@@ -663,7 +758,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
         <ShieldCheck className="h-4 w-4" />
         <AlertTitle>Cada funcionário vê só o que você liberar</AlertTitle>
         <AlertDescription>
-          Relatórios, faturamento e configurações da loja continuam só com você. Desativar um funcionário bloqueia o acesso na hora, sem apagar o histórico.
+          Tudo é escolha sua, tela por tela — inclusive faturamento e configurações. Desativar um funcionário bloqueia o acesso na hora, sem apagar o histórico.
         </AlertDescription>
       </Alert>
 
@@ -731,6 +826,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                       {(() => {
                         const pdvLabels = getPdvAccessLabels(usuario.permissions);
                         const retLabels = getRetaguardaAccessLabels(usuario.permissions);
+                        const editLabels = getRetaguardaEditLabels(usuario.permissions);
                         return (
                           <div className="space-y-2 rounded-lg bg-slate-50 p-3">
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -743,9 +839,17 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                             </div>
                             {retLabels.length > 0 && (
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-xs font-medium text-slate-500">Também consulta:</span>
+                                <span className="text-xs font-medium text-slate-500">Retaguarda:</span>
                                 {retLabels.map((label) => (
                                   <Badge key={label} variant="outline">{label}</Badge>
+                                ))}
+                              </div>
+                            )}
+                            {editLabels.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs font-medium text-slate-500">Pode alterar:</span>
+                                {editLabels.map((label) => (
+                                  <Badge key={label} variant="secondary" className="bg-amber-100 text-amber-900 hover:bg-amber-100">{label}</Badge>
                                 ))}
                               </div>
                             )}
@@ -992,38 +1096,62 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
             <div>
               <h3 className="text-lg font-bold text-slate-800">Retaguarda</h3>
               <p className="text-sm text-slate-500">
-                Por enquanto, o funcionário apenas consulta os cadastros liberados (não edita). Relatórios, faturamento e configurações ficam só com você.
+                Duas decisões por tela: <strong>Ver</strong> abre o módulo para ele; <strong>Alterar</strong> deixa mexer no que está lá.
               </p>
             </div>
 
-            <Card>
-              <CardContent className="grid gap-3 pt-6 sm:grid-cols-2">
-                {RETAGUARDA_PERMISSION_KEYS.map((key) => {
-                  const item = RETAGUARDA_LABELS[key];
-                  const ownerOnly = OWNER_ONLY_RETAGUARDA_PERMISSIONS.has(key);
-                  return (
-                    <div key={key} className={`flex items-center justify-between gap-4 rounded-lg border p-3 ${ownerOnly ? 'bg-amber-50/60' : 'bg-slate-50'}`}>
-                      <div className="min-w-0 text-sm">
-                        <div className="flex flex-wrap items-center gap-2 font-medium">
-                          {ownerOnly && <LockKeyhole className="h-3.5 w-3.5 text-amber-600" />}
-                          <span>{item.label}</span>
-                          <Badge variant="outline" className={ownerOnly ? 'border-amber-300 text-amber-700' : 'border-sky-300 text-sky-700'}>
-                            {ownerOnly ? 'Só o dono' : 'Somente leitura'}
-                          </Badge>
+            {RETAGUARDA_GROUPS.map((grupo) => (
+              <Card key={grupo.titulo}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{grupo.titulo}</CardTitle>
+                  <CardDescription>{grupo.descricao}</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-2">
+                  {grupo.modulos.map((modulo) => {
+                    const valor = form.permissions.retaguarda[modulo.key];
+                    const somenteLeitura = RETAGUARDA_SOMENTE_LEITURA.has(modulo.key);
+                    return (
+                      <div
+                        key={modulo.key}
+                        className={`flex items-start justify-between gap-4 rounded-lg border p-3 ${valor.editar && modulo.alerta ? 'border-amber-200 bg-amber-50/60' : 'bg-slate-50'}`}
+                      >
+                        <div className="min-w-0 text-sm">
+                          <p className="font-medium">{modulo.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{modulo.description}</p>
+                          {modulo.alerta && valor.editar && (
+                            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
+                              <LockKeyhole className="h-3 w-3" /> {modulo.alerta}
+                            </p>
+                          )}
                         </div>
-                        <p className={`mt-1 text-xs ${ownerOnly ? 'text-amber-700' : 'text-slate-500'}`}>{item.description}</p>
+                        <div className="flex shrink-0 items-start gap-4">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Ver</span>
+                            <Switch
+                              aria-label={'Ver ' + modulo.label}
+                              checked={valor.ver}
+                              disabled={isSaving}
+                              onCheckedChange={(checked) => updateRetaguardaPermission(modulo.key, 'ver', checked)}
+                            />
+                          </div>
+                          {!somenteLeitura && (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Alterar</span>
+                              <Switch
+                                aria-label={'Alterar ' + modulo.label}
+                                checked={valor.editar}
+                                disabled={isSaving || !valor.ver}
+                                onCheckedChange={(checked) => updateRetaguardaPermission(modulo.key, 'editar', checked)}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <Switch
-                        aria-label={item.label}
-                        checked={!ownerOnly && form.permissions.retaguarda[key]}
-                        disabled={isSaving || ownerOnly}
-                        onCheckedChange={(checked) => updateRetaguardaPermission(key, checked)}
-                      />
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            ))}
 
             {formError && (
               <Alert variant="destructive">
