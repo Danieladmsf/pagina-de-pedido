@@ -7,6 +7,9 @@ import type { AdminSecret } from '@/lib/admin-password';
 import { AdminPasswordSection } from '@/components/admin/AdminPasswordSection';
 import {
   CircleAlert,
+  Copy,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   LockKeyhole,
@@ -49,6 +52,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import {
+  generateOperatorPassword,
+  resolveOperatorLogin,
+  suggestOperatorHandle,
+  validateOperatorPassword,
+} from '@/lib/operator-login';
+import {
   type PdvPermissionPath,
   type PdvPermissions,
   type PdvTabId,
@@ -73,6 +82,10 @@ interface ManagedUser {
   uid: string;
   name: string;
   email: string;
+  /** Apelido ("maria") ou o e-mail completo — é o que o funcionário digita. */
+  login: string;
+  /** Endereço interno de apelido não recebe e-mail; só o dono troca a senha. */
+  canReceiveEmail: boolean;
   active: boolean;
   permissions: OperatorPermissions;
   emailVerified: boolean;
@@ -85,8 +98,18 @@ interface ManagedUser {
 interface UserFormState {
   uid: string | null;
   name: string;
-  email: string;
+  login: string;
+  password: string;
+  /** Enquanto o dono não mexe no login, ele acompanha o nome digitado. */
+  loginTocado: boolean;
   permissions: OperatorPermissions;
+}
+
+/** O que o dono precisa anotar e entregar ao funcionário. */
+interface CredenciaisEntregues {
+  nome: string;
+  login: string;
+  password: string;
 }
 
 interface PdvActionOption {
@@ -106,6 +129,11 @@ interface PdvTabOption {
 interface ConfirmationState {
   kind: 'toggle-active' | 'remove';
   usuario: ManagedUser;
+}
+
+function descreveLogin(usuario: ManagedUser): string {
+  if (!usuario.login) return 'Login não encontrado';
+  return usuario.canReceiveEmail ? usuario.login : 'usuário: ' + usuario.login;
 }
 
 const PDV_TAB_OPTIONS: PdvTabOption[] = [
@@ -213,7 +241,9 @@ function emptyForm(): UserFormState {
   return {
     uid: null,
     name: '',
-    email: '',
+    login: '',
+    password: '',
+    loginTocado: false,
     permissions: createEmptyOperatorPermissions(),
   };
 }
@@ -251,6 +281,10 @@ function coerceManagedUser(value: unknown): ManagedUser | null {
     uid: source.uid,
     name: typeof source.name === 'string' ? source.name : '',
     email: typeof source.email === 'string' ? source.email : '',
+    login: typeof source.login === 'string' && source.login
+      ? source.login
+      : typeof source.email === 'string' ? source.email : '',
+    canReceiveEmail: source.canReceiveEmail === true,
     active: source.active === true,
     permissions: normalizeOperatorPermissions(source.permissions),
     emailVerified: source.emailVerified === true,
@@ -305,6 +339,12 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
   const [isSaving, setIsSaving] = useState(false);
   const [busyAction, setBusyAction] = useState<{ uid: string; action: string } | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<ManagedUser | null>(null);
+  const [passwordValue, setPasswordValue] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [credenciais, setCredenciais] = useState<CredenciaisEntregues | null>(null);
   const operationRef = useRef(false);
   const loadSequenceRef = useRef(0);
 
@@ -356,6 +396,8 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
 
   const activeCount = useMemo(() => usuarios.filter((usuario) => usuario.active).length, [usuarios]);
   const hasPendingAction = busyAction !== null;
+  // Apelido não recebe e-mail, então a senha deixa de ser opcional no formulário.
+  const loginEhApelido = resolveOperatorLogin(form.login)?.kind === 'handle';
 
   const openNewUser = () => {
     if (operationRef.current) return;
@@ -369,7 +411,9 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
     setForm({
       uid: usuario.uid,
       name: usuario.name,
-      email: usuario.email,
+      login: usuario.login,
+      password: '',
+      loginTocado: true,
       permissions: clonePermissions(usuario.permissions),
     });
     setFormError('');
@@ -413,14 +457,25 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
     event.preventDefault();
     if (operationRef.current) return;
     const name = form.name.trim();
-    const email = form.email.trim();
+    const loginDigitado = form.login.trim();
+    const acesso = resolveOperatorLogin(loginDigitado);
+    const senha = form.password;
     if (!name) {
       setFormError('Informe o nome do usuário.');
       return;
     }
-    if (!form.uid && !/^\S+@\S+\.\S+$/.test(email)) {
-      setFormError('Informe um e-mail válido.');
+    if (!form.uid && !acesso) {
+      setFormError('Escolha como ele entra: um apelido curto (ex.: maria) ou o e-mail dele.');
       return;
+    }
+    // Apelido não tem caixa de entrada, então a senha nasce aqui. Com e-mail de
+    // verdade, deixar a senha em branco ainda manda o convite do Firebase.
+    if (!form.uid && (acesso?.kind === 'handle' || senha)) {
+      const problemaSenha = validateOperatorPassword(senha);
+      if (problemaSenha) {
+        setFormError(problemaSenha);
+        return;
+      }
     }
     if (!hasUsableAccess(form.permissions)) {
       setFormError('Libere ao menos uma aba do PDV ou um módulo de consulta da Retaguarda.');
@@ -439,7 +494,8 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
         })
         : await request<{ usuario?: unknown; inviteSent?: boolean; warning?: string }>('POST', {
           name,
-          email,
+          login: loginDigitado,
+          ...(senha ? { password: senha } : {}),
           permissions: form.permissions,
         });
       const savedUser = coerceManagedUser(data.usuario);
@@ -447,17 +503,21 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
       upsertUser(savedUser);
       setDialogOpen(false);
       setForm(emptyForm());
+      setShowPassword(false);
+      // A senha só existe aqui, nesta tela: o servidor guarda o hash e nunca a
+      // devolve. Por isso ela é mostrada uma vez, para o dono anotar e entregar.
+      if (!form.uid && senha) {
+        setCredenciais({ nome: savedUser.name, login: savedUser.login, password: senha });
+      }
       toast({
-        title: form.uid
-          ? 'Usuário atualizado'
-          : 'inviteSent' in data && data.inviteSent === false
-            ? 'Usuário criado; convite pendente'
-            : 'Usuário criado',
+        title: form.uid ? 'Usuário atualizado' : 'Usuário criado',
         description: 'warning' in data && typeof data.warning === 'string'
           ? data.warning
           : form.uid
             ? 'As permissões novas entram em vigor em tempo real.'
-            : 'O convite para definir a senha foi enviado por e-mail.',
+            : senha
+              ? 'Entregue o usuário e a senha para ele entrar.'
+              : 'O convite para definir a senha foi enviado por e-mail.',
       });
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Não foi possível salvar o usuário.');
@@ -483,6 +543,65 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
     } finally {
       operationRef.current = false;
       setBusyAction(null);
+    }
+  };
+
+  const abrirTrocaDeSenha = (usuario: ManagedUser) => {
+    if (operationRef.current) return;
+    setPasswordTarget(usuario);
+    setPasswordValue('');
+    setPasswordError('');
+    setShowPassword(false);
+  };
+
+  const fecharTrocaDeSenha = () => {
+    setPasswordTarget(null);
+    setPasswordValue('');
+    setPasswordError('');
+    setShowPassword(false);
+  };
+
+  const handleChangePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    const alvo = passwordTarget;
+    if (!alvo || operationRef.current) return;
+    const problema = validateOperatorPassword(passwordValue);
+    if (problema) {
+      setPasswordError(problema);
+      return;
+    }
+
+    operationRef.current = true;
+    setIsSavingPassword(true);
+    setPasswordError('');
+    try {
+      await request('PATCH', { uid: alvo.uid, action: 'set_password', password: passwordValue });
+      setCredenciais({ nome: alvo.name, login: alvo.login, password: passwordValue });
+      fecharTrocaDeSenha();
+      toast({
+        title: 'Senha trocada',
+        description: 'A senha antiga não vale mais. Entregue a nova para ' + (alvo.name || 'o funcionário') + '.',
+      });
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'Não foi possível trocar a senha.');
+    } finally {
+      operationRef.current = false;
+      setIsSavingPassword(false);
+    }
+  };
+
+  const copiarCredenciais = async () => {
+    if (!credenciais) return;
+    const texto = 'Usuário: ' + credenciais.login + '\nSenha: ' + credenciais.password;
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast({ title: 'Copiado', description: 'Cole no WhatsApp do funcionário.' });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Não foi possível copiar',
+        description: 'Anote manualmente: ' + texto.replace('\n', ' / '),
+      });
     }
   };
 
@@ -601,7 +720,7 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                           </div>
                           <div className="min-w-0">
                             <CardTitle className="truncate text-lg">{usuario.name || 'Sem nome'}</CardTitle>
-                            <CardDescription className="truncate">{usuario.email || 'Login não encontrado'}</CardDescription>
+                            <CardDescription className="truncate">{descreveLogin(usuario)}</CardDescription>
                           </div>
                         </div>
                         <Badge variant={usuario.active ? 'default' : 'secondary'} className={usuario.active ? 'bg-emerald-600' : ''}>
@@ -647,12 +766,23 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void handleResendInvite(usuario)}
-                        disabled={hasPendingAction || usuario.authMissing || !usuario.email}
+                        onClick={() => abrirTrocaDeSenha(usuario)}
+                        disabled={hasPendingAction || usuario.authMissing}
                       >
-                        {isBusy && busyAction?.action === 'invite' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                        Reenviar convite
+                        <KeyRound className="h-4 w-4" /> Trocar senha
                       </Button>
+                      {/* Só quem entra por e-mail de verdade tem para onde receber o link. */}
+                      {usuario.canReceiveEmail && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleResendInvite(usuario)}
+                          disabled={hasPendingAction || usuario.authMissing}
+                        >
+                          {isBusy && busyAction?.action === 'invite' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                          Enviar link por e-mail
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -692,8 +822,8 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
             <DialogTitle>{form.uid ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
             <DialogDescription>
               {form.uid
-                ? 'Altere o nome e o que ele pode acessar. O e-mail de login não pode ser trocado.'
-                : 'O funcionário vai receber um e-mail para criar a própria senha e já poder entrar.'}
+                ? 'Altere o nome e o que ele pode acessar. O usuário de entrada continua o mesmo.'
+                : 'Você escolhe como ele entra e qual é a senha. Sem e-mail no meio do caminho.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -709,23 +839,81 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
                     maxLength={100}
                     autoComplete="name"
                     disabled={isSaving}
-                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                      // Até o dono mexer no campo de usuário, ele segue o nome.
+                      login: current.uid || current.loginTocado
+                        ? current.login
+                        : suggestOperatorHandle(event.target.value),
+                    }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="operator-email">E-mail de login</Label>
+                  <Label htmlFor="operator-login">Usuário para entrar</Label>
                   <Input
-                    id="operator-email"
-                    type="email"
-                    value={form.email}
-                    autoComplete="email"
+                    id="operator-login"
+                    value={form.login}
+                    maxLength={254}
+                    autoComplete="off"
                     readOnly={Boolean(form.uid)}
                     disabled={isSaving}
                     className={form.uid ? 'bg-slate-100' : ''}
-                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      login: event.target.value,
+                      loginTocado: true,
+                    }))}
                   />
-                  {form.uid && <p className="text-xs text-slate-500">Para trocar o e-mail, remova este login e crie outro.</p>}
+                  <p className="text-xs text-slate-500">
+                    {form.uid
+                      ? 'Para trocar o usuário, remova este acesso e crie outro.'
+                      : 'Um apelido curto basta (ex.: maria). Se ele tiver e-mail, pode usar o e-mail.'}
+                  </p>
                 </div>
+                {!form.uid && (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="operator-password">Senha</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          id="operator-password"
+                          type={showPassword ? 'text' : 'password'}
+                          value={form.password}
+                          maxLength={128}
+                          autoComplete="new-password"
+                          disabled={isSaving}
+                          className="pr-10"
+                          onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                        />
+                        <button
+                          type="button"
+                          aria-label={showPassword ? 'Esconder senha' : 'Mostrar senha'}
+                          onClick={() => setShowPassword((atual) => !atual)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isSaving}
+                        onClick={() => {
+                          setForm((current) => ({ ...current, password: generateOperatorPassword() }));
+                          setShowPassword(true);
+                        }}
+                      >
+                        <RefreshCw className="h-4 w-4" /> Sortear
+                      </Button>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {loginEhApelido
+                        ? 'Quem entra por apelido não recebe e-mail: a senha é esta que você escolher aqui.'
+                        : 'Deixe em branco para ele criar a própria senha pelo link que chega no e-mail.'}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -851,10 +1039,106 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
               </Button>
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : form.uid ? <Pencil className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
-                {isSaving ? 'Salvando…' : form.uid ? 'Salvar alterações' : 'Criar e enviar convite'}
+                {isSaving ? 'Salvando…' : form.uid ? 'Salvar alterações' : 'Criar acesso'}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(passwordTarget)}
+        onOpenChange={(open) => { if (!open && !isSavingPassword) fecharTrocaDeSenha(); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trocar a senha de {passwordTarget?.name || 'funcionário'}</DialogTitle>
+            <DialogDescription>
+              A senha antiga deixa de valer na hora. Se ele estiver com o sistema aberto, cai para a tela de login.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="operator-new-password">Senha nova</Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="operator-new-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordValue}
+                    maxLength={128}
+                    autoComplete="new-password"
+                    disabled={isSavingPassword}
+                    className="pr-10"
+                    onChange={(event) => { setPasswordValue(event.target.value); setPasswordError(''); }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? 'Esconder senha' : 'Mostrar senha'}
+                    onClick={() => setShowPassword((atual) => !atual)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingPassword}
+                  onClick={() => { setPasswordValue(generateOperatorPassword()); setShowPassword(true); setPasswordError(''); }}
+                >
+                  <RefreshCw className="h-4 w-4" /> Sortear
+                </Button>
+              </div>
+            </div>
+
+            {passwordError && (
+              <Alert variant="destructive">
+                <CircleAlert className="h-4 w-4" />
+                <AlertDescription>{passwordError}</AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={isSavingPassword} onClick={fecharTrocaDeSenha}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSavingPassword}>
+                {isSavingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                {isSavingPassword ? 'Trocando…' : 'Trocar senha'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(credenciais)} onOpenChange={(open) => !open && setCredenciais(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Acesso de {credenciais?.nome || 'funcionário'}</DialogTitle>
+            <DialogDescription>
+              Anote ou copie agora: por segurança, a senha não aparece de novo. Se perder, é só trocar por outra.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-500">Usuário</p>
+              <p className="break-all font-mono text-lg font-bold text-slate-800">{credenciais?.login}</p>
+            </div>
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs font-medium text-slate-500">Senha</p>
+              <p className="break-all font-mono text-lg font-bold text-slate-800">{credenciais?.password}</p>
+            </div>
+            <Button type="button" variant="outline" className="w-full" onClick={() => void copiarCredenciais()}>
+              <Copy className="h-4 w-4" /> Copiar usuário e senha
+            </Button>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" onClick={() => setCredenciais(null)}>Pronto, anotei</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

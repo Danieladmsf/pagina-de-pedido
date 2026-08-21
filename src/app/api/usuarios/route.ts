@@ -2,6 +2,13 @@ import type { UpdateRequest, UserRecord } from 'firebase-admin/auth';
 import { FieldValue, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { firebaseConfig } from '@/firebase/config';
 import { getOptionalAdminAuth, getOptionalAdminDb } from '@/lib/firebase-admin';
+import {
+  getOperatorDisplayLogin,
+  isInternalOperatorEmail,
+  resolveOperatorLogin,
+  suggestAlternativeHandles,
+  validateOperatorPassword,
+} from '@/lib/operator-login';
 import { normalizeOperatorPermissions } from '@/lib/user-permissions';
 
 export const runtime = 'nodejs';
@@ -57,15 +64,23 @@ function normalizeName(value: unknown): string {
   return name;
 }
 
-function normalizeEmail(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new UsuariosApiError(400, 'Informe o e-mail do usuario.');
+/**
+ * O dono digita apelido ("maria") ou e-mail. O apelido vira um endereco interno
+ * que existe so para o Firebase Auth ter o que guardar; quem entra digitando o
+ * mesmo apelido no /login chega ao mesmo endereco.
+ */
+function normalizeLogin(value: unknown) {
+  const resolved = resolveOperatorLogin(value);
+  if (!resolved) {
+    throw new UsuariosApiError(400, 'Informe um usuario (apelido com 3 letras ou mais) ou um e-mail valido.');
   }
-  const email = value.trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new UsuariosApiError(400, 'Informe um e-mail valido.');
-  }
-  return email;
+  return resolved;
+}
+
+function normalizePassword(value: unknown): string {
+  const problema = validateOperatorPassword(value);
+  if (problema) throw new UsuariosApiError(400, problema);
+  return value as string;
 }
 
 function normalizeUid(value: unknown): string {
@@ -132,7 +147,14 @@ async function requireOwner(request: Request) {
     throw new UsuariosApiError(403, 'Somente o master pode gerenciar usuarios.');
   }
 
-  return { auth, db, ownerUid: decodedToken.uid };
+  const storeName = ownerSnapshot.data()?.storeName;
+
+  return {
+    auth,
+    db,
+    ownerUid: decodedToken.uid,
+    storeName: typeof storeName === 'string' ? storeName : '',
+  };
 }
 
 async function requireOwnedOperator(
@@ -172,6 +194,14 @@ function operatorDto(
     uid,
     name: typeof role.name === 'string' ? role.name : authUser?.displayName || '',
     email: authUser?.email || (typeof role.email === 'string' ? role.email : ''),
+    // O que o dono entrega ao funcionario: apelido puro ou o e-mail completo.
+    login: getOperatorDisplayLogin(
+      authUser?.email
+        || (typeof role.login === 'string' ? role.login : '')
+        || (typeof role.email === 'string' ? role.email : ''),
+    ),
+    // Apelido nao tem caixa de entrada; a tela esconde o convite por e-mail.
+    canReceiveEmail: !!authUser?.email && !isInternalOperatorEmail(authUser.email),
     // A UI exibe o estado efetivo, não apenas uma das duas metades. Isso também
     // permite que o botão "Ativar" repare com um clique um Auth bloqueado
     // manualmente, em vez de mostrar "Ativo" e "Bloqueado" ao mesmo tempo.
@@ -267,7 +297,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { auth, db, ownerUid } = await requireOwner(request);
+    const { auth, db, ownerUid, storeName } = await requireOwner(request);
     const body = await readJsonObject(request);
     if ('ownerId' in body || 'role' in body || 'master' in body || 'uid' in body) {
       throw new UsuariosApiError(400, 'O papel e o proprietario nao podem ser definidos pelo cliente.');
@@ -277,15 +307,36 @@ export async function POST(request: Request) {
     }
 
     const name = normalizeName(body.name);
-    const email = normalizeEmail(body.email);
+    const { email, login, kind } = normalizeLogin('login' in body ? body.login : body.email);
+    const querSenha = body.password !== undefined && body.password !== null && body.password !== '';
+    // Apelido nao tem caixa de entrada: sem senha definida aqui, ninguem entraria.
+    if (kind === 'handle' && !querSenha) {
+      throw new UsuariosApiError(400, 'Escolha uma senha: quem entra por apelido nao recebe e-mail.');
+    }
+    const password = querSenha ? normalizePassword(body.password) : undefined;
     const permissions = sanitizePermissions(body.permissions);
 
-    const authUser = await auth.createUser({
-      email,
-      displayName: name,
-      emailVerified: false,
-      disabled: false,
-    });
+    let authUser: UserRecord;
+    try {
+      authUser = await auth.createUser({
+        email,
+        ...(password ? { password } : {}),
+        displayName: name,
+        emailVerified: false,
+        disabled: false,
+      });
+    } catch (error) {
+      const code = isObject(error) && typeof error.code === 'string' ? error.code : '';
+      // O apelido e unico na plataforma inteira (ver lib/operator-login), entao
+      // "ja esta em uso" costuma ser homonimo de outra loja, nao erro do dono.
+      if (code === 'auth/email-already-exists' && kind === 'handle') {
+        const alternativas = suggestAlternativeHandles(login, storeName);
+        throw new UsuariosApiError(409, alternativas.length > 0
+          ? 'O usuario "' + login + '" ja esta em uso. Experimente ' + alternativas.join(', ') + '.'
+          : 'O usuario "' + login + '" ja esta em uso. Escolha outro.');
+      }
+      throw error;
+    }
     const roleReference = db.collection(OPERATOR_COLLECTION).doc(authUser.uid);
 
     try {
@@ -294,6 +345,7 @@ export async function POST(request: Request) {
         active: true,
         name,
         email,
+        login,
         permissions,
         createdAt: FieldValue.serverTimestamp(),
         createdBy: ownerUid,
@@ -306,14 +358,18 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    let inviteSent = true;
+    // Com a senha definida aqui nao existe convite: o dono ja entrega o acesso
+    // na mao. O e-mail so entra em cena quando o dono opta por nao definir senha.
+    let inviteSent = false;
     let warning: string | undefined;
-    try {
-      await sendPasswordSetupEmail(email);
-    } catch (error) {
-      inviteSent = false;
-      warning = 'Usuario criado, mas o e-mail de definicao de senha nao foi enviado. Use Reenviar convite.';
-      console.warn('[api/usuarios] Usuario criado sem envio do convite:', error);
+    if (!password) {
+      try {
+        await sendPasswordSetupEmail(email);
+        inviteSent = true;
+      } catch (error) {
+        warning = 'Usuario criado, mas o e-mail nao saiu. Defina uma senha para ele na tela.';
+        console.warn('[api/usuarios] Usuario criado sem envio do convite:', error);
+      }
     }
 
     const savedRole = await roleReference.get();
@@ -345,14 +401,39 @@ export async function PATCH(request: Request) {
     }
 
     if (body.action !== undefined) {
-      if (body.action !== 'resend_invite') {
+      if (body.action !== 'resend_invite' && body.action !== 'set_password') {
         throw new UsuariosApiError(400, 'Acao invalida.');
       }
       if ('name' in body || 'active' in body || 'permissions' in body) {
-        throw new UsuariosApiError(400, 'Reenvie o convite separadamente das demais alteracoes.');
+        throw new UsuariosApiError(400, 'Troque a senha separadamente das demais alteracoes.');
       }
+
+      if (body.action === 'set_password') {
+        const password = normalizePassword(body.password);
+        try {
+          await auth.updateUser(operatorUid, { password });
+        } catch (error) {
+          throw mapFirebaseAuthError(error) || error;
+        }
+        // Senha nova derruba quem ainda estiver dentro com a antiga.
+        try {
+          await auth.revokeRefreshTokens(operatorUid);
+        } catch (error) {
+          console.warn('[api/usuarios] Senha trocada, sessoes antigas nao revogadas:', error);
+        }
+        await ownedOperator.reference.update({
+          passwordUpdatedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: ownerUid,
+        });
+        return noStoreJson({ ok: true, passwordChanged: true });
+      }
+
       if (!authUser.email) {
         throw new UsuariosApiError(409, 'Este usuario nao possui e-mail no Firebase Auth.');
+      }
+      if (isInternalOperatorEmail(authUser.email)) {
+        throw new UsuariosApiError(409, 'Este usuario entra por apelido e nao tem e-mail. Troque a senha dele na tela.');
       }
       try {
         await sendPasswordSetupEmail(authUser.email);

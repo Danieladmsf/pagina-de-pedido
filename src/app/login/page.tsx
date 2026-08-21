@@ -5,6 +5,7 @@ import { useAuth, useFirestore, useUser } from '@/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
+import { isEmailLogin, resolveOperatorLogin } from '@/lib/operator-login';
 import { useToast } from '@/hooks/use-toast';
 import {
   Star,
@@ -30,6 +31,7 @@ const HIGHLIGHTS = [
 ];
 
 export default function LoginPage() {
+  // Guarda o que a pessoa digitou: e-mail do dono ou apelido do funcionário.
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [storeName, setStoreName] = useState('');
@@ -59,16 +61,27 @@ export default function LoginPage() {
       toast({ variant: 'destructive', title: 'Erro no login', description: 'Autenticacao indisponivel no momento.' });
       return;
     }
+    // Funcionário entra por apelido; o endereço interno é montado aqui, com a
+    // mesma regra que a tela de Usuários usou para criar o login.
+    const acesso = resolveOperatorLogin(email);
+    if (!acesso) {
+      toast({
+        variant: 'destructive',
+        title: 'Confira o usuário',
+        description: 'Digite o e-mail da loja ou o usuário que o dono criou para você.',
+      });
+      return;
+    }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, acesso.email, password);
       router.push('/pdv');
       toast({ title: 'Bem-vindo!', description: 'Login realizado com sucesso.' });
     } catch (error: any) {
-      let msg = 'E-mail ou senha inválidos.';
-      if (error?.code === 'auth/user-not-found') msg = 'Usuário não encontrado. Cadastre-se primeiro.';
+      let msg = 'Usuário ou senha inválidos.';
+      if (error?.code === 'auth/user-not-found') msg = 'Não encontramos esse acesso. Confira com o dono da loja.';
       if (error?.code === 'auth/wrong-password') msg = 'Senha incorreta.';
-      if (error?.code === 'auth/invalid-credential') msg = 'E-mail ou senha inválidos.';
+      if (error?.code === 'auth/invalid-credential') msg = 'Usuário ou senha inválidos.';
       if (error?.code === 'auth/too-many-requests') msg = 'Muitas tentativas. Tente novamente em alguns minutos.';
       if (error?.code === 'auth/network-request-failed') msg = 'Sem conexão. Verifique sua internet.';
       toast({ variant: 'destructive', title: 'Erro no login', description: msg });
@@ -125,6 +138,15 @@ export default function LoginPage() {
     }
     if (!email.trim()) {
       toast({ variant: 'destructive', title: 'Informe o e-mail', description: 'Digite o e-mail da sua conta para receber o link de recuperação.' });
+      return;
+    }
+    // Quem entra por apelido não tem caixa de entrada: a senha é trocada pelo
+    // dono da loja, na tela de Usuários.
+    if (!isEmailLogin(email.trim())) {
+      toast({
+        title: 'Peça a senha ao dono da loja',
+        description: 'Seu acesso é por usuário, sem e-mail. O dono troca sua senha em Usuários, na Retaguarda.',
+      });
       return;
     }
     setResetLoading(true);
@@ -257,7 +279,7 @@ export default function LoginPage() {
               </h2>
               <p className="text-sm text-slate-400">
                 {isLogin
-                  ? 'Entre com suas credenciais de administrador.'
+                  ? 'Dono entra com o e-mail; funcionário, com o usuário que recebeu.'
                   : 'Cadastre-se para gerenciar sua loja.'}
               </p>
             </div>
@@ -285,18 +307,20 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  E-mail
+                  {isLogin ? 'E-mail ou usuário' : 'E-mail'}
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <input
                     id="email"
-                    type="email"
-                    placeholder="seu@email.com"
+                    // No login o campo é texto: type="email" faz o navegador
+                    // recusar o apelido do funcionário antes mesmo de enviar.
+                    type={isLogin ? 'text' : 'email'}
+                    placeholder={isLogin ? 'seu@email.com ou seu usuário' : 'seu@email.com'}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    autoComplete="email"
+                    autoComplete={isLogin ? 'username' : 'email'}
                     className="w-full h-12 pl-10 pr-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-emerald-500/20 transition-all"
                   />
                 </div>
