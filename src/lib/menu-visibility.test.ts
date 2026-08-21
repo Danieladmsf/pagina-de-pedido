@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { buildAdminMenuGroups } from './menu-groups';
 import {
+  getLigarTudoUpdate,
   getMotivosOcultoNoCardapio,
   getVisibleCategories,
+  isEstoqueParado,
   isCategoryOn,
   isCategoryVisibleNow,
   isItemInVisibleCategory,
@@ -194,5 +196,60 @@ describe('getMotivosOcultoNoCardapio', () => {
   it('produto sem categoria não tem a quem obedecer', () => {
     const avulso = { id: '5', name: 'Taxa de Entrega' };
     expect(getMotivosOcultoNoCardapio(avulso, { category: desligada })).toEqual([]);
+  });
+});
+
+/**
+ * Mercadoria presa atrás do botão cinza. Medido no Gostinho de Céu em
+ * 21/08/2026: 15 produtos com estoque e desligados, R$ 461,50 parados — a dona
+ * repunha o estoque e o produto não voltava, porque repor não mexe no botão.
+ */
+describe('isEstoqueParado', () => {
+  const ligada = { id: 'brig', name: 'Brigadeiros', isAvailable: true };
+  const desligada = { id: 'brig', name: 'Brigadeiros', isAvailable: false };
+  const off = { id: '1', name: 'Brigadeiro com cereja', categoryId: 'brig', isAvailable: false, showDelivery: false, showPickup: false, showDineIn: false };
+
+  it('acusa produto desligado que tem estoque', () => {
+    expect(isEstoqueParado(off, { estoque: 9, category: ligada })).toBe(true);
+  });
+
+  it('não acusa produto desligado sem estoque', () => {
+    expect(isEstoqueParado(off, { estoque: 0, category: ligada })).toBe(false);
+  });
+
+  it('não acusa produto sem controle de estoque', () => {
+    expect(isEstoqueParado(off, { estoque: null, category: ligada })).toBe(false);
+    expect(isEstoqueParado(off, { category: ligada })).toBe(false);
+  });
+
+  it('não acusa produto que já está no ar', () => {
+    const noAr = { ...off, isAvailable: true, showDelivery: true, showPickup: true, showDineIn: true };
+    expect(isEstoqueParado(noAr, { estoque: 9, category: ligada })).toBe(false);
+  });
+
+  it('acusa quando só o Delivery caiu mas o produto está desligado por inteiro', () => {
+    const soLocal = { ...off, isAvailable: true, showDelivery: false, showPickup: true, showDineIn: true };
+    // ainda vende no balcão: não está preso
+    expect(isEstoqueParado(soLocal, { estoque: 3, category: ligada })).toBe(false);
+  });
+
+  it('categoria desligada é decisão da dona, não esquecimento', () => {
+    expect(isEstoqueParado(off, { estoque: 9, category: desligada })).toBe(false);
+  });
+
+  it('pega o legado com isAvailable false e canais ainda true', () => {
+    const legado = { ...off, showDelivery: true, showPickup: true, showDineIn: true, isAvailable: false };
+    expect(isEstoqueParado(legado, { estoque: 4, category: ligada })).toBe(true);
+  });
+});
+
+describe('getLigarTudoUpdate', () => {
+  it('religa os três canais e o isAvailable de uma vez', () => {
+    expect(getLigarTudoUpdate()).toEqual({
+      showDelivery: true,
+      showPickup: true,
+      showDineIn: true,
+      isAvailable: true,
+    });
   });
 });

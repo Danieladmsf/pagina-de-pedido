@@ -192,3 +192,39 @@ export function getMotivosOcultoNoCardapio(
 export function pareceLigadoMasNaoAparece(motivos: MotivoOculto[]) {
   return motivos.length > 0 && !motivos.includes('desligado');
 }
+
+/**
+ * O outro lado do "sumiu sozinho": produto DESLIGADO com estoque esperando.
+ *
+ * A loja opera o mesmo produto por dois caminhos que não se falam — o controle
+ * de estoque (que já esgota e trava sozinho) e o botão Delivery/Local (manual).
+ * Quando acaba, a dona faz os dois; quando repõe, a entrada devolve o estoque
+ * mas ninguém volta no botão, e a mercadoria fica invisível. Medido no Gostinho
+ * de Céu em 21/08/2026: 15 produtos, 58 unidades, R$ 461,50 que ninguém
+ * conseguia comprar — um deles desligado desde 21/07.
+ *
+ * `estoque` vem pronto de fora (lib/inventory) porque a regra de estoque é uma
+ * só e não pode ser reimplementada aqui.
+ */
+export function isEstoqueParado(item: any, opts: { estoque?: number | null; category?: any } = {}) {
+  if (typeof opts.estoque !== 'number' || opts.estoque <= 0) return false;
+  // Já está no ar: não é mercadoria presa.
+  if (item?.isAvailable !== false && hasAnyVisibleToggle(item)) return false;
+  // Categoria desligada é linha aposentada de propósito, não esquecimento — o
+  // aviso ali seria ruído em cima de uma decisão que a dona já tomou.
+  if (!item?.isCombo && item?.categoryId && opts.category && !isCategoryOn(opts.category)) return false;
+  return true;
+}
+
+/**
+ * Religar o produto em todos os canais, na mesma regra do botão da aba
+ * Produtos. Existe para que a aba Estoque não precise conhecer os nomes dos
+ * campos de visibilidade — eles continuam morando só aqui.
+ */
+export function getLigarTudoUpdate() {
+  const fields = MENU_VISIBILITY_CHANNELS.reduce<Partial<Record<VisibilityField, boolean>>>((acc, channel) => {
+    acc[channel.field] = true;
+    return acc;
+  }, {});
+  return { ...fields, isAvailable: true };
+}

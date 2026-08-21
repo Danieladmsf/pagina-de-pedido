@@ -45,8 +45,8 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
-import { MENU_VISIBILITY_TOGGLES, MOTIVO_OCULTO_LABEL, getMotivosOcultoNoCardapio, getToggleUpdate, hasAnyVisibleToggle, isItemVisibleInChannel, isToggleActive, pareceLigadoMasNaoAparece } from '@/lib/menu-visibility';
-import { isOutOfStock } from '@/lib/inventory';
+import { MENU_VISIBILITY_TOGGLES, MOTIVO_OCULTO_LABEL, getLigarTudoUpdate, getMotivosOcultoNoCardapio, getToggleUpdate, hasAnyVisibleToggle, isEstoqueParado, isItemVisibleInChannel, isToggleActive, pareceLigadoMasNaoAparece } from '@/lib/menu-visibility';
+import { getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -181,6 +181,8 @@ export default function GestaoPage() {
   // Estados para filtros de Produtos
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
+  // Filtro do resumo "mercadoria presa": desligado com estoque esperando.
+  const [soEstoqueParado, setSoEstoqueParado] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [addonSortConfig, setAddonSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
@@ -383,6 +385,61 @@ export default function GestaoPage() {
     );
   }, [categories, editingCategory]);
 
+  /**
+   * Mercadoria presa atrás do botão cinza: produto DESLIGADO com estoque
+   * esperando. A loja desliga o produto quando acaba e repõe o estoque depois,
+   * mas repor não mexe no botão — a mercadoria fica invisível sem ninguém
+   * perceber. No Gostinho de Céu isso somava R$ 461,50 em 21/08/2026, com item
+   * desligado desde julho.
+   */
+  const estoqueParado = React.useMemo(() => {
+    const vazio = { itens: [] as Array<{ item: any; estoque: number }>, unidades: 0, valor: 0 };
+    if (!storeProfile?.general?.enableInventory || !items) return vazio;
+    const porId = new Map((categories || []).map((c: any) => [c.id, c]));
+    const itens = (items as any[])
+      .filter((item) => !item.isCombo)
+      .map((item) => ({ item, estoque: getEffectiveStock(item, items as any[]) }))
+      .filter(({ item, estoque }) => isEstoqueParado(item, { estoque, category: porId.get(item.categoryId) }))
+      .map(({ item, estoque }) => ({ item, estoque: estoque as number }));
+    return {
+      itens,
+      unidades: itens.reduce((soma, i) => soma + i.estoque, 0),
+      valor: itens.reduce((soma, i) => soma + i.estoque * (Number(i.item.price) || 0), 0),
+    };
+  }, [items, categories, storeProfile]);
+
+  const estoqueParadoIds = React.useMemo(
+    () => new Set(estoqueParado.itens.map(({ item }) => item.id)),
+    [estoqueParado],
+  );
+
+  /**
+   * Religa o produto em todos os canais. Mesmo tratamento do botão da linha:
+   * trava enquanto grava e avisa se a gravação falhar, porque o Firestore pinta
+   * a mudança local antes de o servidor confirmar.
+   */
+  const religarProduto = React.useCallback(async (item: any) => {
+    if (!db) return;
+    const chave = `${item.id}:religar`;
+    setSalvandoVisibilidade((atual) => new Set(atual).add(chave));
+    try {
+      await updateDoc(doc(db, 'menuItems', item.id), getLigarTudoUpdate());
+      toast({ title: `"${item.name}" voltou para o cardápio` });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Não deu para religar',
+        description: `"${item.name}" continua desligado. Confira a internet e tente de novo.`,
+      });
+    } finally {
+      setSalvandoVisibilidade((atual) => {
+        const proximo = new Set(atual);
+        proximo.delete(chave);
+        return proximo;
+      });
+    }
+  }, [db, toast]);
+
   const filteredItems = React.useMemo(() => {
     if (!items) return [];
     let result = items.filter(item => !item.isCombo);
@@ -392,6 +449,9 @@ export default function GestaoPage() {
     if (productSearch.trim()) {
       const s = removeAccents(productSearch.toLowerCase());
       result = result.filter(item => removeAccents(item.name.toLowerCase()).includes(s));
+    }
+    if (soEstoqueParado) {
+      result = result.filter(item => estoqueParadoIds.has(item.id));
     }
     
     if (sortConfig) {
@@ -411,7 +471,7 @@ export default function GestaoPage() {
     }
     
     return result;
-  }, [items, productCategoryFilter, productSearch, sortConfig, categories]);
+  }, [items, productCategoryFilter, productSearch, sortConfig, categories, soEstoqueParado, estoqueParadoIds]);
 
 
 
@@ -930,6 +990,7 @@ export default function GestaoPage() {
                 userName={operatorName || actorName || ''}
                 storeName={storeProfile?.general?.name || ''}
                 enableInventory={!!storeProfile?.general?.enableInventory}
+                onReligarProduto={podeEditarAba('produtos') ? religarProduto : undefined}
               />
             </div>
           </div>
@@ -1005,10 +1066,33 @@ export default function GestaoPage() {
                     <Plus className="mr-2 h-4 w-4" /> Novo Produto
                   </Button>
                 </div>
+                {estoqueParado.itens.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                    <span className="text-sm font-bold text-rose-700">
+                      {estoqueParado.itens.length === 1
+                        ? '1 produto desligado com estoque'
+                        : `${estoqueParado.itens.length} produtos desligados com estoque`}
+                    </span>
+                    <span className="text-xs text-rose-600">
+                      {estoqueParado.unidades} {estoqueParado.unidades === 1 ? 'unidade parada' : 'unidades paradas'} · {brl(estoqueParado.valor)} que ninguém consegue comprar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSoEstoqueParado((atual) => !atual);
+                        setProductCategoryFilter('todas');
+                        setProductSearch('');
+                      }}
+                      className="ml-auto shrink-0 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-700"
+                    >
+                      {soEstoqueParado ? 'Ver todos os produtos' : 'Ver só esses'}
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                   <button
                     type="button"
-                    onClick={() => { setProductCategoryFilter('todas'); setProductSearch(''); }}
+                    onClick={() => { setProductCategoryFilter('todas'); setProductSearch(''); setSoEstoqueParado(false); }}
                     className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
                       productCategoryFilter === 'todas'
                         ? 'border-primary bg-primary text-white'
@@ -1021,7 +1105,7 @@ export default function GestaoPage() {
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => { setProductCategoryFilter(cat.id); setProductSearch(''); }}
+                      onClick={() => { setProductCategoryFilter(cat.id); setProductSearch(''); setSoEstoqueParado(false); }}
                       className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
                         productCategoryFilter === cat.id
                           ? 'border-primary bg-primary text-white'
@@ -1079,6 +1163,13 @@ export default function GestaoPage() {
                       });
                       const motivosOculto = getMotivosOcultoNoCardapio(item, { category: itemCategory, esgotado });
                       const avisarOculto = pareceLigadoMasNaoAparece(motivosOculto);
+                      // O outro lado: desligado COM estoque esperando. Aqui o dono
+                      // olha os dois botões cinza e conclui "está desligado mesmo",
+                      // sem saber que tem mercadoria presa atrás.
+                      const estoqueDoItem = storeProfile?.general?.enableInventory
+                        ? getEffectiveStock(item, items || [])
+                        : null;
+                      const presoNoEstoque = isEstoqueParado(item, { estoque: estoqueDoItem, category: itemCategory });
                       // Trava a linha inteira, não só o botão clicado: Delivery e Local
                       // acionados em sequência antes do re-render recalculavam isAvailable
                       // a partir do item vencido.
@@ -1154,6 +1245,19 @@ export default function GestaoPage() {
                                     Repor estoque
                                   </button>
                                 ) : null}
+                              </p>
+                            )}
+                            {presoNoEstoque && (
+                              <p className="mt-1 text-[11px] font-medium text-rose-600">
+                                Desligado, mas tem {estoqueDoItem} em estoque — ninguém consegue comprar.{' '}
+                                <button
+                                  type="button"
+                                  disabled={salvandoVisibilidade.has(`${item.id}:religar`)}
+                                  className="font-bold underline underline-offset-2 hover:text-rose-700 disabled:cursor-wait disabled:opacity-50"
+                                  onClick={() => religarProduto(item)}
+                                >
+                                  Religar
+                                </button>
                               </p>
                             )}
                             {itemAddons.length > 0 && (

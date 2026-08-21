@@ -39,6 +39,7 @@ import {
   type HistoryRow,
   type StockMovementType,
 } from '@/lib/stock-movements';
+import { hasAnyVisibleToggle } from '@/lib/menu-visibility';
 import { removeAccents } from '@/lib/utils';
 import { getOrderCodePrefix } from '@/lib/order-code';
 
@@ -50,6 +51,12 @@ interface EstoqueTabProps {
   userName?: string;
   storeName?: string;
   enableInventory?: boolean;
+  /**
+   * Religar o produto no cardápio. Quem grava é a aba Produtos (dona do
+   * liga/desliga); aqui só perguntamos, e só se ela passar o callback — sem
+   * ele o convite nem aparece, que é como o operador sem permissão fica de fora.
+   */
+  onReligarProduto?: (item: any) => Promise<void>;
   canEdit?: boolean;
 }
 
@@ -82,6 +89,7 @@ export function EstoqueTab({
   storeName = '',
   enableInventory = false,
   canEdit = true,
+  onReligarProduto,
 }: EstoqueTabProps) {
   const { toast } = useToast();
   const [view, setView] = useState<'produtos' | 'historico'>('produtos');
@@ -97,6 +105,14 @@ export function EstoqueTab({
   const [qty, setQty] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  /**
+   * Produto que acabou de receber entrada e continua desligado no cardápio.
+   * É o momento exato de perguntar: repor o estoque não mexe no botão, e era
+   * aí que a mercadoria ficava presa — a dona repunha, achava que voltou, e o
+   * produto seguia invisível por semanas.
+   */
+  const [convidarReligar, setConvidarReligar] = useState<{ item: any; estoque: number } | null>(null);
+  const [religando, setReligando] = useState(false);
 
   const movementsQuery = useMemoFirebase(
     () => (db && ownerId ? query(collection(db, 'stock_movements'), where('ownerId', '==', ownerId)) : null),
@@ -306,7 +322,12 @@ export function EstoqueTab({
           ? `${res.itemName} passa a vender sem limite.`
           : `${res.itemName}: ${res.stockBefore ?? 'sem controle'} → ${res.stockAfter} unidade(s).`,
       });
+      const desligado = pending.item?.isAvailable === false || !hasAnyVisibleToggle(pending.item);
+      const item = pending.item;
       setPending(null);
+      if (onReligarProduto && type === 'entrada' && typeof res.stockAfter === 'number' && res.stockAfter > 0 && desligado) {
+        setConvidarReligar({ item, estoque: res.stockAfter });
+      }
     } catch (err: any) {
       toast({
         variant: 'destructive',
@@ -627,6 +648,45 @@ export function EstoqueTab({
           )}
         </div>
       )}
+
+      <Dialog open={!!convidarReligar} onOpenChange={(open) => { if (!open && !religando) setConvidarReligar(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Este produto está desligado no cardápio</DialogTitle>
+          </DialogHeader>
+          {convidarReligar && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-slate-800">{convidarReligar.item.name}</strong> ficou com{' '}
+                <strong className="text-slate-800">{convidarReligar.estoque} unidade(s)</strong>, mas continua
+                desligado — do jeito que está, ninguém consegue comprar.
+              </p>
+              <p className="text-sm text-muted-foreground">Quer religar agora?</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={religando} onClick={() => setConvidarReligar(null)}>
+              Deixar desligado
+            </Button>
+            <Button
+              className="bg-primary text-white"
+              disabled={religando}
+              onClick={async () => {
+                if (!convidarReligar || !onReligarProduto) return;
+                setReligando(true);
+                try {
+                  await onReligarProduto(convidarReligar.item);
+                  setConvidarReligar(null);
+                } finally {
+                  setReligando(false);
+                }
+              }}
+            >
+              {religando ? 'Religando…' : 'Religar no cardápio'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!pending} onOpenChange={(open) => { if (!open && !saving) setPending(null); }}>
         <DialogContent className="sm:max-w-[420px]">
