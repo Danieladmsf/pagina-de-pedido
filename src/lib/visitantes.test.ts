@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LIMITE_LINHA_DO_TEMPO,
+  agruparPorPessoa,
+  chaveDaPessoa,
   docIdVisitante,
   ehIdentificado,
   empilharEvento,
@@ -266,5 +268,143 @@ describe('rankingDeProdutos', () => {
     const ranking = rankingDeProdutos(lista);
     expect(ranking[0]).toMatchObject({ id: 'p1', nome: 'Bolo', vistas: 3, pessoas: 2, noCarrinho: 2, valorParado: 80 });
     expect(ranking[1]).toMatchObject({ id: 'p2', vistas: 1, pessoas: 1, noCarrinho: 0 });
+  });
+});
+
+describe('agruparPorPessoa', () => {
+  it('junta as aberturas do link do WhatsApp numa pessoa só', () => {
+    // O caso real: sete documentos da mesma cliente no mesmo dia, cada um com
+    // um visitorId (o webview do WhatsApp perde o storage a cada clique) — e
+    // sete vezes a mesma foto empilhada no placar.
+    const lista = [1, 2, 3, 4].map((n) =>
+      visitante({
+        id: `loja__v${n}`,
+        visitorId: `v${n}`,
+        ultimaVez: DEPOIS + n * 60_000,
+        nome: 'Agda Ezequiel',
+        telefone: '16991644249',
+        clienteId: 'loja_16991644249',
+        viaLink: true,
+      })
+    );
+    const pessoas = agruparPorPessoa(lista);
+    expect(pessoas).toHaveLength(1);
+    expect(pessoas[0].id).toBe('loja__v4'); // representante é a visita mais recente
+    expect(pessoas[0].sessoes).toBe(4); // cada abertura continua contando
+    expect(visitantesParaAvatares(pessoas)).toHaveLength(1);
+  });
+
+  it('não junta anônimos: sem identidade, cada navegador é uma pessoa', () => {
+    const lista = [
+      visitante({ id: 'a', visitorId: 'va' }),
+      visitante({ id: 'b', visitorId: 'vb' }),
+    ];
+    expect(agruparPorPessoa(lista)).toHaveLength(2);
+  });
+
+  it('casa o telefone com e sem o +55 e ignora a formatação', () => {
+    expect(chaveDaPessoa(visitante({ telefone: '5516991644249' }))).toBe(
+      chaveDaPessoa(visitante({ telefone: '(16) 99164-4249' }))
+    );
+  });
+
+  it('nome não é chave: dois cadastros diferentes não viram um', () => {
+    const lista = [
+      visitante({ id: 'a', visitorId: 'va', nome: 'Maria Silva', telefone: '16991111111' }),
+      visitante({ id: 'b', visitorId: 'vb', nome: 'Maria Silva', telefone: '16992222222' }),
+    ];
+    expect(agruparPorPessoa(lista)).toHaveLength(2);
+  });
+
+  it('telefone digitado em qualquer visita derruba o "provável" do link', () => {
+    const lista = [
+      visitante({ id: 'a', visitorId: 'va', telefone: '16991644249', viaLink: true, ultimaVez: DEPOIS + 60_000 }),
+      visitante({ id: 'b', visitorId: 'vb', telefone: '16991644249', viaLink: false, nome: 'Agda' }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect(pessoa.viaLink).toBe(false);
+    expect(pessoa.nome).toBe('Agda'); // nome cheio não é apagado pelo doc sem nome
+  });
+
+  it('soma a linha do tempo alinhando o relógio de cada aparelho', () => {
+    const lista = [
+      visitante({
+        id: 'a',
+        visitorId: 'va',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS,
+        // Celular adiantado em um dia: sem o alinhamento, "Bolo" iria para o fim.
+        linhaDoTempo: [{ tipo: 'viu', at: DEPOIS + 86_400_000, produtoId: 'p1', produtoNome: 'Bolo' }],
+      }),
+      visitante({
+        id: 'b',
+        visitorId: 'vb',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS + 120_000,
+        linhaDoTempo: [{ tipo: 'viu', at: DEPOIS + 120_000, produtoId: 'p2', produtoNome: 'Torta' }],
+      }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect((pessoa.linhaDoTempo || []).map((e) => e.produtoId)).toEqual(['p1', 'p2']);
+    expect(eventosDaSessao(pessoa, INICIO).map((e) => e.produtoId)).toEqual(['p2', 'p1']);
+  });
+
+  it('mantém a sacola parada quando ela é da visita mais recente', () => {
+    const lista = [
+      visitante({
+        id: 'a',
+        visitorId: 'va',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS,
+        ultimoPedidoMs: DEPOIS,
+        ultimoPedidoId: 'ped1',
+        pedidos: 1,
+      }),
+      visitante({
+        id: 'b',
+        visitorId: 'vb',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS + 120_000,
+        carrinho: { itens: [{ id: 'p1', nome: 'Bolo', qtd: 1, valor: 40 }], valor: 40, emMs: DEPOIS + 120_000 },
+      }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect(estadoDoVisitante(pessoa, INICIO)).toBe('abandonou');
+    expect(pessoa.carrinho?.valor).toBe(40);
+    expect(pessoa.ultimoPedidoId).toBe('ped1'); // o pedido não se perde no caminho
+  });
+
+  it('descarta a sacola que virou pedido numa abertura posterior', () => {
+    const lista = [
+      visitante({
+        id: 'a',
+        visitorId: 'va',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS,
+        carrinho: { itens: [{ id: 'p1', nome: 'Bolo', qtd: 1, valor: 40 }], valor: 40, emMs: DEPOIS },
+      }),
+      visitante({
+        id: 'b',
+        visitorId: 'vb',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS + 120_000,
+        // Relógio do outro aparelho atrasado (ainda dentro da sessão de caixa):
+        // quem decide qual das duas visitas veio depois é a hora do servidor.
+        ultimoPedidoMs: DEPOIS - 30_000,
+        ultimoPedidoValor: 40,
+        pedidos: 1,
+      }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect(estadoDoVisitante(pessoa, INICIO)).toBe('comprou');
+    expect(pessoa.carrinho?.itens).toEqual([]);
+  });
+
+  it('o resumo passa a contar gente, não aberturas de cardápio', () => {
+    const lista = [1, 2, 3].map((n) =>
+      visitante({ id: `v${n}`, visitorId: `v${n}`, telefone: '16991644249', nome: 'Agda' })
+    );
+    expect(resumoDoDia(lista, INICIO).pessoas).toBe(3);
+    expect(resumoDoDia(agruparPorPessoa(lista), INICIO).pessoas).toBe(1);
   });
 });

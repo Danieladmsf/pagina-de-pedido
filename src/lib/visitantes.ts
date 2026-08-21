@@ -362,3 +362,120 @@ export function eventosDaSessao(v: Visitante, inicioMs: number): EventoVisitante
     .filter((e) => e.at >= inicioMs)
     .reverse();
 }
+
+/**
+ * Chave da PESSOA por trás do documento.
+ *
+ * Cada navegador tem o seu `visitorId` (ver `obterVisitorId`), e o cardápio
+ * aberto DE DENTRO do WhatsApp costuma perder o storage a cada clique no link:
+ * a mesma cliente vira um documento novo por abertura. Enquanto ninguém tinha
+ * nome isso passava despercebido; com o link marcado (`viaLink`) cada uma
+ * dessas aberturas chega identificada, e a mesma pessoa aparecia sete vezes na
+ * fila — com a mesma foto empilhada sete vezes no placar.
+ *
+ * A ordem é a da confiança: o id do cadastro primeiro, o telefone depois. Nome
+ * NUNCA é chave (ver as convenções de integridade do projeto) e, sem
+ * identidade, cada `visitorId` continua valendo por uma pessoa — é tudo o que
+ * se sabe dele.
+ */
+export function chaveDaPessoa(v: Visitante): string {
+  const clienteId = (v.clienteId || '').trim();
+  if (clienteId) return `cliente:${clienteId}`;
+  // Mesma regra de `normalizeCreditPhone` (só dígitos, +55 fora), repetida aqui
+  // de propósito: este arquivo é puro e não carrega o Firestore junto.
+  const telefone = (v.telefone || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  if (telefone.length === 10 || telefone.length === 11) return `tel:${telefone}`;
+  return `visita:${v.visitorId || v.id}`;
+}
+
+/**
+ * Junta os documentos da mesma pessoa num visitante só, do mais recente para o
+ * mais antigo.
+ *
+ * É fusão de LEITURA: nada é reescrito no banco e nenhum documento é apagado —
+ * conflito de dado é decisão do dono, não do app. O documento mais recente é o
+ * representante (é o que tem a sacola de agora); o resto entra somando.
+ */
+export function agruparPorPessoa(visitantes: Visitante[]): Visitante[] {
+  const grupos = new Map<string, Visitante[]>();
+  for (const v of visitantes) {
+    const chave = chaveDaPessoa(v);
+    const atual = grupos.get(chave);
+    if (atual) atual.push(v);
+    else grupos.set(chave, [v]);
+  }
+  return [...grupos.values()]
+    .map(fundirVisitas)
+    .sort((a, b) => (paraMillis(b.ultimaVez) ?? 0) - (paraMillis(a.ultimaVez) ?? 0));
+}
+
+/** Hora do servidor da visita — a única comparável entre aparelhos diferentes. */
+const horaDaVisita = (v: Visitante) => paraMillis(v.ultimaVez) ?? 0;
+
+function fundirVisitas(docs: Visitante[]): Visitante {
+  if (docs.length === 1) return docs[0];
+
+  const ordenados = [...docs].sort((a, b) => horaDaVisita(b) - horaDaVisita(a));
+  const recente = ordenados[0];
+  const antigo = ordenados[ordenados.length - 1];
+
+  // A linha do tempo de cada aparelho vem no relógio DELE. Alinhamos cada uma
+  // pela hora de servidor da própria visita antes de juntar — sem isso, um
+  // celular adiantado jogaria os eventos dele para o fim da lista de todo mundo.
+  const eventos: EventoVisitante[] = [];
+  for (const doc of ordenados) {
+    const linha = doc.linhaDoTempo || [];
+    if (linha.length === 0) continue;
+    const ajuste = horaDaVisita(doc) - linha[linha.length - 1].at;
+    for (const evento of linha) eventos.push({ ...evento, at: evento.at + ajuste });
+  }
+  eventos.sort((a, b) => a.at - b.at);
+
+  const comCliente = ordenados.find((d) => (d.clienteId || '').trim());
+  const comNome = ordenados.find((d) => (d.nome || '').trim());
+  const comTelefone = ordenados.find((d) => (d.telefone || '').trim());
+  // Telefone digitado em QUALQUER uma das visitas derruba o "provável" do link:
+  // a pessoa já se apresentou, não é mais palpite de quem recebeu o endereço.
+  const confirmou = ordenados.some((d) => (d.telefone || '').trim() && d.viaLink !== true);
+
+  const comPedido = ordenados.reduce<Visitante | null>(
+    (melhor, d) => ((d.ultimoPedidoMs ?? 0) > (melhor?.ultimoPedidoMs ?? 0) ? d : melhor),
+    null
+  );
+  const comSacola = ordenados.find(
+    (d) => (d.carrinho?.itens?.length ?? 0) > 0 && (d.carrinho?.valor ?? 0) > 0
+  );
+  // Sacola e pedido podem ter vindo de aberturas diferentes, cada uma com o seu
+  // relógio: quem decide é a hora do SERVIDOR. Sacola de uma visita anterior ao
+  // pedido é a sacola que virou aquele pedido — não é oportunidade parada.
+  const pedidoMs = comPedido?.ultimoPedidoMs ?? 0;
+  const sacolaValeu = comSacola && horaDaVisita(comSacola) >= horaDaVisita(comPedido ?? comSacola);
+  const carrinho: CarrinhoDoVisitante = sacolaValeu
+    ? {
+        ...comSacola!.carrinho!,
+        // O estado é decidido comparando com `ultimoPedidoMs`, e os dois millis
+        // vêm de aparelhos diferentes: fixamos a sacola à frente do pedido para
+        // o veredito acompanhar a hora de servidor que já foi comparada acima.
+        emMs: Math.max(comSacola!.carrinho?.emMs ?? horaDaVisita(comSacola!), pedidoMs + 1),
+      }
+    : { itens: [], valor: 0, emMs: pedidoMs || horaDaVisita(recente) };
+
+  return {
+    ...recente,
+    nome: comNome?.nome ?? recente.nome,
+    telefone: comTelefone?.telefone ?? recente.telefone,
+    clienteId: comCliente?.clienteId ?? recente.clienteId,
+    viaLink: confirmou ? false : ordenados.some((d) => d.viaLink === true),
+    primeiraVez: antigo.primeiraVez ?? recente.primeiraVez,
+    ultimaVez: recente.ultimaVez,
+    // Cada documento é pelo menos uma abertura do cardápio: quem perdeu o
+    // storage no meio do caminho não pode perder a visita junto.
+    sessoes: ordenados.reduce((soma, d) => soma + Math.max(1, Number(d.sessoes) || 0), 0),
+    pedidos: ordenados.reduce((soma, d) => soma + (Number(d.pedidos) || 0), 0),
+    linhaDoTempo: eventos.slice(-LIMITE_LINHA_DO_TEMPO),
+    carrinho,
+    ultimoPedidoId: comPedido?.ultimoPedidoId,
+    ultimoPedidoValor: comPedido?.ultimoPedidoValor,
+    ultimoPedidoMs: comPedido?.ultimoPedidoMs,
+  };
+}

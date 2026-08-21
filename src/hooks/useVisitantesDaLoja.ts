@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { collection, limit as limitar, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
-import type { Visitante } from '@/lib/visitantes';
+import { agruparPorPessoa, type Visitante } from '@/lib/visitantes';
 
 /**
  * Quem passou pelo cardápio na sessão de caixa, ao vivo.
@@ -39,7 +39,15 @@ export function useVisitantesDaLoja(
     const parar = onSnapshot(
       q,
       (snap) => {
-        setVisitantes(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }) as Visitante));
+        // Um documento por navegador; aqui a unidade passa a ser a PESSOA. Quem
+        // abre o link do WhatsApp três vezes vira três documentos (o webview do
+        // app perde o storage entre as aberturas) e apareceria três vezes na
+        // fila, com a mesma foto repetida no placar.
+        setVisitantes(
+          agruparPorPessoa(
+            snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }) as Visitante)
+          )
+        );
         setCarregando(false);
       },
       (erro) => {
