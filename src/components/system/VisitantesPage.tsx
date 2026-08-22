@@ -376,8 +376,17 @@ export function VisitantesPage() {
 }
 
 /**
- * Escolha do período. "Sessão de caixa" só existe quando há caixa aberto — sem
- * isso o botão seria uma promessa vazia, que é o que a tela fazia antes.
+ * Escolha do período.
+ *
+ * "Sessão de caixa" só existe quando há caixa aberto — sem isso o botão seria
+ * uma promessa vazia, que é o que a tela fazia antes.
+ *
+ * Ao lado dele, "Hoje" vira "Dia todo". Os dois botões pareciam a mesma coisa,
+ * e num dia comum devolvem quase o mesmo número — mas não são: o caixa da loja
+ * abre quase sempre às 10h e **11,5% das visitas caem fora do horário de
+ * caixa** (25 antes das 10h e 46 depois das 19h, nas 618 medidas), sem contar as
+ * 7 sessões de 45 que atravessaram a meia-noite. O nome é que escondia a
+ * diferença; agora ele a diz.
  */
 function BarraDePeriodo({
   periodo,
@@ -392,7 +401,16 @@ function BarraDePeriodo({
   const comoInput = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  const opcoes = PRESETS_DA_AUDIENCIA.filter((p) => p.id !== 'sessao' || temCaixaAberto);
+  const opcoes = PRESETS_DA_AUDIENCIA.filter((p) => p.id !== 'sessao' || temCaixaAberto).map((p) =>
+    p.id === 'hoje' && temCaixaAberto ? { ...p, label: 'Dia todo' } : p,
+  );
+
+  const explicacao: Partial<Record<PresetDaAudiencia, string>> = {
+    sessao: 'Do momento em que o caixa foi aberto até agora.',
+    hoje: temCaixaAberto
+      ? 'Da meia-noite até agora — inclui o movimento de antes de abrir o caixa.'
+      : 'Da meia-noite até agora.',
+  };
   // Caixa fechado com "sessão" guardada no estado: o botão sumiu, então destaca
   // o período que a janela realmente está usando.
   const ativo: PresetDaAudiencia =
@@ -412,6 +430,7 @@ function BarraDePeriodo({
                 : { preset: p.id },
             )
           }
+          title={explicacao[p.id]}
           className={cn(
             'rounded-full px-3 py-1.5 text-xs font-bold transition-colors',
             ativo === p.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
