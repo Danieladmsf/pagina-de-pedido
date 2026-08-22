@@ -53,6 +53,12 @@ async function definirPermissoes(retaguarda, pdv = {}) {
     permissions: { pdv: { enabled: true, tabs: {}, actions: {}, global: {}, ...pdv }, retaguarda },
     updatedAt: FieldValue.serverTimestamp(),
   });
+  // As regras leem o documento do funcionario a cada request, mas a permissao
+  // recem-gravada leva um instante para valer: sem esta pausa, o PRIMEIRO
+  // request depois da troca ainda e julgado pelo perfil antigo. Isso vale para
+  // a loja tambem - mudou a permissao, o funcionario sente em segundos, nao no
+  // mesmo clique.
+  await new Promise((resolver) => setTimeout(resolver, 2000));
 }
 
 async function entrar() {
