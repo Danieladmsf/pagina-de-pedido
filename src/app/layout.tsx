@@ -16,6 +16,12 @@ export const metadata = {
   title: 'Cardápio Digital',
   description: 'Cardápio digital e gestão de pedidos',
   manifest: '/manifest.json',
+  // Prova de posse do site para o Google Search Console. Fica no layout raiz
+  // porque a verificação lê a página inicial. Não remover: tirar a marca faz o
+  // Google desverificar a propriedade e o relatório de busca some.
+  verification: {
+    google: 'SND8-Ve5zy5REYoCY2W6xA3Xp6AoClj8cJJzfdO2lIA',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
