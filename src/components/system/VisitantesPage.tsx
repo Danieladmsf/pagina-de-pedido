@@ -3,8 +3,10 @@
 import React, { useMemo, useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
   ArrowLeft,
+  CalendarDays,
   ChevronDown,
   Eye,
   Loader2,
@@ -12,6 +14,7 @@ import {
   Receipt,
   ShoppingBag,
   Store,
+  TrendingUp,
   Users,
 } from 'lucide-react';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
@@ -21,8 +24,16 @@ import {
   EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
 } from '@/lib/user-permissions';
 import { useCaixaAbertoEm } from '@/hooks/useCaixaAbertoEm';
+import { useMovimentoDoCardapio } from '@/hooks/useMovimentoDoCardapio';
 import { usePublicAudience } from '@/hooks/usePublicAudience';
 import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
+import {
+  PRESETS_DA_AUDIENCIA,
+  janelaDaAudiencia,
+  movimentoPorDia,
+  type PeriodoDaAudiencia,
+  type PresetDaAudiencia,
+} from '@/lib/audiencia-periodo';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
@@ -51,7 +62,11 @@ import { brl, cn } from '@/lib/utils';
  * primeiro quem montou carrinho e não fechou (é ligar e vender), depois quem
  * está olhando agora, e só no fim o histórico de quem passou.
  *
- * Tudo é da sessão de caixa aberta: fora dela não existe "hoje" para comparar.
+ * O período é escolhido em cima. Ele nasce na sessão de caixa aberta, que é o
+ * turno de trabalho, mas a tela não morre quando o caixa fecha: `store_visits` é
+ * append-only e guarda o movimento de todos os dias. Antes disso a loja passava
+ * a maior parte do tempo com a tela em branco — 618 visitas em 11 dias que
+ * ninguém nunca viu.
  */
 export function VisitantesPage() {
   const db = useFirestore();
@@ -65,12 +80,37 @@ export function VisitantesPage() {
     'visitantes',
   );
   const caixaAbertoEm = useCaixaAbertoEm(ownerId);
-  const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, caixaAbertoEm);
-  const { online, visitasNaSessao } = usePublicAudience(ownerId, caixaAbertoEm);
+  // Enquanto a dona não escolhe, o período segue o estado da loja: com o caixa
+  // aberto o que interessa é o turno; com ele fechado, "hoje" quase sempre tem
+  // duas visitas e nada para ler — a semana é que mostra o movimento.
+  const [escolha, setEscolha] = useState<PeriodoDaAudiencia | null>(null);
+  const periodo: PeriodoDaAudiencia = escolha ?? (caixaAbertoEm ? { preset: 'sessao' } : { preset: '7d' });
   const [aberto, setAberto] = useState<string | null>(null);
 
+  const janela = useMemo(
+    () => janelaDaAudiencia(periodo, { caixaAbertoEm }),
+    [periodo.preset, periodo.de, periodo.ate, caixaAbertoEm?.getTime()], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, janela.inicio, 200, janela.fim);
+  // `online` é sempre agora, independente do período — por isso a audiência
+  // entra sem janela: passar uma faria o hook contar visitas de novo, em
+  // paralelo com `useMovimentoDoCardapio`.
+  const { online } = usePublicAudience(ownerId, null);
+  const { visitas } = useMovimentoDoCardapio(ownerId, janela);
+  const movimento = useMemo(() => movimentoPorDia(visitas, janela), [visitas, janela]);
+
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId || ''), [user, ownerId]);
-  const inicioMs = caixaAbertoEm?.getTime() ?? 0;
+  const inicioMs = janela.inicio?.getTime() ?? 0;
+
+  // Dias do período em que houve visita mas ninguém foi identificado por
+  // aparelho (`visitorId` só começou a ser gravado em 20/08/2026). Sem esse
+  // aviso, "3 pessoas" ao lado de "144 visitas" se lê como erro da tela.
+  const diasSemPessoas = useMemo(
+    () => movimento.dias.filter((d) => d.visitas > 0 && !d.sabePessoas).length,
+    [movimento.dias],
+  );
+  const olhandoOPassado = periodo.preset !== 'sessao' && periodo.preset !== 'hoje';
 
   // Cadastro da loja: serve só para enriquecer quem já é cliente (quantos
   // pedidos, ticket médio). O vínculo de verdade é o `clienteId` gravado na
@@ -105,16 +145,6 @@ export function VisitantesPage() {
     [fila, inicioMs]
   );
 
-  const desde = useMemo(() => {
-    if (!caixaAbertoEm) return '';
-    const hoje = new Date().toDateString() === caixaAbertoEm.toDateString();
-    const hora = caixaAbertoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    // Caixa que passou da meia-noite: sem a data, a dona lê a noite inteira
-    // como se fosse só o movimento de hoje.
-    if (hoje) return `hoje às ${hora}`;
-    return `${caixaAbertoEm.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${hora}`;
-  }, [caixaAbertoEm]);
-
   if (!podeVerVisitantes || semAcesso) {
     return (
       <Moldura onVoltar={() => router.back()}>
@@ -126,25 +156,30 @@ export function VisitantesPage() {
     );
   }
 
-  if (!caixaAbertoEm) {
-    return (
-      <Moldura onVoltar={() => router.back()}>
-        <Aviso
-          titulo="Abra o caixa para acompanhar"
-          texto="Quem passou no cardápio é contado a partir da abertura do caixa. Com o caixa fechado não há período para comparar."
-        />
-      </Moldura>
-    );
-  }
-
   return (
-    <Moldura onVoltar={() => router.back()} desde={desde}>
+    <Moldura onVoltar={() => router.back()} descricao={janela.descricao}>
+      <BarraDePeriodo periodo={periodo} onMudar={setEscolha} temCaixaAberto={!!caixaAbertoEm} />
+
       {/* Números do período. "Visitas" e "pessoas" são coisas diferentes de
           propósito: a mesma pessoa abrindo o link duas vezes conta duas visitas
           e uma pessoa só. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Numero titulo="Visitas" valor={visitasNaSessao ?? 0} icone={<MousePointerClick className="h-4 w-4" />} />
-        <Numero titulo="Pessoas" valor={resumo.pessoas} icone={<Users className="h-4 w-4" />} detalhe={`${resumo.identificadas} com cadastro`} />
+        <Numero
+          titulo="Visitas"
+          valor={movimento.totalVisitas}
+          icone={<MousePointerClick className="h-4 w-4" />}
+          detalhe={movimento.dias.length > 1 ? `${movimento.mediaPorDia} por dia` : undefined}
+        />
+        <Numero
+          titulo="Pessoas"
+          valor={movimento.sabePessoas ? movimento.totalPessoas : '—'}
+          icone={<Users className="h-4 w-4" />}
+          detalhe={
+            movimento.sabePessoas
+              ? `${resumo.identificadas} com cadastro`
+              : 'aparelho ainda não era reconhecido'
+          }
+        />
         <Numero
           titulo="Carrinhos parados"
           valor={resumo.abandonados}
@@ -155,6 +190,74 @@ export function VisitantesPage() {
         <Numero titulo="Pedidos fechados" valor={resumo.comprando} icone={<Receipt className="h-4 w-4" />} detalhe={`${resumo.conversao}% de quem entrou`} />
         <Numero titulo="No cardápio agora" valor={online} icone={<Eye className="h-4 w-4" />} aoVivo={online > 0} />
       </div>
+
+      {/* O movimento do cardápio dia a dia. É o que existe mesmo com o caixa
+          fechado, e é a leitura que o placar da sessão nunca deu: se ontem
+          entrou mais gente que hoje, e qual foi o melhor dia. */}
+      {movimento.dias.length > 1 && (
+        <section className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-black text-slate-800">
+              <TrendingUp className="h-4 w-4 text-emerald-600" />
+              Movimento por dia
+            </h2>
+            {movimento.melhorDia && (
+              <p className="text-xs text-slate-500">
+                Melhor dia:{' '}
+                <strong className="text-emerald-700">
+                  {movimento.melhorDia.rotuloLongo} ({movimento.melhorDia.visitas} visitas)
+                </strong>
+              </p>
+            )}
+          </div>
+          <div className="mt-3 h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={movimento.dias} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis
+                  dataKey="rotulo"
+                  stroke="#64748b"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={movimento.dias.length > 20 ? 'preserveStartEnd' : 0}
+                />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  cursor={{ fill: '#f1f5f9' }}
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                  labelStyle={{ fontWeight: 700, color: '#0f172a' }}
+                  formatter={(valor: any, _n: any, item: any) => [
+                    item?.payload?.sabePessoas
+                      ? `${valor} visitas · ${item.payload.pessoas} pessoas`
+                      : `${valor} visitas`,
+                    'Cardápio aberto',
+                  ]}
+                  labelFormatter={(_r: any, carga: any) => carga?.[0]?.payload?.rotuloLongo || ''}
+                />
+                <Bar dataKey="visitas" radius={[6, 6, 0, 0]}>
+                  {/* O dia de hoje sai tracejado: ele ainda não acabou, e uma
+                      barra baixa não pode ser lida como queda. */}
+                  {movimento.dias.map((d) => (
+                    <Cell
+                      key={d.chave}
+                      fill={d.ehHoje ? '#d1fae5' : d.chave === movimento.melhorDia?.chave ? '#059669' : '#a7f3d0'}
+                      stroke={d.ehHoje ? '#10b981' : undefined}
+                      strokeDasharray={d.ehHoje ? '4 3' : undefined}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {diasSemPessoas > 0 && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Em {diasSemPessoas} {diasSemPessoas === 1 ? 'dia' : 'dias'} deste período o cardápio ainda não
+              reconhecia o aparelho de quem entrava: dá para contar as visitas, não as pessoas.
+            </p>
+          )}
+        </section>
+      )}
 
       {carregando && visitantes.length === 0 && (
         <div className="flex justify-center py-16">
@@ -174,11 +277,14 @@ export function VisitantesPage() {
         </div>
         <p className="mt-0.5 text-xs text-slate-500">
           Montaram o pedido no cardápio e pararam antes de enviar.
+          {/* Numa janela larga entra carrinho de dias atrás. Ele continua sendo
+              uma venda a resgatar, mas "agora" precisa dizer de quando é. */}
+          {olhandoOPassado && ' Alguns são de dias atrás — cada card mostra há quanto tempo.'}
         </p>
 
         {oportunidades.length === 0 ? (
           <p className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-            Ninguém deixou carrinho parado até agora.
+            Ninguém deixou carrinho parado neste período.
           </p>
         ) : (
           <div className="mt-3 space-y-2">
@@ -203,8 +309,13 @@ export function VisitantesPage() {
         <h2 className="text-lg font-black text-slate-800">Quem passou</h2>
         <p className="mt-0.5 text-xs text-slate-500">
           {resumo.pessoas === 0
-            ? 'Ninguém abriu o cardápio nesta sessão de caixa.'
-            : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} desde ${desde}.`}
+            ? `Ninguém abriu o cardápio em ${janela.descricao}.`
+            : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} em ${janela.descricao}.`}
+          {olhandoOPassado && resumo.pessoas > 0 && (
+            <span className="block text-[11px] text-slate-400">
+              O carrinho mostrado é o de agora, não um retrato daquele dia.
+            </span>
+          )}
         </p>
         <div className="mt-3 space-y-2">
           {fila.map((v) => (
@@ -264,14 +375,85 @@ export function VisitantesPage() {
   );
 }
 
+/**
+ * Escolha do período. "Sessão de caixa" só existe quando há caixa aberto — sem
+ * isso o botão seria uma promessa vazia, que é o que a tela fazia antes.
+ */
+function BarraDePeriodo({
+  periodo,
+  onMudar,
+  temCaixaAberto,
+}: {
+  periodo: PeriodoDaAudiencia;
+  onMudar: (p: PeriodoDaAudiencia) => void;
+  temCaixaAberto: boolean;
+}) {
+  const hoje = new Date();
+  const comoInput = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const opcoes = PRESETS_DA_AUDIENCIA.filter((p) => p.id !== 'sessao' || temCaixaAberto);
+  // Caixa fechado com "sessão" guardada no estado: o botão sumiu, então destaca
+  // o período que a janela realmente está usando.
+  const ativo: PresetDaAudiencia =
+    periodo.preset === 'sessao' && !temCaixaAberto ? 'hoje' : periodo.preset;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+      {opcoes.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() =>
+            onMudar(
+              p.id === 'custom'
+                ? { preset: 'custom', de: periodo.de || comoInput(hoje), ate: periodo.ate || comoInput(hoje) }
+                : { preset: p.id },
+            )
+          }
+          className={cn(
+            'rounded-full px-3 py-1.5 text-xs font-bold transition-colors',
+            ativo === p.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+          )}
+        >
+          {p.label}
+        </button>
+      ))}
+      {periodo.preset === 'custom' && (
+        <div className="ml-1 flex items-center gap-1.5">
+          <input
+            type="date"
+            value={periodo.de || ''}
+            max={periodo.ate || comoInput(hoje)}
+            onChange={(e) => onMudar({ ...periodo, preset: 'custom', de: e.target.value })}
+            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+            aria-label="Data inicial"
+          />
+          <span className="text-xs text-slate-400">até</span>
+          <input
+            type="date"
+            value={periodo.ate || ''}
+            min={periodo.de || undefined}
+            max={comoInput(hoje)}
+            onChange={(e) => onMudar({ ...periodo, preset: 'custom', ate: e.target.value })}
+            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+            aria-label="Data final"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Moldura({
   children,
   onVoltar,
-  desde,
+  descricao,
 }: {
   children: React.ReactNode;
   onVoltar: () => void;
-  desde?: string;
+  descricao?: string;
 }) {
   return (
     <div className="min-h-screen bg-slate-50">
@@ -288,7 +470,7 @@ function Moldura({
           <div className="min-w-0">
             <h1 className="text-2xl font-black tracking-tight text-slate-800">Quem passou no cardápio</h1>
             <p className="mt-0.5 text-sm text-slate-500">
-              {desde ? `Desde a abertura do caixa, ${desde}.` : 'Movimento do cardápio da loja.'}
+              {descricao ? `Movimento do cardápio — ${descricao}.` : 'Movimento do cardápio da loja.'}
             </p>
           </div>
         </div>
@@ -317,7 +499,8 @@ function Numero({
   aoVivo,
 }: {
   titulo: string;
-  valor: number;
+  /** Texto quando o número não existe — "pessoas" antes da identificação por aparelho. */
+  valor: number | string;
   icone: React.ReactNode;
   detalhe?: string;
   destaque?: boolean;
