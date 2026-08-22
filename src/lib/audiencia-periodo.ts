@@ -23,7 +23,7 @@
 import { janelaDoRelatorio, type JanelaDoRelatorio } from '@/lib/relatorios/periodo';
 import { paraMillis } from '@/lib/visitantes';
 
-export type PresetDaAudiencia = 'sessao' | 'hoje' | 'ontem' | '7d' | '30d' | 'custom';
+export type PresetDaAudiencia = 'hoje' | 'ontem' | '7d' | '30d' | 'custom';
 
 export type PeriodoDaAudiencia = {
   preset: PresetDaAudiencia;
@@ -31,9 +31,14 @@ export type PeriodoDaAudiencia = {
   ate?: string;
 };
 
-/** A `sessao` só entra na lista quando existe caixa aberto. */
+/**
+ * Não existe "sessão de caixa" aqui de propósito. Ela e "hoje" ficavam lado a
+ * lado devolvendo quase o mesmo número, e a sessão é a janela MENOR: some com o
+ * movimento de antes de abrir e de depois de fechar — 11,5% das visitas medidas
+ * na Gostinho de Céu. Quem quer o número do turno tem o placar flutuante, que
+ * continua contando a sessão; a tela é a análise, e análise pede o dia inteiro.
+ */
 export const PRESETS_DA_AUDIENCIA: { id: PresetDaAudiencia; label: string }[] = [
-  { id: 'sessao', label: 'Sessão de caixa' },
   { id: 'hoje', label: 'Hoje' },
   { id: 'ontem', label: 'Ontem' },
   { id: '7d', label: '7 dias' },
@@ -53,29 +58,13 @@ const dataBR = (d: Date) => d.toLocaleDateString('pt-BR');
 
 export function janelaDaAudiencia(
   periodo: PeriodoDaAudiencia,
-  opcoes: { caixaAbertoEm?: Date | null; agora?: Date } = {},
+  opcoes: { agora?: Date } = {},
 ): JanelaDoRelatorio {
   const agora = opcoes.agora || new Date();
   const hoje = comecoDoDia(agora);
   const amanha = new Date(hoje.getTime() + DIA);
 
   switch (periodo?.preset) {
-    case 'sessao': {
-      const inicio = opcoes.caixaAbertoEm ?? null;
-      // Caixa fechado com "sessão" escolhida cai em Hoje: melhor mostrar o
-      // movimento do dia do que uma tela em branco.
-      if (!inicio) return janelaDaAudiencia({ preset: 'hoje' }, opcoes);
-      const mesmoDia = comecoDoDia(inicio).getTime() === hoje.getTime();
-      const hora = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      return {
-        inicio,
-        fim: null,
-        rotulo: 'Sessão de caixa',
-        // Caixa que virou a meia-noite: sem a data, a dona lê a noite inteira
-        // como se fosse só o movimento de hoje.
-        descricao: mesmoDia ? `desde hoje às ${hora}` : `desde ${dataBR(inicio)} às ${hora}`,
-      };
-    }
     case 'ontem': {
       const inicio = new Date(hoje.getTime() - DIA);
       return { inicio, fim: hoje, rotulo: 'Ontem', descricao: dataBR(inicio) };
@@ -164,8 +153,8 @@ export function movimentoPorDia(
     return { dias: [], totalVisitas: 0, totalPessoas: 0, sabePessoas: false, melhorDia: null, mediaPorDia: 0 };
   }
 
-  // A série termina no fim da janela, mas nunca antes da última visita nem
-  // depois de hoje: janela aberta ("desde a abertura do caixa") vai até hoje.
+  // A série termina no fim da janela, mas nunca antes da última visita: janela
+  // sem fim (não existe hoje, mas o tipo permite) vai até o dia de hoje.
   const hoje = comecoDoDia(agora);
   const limite = janela.fim ? comecoDoDia(new Date(janela.fim.getTime() - 1)) : hoje;
   const ultimoDia = comecoDoDia(ultima as Date);

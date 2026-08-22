@@ -1,34 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { janelaDaAudiencia, movimentoPorDia } from './audiencia-periodo';
+import { PRESETS_DA_AUDIENCIA, janelaDaAudiencia, movimentoPorDia } from './audiencia-periodo';
 
 // 22/08/2026, um sábado, 14:30.
 const AGORA = new Date(2026, 7, 22, 14, 30);
-const CAIXA = new Date(2026, 7, 22, 8, 15);
-
 const visita = (mes: number, dia: number, hora = 12, visitorId?: string) => ({
   at: new Date(2026, mes, dia, hora, 0),
   ...(visitorId ? { visitorId } : {}),
 });
 
 describe('janelaDaAudiencia', () => {
-  it('a sessão de caixa começa na abertura e não tem fim', () => {
-    const j = janelaDaAudiencia({ preset: 'sessao' }, { caixaAbertoEm: CAIXA, agora: AGORA });
-    expect(j.inicio).toEqual(CAIXA);
-    expect(j.fim).toBeNull();
-    expect(j.descricao).toBe('desde hoje às 08:15');
-  });
-
-  it('caixa aberto ontem à noite diz a data, para não virar "movimento de hoje"', () => {
-    const ontemANoite = new Date(2026, 7, 21, 22, 40);
-    const j = janelaDaAudiencia({ preset: 'sessao' }, { caixaAbertoEm: ontemANoite, agora: AGORA });
-    expect(j.descricao).toBe('desde 21/08/2026 às 22:40');
-  });
-
-  it('pedir a sessão com o caixa fechado cai em Hoje, e não em tela vazia', () => {
-    const j = janelaDaAudiencia({ preset: 'sessao' }, { caixaAbertoEm: null, agora: AGORA });
+  it('o menor recorte é o DIA — não existe janela de sessão de caixa', () => {
+    // A sessão perde o movimento de antes de abrir e de depois de fechar; quem
+    // quer o número do turno tem o placar flutuante.
+    expect(PRESETS_DA_AUDIENCIA.map((p) => p.id)).toEqual(['hoje', 'ontem', '7d', '30d', 'custom']);
+    // Preset desconhecido cai em Hoje em vez de devolver janela vazia.
+    const j = janelaDaAudiencia({ preset: 'sessao' as any }, { agora: AGORA });
     expect(j.rotulo).toBe('Hoje');
     expect(j.inicio).toEqual(new Date(2026, 7, 22));
-    expect(j.fim).toEqual(new Date(2026, 7, 23));
   });
 
   it('hoje e ontem são dias de calendário fechados', () => {
@@ -158,9 +146,8 @@ describe('movimentoPorDia', () => {
     expect(movimentoPorDia(null, janelaDe('30d'), AGORA).totalVisitas).toBe(0);
   });
 
-  it('janela aberta (sessão de caixa) vai até hoje', () => {
-    const j = janelaDaAudiencia({ preset: 'sessao' }, { caixaAbertoEm: new Date(2026, 7, 20, 8, 0), agora: AGORA });
-    const m = movimentoPorDia([visita(7, 20, 9), visita(7, 22, 10)], j, AGORA);
+  it('a série cobre os dias entre a primeira visita e o fim da janela', () => {
+    const m = movimentoPorDia([visita(7, 20, 9), visita(7, 22, 10)], janelaDe('7d'), AGORA);
     expect(m.dias.map((d) => d.chave)).toEqual(['2026-08-20', '2026-08-21', '2026-08-22']);
   });
 });

@@ -62,11 +62,15 @@ import { brl, cn } from '@/lib/utils';
  * primeiro quem montou carrinho e não fechou (é ligar e vender), depois quem
  * está olhando agora, e só no fim o histórico de quem passou.
  *
- * O período é escolhido em cima. Ele nasce na sessão de caixa aberta, que é o
- * turno de trabalho, mas a tela não morre quando o caixa fecha: `store_visits` é
- * append-only e guarda o movimento de todos os dias. Antes disso a loja passava
- * a maior parte do tempo com a tela em branco — 618 visitas em 11 dias que
- * ninguém nunca viu.
+ * O período é escolhido em cima, e a tela não morre quando o caixa fecha:
+ * `store_visits` é append-only e guarda o movimento de todos os dias. Antes a
+ * loja passava a maior parte do tempo com a tela em branco — 618 visitas em 11
+ * dias que ninguém nunca viu.
+ *
+ * O menor período aqui é o DIA, não a sessão de caixa: a sessão perde o que
+ * acontece antes de abrir e depois de fechar (11,5% das visitas medidas). Quem
+ * quer o número do turno tem o placar flutuante, que segue contando a sessão.
+ * `useCaixaAbertoEm` fica só para escolher em que período a tela abre.
  */
 export function VisitantesPage() {
   const db = useFirestore();
@@ -80,16 +84,16 @@ export function VisitantesPage() {
     'visitantes',
   );
   const caixaAbertoEm = useCaixaAbertoEm(ownerId);
-  // Enquanto a dona não escolhe, o período segue o estado da loja: com o caixa
-  // aberto o que interessa é o turno; com ele fechado, "hoje" quase sempre tem
-  // duas visitas e nada para ler — a semana é que mostra o movimento.
+  // Enquanto a dona não escolhe, o período segue o estado da loja: com a loja
+  // trabalhando o que interessa é o dia; com o caixa fechado, "hoje" quase
+  // sempre tem duas visitas e nada para ler — a semana é que mostra movimento.
   const [escolha, setEscolha] = useState<PeriodoDaAudiencia | null>(null);
-  const periodo: PeriodoDaAudiencia = escolha ?? (caixaAbertoEm ? { preset: 'sessao' } : { preset: '7d' });
+  const periodo: PeriodoDaAudiencia = escolha ?? (caixaAbertoEm ? { preset: 'hoje' } : { preset: '7d' });
   const [aberto, setAberto] = useState<string | null>(null);
 
   const janela = useMemo(
-    () => janelaDaAudiencia(periodo, { caixaAbertoEm }),
-    [periodo.preset, periodo.de, periodo.ate, caixaAbertoEm?.getTime()], // eslint-disable-line react-hooks/exhaustive-deps
+    () => janelaDaAudiencia(periodo),
+    [periodo.preset, periodo.de, periodo.ate], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, janela.inicio, 200, janela.fim);
@@ -110,7 +114,7 @@ export function VisitantesPage() {
     () => movimento.dias.filter((d) => d.visitas > 0 && !d.sabePessoas).length,
     [movimento.dias],
   );
-  const olhandoOPassado = periodo.preset !== 'sessao' && periodo.preset !== 'hoje';
+  const olhandoOPassado = periodo.preset !== 'hoje';
 
   // Cadastro da loja: serve só para enriquecer quem já é cliente (quantos
   // pedidos, ticket médio). O vínculo de verdade é o `clienteId` gravado na
@@ -158,7 +162,7 @@ export function VisitantesPage() {
 
   return (
     <Moldura onVoltar={() => router.back()} descricao={janela.descricao}>
-      <BarraDePeriodo periodo={periodo} onMudar={setEscolha} temCaixaAberto={!!caixaAbertoEm} />
+      <BarraDePeriodo periodo={periodo} onMudar={setEscolha} />
 
       {/* Números do período. "Visitas" e "pessoas" são coisas diferentes de
           propósito: a mesma pessoa abrindo o link duas vezes conta duas visitas
@@ -376,50 +380,34 @@ export function VisitantesPage() {
 }
 
 /**
- * Escolha do período.
+ * Escolha do período. O menor recorte é o DIA.
  *
- * "Sessão de caixa" só existe quando há caixa aberto — sem isso o botão seria
- * uma promessa vazia, que é o que a tela fazia antes.
- *
- * Ao lado dele, "Hoje" vira "Dia todo". Os dois botões pareciam a mesma coisa,
- * e num dia comum devolvem quase o mesmo número — mas não são: o caixa da loja
- * abre quase sempre às 10h e **11,5% das visitas caem fora do horário de
- * caixa** (25 antes das 10h e 46 depois das 19h, nas 618 medidas), sem contar as
- * 7 sessões de 45 que atravessaram a meia-noite. O nome é que escondia a
- * diferença; agora ele a diz.
+ * Houve aqui um botão "Sessão de caixa", ao lado de "Hoje". Os dois liam quase
+ * o mesmo número num dia comum e o par se lia como repetido — e, entre os dois,
+ * a sessão é a janela que MENOS mostra: fora do horário de caixa ficam 11,5%
+ * das visitas (25 antes das 10h e 46 depois das 19h, nas 618 medidas). Quem
+ * quer o número do turno tem o placar flutuante.
  */
 function BarraDePeriodo({
   periodo,
   onMudar,
-  temCaixaAberto,
 }: {
   periodo: PeriodoDaAudiencia;
   onMudar: (p: PeriodoDaAudiencia) => void;
-  temCaixaAberto: boolean;
 }) {
   const hoje = new Date();
   const comoInput = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  const opcoes = PRESETS_DA_AUDIENCIA.filter((p) => p.id !== 'sessao' || temCaixaAberto).map((p) =>
-    p.id === 'hoje' && temCaixaAberto ? { ...p, label: 'Dia todo' } : p,
-  );
-
   const explicacao: Partial<Record<PresetDaAudiencia, string>> = {
-    sessao: 'Do momento em que o caixa foi aberto até agora.',
-    hoje: temCaixaAberto
-      ? 'Da meia-noite até agora — inclui o movimento de antes de abrir o caixa.'
-      : 'Da meia-noite até agora.',
+    hoje: 'Da meia-noite até agora — o dia inteiro, não só o horário de caixa.',
+    ontem: 'O dia de ontem inteiro.',
   };
-  // Caixa fechado com "sessão" guardada no estado: o botão sumiu, então destaca
-  // o período que a janela realmente está usando.
-  const ativo: PresetDaAudiencia =
-    periodo.preset === 'sessao' && !temCaixaAberto ? 'hoje' : periodo.preset;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
       <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-      {opcoes.map((p) => (
+      {PRESETS_DA_AUDIENCIA.map((p) => (
         <button
           key={p.id}
           type="button"
@@ -433,7 +421,9 @@ function BarraDePeriodo({
           title={explicacao[p.id]}
           className={cn(
             'rounded-full px-3 py-1.5 text-xs font-bold transition-colors',
-            ativo === p.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+            periodo.preset === p.id
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
           )}
         >
           {p.label}
