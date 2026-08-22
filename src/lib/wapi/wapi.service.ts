@@ -24,6 +24,13 @@ export function getWapiMainToken() {
   return process.env.WAPI_API_KEY || process.env.WAPI_INTEGRATOR_TOKEN || '';
 }
 
+/**
+ * Teto de espera por chamada. Sem ele o fetch fica pendurado o tempo que a
+ * W-API quiser: em 22/08/2026 tres respostas automaticas ficaram 31 segundos
+ * presas e foram descartadas. Cortar cedo e o que da tempo de tentar de novo.
+ */
+const WAPI_TIMEOUT_MS = 20000;
+
 async function requestWapi<T>(
   path: string,
   options: {
@@ -32,6 +39,7 @@ async function requestWapi<T>(
     query?: Record<string, string | number | boolean | undefined>;
     body?: Record<string, unknown>;
     context?: 'qrcode' | 'status' | 'disconnect' | 'restart' | 'webhook' | 'message';
+    timeoutMs?: number;
   },
 ): Promise<T> {
   if (!options.token) {
@@ -43,15 +51,29 @@ async function requestWapi<T>(
     if (value !== undefined && value !== '') url.searchParams.set(key, String(value));
   });
 
-  const response = await fetch(url.toString(), {
-    method: options.method || 'GET',
-    cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${options.token}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: options.method || 'GET',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${options.token}`,
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: AbortSignal.timeout(options.timeoutMs ?? WAPI_TIMEOUT_MS),
+    });
+  } catch (error: any) {
+    // 408 e o sinal de "vale tentar de novo" para quem chamou; erro de dado nao
+    // passa por aqui.
+    const expirou = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    throw new ApiError(
+      expirou ? 408 : 503,
+      expirou
+        ? 'A W-API nao respondeu a tempo.'
+        : `Nao foi possivel falar com a W-API: ${String(error?.message || error)}`,
+    );
+  }
 
   const data = await parseWapiResponse(response);
 

@@ -141,6 +141,67 @@ function buildAutoReply(params: {
   return { message, type, imageUrl: imageUrl || undefined };
 }
 
+/**
+ * Costura o `@lid` ao telefone da mesma pessoa.
+ *
+ * A reacao no story chega so com o LID e a DM dela chega com o numero. Sem esta
+ * ponte, quem reage e escreve na sequencia recebe a saudacao duas vezes com
+ * segundos de diferenca — foi o que aconteceria em 22/08, quando uma cliente
+ * reagiu as 09:14:28 e comentou as 09:14:47.
+ *
+ * O ponteiro mora no proprio doc de contato do LID: nao ha colecao nova nem
+ * consulta com indice, e um `get` direto por id.
+ */
+async function resolverDestino(
+  adminDb: any,
+  empresaId: string,
+  incoming: { phone: string; address: string; senderLid: string },
+) {
+  if (!incoming.senderLid) return { address: incoming.address, phone: incoming.phone };
+
+  const lidRef = adminDb.collection('whatsapp_auto_reply_contacts').doc(`${empresaId}_${incoming.senderLid}`);
+
+  if (incoming.phone) {
+    // Best-effort: guardar o numero e util, mas nunca vale segurar a resposta.
+    await lidRef
+      .set({ empresaId, telefoneConhecido: incoming.phone, updatedAt: new Date().toISOString() }, { merge: true })
+      .catch(() => {});
+    return { address: incoming.address, phone: incoming.phone };
+  }
+
+  const conhecido = await lidRef
+    .get()
+    .then((snap: any) => snap.data()?.telefoneConhecido || '')
+    .catch(() => '');
+  if (!conhecido) return { address: incoming.address, phone: incoming.phone };
+  return { address: String(conhecido), phone: String(conhecido) };
+}
+
+/**
+ * Uma segunda chance para o envio.
+ *
+ * Em 22/08/2026 tres respostas automaticas morreram com a W-API pendurada por
+ * 31 segundos: o claim voltava atras e a mensagem sumia sem deixar rastro. Erro
+ * de dado (4xx) nao melhora repetindo; queda de rede, timeout e erro do
+ * provedor, sim.
+ */
+async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
+  try {
+    return await enviar();
+  } catch (error: any) {
+    const status = Number(error?.status) || 0;
+    const valeRepetir = status === 0 || status === 408 || status === 429 || status >= 500;
+    if (!valeRepetir) throw error;
+
+    console.warn('[W-API webhook] Envio falhou; tentando uma segunda vez:', {
+      status,
+      erro: String(error?.message || error),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    return await enviar();
+  }
+}
+
 async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
@@ -173,10 +234,16 @@ async function maybeSendAutoReply(params: {
 
   const storeSnap = await params.adminDb.collection('store_profiles').doc(params.empresaId).get();
   const storeProfile = storeSnap.exists ? storeSnap.data() : {};
+
+  // Quem chega so com LID pode ja ser conhecido pelo numero; nesse caso a
+  // conversa toda (reacao no story e DM) cai num contato so.
+  const destino = await resolverDestino(params.adminDb, params.empresaId, incoming);
+  const alvo = { ...incoming, phone: destino.phone, address: destino.address };
+
   // Chaveado por `address`: para quem tem telefone o id do doc continua
   // exatamente o mesmo de antes, entao o historico de quem ja foi saudado
   // segue valendo. Contato so-LID ganha doc proprio.
-  const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${incoming.address}`);
+  const contactRef = params.adminDb.collection('whatsapp_auto_reply_contacts').doc(`${params.empresaId}_${alvo.address}`);
 
   // Claim atomico ANTES do envio (mesmo padrao do whatsapp_send_claims):
   // decidir e gravar o carimbo na mesma transacao faz webhooks concorrentes
@@ -199,7 +266,7 @@ async function maybeSendAutoReply(params: {
     const reply = buildAutoReply({
       storeProfile,
       empresaId: params.empresaId,
-      incoming,
+      incoming: alvo,
       requestOrigin: params.requestOrigin,
       contactData,
       hasPriorContact,
@@ -208,8 +275,9 @@ async function maybeSendAutoReply(params: {
     const claimField = reply ? CLAIM_FIELD[reply.type] || '' : '';
     txn.set(contactRef, {
       empresaId: params.empresaId,
-      phone: incoming.phone,
-      address: incoming.address,
+      phone: alvo.phone,
+      address: alvo.address,
+      ...(alvo.senderLid ? { senderLid: alvo.senderLid } : {}),
       ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
       lastInboundAt: params.now,
       updatedAt: params.now,
@@ -226,31 +294,46 @@ async function maybeSendAutoReply(params: {
   const token = decryptSecret(integration.wapiTokenEncrypted);
   let result: any;
   try {
-    result = reply.imageUrl
-      ? await sendWapiImageMessage(integration.wapiInstanceId, token, {
-          phone: incoming.address,
-          image: reply.imageUrl,
-          caption: reply.message,
-          delayMessage: 2,
-        })
-      : await sendWapiTextMessage(integration.wapiInstanceId, token, {
-          phone: incoming.address,
-          message: reply.message,
-          delayMessage: 2,
-        });
+    result = await enviarComSegundaChance(() =>
+      reply.imageUrl
+        ? sendWapiImageMessage(integration.wapiInstanceId, token, {
+            phone: alvo.address,
+            image: reply.imageUrl,
+            caption: reply.message,
+            delayMessage: 2,
+          })
+        : sendWapiTextMessage(integration.wapiInstanceId, token, {
+            phone: alvo.address,
+            message: reply.message,
+            delayMessage: 2,
+          }),
+    );
   } catch (error) {
-    await contactRef.set({ [claimField]: previousClaim, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+    // O carimbo volta atras para a proxima mensagem da pessoa ter nova chance, e
+    // o motivo fica gravado: sem ele uma resposta perdida nao deixa rastro
+    // nenhum e o dono so descobre pelo cliente reclamando.
+    await contactRef
+      .set(
+        {
+          [claimField]: previousClaim,
+          lastSendError: String((error as any)?.message || error).slice(0, 300),
+          lastSendErrorAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      )
+      .catch(() => {});
     throw error;
   }
 
   await params.adminDb.collection('whatsapp_auto_replies').add({
     empresaId: params.empresaId,
-    phone: incoming.phone,
-    address: incoming.address,
+    phone: alvo.phone,
+    address: alvo.address,
     type: reply.type,
     message: reply.message.slice(0, 500),
     providerMessageId: result?.messageId || result?.insertedId || '',
-    incomingText: incoming.text || '',
+    incomingText: alvo.text || '',
     createdAt: params.now,
   });
 

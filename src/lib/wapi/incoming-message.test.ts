@@ -158,6 +158,60 @@ const CONTATO_NOVO_DO_LINK = {
   },
 };
 
+/**
+ * Reacao (o coracaozinho) num story DA LOJA. Chega no chat de status, igual aos
+ * stories alheios — o que a separa deles e o `participant`, que aponta para
+ * quem publicou o story.
+ */
+const REACAO_NO_STORY_DA_LOJA = {
+  event: 'webhookReceived',
+  instanceId: 'LITE-8NDQT1-UWX43P',
+  connectedPhone: '5516993638485',
+  connectedLid: '62169752330325@lid',
+  isGroup: false,
+  messageId: '3A3D6905CC18B207A5BC',
+  fromMe: false,
+  chat: { id: 'status', profilePicture: null },
+  sender: {
+    id: '168835248328839',
+    senderLid: '168835248328839@lid',
+    profilePicture: null,
+    pushName: '👩‍🏫 Profa. Camila',
+    verifiedBizName: '',
+  },
+  moment: 1787233654,
+  fromApi: false,
+  msgContent: {
+    messageContextInfo: { deviceListMetadataVersion: 2 },
+    reactionMessage: {
+      key: {
+        ID: 'A58FD944DB71BACB7E4F9DC31639099E',
+        fromMe: false,
+        participant: '62169752330325@lid',
+        remoteJID: 'status@broadcast',
+      },
+      senderTimestampMS: '1787233651115',
+      text: '💚',
+    },
+  },
+};
+
+/** A mesma reacao, com o autor do story no formato antigo (telefone, nao LID). */
+const REACAO_NO_STORY_FORMATO_ANTIGO = {
+  ...REACAO_NO_STORY_DA_LOJA,
+  msgContent: {
+    reactionMessage: {
+      key: {
+        ID: 'A5C3594E398A339BF24564FE693C3E57',
+        fromMe: false,
+        participant: '5516993638485@s.whatsapp.net',
+        remoteJID: 'status@broadcast',
+      },
+      text: '❤️',
+    },
+  },
+};
+
 describe('extractIncomingMessage', () => {
   describe('responde a quem comenta o status da loja', () => {
     it('aceita a DM que cita um status (contextInfo.remoteJID = status@broadcast)', () => {
@@ -187,6 +241,71 @@ describe('extractIncomingMessage', () => {
       };
 
       expect(extractIncomingMessage(encaminhadaDeGrupo, 'webhookReceived', 'received')).not.toBeNull();
+    });
+  });
+
+  describe('responde a quem reage no status da loja', () => {
+    it('aceita a reacao ao story da loja e responde pelo @lid', () => {
+      const incoming = extractIncomingMessage(REACAO_NO_STORY_DA_LOJA, 'webhookReceived', 'received');
+
+      expect(incoming).not.toBeNull();
+      expect(incoming?.address).toBe('168835248328839@lid');
+      expect(incoming?.text).toBe('💚');
+      expect(incoming?.pushName).toBe('👩‍🏫 Profa. Camila');
+      // A reacao nunca traz telefone: o LID nao vira numero.
+      expect(incoming?.phone).toBe('');
+      expect(incoming?.senderLid).toBe('168835248328839@lid');
+    });
+
+    it('aceita quando o autor do story vem como telefone, nao como LID', () => {
+      const incoming = extractIncomingMessage(REACAO_NO_STORY_FORMATO_ANTIGO, 'webhookReceived', 'received');
+
+      expect(incoming?.address).toBe('168835248328839@lid');
+      expect(incoming?.text).toBe('❤️');
+    });
+
+    it('ignora reacao a story de outra pessoa', () => {
+      const storyAlheio = {
+        ...REACAO_NO_STORY_DA_LOJA,
+        msgContent: {
+          reactionMessage: {
+            key: { participant: '99999999999999@lid', remoteJID: 'status@broadcast' },
+            text: '💚',
+          },
+        },
+      };
+
+      expect(extractIncomingMessage(storyAlheio, 'webhookReceived', 'received')).toBeNull();
+    });
+
+    it('ignora quem TIRA a reacao (emoji vazio)', () => {
+      const removida = {
+        ...REACAO_NO_STORY_DA_LOJA,
+        msgContent: {
+          reactionMessage: {
+            key: { participant: '62169752330325@lid', remoteJID: 'status@broadcast' },
+            text: '',
+          },
+        },
+      };
+
+      expect(extractIncomingMessage(removida, 'webhookReceived', 'received')).toBeNull();
+    });
+
+    it('ignora reacao da propria loja num story alheio', () => {
+      const nossa = { ...REACAO_NO_STORY_DA_LOJA, fromMe: true };
+
+      expect(extractIncomingMessage(nossa, 'webhookReceived', 'received')).toBeNull();
+    });
+
+    it('ignora reacao dentro de grupo', () => {
+      const emGrupo = {
+        ...REACAO_NO_STORY_DA_LOJA,
+        isGroup: true,
+        chat: { id: '120363208662219926@g.us' },
+      };
+
+      expect(extractIncomingMessage(emGrupo, 'webhookReceived', 'received')).toBeNull();
     });
   });
 

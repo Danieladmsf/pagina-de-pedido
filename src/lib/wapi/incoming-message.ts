@@ -33,6 +33,12 @@ export type IncomingMessage = {
    * codigo do cardapio aparece so como um numero no painel.
    */
   pushName: string;
+  /**
+   * O `@lid` de quem escreveu, quando o provedor manda. E o unico identificador
+   * que aparece nos dois lados da mesma pessoa: na DM (ao lado do telefone) e na
+   * reacao ao story (onde telefone nao vem). E o que costura as duas.
+   */
+  senderLid: string;
 };
 
 function normalizePhone(phone: string) {
@@ -168,6 +174,100 @@ function extractSenderLid(payload: any, data: any) {
   return '';
 }
 
+/**
+ * O `sender.id` as vezes repete o proprio LID em vez do telefone. Uns poucos
+ * LIDs comecam com 55 e tem 13 digitos — a cara de um celular brasileiro — e
+ * passavam batido pela checagem de tamanho: a resposta ia para um numero que
+ * nao e de ninguem, ou pior, e de outra pessoa. Em producao sao 3 contatos
+ * assim. Quando o provedor diz que aquilo e o LID, aquilo nao e telefone.
+ */
+function ehOProprioLid(rawPhone: string, phone: string, lid: string) {
+  const digitosDoLid = lid.replace(/\D/g, '');
+  if (!digitosDoLid) return false;
+  const digitosCrus = String(rawPhone || '').replace(/\D/g, '');
+  return digitosCrus === digitosDoLid || phone === digitosDoLid;
+}
+
+function isFromMe(payload: any, data: any) {
+  return Boolean(
+    payload?.fromMe ||
+    payload?.key?.fromMe ||
+    payload?.message?.key?.fromMe ||
+    payload?.id?.fromMe ||
+    data?.fromMe ||
+    data?.key?.fromMe ||
+    data?.message?.fromMe ||
+    data?.message?.key?.fromMe ||
+    data?.id?.fromMe
+  );
+}
+
+/**
+ * A reacao — o coracaozinho — no story DA LOJA.
+ *
+ * Ela chega com `chat.id = "status"`, o mesmo carimbo dos stories alheios que a
+ * instancia recebe o dia inteiro, e por isso morria na camada que barra status.
+ * So que isto nao e um story: e uma pessoa levantando a mao para a loja, e ficar
+ * calado ali e a queixa de quem usa o WhatsApp para vender.
+ *
+ * O que separa uma coisa da outra e o ALVO da reacao, em
+ * `reactionMessage.key.participant`: quem publicou o story reagido. So passa
+ * quando esse alguem e a propria loja, pelo `connectedLid` ou, no formato
+ * antigo, pelo `connectedPhone` em `<telefone>@s.whatsapp.net`.
+ */
+function extractStoryReaction(payload: any, data: any): IncomingMessage | null {
+  const reaction = payload?.msgContent?.reactionMessage || data?.msgContent?.reactionMessage;
+  if (!reaction) return null;
+
+  // Reacao a mensagem comum tem o chat do contato como destino e segue o caminho
+  // normal; aqui so interessa a que aponta para um story.
+  const citado = firstString(reaction?.key?.remoteJID, reaction?.key?.remoteJid).toLowerCase();
+  if (!citado.includes('status@broadcast')) return null;
+
+  const autorDoStory = firstString(reaction?.key?.participant).toLowerCase();
+  if (!autorDoStory) return null;
+
+  const nossoLid = firstString(payload?.connectedLid, data?.connectedLid).toLowerCase();
+  const nossoTelefone = normalizePhone(firstString(payload?.connectedPhone, data?.connectedPhone));
+  const storyEhDaLoja =
+    (Boolean(nossoLid) && autorDoStory === nossoLid) ||
+    (Boolean(nossoTelefone) &&
+      /@(s.whatsapp.net|c.us)$/.test(autorDoStory) &&
+      normalizePhone(autorDoStory.replace(/D/g, '')) === nossoTelefone);
+  if (!storyEhDaLoja) return null;
+
+  // Tirar a reacao nao e levantar a mao: sem emoji nao ha o que responder.
+  const emoji = firstString(reaction?.text);
+  if (!emoji) return null;
+
+  // Na reacao o provedor nunca entregou telefone (135 de 135 em producao vieram
+  // so com LID), mas o envio aceita o `@lid` no lugar do numero.
+  const lid = extractSenderLid(payload, data);
+  const bruto = firstString(payload?.sender?.id, data?.sender?.id);
+  const telefone = normalizePhone(bruto);
+  const temTelefone =
+    telefone.length >= 12 && telefone.length <= 13 && !ehOProprioLid(bruto, telefone, lid);
+  if (!temTelefone && !lid) return null;
+
+  const pushName = firstString(
+    payload?.sender?.pushName,
+    payload?.sender?.name,
+    payload?.pushName,
+    data?.sender?.pushName,
+    data?.sender?.name,
+    data?.pushName,
+  );
+
+  return {
+    phone: temTelefone ? telefone : '',
+    address: temTelefone ? telefone : lid,
+    text: emoji,
+    timestamp: 0,
+    pushName: String(pushName || '').trim().slice(0, 80),
+    senderLid: lid,
+  };
+}
+
 function isReceivedWebhook(event: string, hook?: string) {
   if (hook) return hook === 'received';
   return String(event || '').trim().toLowerCase().includes('received') || String(event || '').trim().toLowerCase() === 'message';
@@ -217,8 +317,16 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
 
   const data = payload?.data || payload?.message || payload;
 
-  // ── Layer 1: Explicit boolean flags from W-API ──
+  // Grupo e mensagem nossa nunca respondem — nem em forma de reacao.
   if (payload?.isGroup || payload?.isGroupMsg || data?.isGroup || data?.isGroupMsg) return null;
+  if (isFromMe(payload, data)) return null;
+
+  // Unica excecao ao bloqueio de status, e ela vem ANTES das camadas justamente
+  // por ser um `chat.id = "status"` legitimo. Ver `extractStoryReaction`.
+  const storyReaction = extractStoryReaction(payload, data);
+  if (storyReaction) return storyReaction;
+
+  // ── Layer 1: Explicit boolean flags from W-API ──
   if (payload?.isStatus || payload?.isStatusMsg || data?.isStatus || data?.isStatusMsg) return null;
   if (payload?.isStatusV3 || data?.isStatusV3) return null;
   if (payload?.isViewOnce || data?.isViewOnce) return null;
@@ -256,19 +364,6 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
     console.log('[W-API webhook] Bloqueado por deep scan (status/grupo detectado no payload)');
     return null;
   }
-
-  const fromMe = Boolean(
-    payload?.fromMe ||
-    payload?.key?.fromMe ||
-    payload?.message?.key?.fromMe ||
-    payload?.id?.fromMe ||
-    data?.fromMe ||
-    data?.key?.fromMe ||
-    data?.message?.fromMe ||
-    data?.message?.key?.fromMe ||
-    data?.id?.fromMe
-  );
-  if (fromMe) return null;
 
   const rawPhone = firstString(
     payload?.phone,
@@ -350,16 +445,18 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
   const hasMessageShape = Boolean(text || payload?.body || payload?.text || payload?.message || data?.body || data?.text || data?.message);
   if (!looksLikeMessageEvent && !hasMessageShape) return null;
 
+  // Contato novo, fora da agenda da loja: a W-API entrega so o @lid, sem
+  // telefone nenhum. Antes a mensagem morria aqui — era justamente o cliente
+  // novo que clicou no link da loja e mandou "oi" que ficava sem resposta.
+  const lid = extractSenderLid(payload, data);
+
   const phone = normalizePhone(rawPhone);
   // So numero BR plausivel: 55 + DDD + 8-9 digitos = 12-13. LIDs numericos
   // (13-15 digitos) passam de 15 com o prefixo 55 e ficam de fora — o que cai
   // aqui NAO e telefone, e tratar como se fosse manda mensagem pra estranho.
-  const hasPhone = phone.length >= 12 && phone.length <= 13;
-
-  // Contato novo, fora da agenda da loja: a W-API entrega so o @lid, sem
-  // telefone nenhum. Antes a mensagem morria aqui — era justamente o cliente
-  // novo que clicou no link da loja e mandou "oi" que ficava sem resposta.
-  const lid = hasPhone ? '' : extractSenderLid(payload, data);
+  // Os poucos que cabem na faixa sao pegos por `ehOProprioLid`.
+  const hasPhone =
+    phone.length >= 12 && phone.length <= 13 && !ehOProprioLid(rawPhone, phone, lid);
   if (!hasPhone && !lid) return null;
 
   const timestamp = Number(
@@ -396,5 +493,6 @@ export function extractIncomingMessage(payload: any, event: string, hook?: strin
     text,
     timestamp,
     pushName: String(pushName || '').trim().slice(0, 80),
+    senderLid: lid,
   };
 }
