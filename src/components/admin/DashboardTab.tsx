@@ -754,7 +754,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
               </p>
             ) : (
               <div className="divide-y">
-                {stats.recentOrders.map((venda) => {
+                {stats.recentOrders.map((venda, indice) => {
                   const o = venda.documento || {};
                   const status = STATUS_LABELS[o.status] || STATUS_LABELS.delivered;
                   const StatusIcon = status.Icon;
@@ -762,7 +762,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                   const TypeIcon = CANAL_ESTILO[canal]?.Icon || ShoppingBag;
                   const dt = new Date(venda.quando || 0);
                   return (
-                    <div key={venda.vinculo || venda.quando} className="flex items-center gap-3 py-3">
+                    <div key={venda.vinculo || `avulsa-${indice}`} className="flex items-center gap-3 py-3">
                       <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${status.bg}`}>
                         <StatusIcon className={`h-4 w-4 ${status.color}`} />
                       </div>
