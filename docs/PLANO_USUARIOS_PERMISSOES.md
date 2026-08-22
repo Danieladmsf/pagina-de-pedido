@@ -38,10 +38,14 @@ telas descobriam o tenant por `user.uid` (§5 previa trocar um a um).
 
 **Pendências desta rodada:**
 
-1. `npm run test:rules` **não rodou** na máquina do dono: o node.exe não
-   consegue abrir conexão nem para 127.0.0.1 (firewall/antivírus — testado com
-   um servidor HTTP local do próprio node). As regras estão commitadas mas
-   **não devem ir para produção** antes da suíte passar em algum lugar.
+1. ~~Regras não publicadas.~~ **Resolvido em 22/08/2026:** publicadas com
+   `firebase deploy --only firestore:rules` e validadas na loja de teste por
+   `scripts/validar-permissoes-loja-teste.mjs` — 17/17 cenários (eram 11/17
+   antes do deploy, o retrato exato de código novo com regras velhas). O
+   `npm run test:rules` continua impossível nesta máquina: o node.exe não abre
+   conexão nem para 127.0.0.1 (firewall/antivírus — testado com um servidor
+   HTTP local do próprio node), então o validador contra o Firestore real é o
+   caminho enquanto isso.
 2. O gate da tela `VisitantesPage` ficou no working tree: o arquivo tinha WIP
    de outra sessão e commitá-lo sozinho quebraria o build.
 3. Módulos liberados só para "ver" que ainda não têm tela de leitura própria
