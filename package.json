@@ -15,6 +15,7 @@
     "auditoria:clientes": "node scripts/auditoria-clientes.mjs",
     "audit:integridade": "node scripts/auditoria-integridade.mjs",
     "audit:faturamento": "node scripts/auditoria-faturamento.mjs",
+    "audit:estoque": "node scripts/auditoria-estoque.mjs",
     "migrar:integridade": "node scripts/migrar-integridade.mjs",
     "test:rules": "npx --yes firebase-tools@13.35.1 emulators:exec --only firestore --project demo-cardapio-rules \"node scripts/firestore-rules.test.mjs\""
   },
