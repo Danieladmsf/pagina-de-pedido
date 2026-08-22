@@ -39,6 +39,7 @@ import {
   type HistoryRow,
   type StockMovementType,
 } from '@/lib/stock-movements';
+import { ExtratoDoItemPage } from '@/components/admin/estoque/ExtratoDoItemPage';
 import { hasAnyVisibleToggle } from '@/lib/menu-visibility';
 import { removeAccents } from '@/lib/utils';
 import { getOrderCodePrefix } from '@/lib/order-code';
@@ -99,6 +100,12 @@ export function EstoqueTab({
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  /**
+   * Produto aberto no extrato (null = lista). Guarda o id, e não o objeto: a
+   * lista vem do realtime, e segurar a cópia velha faria a tela mostrar um
+   * estoque desatualizado logo depois de lançar uma entrada.
+   */
+  const [itemAbertoId, setItemAbertoId] = useState<string | null>(null);
 
   // Movimentação em edição (null = modal fechado)
   const [pending, setPending] = useState<{ item: any; type: StockMovementType } | null>(null);
@@ -359,6 +366,26 @@ export function EstoqueTab({
     return <Badge className="bg-emerald-600 hover:bg-emerald-700">{stock} un.</Badge>;
   };
 
+  const itemAberto = useMemo(
+    () => (itemAbertoId ? (items || []).find((i) => i.id === itemAbertoId) || null : null),
+    [itemAbertoId, items],
+  );
+
+  if (itemAberto) {
+    return (
+      <ExtratoDoItemPage
+        item={itemAberto}
+        items={items}
+        movimentos={movements as any[]}
+        pedidos={orders}
+        canEdit={canEdit && !isDerived(itemAberto)}
+        onVoltar={() => setItemAbertoId(null)}
+        onEntrada={() => openMovement(itemAberto, 'entrada')}
+        onSaida={() => openMovement(itemAberto, 'saida')}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5">
       {!enableInventory && (
@@ -527,7 +554,16 @@ export function EstoqueTab({
               ) : filteredItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="pl-6">
-                    <div className="font-medium text-slate-800">{item.name}</div>
+                    {/* O nome abre o extrato: é onde a dona vai quando o físico
+                        não bate, e antes não havia para onde ir a partir daqui. */}
+                    <button
+                      type="button"
+                      onClick={() => setItemAbertoId(item.id)}
+                      className="text-left font-medium text-slate-800 underline-offset-4 hover:text-emerald-700 hover:underline"
+                      title="Ver tudo que entrou e saiu deste produto"
+                    >
+                      {item.name}
+                    </button>
                     {item.isCombo && (
                       <span className="text-[11px] text-muted-foreground">combo · o estoque vem dos itens que o compõem</span>
                     )}
