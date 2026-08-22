@@ -5,7 +5,6 @@ import {
   ArrowDownCircle,
   ArrowLeft,
   ArrowUpCircle,
-  CheckCircle2,
   Download,
   PackageSearch,
   PowerOff,
@@ -152,8 +151,10 @@ export function ExtratoDoItemPage({
         />
       </div>
 
-      {/* O veredito da conferência */}
-      <div className="shrink-0 px-2">
+      {/* Aviso — só quando há algo a dizer. Extrato que fecha não precisa de
+          selo de aprovação: o silêncio já é a resposta, e a conta está à vista
+          na coluna "Ficou com". */}
+      <div className={`shrink-0 px-2 ${!controlado || conferencia.pontos === 0 || temDivergencia ? '' : 'hidden'}`}>
         {!controlado ? (
           <Aviso tom="slate" Icon={PowerOff}>
             Este produto não é contado. As vendas não descontam nada e ele nunca aparece como esgotado.
@@ -165,25 +166,25 @@ export function ExtratoDoItemPage({
             O app compara o que havia no estoque com o que as vendas deixaram, e avisa se não bater.
           </Aviso>
         ) : temDivergencia ? (
+          // Sem insinuação: a tela diz o que os números mostram e onde olhar.
+          // Quem lê é a dona da loja, não um suspeito.
           <Aviso tom="amber" Icon={TriangleAlert}>
-            <strong>
-              {conferencia.ok} de {conferencia.pontos} conferência{conferencia.pontos === 1 ? '' : 's'} fecharam.
-            </strong>{' '}
-            {conferencia.totalDivergente !== 0 && (
+            {conferencia.totalDivergente !== 0 ? (
               <>
-                Em algum momento {conferencia.totalDivergente < 0 ? 'sumiram' : 'apareceram'}{' '}
-                <strong>{Math.abs(conferencia.totalDivergente)} unidade{Math.abs(conferencia.totalDivergente) === 1 ? '' : 's'}</strong>{' '}
-                sem passar pelo app — as linhas marcadas abaixo mostram o dia.{' '}
+                Nas linhas marcadas abaixo o estoque estava{' '}
+                <strong>
+                  {Math.abs(conferencia.totalDivergente)} unidade
+                  {Math.abs(conferencia.totalDivergente) === 1 ? '' : 's'}{' '}
+                  {conferencia.totalDivergente < 0 ? 'abaixo' : 'acima'}
+                </strong>{' '}
+                do que as vendas deixavam.{' '}
               </>
+            ) : (
+              <>O estoque de hoje está diferente do que este extrato soma. </>
             )}
-            Costuma ser doce consumido, quebrado ou dado de brinde. Lance como <strong>Saída</strong> para a conta voltar a fechar.
+            Consumo, quebra e brinde entram aqui: lançados como <strong>Saída</strong>, a contagem acompanha.
           </Aviso>
-        ) : (
-          <Aviso tom="emerald" Icon={CheckCircle2}>
-            <strong>A conta fecha.</strong> {conferencia.pontos === 1 ? 'A conferência feita' : `As ${conferencia.pontos} conferências feitas`}{' '}
-            {conferencia.pontos === 1 ? 'bateu' : 'bateram'} com o que as vendas deixaram — nada saiu por fora do app.
-          </Aviso>
-        )}
+        ) : null}
       </div>
 
       {/* O extrato */}
@@ -278,9 +279,12 @@ function LinhaDoHistorico({ linha }: { linha: LinhaDoExtrato }) {
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
-                Aqui a conta não fechou: quando esta {rotuloDoTipo(linha.tipo).toLowerCase()} foi lançada, havia{' '}
-                <strong>{Math.abs(linha.diferenca!)} unidade{Math.abs(linha.diferenca!) === 1 ? '' : 's'} a {linha.diferenca! < 0 ? 'menos' : 'mais'}</strong>{' '}
-                do que as vendas deixavam. A diferença nasceu entre esta linha e a conferência anterior.
+                Nesta data o estoque estava{' '}
+                <strong>
+                  {Math.abs(linha.diferenca!)} unidade{Math.abs(linha.diferenca!) === 1 ? '' : 's'}{' '}
+                  {linha.diferenca! < 0 ? 'abaixo' : 'acima'}
+                </strong>{' '}
+                do que as vendas deixavam. A diferença aconteceu entre esta linha e a marcação anterior.
               </span>
             </div>
           </TableCell>
@@ -324,7 +328,7 @@ function Aviso({
   children,
 }: {
   tom: 'emerald' | 'amber' | 'slate';
-  Icon: typeof CheckCircle2;
+  Icon: typeof TriangleAlert;
   children: React.ReactNode;
 }) {
   const cores = {
