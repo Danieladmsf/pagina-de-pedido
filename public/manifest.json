@@ -2,7 +2,7 @@
   "name": "Cardápio Digital",
   "short_name": "Cardápio",
   "description": "Cardápio digital e gestão de pedidos",
-  "start_url": "/",
+  "start_url": "/pdv",
   "display": "standalone",
   "background_color": "#FAFAF7",
   "theme_color": "#ffffff",

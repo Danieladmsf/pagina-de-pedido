@@ -12,7 +12,7 @@ import { Loader2 } from 'lucide-react';
 // inteira, o HTML servido saía com um spinner e mais nada — o buscador recebia
 // uma página em branco. Como estas rotas não dependem de dados da loja, elas
 // renderizam de primeira, no servidor, com o texto pronto.
-const ROTAS_SEM_FIREBASE = ['/polaris'];
+const ROTAS_SEM_FIREBASE = ['/', '/polaris'];
 
 interface FirebaseClientProviderProps {
   children: ReactNode;
