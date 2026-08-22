@@ -44,7 +44,6 @@ import {
   type PeriodoDoRelatorio,
   type PresetDoRelatorio,
 } from '@/lib/relatorios/periodo';
-import { vendasNaJanela } from '@/lib/relatorios/venda';
 import {
   filtrarRanking,
   ordenarRanking,
@@ -54,6 +53,7 @@ import {
 } from '@/lib/relatorios/ranking';
 import { balanceteMensal } from '@/lib/relatorios/balancete';
 import { encomendasComoVendas } from '@/lib/relatorios/encomendas';
+import { vendasDoPeriodo } from '@/lib/faturamento';
 import { csvDoBalancete, csvDoRanking, nomeDoArquivo } from '@/lib/relatorios/export';
 
 interface RelatoriosTabProps {
@@ -116,6 +116,25 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
     [db, ownerId, ehConfeitaria],
   );
   const { data: encomendasRaw } = useCollection(encomendasQuery);
+
+  /**
+   * O dinheiro vem do caixa, igual ao Dashboard e à aba Caixa.
+   *
+   * O faturamento saía da soma dos documentos: o pedido pelo `totalAmount` e a
+   * encomenda pelo `total` inteiro, na data em que foi encomendada. Isso conta
+   * como recebido o que ainda não foi pago — em 22/08/2026 a Gostinho tinha
+   * R$ 413,00 de encomenda entregue ou confirmada sem o pagamento completo, e
+   * esse valor entrava no faturamento do mês assim mesmo. O ranking de produtos
+   * continua por data da venda, que é o que responde "o que mais saiu".
+   */
+  const lancamentosQuery = useMemoFirebase(
+    () =>
+      db && ownerId
+        ? query(collection(db, 'cash_transactions'), where('ownerId', '==', ownerId))
+        : null,
+    [db, ownerId],
+  );
+  const { data: lancamentosRaw } = useCollection(lancamentosQuery);
   // O catálogo entra para o relatório usar os nomes que a LOJA deu às seções:
   // aqui o slot interno "tortas" é "Brigadeiros" e "docinhos" é "Doces Finos".
   const catalogoDeEncomenda = storeProfile?.encomendas?.catalog;
@@ -135,14 +154,24 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
   const janela = useMemo(() => janelaDoRelatorio(periodo), [periodo]);
 
   const resumo = useMemo(() => {
-    const dentro = vendasNaJanela(vendas, janela);
-    const faturamento = emDinheiro(dentro.reduce((soma, v) => soma + (Number(v.venda.totalAmount) || 0), 0));
+    const doPeriodo = vendasDoPeriodo({
+      lancamentos: lancamentosRaw || [],
+      pedidos: Array.isArray(orders) ? orders : [],
+      encomendas: encomendasRaw || [],
+      de: janela.inicio,
+      ate: janela.fim,
+    }).filter((venda) => {
+      if (filtroOrigem === 'encomendas') return venda.origem === 'encomenda';
+      if (filtroOrigem === 'cardapio') return venda.origem !== 'encomenda';
+      return true;
+    });
+    const faturamento = emDinheiro(doPeriodo.reduce((soma, venda) => soma + venda.valor, 0));
     return {
       faturamento,
-      vendas: dentro.length,
-      ticketMedio: dentro.length ? emDinheiro(faturamento / dentro.length) : 0,
+      vendas: doPeriodo.length,
+      ticketMedio: doPeriodo.length ? emDinheiro(faturamento / doPeriodo.length) : 0,
     };
-  }, [vendas, janela]);
+  }, [lancamentosRaw, orders, encomendasRaw, janela, filtroOrigem]);
 
   const ranking = useMemo(
     () => rankingDeProdutos(vendas, { janela, catalogo: items, categorias: categories }),

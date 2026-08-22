@@ -21,6 +21,7 @@ import {
   type FreelancerDoCaixa,
 } from '@/lib/caixa/freelancers';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
+import { resumoDeVendasDoCaixa, type ResumoDeVendas } from '@/lib/faturamento';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { AcertoPrazoDetalhe } from '@/components/caixa/AcertoPrazoDetalhe';
@@ -28,7 +29,7 @@ import { isAcertoPrazo } from '@/lib/acerto-prazo-link';
 import { encomendaComoPedido } from '@/lib/encomendas/pedido';
 import { isUnlinkedLegacyCashSale, matchCashSaleSource } from '@/lib/order-linking';
 import { getOrderCodePrefix } from '@/lib/order-code';
-import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw } from 'lucide-react';
+import { Plus, Minus, Loader2, Search, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, Trash2, UserPlus, Bike, ShoppingBag, UtensilsCrossed, Printer, BarChart3, Receipt, Eye, History, ArrowLeft, X, RotateCcw, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
@@ -232,6 +233,13 @@ export function CaixaTab({
 
     return { saldoInicial, valorEmCaixa, totalSangria, totalSangriaDinheiro, totalSuprimento, totalSuprimentoDinheiro, totalCredito, totalDebito, totalDinheiro, totalPix, totalPrazo };
   }, [lancamentos]);
+
+  /**
+   * Quanto a loja vendeu nesta sessão. A regra é a mesma do Dashboard
+   * (`lib/faturamento`): pedido + encomenda + venda avulsa, com o fiado
+   * recebido à parte, porque aquela venda já foi contada no dia da compra.
+   */
+  const resumoDeVendas = useMemo(() => resumoDeVendasDoCaixa(lancamentos), [lancamentos]);
 
   const sangriasDinheiro = useMemo(() => {
     return lancamentos.filter(lanc =>
@@ -997,6 +1005,7 @@ export function CaixaTab({
       dataHora,
       reimpressaoEm,
       totais,
+      vendas: resumoDeVendas,
       vendasCanceladas: { quantidade: vendasCanceladas.length, total: totalVendasCanceladas },
       taxaGarcom: { valor: taxaGarcomCalculada, label: feeLabel, pedidos: pedidosDaSessao.length },
       totalMotoboys,
@@ -1160,6 +1169,9 @@ export function CaixaTab({
               </SelectContent>
             </Select>
           </div>
+
+          {/* ─── Total de vendas da sessão ─── */}
+          <TotalDeVendasCard resumo={resumoDeVendas} />
 
           {/* ─── Cards Totalizadores (9 Cards) ─── */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3 shrink-0">
@@ -2607,6 +2619,47 @@ function SummaryCard({ label, value, color, border }: { label: string; value: nu
     <div className={`${color} text-white rounded-xl px-3 py-2 flex flex-col justify-center items-center shadow-sm ${border ? 'ring-2 ring-white/50' : ''}`}>
       <span className="text-[10px] uppercase tracking-wider font-bold opacity-90">{label}</span>
       <span className="text-base font-black whitespace-nowrap leading-tight">{brl(value)}</span>
+    </div>
+  );
+}
+
+/**
+ * O número que faltava: quanto a loja vendeu nesta sessão.
+ *
+ * A tela sempre teve as cinco formas de pagamento separadas e nenhum total, e
+ * a dona somava na calculadora para saber o dia. Aqui é a soma de tudo que foi
+ * vendido — pedido, encomenda e venda avulsa — com o detalhe por origem embaixo,
+ * porque "R$ 441" sem dizer que R$ 260 vieram de encomenda não explica o dia.
+ */
+function TotalDeVendasCard({ resumo }: { resumo: ResumoDeVendas }) {
+  const partes = [
+    { label: 'balcão e delivery', valor: resumo.porOrigem.pedido + resumo.porOrigem.avulsa },
+    { label: 'encomendas', valor: resumo.porOrigem.encomenda },
+  ].filter((p) => p.valor > 0);
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-2xl px-5 py-3 shadow-md flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 opacity-90" />
+          <span className="text-[11px] uppercase tracking-wider font-bold opacity-90">Total de Vendas</span>
+        </div>
+        <span className="block text-3xl font-black leading-tight tracking-tight">{brl(resumo.totalVendas)}</span>
+        {partes.length > 1 && (
+          <span className="block text-[11px] font-medium opacity-90">
+            {partes.map((p) => `${brl(p.valor)} em ${p.label}`).join(' · ')}
+          </span>
+        )}
+      </div>
+      {resumo.fiadoRecebido > 0 && (
+        <div className="text-right border-l border-white/25 pl-6">
+          <span className="block text-[10px] uppercase tracking-wider font-bold opacity-90">Fiado recebido</span>
+          <span className="block text-xl font-black leading-tight">{brl(resumo.fiadoRecebido)}</span>
+          {/* Dívida antiga que foi paga hoje: entrou dinheiro, mas a venda já
+              foi contada no dia da compra. Somar nas vendas contaria duas vezes. */}
+          <span className="block text-[10px] opacity-80">de compras anteriores</span>
+        </div>
+      )}
     </div>
   );
 }

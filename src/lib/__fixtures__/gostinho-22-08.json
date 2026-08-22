@@ -1,0 +1,540 @@
+{
+  "lancamentos": [
+    {
+      "id": "0uvFnVv2bwWfnXZCW3WA",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "Encomenda MT0BA - Entrega (Cliente 9)",
+      "valor": 100,
+      "formaPagamento": "debito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "encomendaId": "MT0BAZEIDW0FMU",
+      "data": "2026-08-22T14:58:39.460Z"
+    },
+    {
+      "id": "56LmKCjxIE4ikls3tjn7",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #6XYTQ - Balcão",
+      "valor": 8,
+      "formaPagamento": "debito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "3tk5DgUwMZlQF2jDH7gE",
+      "data": "2026-08-22T17:34:11.282Z"
+    },
+    {
+      "id": "6I3lROXhvYax9MCJIJM1",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #C9P4V - Balcão",
+      "valor": 40,
+      "formaPagamento": "pix",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "28sR5FWaSRRXxhNBtXOr",
+      "data": "2026-08-22T15:00:15.721Z"
+    },
+    {
+      "id": "DNK20rvTvzJSoFjl6K3p",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #AZ6MB - Balcão",
+      "valor": 20,
+      "formaPagamento": "dinheiro",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "rQtrCGf5PVka6PCnHbJ8",
+      "data": "2026-08-22T16:04:23.721Z"
+    },
+    {
+      "id": "K9tPxTbgSbEvSTjuzzSt",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #H1PRQ - Balcão",
+      "valor": 26,
+      "formaPagamento": "debito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "SG4Nn0bfWqh8lOkvtx6q",
+      "data": "2026-08-22T16:06:13.035Z"
+    },
+    {
+      "id": "LJkCGdfYrE2zemb9n7IN",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "Delivery #NMO87 - SAMANTHA FREIRE",
+      "valor": 38,
+      "formaPagamento": "debito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "euIORuI3udK1aio4XE4O",
+      "data": "2026-08-22T15:36:40.601Z"
+    },
+    {
+      "id": "opLJ85r0trk0ZQNnKkEs",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #5IW45 - Balcão",
+      "valor": 41,
+      "formaPagamento": "credito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "z5YQCMBeG94wfBECfZos",
+      "data": "2026-08-22T16:07:07.447Z"
+    },
+    {
+      "id": "r0PGmjEKmx6NNAGMnQch",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "abertura",
+      "titulo": "Abertura de Caixa",
+      "valor": 12,
+      "formaPagamento": "--",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "data": "2026-08-22T13:11:43.803Z"
+    },
+    {
+      "id": "s7VRmNQn9RzDPdjEnuSi",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "PDV #ZYKV9 - Balcão",
+      "valor": 16,
+      "formaPagamento": "dinheiro",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "orderId": "qWkMHzzlKRpQWxNtzttp",
+      "data": "2026-08-22T15:37:04.011Z"
+    },
+    {
+      "id": "zstqoh9ZvsKM5YaVxCfY",
+      "caixaId": "Vtm280Z3cleB6lJaFF3a",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "tipo": "venda",
+      "titulo": "Encomenda ZEQ5P - Entrega (Cliente 12)",
+      "valor": 160,
+      "formaPagamento": "debito",
+      "criadoPorUid": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "usuario": "Operadora",
+      "encomendaId": "ZEQ5PNX4",
+      "data": "2026-08-22T14:58:45.524Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "28sR5FWaSRRXxhNBtXOr",
+      "orderCode": "C9P4VUKS",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 1",
+      "clienteId": "5Hg3VG3qYAZNsobVnReK9aPntjx1_16991259859",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "tUyFLtmRJxKCAjUIJrHS",
+          "name": "Caseiro de Cuca com Banana e Doce de Leite ",
+          "quantity": 1,
+          "unitPrice": 40,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 40,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 40,
+      "paymentMethod": "Pix",
+      "payments": [
+        {
+          "formaId": "pix",
+          "forma": "Pix",
+          "valor": 40
+        }
+      ],
+      "orderDateTime": "2026-08-22T15:00:09.529Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "tUyFLtmRJxKCAjUIJrHS": 1
+      },
+      "createdAt": "2026-08-22T15:00:11.531Z",
+      "customerCounted": true,
+      "customerIdentityPending": false,
+      "customerIdentityConflict": false
+    },
+    {
+      "id": "3tk5DgUwMZlQF2jDH7gE",
+      "orderCode": "6XYTQG43",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 2",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "sB2wP1BmjAwWp2hK2GM9",
+          "name": "Brigadeiro gourmet 30g",
+          "quantity": 2,
+          "unitPrice": 4,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 8,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 8,
+      "paymentMethod": "Débito",
+      "payments": [
+        {
+          "formaId": "debito",
+          "forma": "Débito",
+          "valor": 8
+        }
+      ],
+      "orderDateTime": "2026-08-22T17:34:09.924Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "sB2wP1BmjAwWp2hK2GM9": 2
+      },
+      "createdAt": "2026-08-22T17:34:10.755Z"
+    },
+    {
+      "id": "SG4Nn0bfWqh8lOkvtx6q",
+      "orderCode": "H1PRQ6ST",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 2",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "d9C1zqFk4fTikuQjH8Ry",
+          "name": "Escondidinho de Brownie Dois Amores",
+          "quantity": 2,
+          "unitPrice": 13,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 26,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 26,
+      "paymentMethod": "Débito",
+      "payments": [
+        {
+          "formaId": "debito",
+          "forma": "Débito",
+          "valor": 26
+        }
+      ],
+      "orderDateTime": "2026-08-22T16:06:11.821Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "d9C1zqFk4fTikuQjH8Ry": 2
+      },
+      "createdAt": "2026-08-22T16:06:12.495Z"
+    },
+    {
+      "id": "euIORuI3udK1aio4XE4O",
+      "orderCode": "NMO87VCZ",
+      "customerUid": "yy8sR3PalKOsVA2rFtauW6Zb4YS2",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 3",
+      "clienteId": "5Hg3VG3qYAZNsobVnReK9aPntjx1_16992570322",
+      "customerBirthDate": "12/11/1982",
+      "customerEmail": "",
+      "orderDateTime": "2026-08-22T15:16:38.870Z",
+      "totalAmount": 38,
+      "subtotal": 38,
+      "deliveryFee": 0,
+      "payDeliveryToMotoboy": false,
+      "distanceKm": null,
+      "paymentStatus": "pending",
+      "orderType": "pickup",
+      "source": "cardapio",
+      "items": [
+        {
+          "id": "hh8dejCWTPdpgOPajF92",
+          "name": "Caseiro Dois Amores",
+          "quantity": 1,
+          "unitPrice": 38,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "hh8dejCWTPdpgOPajF92": 1
+      },
+      "createdAt": "2026-08-22T15:16:41.640Z",
+      "receivedMessageSent": true,
+      "payments": [
+        {
+          "formaId": "debito",
+          "forma": "Débito",
+          "valor": 38
+        }
+      ],
+      "paymentMethod": "Débito",
+      "status": "delivered",
+      "customerCounted": true,
+      "customerIdentityPending": false,
+      "customerIdentityConflict": false
+    },
+    {
+      "id": "qWkMHzzlKRpQWxNtzttp",
+      "orderCode": "ZYKV9N7K",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 2",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "sB2wP1BmjAwWp2hK2GM9",
+          "name": "Brigadeiro gourmet 30g",
+          "quantity": 4,
+          "unitPrice": 4,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 16,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 16,
+      "paymentMethod": "Dinheiro (Troco para R$ 20.00)",
+      "payments": [
+        {
+          "formaId": "dinheiro",
+          "forma": "Dinheiro",
+          "valor": 16
+        }
+      ],
+      "orderDateTime": "2026-08-22T15:37:03.134Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "sB2wP1BmjAwWp2hK2GM9": 4
+      },
+      "createdAt": "2026-08-22T15:37:03.786Z"
+    },
+    {
+      "id": "rQtrCGf5PVka6PCnHbJ8",
+      "orderCode": "AZ6MB3KL",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 2",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "aj1uALHRojHqd1RDI62c",
+          "name": "Fatia de ninho com abacaxi ",
+          "quantity": 1,
+          "unitPrice": 20,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 20,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 20,
+      "paymentMethod": "Dinheiro",
+      "payments": [
+        {
+          "formaId": "dinheiro",
+          "forma": "Dinheiro",
+          "valor": 20
+        }
+      ],
+      "orderDateTime": "2026-08-22T16:04:21.406Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "aj1uALHRojHqd1RDI62c": 1
+      },
+      "createdAt": "2026-08-22T16:04:23.146Z"
+    },
+    {
+      "id": "z5YQCMBeG94wfBECfZos",
+      "orderCode": "5IW45YRM",
+      "ownerId": "5Hg3VG3qYAZNsobVnReK9aPntjx1",
+      "customerName": "Cliente 2",
+      "orderType": "pickup",
+      "items": [
+        {
+          "id": "BY47ahdaKilT71NlO2RL",
+          "name": "Espeto de Brownie Goumet ",
+          "quantity": 1,
+          "unitPrice": 24,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        },
+        {
+          "id": "OPg1ySrb8GR50IgMrYUR",
+          "name": "Coxinha de morango",
+          "quantity": 1,
+          "unitPrice": 17,
+          "saleUnit": "un",
+          "weightGrams": null,
+          "pricePerKg": null,
+          "addons": [],
+          "notes": "",
+          "isCombo": false,
+          "comboItems": null
+        }
+      ],
+      "status": "delivered",
+      "source": "pdv",
+      "paymentRegistered": true,
+      "subtotal": 41,
+      "deliveryFee": 0,
+      "discount": 0,
+      "surcharge": 0,
+      "distanceKm": null,
+      "totalAmount": 41,
+      "paymentMethod": "Crédito",
+      "payments": [
+        {
+          "formaId": "credito",
+          "forma": "Crédito",
+          "valor": 41
+        }
+      ],
+      "orderDateTime": "2026-08-22T16:07:06.361Z",
+      "stockDeducted": true,
+      "stockDeductedItems": {
+        "BY47ahdaKilT71NlO2RL": 1,
+        "OPg1ySrb8GR50IgMrYUR": 1
+      },
+      "createdAt": "2026-08-22T16:07:07.250Z"
+    }
+  ],
+  "encomendas": [
+    {
+      "id": "0OH2P8RX",
+      "customerName": "Cliente 4",
+      "total": 200,
+      "status": "cancelada"
+    },
+    {
+      "id": "GPBR520P",
+      "customerName": "Cliente 5",
+      "total": 91,
+      "status": "cancelada"
+    },
+    {
+      "id": "MS67NNUYGVRUY8",
+      "customerName": "Cliente 6",
+      "total": 160,
+      "status": "entregue"
+    },
+    {
+      "id": "MT07ZFZFXBW14C",
+      "customerName": "Cliente 7",
+      "total": 106,
+      "status": "confirmada"
+    },
+    {
+      "id": "MT085HN56UWLPM",
+      "customerName": "Cliente 8",
+      "total": 240,
+      "status": "cancelada"
+    },
+    {
+      "id": "MT08QNKTMN58IC",
+      "customerName": "Cliente 8",
+      "total": 240,
+      "status": "confirmada"
+    },
+    {
+      "id": "MT0BAZEIDW0FMU",
+      "customerName": "Cliente 9",
+      "total": 175,
+      "status": "entregue"
+    },
+    {
+      "id": "OSF2LOSG",
+      "customerName": "Cliente 10",
+      "total": 91,
+      "status": "cancelada"
+    },
+    {
+      "id": "P07ROB2D",
+      "customerName": "Cliente 10",
+      "total": 350,
+      "status": "cancelada"
+    },
+    {
+      "id": "WEQOR2R6",
+      "customerName": "Cliente 11",
+      "total": 240,
+      "status": "entregue"
+    },
+    {
+      "id": "ZEQ5PNX4",
+      "customerName": "Cliente 12",
+      "total": 320,
+      "status": "entregue"
+    }
+  ]
+}

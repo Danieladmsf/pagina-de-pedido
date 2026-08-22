@@ -231,6 +231,17 @@ export type FechamentoCaixaData = {
   /** Preenchido só quando é 2ª via de um caixa já fechado. */
   reimpressaoEm?: string | null;
   totais: TotaisFechamentoCaixa;
+  /**
+   * O total que o bloco RESUMO DE VENDAS nunca imprimiu: as cinco formas saíam
+   * soltas e quem conferia somava à mão. Opcional para o cupom antigo (e os
+   * testes dele) continuarem válidos sem a linha.
+   */
+  vendas?: {
+    totalVendas: number;
+    fiadoRecebido: number;
+    totalRecebido: number;
+    porOrigem: { pedido: number; encomenda: number; avulsa: number };
+  };
   vendasCanceladas: { quantidade: number; total: number };
   taxaGarcom: { valor: number; label: string; pedidos: number };
   totalMotoboys: number;
@@ -263,10 +274,30 @@ function tabelaPagamentos(titulo: string, linhas: LinhaPagamentoCaixa[], totalPa
 
 export function buildFechamentoCaixaHtml(data: FechamentoCaixaData): string {
   const {
-    storeInfo, sessao, isFechado, dataHora, reimpressaoEm, totais, vendasCanceladas,
+    storeInfo, sessao, isFechado, dataHora, reimpressaoEm, totais, vendas, vendasCanceladas,
     taxaGarcom, totalMotoboys, totalFreelancers, valorEsperado,
     motoboys, freelancers, sangriasDinheiro, apuracao,
   } = data;
+
+  /**
+   * O fecho do resumo de vendas. A encomenda aparece na própria linha porque
+   * numa confeitaria ela é o ticket alto do dia, e o fiado recebido fica fora
+   * do total de vendas (a venda foi contada no dia da compra) mas dentro do
+   * total recebido, que é o dinheiro que passou pelo caixa hoje.
+   */
+  const totalVendasBlock = vendas ? `
+        <div class="row bold" style="border-top:1px dashed #000; margin-top:3px; padding-top:3px;">
+          <span>TOTAL DE VENDAS</span><span>${brl(vendas.totalVendas)}</span>
+        </div>
+        ${vendas.porOrigem.encomenda > 0 ? `
+          <div class="row"><span>&nbsp;&nbsp;· Balcão e delivery</span><span>${brl(vendas.porOrigem.pedido + vendas.porOrigem.avulsa)}</span></div>
+          <div class="row"><span>&nbsp;&nbsp;· Encomendas</span><span>${brl(vendas.porOrigem.encomenda)}</span></div>
+        ` : ''}
+        ${vendas.fiadoRecebido > 0 ? `
+          <div class="row"><span>(+) Fiado recebido (compras anteriores)</span><span>${brl(vendas.fiadoRecebido)}</span></div>
+          <div class="row bold"><span>TOTAL RECEBIDO NO CAIXA</span><span>${brl(vendas.totalRecebido)}</span></div>
+        ` : ''}
+      ` : '';
 
   const motoboyBlock = tabelaPagamentos('MOTOBOYS / ENTREGAS', motoboys, totalMotoboys);
   const freelancerBlock = tabelaPagamentos('FREELANCERS / EXTRAS', freelancers, totalFreelancers);
@@ -318,6 +349,7 @@ export function buildFechamentoCaixaHtml(data: FechamentoCaixaData): string {
         <div class="row"><span>Débito</span><span>${brl(totais.totalDebito)}</span></div>
         <div class="row"><span>Crédito</span><span>${brl(totais.totalCredito)}</span></div>
         <div class="row"><span>Prazo</span><span>${brl(totais.totalPrazo)}</span></div>
+        ${totalVendasBlock}
         ${vendasCanceladas.quantidade > 0 ? `<div class="row"><span>Vendas canceladas (${vendasCanceladas.quantidade}) — não somam</span><span>${brl(vendasCanceladas.total)}</span></div>` : ''}
       </div>
 

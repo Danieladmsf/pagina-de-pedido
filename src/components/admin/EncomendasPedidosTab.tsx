@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Encomenda, EncomendaStatus, ENCOMENDA_STATUS_LABEL } from '@/lib/encomendas/types';
 import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { saldoAReceber, valorRecebido } from '@/lib/encomendas/pagamento';
+import { idDoLancamentoDeEncomenda } from '@/lib/encomendas/lancamento-id';
 import { buildEncomendaConfig } from '@/lib/encomendas/config';
 import { EncomendaBalcaoPage, type EncomendaBalcaoResult } from '@/components/admin/EncomendaBalcaoPage';
 import { FechamentoModal } from '@/components/admin/fechamento/FechamentoModal';
@@ -65,6 +66,10 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [editing, setEditing] = useState<(Encomenda & { id: string }) | null>(null);
   const [lancandoId, setLancandoId] = useState<string | null>(null);
+  // Encomendas com lançamento em voo. É um ref, e não estado, porque a trava
+  // precisa valer no MESMO clique: o React só reflete o estado no próximo
+  // render, e o segundo clique acontece antes disso.
+  const lancandoRef = React.useRef<Set<string>>(new Set());
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId), [ownerId, user]);
   const [novaAberta, setNovaAberta] = useState(false);
   // Encomenda que está sendo entregue: abre o mesmo fechamento dos pedidos.
@@ -154,15 +159,24 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
       toast({ variant: 'destructive', title: 'Caixa fechado', description: 'Abra o caixa e use "Lançar sinal no caixa" no card da encomenda.' });
       return false;
     }
+    // Trava síncrona: `sinalLancado` só fica true depois da gravação, e dois
+    // cliques seguidos entravam os dois antes disso (ver `lancamento-id`).
+    if (lancandoRef.current.has(enc.id)) return false;
+    lancandoRef.current.add(enc.id);
     setLancandoId(enc.id);
     try {
-      await registrarLancamento({
-        tipo: 'venda',
-        titulo: `Encomenda ${enc.id.substring(0, 5)} - Sinal (${enc.customerName})`,
-        valor: enc.sinal,
-        formaPagamento: 'pix',
-        encomendaId: enc.id,
-      });
+      await registrarLancamento(
+        {
+          tipo: 'venda',
+          titulo: `Encomenda ${enc.id.substring(0, 5)} - Sinal (${enc.customerName})`,
+          valor: enc.sinal,
+          formaPagamento: 'pix',
+          encomendaId: enc.id,
+        },
+        // Id fixo: se dois cliques (ou dois aparelhos) escaparem da trava acima,
+        // o segundo reescreve o mesmo lançamento em vez de criar outro.
+        { transactionId: idDoLancamentoDeEncomenda(enc.id, 'sinal') },
+      );
       await updateDoc(doc(db, 'encomendas', enc.id), {
         sinalLancado: true,
         // `valorPago` é o que diz quanto ainda falta na entrega.
@@ -175,6 +189,7 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
       toast({ variant: 'destructive', title: 'Erro ao lançar o sinal', description: 'O status foi mantido; tente pelo botão no card.' });
       return false;
     } finally {
+      lancandoRef.current.delete(enc.id);
       setLancandoId(null);
     }
   }
@@ -231,13 +246,18 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
     // O formulário só deixa receber com o caixa aberto, então aqui é lançar.
     if (pago.valor > 0 && registrarLancamento) {
       try {
-        await registrarLancamento({
-          tipo: 'venda',
-          titulo: `Encomenda ${id.substring(0, 5)} - Entrada (${enc.customerName})`,
-          valor: pago.valor,
-          formaPagamento: pago.forma,
-          encomendaId: id,
-        });
+        await registrarLancamento(
+          {
+            tipo: 'venda',
+            titulo: `Encomenda ${id.substring(0, 5)} - Entrada (${enc.customerName})`,
+            valor: pago.valor,
+            formaPagamento: pago.forma,
+            encomendaId: id,
+          },
+          // Mesma trava do sinal: a entrada acontece uma vez por encomenda, e
+          // com id fixo um clique repetido reescreve em vez de duplicar.
+          { transactionId: idDoLancamentoDeEncomenda(id, 'entrada') },
+        );
       } catch (err) {
         console.error('[encomendas] erro ao lançar a entrada no caixa:', err);
         toast({ variant: 'destructive', title: 'Erro ao lançar no caixa', description: 'A encomenda foi salva; lance a entrada pelo card.' });

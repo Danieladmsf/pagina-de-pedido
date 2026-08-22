@@ -43,8 +43,14 @@ import {
   canalDaVenda,
   type CanalDaVenda,
 } from '@/lib/order-channel';
-import { faturamentoPorPagamento } from '@/lib/payment-breakdown';
 import { resumoDaBaseDeClientes } from '@/lib/clientes/base-clientes';
+import { encomendaComoPedido } from '@/lib/encomendas/pedido';
+import {
+  faturamentoDoPeriodo,
+  porFormaDePagamento,
+  vendasDoPeriodo,
+  type VendaDoPeriodo,
+} from '@/lib/faturamento';
 
 interface DashboardTabProps {
   db: any;
@@ -91,6 +97,18 @@ const FORMA_CORES: Record<string, string> = {
 
 const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
 
+/**
+ * O que mostrar a `canalDaVenda` para uma venda do período.
+ *
+ * A encomenda não é um pedido e não tem `orderType`: o que a identifica é a
+ * marca `origem`, que é o que `canalDaVenda` já procura primeiro. A venda
+ * avulsa (lançada direto no caixa, sem pedido) é balcão — foi batida na loja.
+ */
+function canalDoDocumento(venda: VendaDoPeriodo) {
+  if (venda.origem === 'encomenda') return { origem: 'encomenda' };
+  return venda.documento || { source: 'pdv' };
+}
+
 function startOfDay(d: Date) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -115,6 +133,37 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
     [db, user]
   );
   const { data: clientesRaw } = useCollection(clientesQuery);
+
+  /**
+   * O caixa é a base do dinheiro nesta tela.
+   *
+   * Somar só `orders` deixava a encomenda inteira de fora — em 22/08/2026 a
+   * Gostinho de Céu vendeu R$ 441,00 e o Dashboard mostrava R$ 181,00, porque
+   * as duas encomendas entregues naquele dia (R$ 260,00) vivem em `encomendas`.
+   * A regra de juntar as fontes sem contar nada duas vezes está em
+   * `lib/faturamento`; aqui só se busca o que ela precisa.
+   */
+  const lancamentosQuery = useMemoFirebase(
+    () => (db && user ? query(collection(db, 'cash_transactions'), where('ownerId', '==', user.uid)) : null),
+    [db, user]
+  );
+  const { data: lancamentosRaw } = useCollection(lancamentosQuery);
+
+  // A coleção só existe na confeitaria — mesma trava do Caixa e dos Relatórios.
+  const ehConfeitaria = storeProfile?.theme === 'confeitaria';
+  const encomendasQuery = useMemoFirebase(
+    () =>
+      db && user && ehConfeitaria
+        ? query(collection(db, 'encomendas'), where('ownerId', '==', user.uid))
+        : null,
+    [db, user, ehConfeitaria]
+  );
+  const { data: encomendasRaw } = useCollection(encomendasQuery);
+  /** Encomenda lida como pedido: é o que dá itens e canal para os painéis. */
+  const encomendasComoPedidos = useMemo(
+    () => (encomendasRaw || []).map(encomendaComoPedido).filter(Boolean) as any[],
+    [encomendasRaw]
+  );
   const clientes = useMemo(
     () => (clientesRaw || []).filter((customer: any) => customer?.archived !== true),
     [clientesRaw],
@@ -172,17 +221,33 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
 
   const stats = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : [];
+    const lancamentos = (lancamentosRaw || []) as any[];
     const { from, to, mode } = range;
+
+    // O dinheiro do período: caixa (com encomenda e venda avulsa dentro) mais o
+    // pedido que nunca foi lançado. Uma venda por linha, com o documento junto.
+    const vendas = vendasDoPeriodo({
+      lancamentos,
+      pedidos: safeOrders,
+      encomendas: encomendasRaw || [],
+      de: from,
+      ate: to,
+    });
+    const faturamento = faturamentoDoPeriodo({
+      lancamentos,
+      pedidos: safeOrders,
+      de: from,
+      ate: to,
+    });
+
+    const periodRevenue = faturamento.totalVendas;
+    const periodCount = faturamento.quantidade;
+    const avgTicket = periodCount > 0 ? periodRevenue / periodCount : 0;
 
     const inRange = safeOrders.filter(o => {
       const t = new Date(o.orderDateTime || o.createdAt || 0);
       return t >= from && t < to;
     });
-    const valid = inRange.filter(o => o.status !== 'canceled');
-
-    const periodRevenue = valid.reduce((s, o) => s + (o.totalAmount || 0), 0);
-    const periodCount = valid.length;
-    const avgTicket = periodCount > 0 ? periodRevenue / periodCount : 0;
 
     // Chart buckets
     let chartData: { label: string; vendas: number; pedidos: number }[] = [];
@@ -192,11 +257,10 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
         vendas: 0,
         pedidos: 0,
       }));
-      valid.forEach(o => {
-        const t = new Date(o.orderDateTime || o.createdAt || 0);
-        const h = t.getHours();
+      vendas.forEach(v => {
+        const h = new Date(v.quando || 0).getHours();
         if (hours[h]) {
-          hours[h].vendas += o.totalAmount || 0;
+          hours[h].vendas += v.valor;
           hours[h].pedidos += 1;
         }
       });
@@ -214,18 +278,18 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
           : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         dayMap[k] = { label, vendas: 0, pedidos: 0, order: i };
       }
-      valid.forEach(o => {
-        const t = new Date(o.orderDateTime || o.createdAt || 0);
-        const k = dateKey(startOfDay(t));
+      vendas.forEach(v => {
+        const k = dateKey(startOfDay(new Date(v.quando || 0)));
         if (dayMap[k]) {
-          dayMap[k].vendas += o.totalAmount || 0;
+          dayMap[k].vendas += v.valor;
           dayMap[k].pedidos += 1;
         }
       });
       chartData = Object.values(dayMap).sort((a, b) => a.order - b.order);
     }
 
-    // Status breakdown (inclui cancelados)
+    // Status breakdown (inclui cancelados). É acompanhamento de pedido, não
+    // dinheiro: continua lendo `orders` pela data do pedido.
     const statusCount: Record<string, number> = {};
     inRange.forEach(o => {
       const s = o.status || 'received';
@@ -238,10 +302,10 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
     // cardápio para comer no local. Quem separa é `canalDaVenda`.
     const canalCount: Record<string, number> = {};
     const canalRevenue: Record<string, number> = {};
-    valid.forEach(o => {
-      const canal = canalDaVenda(o);
+    vendas.forEach(v => {
+      const canal = canalDaVenda(canalDoDocumento(v));
       canalCount[canal] = (canalCount[canal] || 0) + 1;
-      canalRevenue[canal] = (canalRevenue[canal] || 0) + (o.totalAmount || 0);
+      canalRevenue[canal] = (canalRevenue[canal] || 0) + v.valor;
     });
     const typeData = CANAIS_EM_ORDEM.filter(canal => (canalCount[canal] || 0) > 0).map(canal => ({
       canal,
@@ -250,17 +314,21 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       revenue: canalRevenue[canal] || 0,
     }));
 
-    // Faturamento por forma de pagamento. A venda dividida é uma frase só no
-    // banco ("Pix: R$ 59.30 | Débito: R$ 38.40"), e agrupar por essa frase fazia
-    // cada combinação virar uma linha própria na tela — com o valor do Pix
-    // daquela venda fora do Pix. `faturamentoPorPagamento` quebra nas partes.
-    const paymentData = faturamentoPorPagamento(valid);
+    // Faturamento por forma de pagamento, pelo que foi lançado no caixa. Antes
+    // saía da frase gravada no pedido ("Pix: R$ 59.30 | Débito: R$ 38.40"), que
+    // não existe para encomenda nem para venda avulsa.
+    const paymentData = porFormaDePagamento(faturamento.entradas);
 
-    // Top produtos
+    // Top produtos: o que saiu, uma vez por venda. Encomenda entra pelos itens
+    // do documento, que é como ela vira "Bolo Olho de sogra" e não um valor solto.
     const productAgg: Record<string, { name: string; qty: number; revenue: number }> = {};
-    valid.forEach(o => {
-      (o.items || []).forEach((it: any) => {
+    vendas.forEach(v => {
+      const doc = v.origem === 'encomenda'
+        ? encomendasComoPedidos.find(e => e?.id === v.documento?.id)
+        : v.documento;
+      (doc?.items || []).forEach((it: any) => {
         const key = it.id || it.name;
+        if (!key) return;
         if (!productAgg[key]) productAgg[key] = { name: it.name || 'Item', qty: 0, revenue: 0 };
         productAgg[key].qty += it.quantity || 1;
         productAgg[key].revenue += (it.unitPrice || 0) * (it.quantity || 1);
@@ -270,15 +338,15 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
 
-    // Pedidos recentes
-    const recentOrders = [...inRange]
-      .sort((a, b) => (b.orderDateTime || '').localeCompare(a.orderDateTime || ''))
-      .slice(0, 6);
+    // Vendas recentes: a última primeiro, com o dinheiro que entrou.
+    const recentOrders = [...vendas].reverse().slice(0, 6);
 
     return {
       periodRevenue,
       periodCount,
       avgTicket,
+      fiadoRecebido: faturamento.fiadoRecebido,
+      deEncomendas: faturamento.porOrigem.encomenda,
       chartData,
       statusCount,
       typeData,
@@ -286,7 +354,7 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       topProducts,
       recentOrders,
     };
-  }, [orders, range]);
+  }, [orders, lancamentosRaw, encomendasRaw, encomendasComoPedidos, range]);
 
   const totalProducts = items?.length || 0;
   const totalCategories = categories?.length || 0;
@@ -363,21 +431,31 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
           <KpiCard
             label="Vendas no Período"
             value={brl(stats.periodRevenue)}
-            sub={`${stats.periodCount} pedido${stats.periodCount === 1 ? '' : 's'} válidos`}
+            // Encomenda ficava fora desta conta inteira. Quando ela existe, o
+            // card diz quanto do total veio dali — é o ticket alto da confeitaria.
+            sub={
+              stats.deEncomendas > 0
+                ? `${stats.periodCount} venda${stats.periodCount === 1 ? '' : 's'} · ${brl(stats.deEncomendas)} em encomendas`
+                : `${stats.periodCount} venda${stats.periodCount === 1 ? '' : 's'} no período`
+            }
             Icon={Wallet}
             color="emerald"
           />
           <KpiCard
             label="Ticket Médio"
             value={brl(stats.avgTicket)}
-            sub={stats.periodCount > 0 ? 'por pedido' : 'sem pedidos no período'}
+            sub={stats.periodCount > 0 ? 'por venda' : 'sem vendas no período'}
             Icon={TrendingUp}
             color="blue"
           />
           <KpiCard
-            label="Pedidos no Período"
+            label="Quantidade de Vendas"
             value={stats.periodCount.toString()}
-            sub={`${stats.statusCount.canceled || 0} cancelado${(stats.statusCount.canceled || 0) === 1 ? '' : 's'}`}
+            sub={
+              stats.fiadoRecebido > 0
+                ? `+ ${brl(stats.fiadoRecebido)} de fiado recebido`
+                : `${stats.statusCount.canceled || 0} pedido${(stats.statusCount.canceled || 0) === 1 ? '' : 's'} cancelado${(stats.statusCount.canceled || 0) === 1 ? '' : 's'}`
+            }
             Icon={ShoppingBag}
             color="violet"
           />
@@ -660,30 +738,31 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
           </Card>
         </div>
 
-        {/* Pedidos recentes */}
+        {/* Vendas recentes */}
         <Card className="border shadow-sm rounded-2xl">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
               <Clock className="h-4 w-4 text-slate-500" />
-              Pedidos Recentes
+              Vendas Recentes
             </CardTitle>
-            <span className="text-xs text-muted-foreground">Últimos {stats.recentOrders.length} no período</span>
+            <span className="text-xs text-muted-foreground">Últimas {stats.recentOrders.length} no período</span>
           </CardHeader>
           <CardContent className="pt-2">
             {stats.recentOrders.length === 0 ? (
               <p className="text-sm text-muted-foreground italic text-center py-8">
-                Nenhum pedido no período.
+                Nenhuma venda no período.
               </p>
             ) : (
               <div className="divide-y">
-                {stats.recentOrders.map((o) => {
-                  const status = STATUS_LABELS[o.status] || STATUS_LABELS.received;
+                {stats.recentOrders.map((venda) => {
+                  const o = venda.documento || {};
+                  const status = STATUS_LABELS[o.status] || STATUS_LABELS.delivered;
                   const StatusIcon = status.Icon;
-                  const canal = canalDaVenda(o);
+                  const canal = canalDaVenda(canalDoDocumento(venda));
                   const TypeIcon = CANAL_ESTILO[canal]?.Icon || ShoppingBag;
-                  const dt = new Date(o.orderDateTime || o.createdAt || 0);
+                  const dt = new Date(venda.quando || 0);
                   return (
-                    <div key={o.id} className="flex items-center gap-3 py-3">
+                    <div key={venda.vinculo || venda.quando} className="flex items-center gap-3 py-3">
                       <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${status.bg}`}>
                         <StatusIcon className={`h-4 w-4 ${status.color}`} />
                       </div>
@@ -699,16 +778,20 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
                           </span>
                           <span>·</span>
                           <span>{dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                          <span>·</span>
-                          <span className={status.color}>{status.label}</span>
+                          {venda.formas.length > 0 && (
+                            <>
+                              <span>·</span>
+                              <span>{venda.formas.join(' + ')}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <div className="text-sm font-black text-emerald-600">
-                          {brl(o.totalAmount || 0)}
+                          {brl(venda.valor)}
                         </div>
                         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          #{getOrderCode(o).slice(-5).toUpperCase()}
+                          {o.id ? `#${getOrderCode(o).slice(-5).toUpperCase()}` : '—'}
                         </div>
                       </div>
                     </div>
