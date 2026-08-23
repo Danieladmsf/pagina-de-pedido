@@ -379,77 +379,93 @@ export function VisitantesPage() {
           a mesma foto e o mesmo nome. O recorte que era seção virou filtro, e
           a ordem por oportunidade continua pondo o dinheiro em cima. */}
       <section className="mt-7">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-800">Pessoas</h2>
-          {resumo.valorAbandonado > 0 && (
-            <p className="text-xs font-bold text-amber-700">
-              {brl(resumo.valorAbandonado)} escolhidos e não fechados
+        {/* Duas perguntas diferentes, dois lugares: à esquerda navegar a fila,
+            à direita quanto vale ligar. Antes as duas se misturavam numa pilha
+            de pastilhas, e o valor total aparecia aqui pela TERCEIRA vez na
+            mesma tela (o aviso do topo e o número "Carrinhos parados" já o
+            dizem) — some daqui de propósito. */}
+        <div className={cn('grid gap-4', faixas.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_268px]')}>
+          <div>
+            <h2 className="text-lg font-black text-slate-800">Pessoas</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {resumo.pessoas === 0
+                ? `Ninguém abriu o cardápio em ${janela.descricao}.`
+                : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} em ${janela.descricao}, de quem vale mais atenção para quem só passou. Toque para ver tudo o que a pessoa fez.`}
+              {/* Sem o quadro ao lado, a ressalva não tem onde morar: fica aqui. */}
+              {olhandoOPassado && resumo.pessoas > 0 && faixas.length === 0 && (
+                <span className="block text-[11px] text-slate-400">
+                  Alguns carrinhos são de dias atrás, e o que aparece é o carrinho de agora — não um retrato daquele dia.
+                </span>
+              )}
             </p>
-          )}
-        </div>
-        <p className="mt-0.5 text-xs text-slate-500">
-          {resumo.pessoas === 0
-            ? `Ninguém abriu o cardápio em ${janela.descricao}.`
-            : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} em ${janela.descricao}, de quem vale mais atenção para quem só passou. Toque para ver tudo o que a pessoa fez.`}
-          {olhandoOPassado && resumo.pessoas > 0 && (
-            <span className="block text-[11px] text-slate-400">
-              Alguns carrinhos são de dias atrás, e o que aparece é a sacola de agora — não um retrato daquele dia.
-            </span>
-          )}
-        </p>
 
-        {/* Onde está o dinheiro parado. A fila já ordena por oportunidade; isto
-            responde outra coisa: quanto vale gastar tempo ligando. Sacola de
-            R$ 150 e sacola de R$ 12 não pedem o mesmo esforço. */}
-        {faixas.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {faixas.map((faixa) => (
-              <div
-                key={faixa.rotulo}
-                className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2"
-              >
-                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                  {faixa.rotulo}
-                </p>
-                <p className="mt-0.5 text-sm font-black text-amber-900">
-                  {faixa.pessoas} {faixa.pessoas === 1 ? 'pessoa' : 'pessoas'}
-                  <span className="ml-1.5 text-xs font-bold text-amber-700">{brl(faixa.valor)}</span>
+            {resumo.pessoas > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {FILTROS.map((f) => {
+                  const total = f.id === 'todos' ? resumo.pessoas : contagem[f.id];
+                  const ativo = filtro === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFiltro(f.id)}
+                      disabled={total === 0}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40',
+                        ativo ? 'bg-slate-800 text-white' : cn(f.fundo, f.texto, 'hover:brightness-95')
+                      )}
+                    >
+                      {f.rotulo}
+                      <span
+                        className={cn(
+                          'rounded-full px-1.5 text-[11px] font-black',
+                          ativo ? 'bg-white/20 text-white' : 'bg-black/5'
+                        )}
+                      >
+                        {total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Onde está o dinheiro parado. A fila já ordena por oportunidade;
+              isto responde outra coisa: quanto vale gastar tempo ligando.
+              Carrinho de R$ 150 e carrinho de R$ 12 não pedem o mesmo esforço.
+              Valores alinhados à direita para comparar de cima a baixo. */}
+          {faixas.length > 0 && (
+            <aside className="self-start rounded-2xl border border-amber-200 bg-amber-50/60 p-3.5">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="h-4 w-4 text-amber-600" />
+                <p className="text-[11px] font-black uppercase tracking-wide text-amber-700">
+                  Onde está o parado
                 </p>
               </div>
-            ))}
-          </div>
-        )}
 
-        {resumo.pessoas > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {FILTROS.map((f) => {
-              const total = f.id === 'todos' ? resumo.pessoas : contagem[f.id];
-              const ativo = filtro === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFiltro(f.id)}
-                  disabled={total === 0}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40',
-                    ativo ? 'bg-slate-800 text-white' : cn(f.fundo, f.texto, 'hover:brightness-95')
-                  )}
-                >
-                  {f.rotulo}
-                  <span
-                    className={cn(
-                      'rounded-full px-1.5 text-[11px] font-black',
-                      ativo ? 'bg-white/20 text-white' : 'bg-black/5'
-                    )}
-                  >
-                    {total}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+              <div className="mt-2.5 space-y-1.5">
+                {faixas.map((faixa) => (
+                  <div key={faixa.rotulo} className="flex items-baseline justify-between gap-2.5">
+                    <p className="text-xs text-amber-900">
+                      {faixa.rotulo}
+                      <span className="text-amber-700">
+                        {' '}· {faixa.pessoas} {faixa.pessoas === 1 ? 'pessoa' : 'pessoas'}
+                      </span>
+                    </p>
+                    <p className="shrink-0 text-[13px] font-black text-amber-900">{brl(faixa.valor)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {olhandoOPassado && (
+                <p className="mt-2.5 border-t border-amber-200 pt-2 text-[11px] leading-snug text-amber-700">
+                  Carrinho de dias atrás mostra o que está lá agora, não o daquele dia.
+                </p>
+              )}
+            </aside>
+          )}
+        </div>
 
         <div className="mt-3 space-y-2">
           {lista.map((v) => (
