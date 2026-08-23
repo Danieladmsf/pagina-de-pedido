@@ -26,6 +26,7 @@ import {
 import { useCaixaAbertoEm } from '@/hooks/useCaixaAbertoEm';
 import { useMovimentoDoCardapio } from '@/hooks/useMovimentoDoCardapio';
 import { usePublicAudience } from '@/hooks/usePublicAudience';
+import { useVendasDoPeriodo } from '@/hooks/useVendasDoPeriodo';
 import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
 import {
   PRESETS_DA_AUDIENCIA,
@@ -54,7 +55,8 @@ import {
   type EstadoVisitante,
   type Visitante,
 } from '@/lib/visitantes';
-import { ORIGEM_DIRETA, agruparPorOrigem } from '@/lib/origem';
+import { ORIGEM_DIRETA } from '@/lib/origem';
+import { receitaPorOrigem } from '@/lib/receita-por-origem';
 import { brl, cn } from '@/lib/utils';
 
 /**
@@ -108,6 +110,7 @@ export function VisitantesPage() {
   // paralelo com `useMovimentoDoCardapio`.
   const { online } = usePublicAudience(ownerId, null);
   const { visitas } = useMovimentoDoCardapio(ownerId, janela);
+  const { vendas } = useVendasDoPeriodo(ownerId, janela);
   const movimento = useMemo(() => movimentoPorDia(visitas, janela), [visitas, janela]);
 
   const loadPhoto = useMemo(() => makeProfilePhotoLoader(user, ownerId || ''), [user, ownerId]);
@@ -151,7 +154,22 @@ export function VisitantesPage() {
   const resumo = useMemo(() => resumoDoDia(visitantes, inicioMs), [visitantes, inicioMs]);
   const produtos = useMemo(() => rankingDeProdutos(visitantes, inicioMs), [visitantes, inicioMs]);
   const contagem = useMemo(() => contarPorEstado(visitantes, inicioMs), [visitantes, inicioMs]);
-  const origens = useMemo(() => agruparPorOrigem(visitantes), [visitantes]);
+  // Quanto cada origem trouxe. As vendas vêm de TODOS os canais: o pedido que
+  // fechou no balcão depois de a pessoa olhar o cardápio é venda da origem que
+  // a trouxe, não do balcão.
+  const receita = useMemo(
+    () =>
+      receitaPorOrigem(
+        visitantes,
+        vendas.map(({ venda }) => ({
+          id: venda.id,
+          clienteId: (venda as any).clienteId,
+          telefone: (venda as any).customerPhone,
+          total: Number(venda.totalAmount) || 0,
+        })),
+      ),
+    [visitantes, vendas],
+  );
   const lista = useMemo(
     () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),
     [fila, filtro, inicioMs]
@@ -358,37 +376,55 @@ export function VisitantesPage() {
         )}
       </section>
 
-      {/* De onde essa gente veio. Só aparece quando existe alguma origem
-          marcada: numa loja que ainda não usou os links por canal, uma tabela
-          inteira dizendo "sem marca" seria só ocupar espaço. */}
-      {origens.some((linha) => linha.origem !== ORIGEM_DIRETA) && (
+      {/* De onde essa gente veio — e quanto cada lugar trouxe em dinheiro. Só
+          aparece quando existe alguma origem marcada: numa loja que ainda não
+          usou os links por canal, uma tabela inteira dizendo "sem marca" seria
+          só ocupar espaço. */}
+      {receita.linhas.some((linha) => linha.origem !== ORIGEM_DIRETA) && (
         <section className="mt-8">
-          <h2 className="text-lg font-black text-slate-800">De onde vieram</h2>
+          <h2 className="text-lg font-black text-slate-800">De onde vem a venda</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Conta quem TROUXE a pessoa. Quem descobriu a loja no Instagram e voltou pelo link do
-            WhatsApp continua contando para o Instagram.
+            Conta quem TROUXE a pessoa, e soma o que ela comprou em qualquer canal — inclusive o
+            pedido que fechou no WhatsApp ou no balcão depois de ela olhar o cardápio.
           </p>
           <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] text-sm">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                     <th className="px-4 py-2 text-left font-bold">Origem</th>
                     <th className="px-3 py-2 text-right font-bold">Pessoas</th>
                     <th className="px-3 py-2 text-right font-bold">Olharam</th>
-                    <th className="px-3 py-2 text-right font-bold">Pediram</th>
-                    <th className="px-4 py-2 text-right font-bold">Viraram pedido</th>
+                    <th className="px-3 py-2 text-right font-bold">Compraram</th>
+                    <th className="px-3 py-2 text-right font-bold">Pedidos</th>
+                    <th className="px-3 py-2 text-right font-bold">Ticket</th>
+                    <th className="px-4 py-2 text-right font-bold">Trouxe</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {origens.map((linha) => (
+                  {receita.linhas.map((linha) => (
                     <tr key={linha.origem} className="border-b border-slate-50 last:border-0">
                       <td className="px-4 py-2.5 font-semibold text-slate-700">{linha.rotulo}</td>
                       <td className="px-3 py-2.5 text-right font-bold text-slate-700">{linha.pessoas}</td>
                       <td className="px-3 py-2.5 text-right text-slate-500">{linha.olharam}</td>
-                      <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{linha.pedidos}</td>
-                      <td className="px-4 py-2.5 text-right font-bold text-slate-700">
-                        {linha.pedidos > 0 ? `${linha.conversao}%` : <span className="text-slate-300">—</span>}
+                      <td className="px-3 py-2.5 text-right text-slate-500">
+                        {linha.compraram > 0 ? (
+                          <>
+                            {linha.compraram}
+                            <span className="ml-1 text-[10px] font-bold text-slate-400">
+                              {linha.conversao}%
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-slate-500">{linha.pedidos || '—'}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-500">
+                        {linha.ticket > 0 ? brl(linha.ticket) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-black text-emerald-700">
+                        {linha.receita > 0 ? brl(linha.receita) : <span className="text-slate-300">—</span>}
                       </td>
                     </tr>
                   ))}
@@ -396,7 +432,18 @@ export function VisitantesPage() {
               </table>
             </div>
           </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+
+          {/* Sem esta linha a dona soma a coluna e acha que falta dinheiro. A
+              venda de balcão sem cliente identificado não tem como ter origem. */}
+          {receita.pedidosSoltos > 0 && (
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Fora da conta: <span className="font-bold">{brl(receita.receitaSolta)}</span> em{' '}
+              {receita.pedidosSoltos}{' '}
+              {receita.pedidosSoltos === 1 ? 'pedido' : 'pedidos'} de quem não passou pelo cardápio ou
+              foi vendido sem identificar o cliente — venda de balcão não tem como dizer de onde veio.
+            </p>
+          )}
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
             Para separar por lugar, gere o link em Retaguarda → WhatsApp → Links de pedido marcando
             onde ele vai ser colado.
           </p>

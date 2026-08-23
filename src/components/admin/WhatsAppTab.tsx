@@ -632,6 +632,66 @@ const ORDER_LINK_CARD_ICONS: Record<OrderLinkCardId, React.ElementType> = {
   whatsapp: MessageCircle,
 };
 
+// QR do link, para o que nao e clicavel: embalagem, panfleto, cartao, placa no
+// balcao. Com a marca de origem junto, a loja finalmente mede o papel — e
+// descobre se a caixa do bolo traz gente de volta.
+//
+// A biblioteca entra por import dinamico: ela so faz falta quando alguem pede o
+// QR, e nao tem por que pesar o carregamento da Retaguarda inteira.
+function QrDoLink({ url, nomeDoArquivo }: { url: string; nomeDoArquivo: string }) {
+  const { toast } = useToast();
+  const [imagem, setImagem] = useState('');
+  const [gerando, setGerando] = useState(false);
+
+  async function gerar() {
+    if (imagem) {
+      setImagem('');
+      return;
+    }
+    setGerando(true);
+    try {
+      const QRCode = (await import('qrcode')).default;
+      // 1024px e correcao alta: QR impresso e depois amassado, molhado ou com
+      // logo por cima ainda precisa ler.
+      setImagem(await QRCode.toDataURL(url, { width: 1024, margin: 2, errorCorrectionLevel: 'H' }));
+    } catch {
+      toast({ variant: 'destructive', title: 'Nao consegui gerar o QR', description: 'Tente de novo.' });
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={gerar} disabled={gerando} className="h-9 shrink-0 rounded-xl">
+        {gerando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+        {imagem ? 'Fechar QR' : 'QR code'}
+      </Button>
+
+      {imagem && (
+        <div className="mt-2 flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imagem} alt="QR code do link" className="h-36 w-36 rounded-xl bg-white p-2 shadow-sm" />
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="text-xs font-bold text-slate-700">Imprima onde o cliente pega na mao</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+              Embalagem, panfleto, cartao ou placa no balcao. Quem apontar a camera cai no cardapio
+              com a marca deste link — e voce ve quantos vieram dai.
+            </p>
+            <a
+              href={imagem}
+              download={`${nomeDoArquivo}.png`}
+              className="mt-2 inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
+            >
+              Baixar PNG
+            </a>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Uma linha da lista: o nome da combinacao, o que ela abre, onde colar e o
 // endereco pronto para copiar. O radio marca qual delas entra nas mensagens
 // automaticas — as outras a loja usa copiando e colando onde quiser.
@@ -716,12 +776,15 @@ function OrderLinkVariantRow({
             <span className="font-bold text-slate-600">Ideal para:</span> {variant.goodFor}
           </p>
 
-          <div className="mt-2.5 flex flex-col gap-2 sm:flex-row" onClick={(event) => event.stopPropagation()}>
-            <Input value={url} readOnly onFocus={(e) => e.target.select()} className="h-9 rounded-xl bg-white font-mono text-[11px]" />
-            <Button type="button" variant="outline" onClick={copyUrl} className="h-9 shrink-0 rounded-xl">
-              {copied ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
-              {copied ? 'Copiado' : 'Copiar'}
-            </Button>
+          <div onClick={(event) => event.stopPropagation()}>
+            <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+              <Input value={url} readOnly onFocus={(e) => e.target.select()} className="h-9 rounded-xl bg-white font-mono text-[11px]" />
+              <Button type="button" variant="outline" onClick={copyUrl} className="h-9 shrink-0 rounded-xl">
+                {copied ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
+                {copied ? 'Copiado' : 'Copiar'}
+              </Button>
+              <QrDoLink url={url} nomeDoArquivo={`cardapio-${variant.code}`} />
+            </div>
           </div>
         </div>
       </div>

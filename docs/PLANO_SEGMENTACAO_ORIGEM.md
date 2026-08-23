@@ -1,6 +1,6 @@
 # Plano — De onde vem a venda (origem, funil de identificação e segmentação)
 
-> **Status:** planejamento. Nada implementado ainda.
+> **Status:** Fases 1 e 2 implementadas em 23/08/2026 (`68a4544`, `e403b92` e o commit da Fase 2). Faltam as Fases 3 e 4.
 > **Criado em:** 23/08/2026
 > **Origem:** o card do placar mostrava a mesma foto quatro vezes (corrigido em `2730edb`, agrupamento por pessoa). Puxando o fio: a loja não sabe **de onde** vem quem abre o cardápio, e o único jeito de dar nome a alguém hoje depende de um link que pode vazar.
 > **Relação com outros planos:** `docs/PLANO_INTEGRIDADE_DADOS.md` (vínculo por id, não por texto) vale aqui inteiro — origem e identidade só entram como id ou chave normalizada.
@@ -108,6 +108,8 @@ Ligar a visita ao pedido **mesmo quando ele fecha em outro canal**: casar por `c
 
 Saída: por origem, no período — visitas, pessoas, pedidos, **receita**, ticket médio, conversão.
 
+**Medido ao ligar (23/08/2026, 7 dias):** na Gostinho de Céu, 9 dos 64 pedidos encontraram dono entre quem visitou o cardápio (R$ 353,90); na Lima Limão, 17 de 79 (R$ 676,70). O resto — R$ 1.854,80 e R$ 2.473,80 — é venda sem cliente identificado, quase toda de balcão ("Cliente Balcão", sem telefone). **Por isso a tela mostra a linha "fora da conta" logo abaixo da tabela:** sem ela a dona soma a coluna, não bate com o faturamento e conclui que o número está errado. É também a maior alavanca escondida da loja — identificar o cliente no balcão dobraria o alcance desta tabela.
+
 > Responde: onde está o dinheiro, não o clique. Custo: médio.
 
 ### 4.5 Comportamento — o que a vitrine mostra e o que trava
@@ -140,10 +142,10 @@ Cruzando com Campanhas: "12 clientes fiéis não pedem há 30 dias" vira uma lis
 
 ## 5. Fases
 
-**Fase 1 — Origem e funil** (a base de tudo)
+**Fase 1 — Origem e funil** (a base de tudo) — ✅ FEITA
 `?via=` no link; gravação em `store_visits` e `store_visitors` com `origemPrimeira` e `origemUltima`; gerador de link por canal na aba WhatsApp; pulo do modal para quem é conhecido; gatilho novo do webhook para o pedido de link; "de onde vieram" na tela de Visitantes.
 
-**Fase 2 — Dinheiro por origem**
+**Fase 2 — Dinheiro por origem** — ✅ FEITA
 Ligação visita→pedido por id; tabela de receita, ticket e conversão por origem; QR por ponto físico (embalagem, balcão, panfleto).
 
 **Fase 3 — Decisões**
