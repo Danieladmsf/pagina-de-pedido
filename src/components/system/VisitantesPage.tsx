@@ -598,13 +598,22 @@ const ETAPAS: Record<
 
 type FiltroDaLista = 'todos' | EstadoVisitante;
 
-/** Os recortes que antes eram seções separadas da página. */
+/**
+ * Os recortes que antes eram seções separadas da página.
+ *
+ * A ordem é a do FUNIL — entrou, olhou, carrinho, pedido — e não a da
+ * prioridade de trabalho. Os botões ficam ao lado de cards que mostram a
+ * mesma sequência pintada da esquerda para a direita, e duas ordens
+ * diferentes para as mesmas quatro etapas na mesma tela se leem como erro.
+ * Quem precisa do dinheiro primeiro continua achando: "Carrinho parado" é o
+ * único âmbar, e a lista já vem ordenada por oportunidade.
+ */
 const FILTROS: { id: FiltroDaLista; rotulo: string; fundo: string; texto: string }[] = [
   { id: 'todos', rotulo: 'Todos', fundo: 'bg-slate-100', texto: 'text-slate-600' },
+  { id: 'passou', rotulo: 'Só entrou', fundo: 'bg-slate-100', texto: 'text-slate-600' },
+  { id: 'olhou', rotulo: 'Só olhou', fundo: 'bg-sky-100', texto: 'text-sky-800' },
   { id: 'abandonou', rotulo: 'Carrinho parado', fundo: 'bg-amber-100', texto: 'text-amber-900' },
   { id: 'comprou', rotulo: 'Fechou pedido', fundo: 'bg-emerald-100', texto: 'text-emerald-800' },
-  { id: 'olhou', rotulo: 'Só olhou', fundo: 'bg-sky-100', texto: 'text-sky-800' },
-  { id: 'passou', rotulo: 'Só entrou', fundo: 'bg-slate-100', texto: 'text-slate-600' },
 ];
 
 /**
