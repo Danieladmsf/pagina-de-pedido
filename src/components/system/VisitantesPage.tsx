@@ -661,6 +661,21 @@ function CartaoDeVisitante({
   const ultimaVez = paraMillis(visitante.ultimaVez);
   const jaChamou = chamouNoWhatsapp(visitante);
 
+  /**
+   * Quem a loja está vendo.
+   *
+   * "Visitante sem cadastro" aparecia em cima de um telefone: em 15 das 120
+   * pessoas a loja tem o número (14 vieram pela marca do link que ela mesma
+   * mandou) e nenhum nome, e a frase lia como "não sei quem é" bem ao lado do
+   * jeito de falar com a pessoa. Sem nome, o telefone É a identidade — é por
+   * ele que a dona reconhece e é ele que ela abre no WhatsApp.
+   *
+   * Sem nome E sem telefone continua sendo visitante sem cadastro, porque aí
+   * realmente não há como chamar.
+   */
+  const semNome = !nome && !!telefone;
+  const titulo = nome || (telefone ? formatarTelefone(telefone) : 'Visitante sem cadastro');
+
   // O valor em destaque é o que a etapa produziu: a sacola parada de quem não
   // fechou, o pedido de quem fechou.
   const valorDaEtapa =
@@ -704,7 +719,7 @@ function CartaoDeVisitante({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="font-bold text-slate-800">{nome || 'Visitante sem cadastro'}</p>
+            <p className="font-bold text-slate-800">{titulo}</p>
             {jaChamou && (
               <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
                 <WhatsAppIcon className="h-2.5 w-2.5" /> Já te chamou
@@ -713,7 +728,7 @@ function CartaoDeVisitante({
           </div>
 
           <p className="mt-0.5 text-xs text-slate-500">
-            {telefone ? formatarTelefone(telefone) : 'Sem telefone — não dá para chamar'}
+            {semNome ? 'Ainda não deixou o nome' : telefone ? formatarTelefone(telefone) : 'Sem telefone — não dá para chamar'}
             {ultimaVez !== null && <span> · {quandoFoi(ultimaVez)}</span>}
             {cliente && (
               <span>
