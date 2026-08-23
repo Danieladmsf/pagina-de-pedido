@@ -155,6 +155,34 @@ export function estadoDoVisitante(v: Visitante, inicioMs: number): EstadoVisitan
 }
 
 /**
+ * Até onde a pessoa chegou no funil do cardápio, de 1 a 4.
+ *
+ * As quatro etapas são ENTROU → OLHOU → CARRINHO → PEDIDO, e o card mostra a
+ * trilha pintada até aqui. Nasceu de um problema de leitura: a etiqueta chapada
+ * ("Só passou") dizia o que a pessoa É, e o que a dona precisa saber é onde ela
+ * PAROU — a distância que falta é a própria oportunidade.
+ *
+ * `passou` vale 1 e não 0 de propósito: abrir o cardápio já é uma etapa
+ * cumprida, e é a única que 96 das 120 pessoas da loja têm.
+ */
+export const NIVEL_DO_ESTADO: Record<EstadoVisitante, number> = {
+  passou: 1,
+  olhou: 2,
+  abandonou: 3,
+  comprou: 4,
+};
+
+/** Quantas pessoas pararam em cada etapa — os contadores dos filtros da tela. */
+export function contarPorEstado(
+  visitantes: Visitante[],
+  inicioMs: number,
+): Record<EstadoVisitante, number> {
+  const contagem: Record<EstadoVisitante, number> = { passou: 0, olhou: 0, abandonou: 0, comprou: 0 };
+  for (const v of visitantes || []) contagem[estadoDoVisitante(v, inicioMs)] += 1;
+  return contagem;
+}
+
+/**
  * Quanto vale falar com essa pessoa agora. Carrinho abandonado manda: é dinheiro
  * escolhido, com nome e telefone. Depois vem quem olhou bastante e não montou
  * nada. Quem já comprou sai da fila.

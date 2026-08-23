@@ -39,7 +39,9 @@ import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
 import { matchUniqueActiveCustomerByPhone, normalizeCreditPhone } from '@/lib/customer-credit';
 import {
+  NIVEL_DO_ESTADO,
   chamouNoWhatsapp,
+  contarPorEstado,
   ehIdentificado,
   estadoDoVisitante,
   eventosDaSessao,
@@ -90,13 +92,16 @@ export function VisitantesPage() {
   const [escolha, setEscolha] = useState<PeriodoDaAudiencia | null>(null);
   const periodo: PeriodoDaAudiencia = escolha ?? (caixaAbertoEm ? { preset: 'hoje' } : { preset: '7d' });
   const [aberto, setAberto] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<FiltroDaLista>('todos');
 
   const janela = useMemo(
     () => janelaDaAudiencia(periodo),
     [periodo.preset, periodo.de, periodo.ate], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, janela.inicio, 200, janela.fim);
+  // 500 e não 200: desde que o número de "Pessoas" passou a sair desta lista,
+  // um teto baixo faria o KPI mentir num período de 30 dias.
+  const { visitantes, carregando, semAcesso } = useVisitantesDaLoja(ownerId, janela.inicio, 500, janela.fim);
   // `online` é sempre agora, independente do período — por isso a audiência
   // entra sem janela: passar uma faria o hook contar visitas de novo, em
   // paralelo com `useMovimentoDoCardapio`.
@@ -144,9 +149,10 @@ export function VisitantesPage() {
   const fila = useMemo(() => ordenarPorOportunidade(visitantes, inicioMs), [visitantes, inicioMs]);
   const resumo = useMemo(() => resumoDoDia(visitantes, inicioMs), [visitantes, inicioMs]);
   const produtos = useMemo(() => rankingDeProdutos(visitantes), [visitantes]);
-  const oportunidades = useMemo(
-    () => fila.filter((v) => estadoDoVisitante(v, inicioMs) === 'abandonou'),
-    [fila, inicioMs]
+  const contagem = useMemo(() => contarPorEstado(visitantes, inicioMs), [visitantes, inicioMs]);
+  const lista = useMemo(
+    () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),
+    [fila, filtro, inicioMs]
   );
 
   if (!podeVerVisitantes || semAcesso) {
@@ -174,9 +180,13 @@ export function VisitantesPage() {
           icone={<MousePointerClick className="h-4 w-4" />}
           detalhe={movimento.dias.length > 1 ? `${movimento.mediaPorDia} por dia` : undefined}
         />
+        {/* "Pessoas" sai da MESMA fonte da lista abaixo (`store_visitors`, já
+            fundido por pessoa), e não da contagem de navegadores de
+            `store_visits`: os dois números ficam lado a lado com o filtro
+            "Todos", e 118 aqui com 120 ali se lê como defeito da tela. */}
         <Numero
           titulo="Pessoas"
-          valor={movimento.sabePessoas ? movimento.totalPessoas : '—'}
+          valor={movimento.sabePessoas ? resumo.pessoas : '—'}
           icone={<Users className="h-4 w-4" />}
           detalhe={
             movimento.sabePessoas
@@ -269,60 +279,64 @@ export function VisitantesPage() {
         </div>
       )}
 
-      {/* A parte que vira dinheiro hoje. */}
+      {/* Uma lista só.
+          Antes eram duas — "Para chamar agora" e "Quem passou" — e as duas
+          liam a MESMA fila: quem tinha carrinho parado aparecia nas duas, com
+          a mesma foto e o mesmo nome. O recorte que era seção virou filtro, e
+          a ordem por oportunidade continua pondo o dinheiro em cima. */}
       <section className="mt-7">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-800">Para chamar agora</h2>
-          {oportunidades.length > 0 && (
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-lg font-black text-slate-800">Pessoas</h2>
+          {resumo.valorAbandonado > 0 && (
             <p className="text-xs font-bold text-amber-700">
               {brl(resumo.valorAbandonado)} escolhidos e não fechados
             </p>
           )}
         </div>
         <p className="mt-0.5 text-xs text-slate-500">
-          Montaram o pedido no cardápio e pararam antes de enviar.
-          {/* Numa janela larga entra carrinho de dias atrás. Ele continua sendo
-              uma venda a resgatar, mas "agora" precisa dizer de quando é. */}
-          {olhandoOPassado && ' Alguns são de dias atrás — cada card mostra há quanto tempo.'}
-        </p>
-
-        {oportunidades.length === 0 ? (
-          <p className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-            Ninguém deixou carrinho parado neste período.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-2">
-            {oportunidades.map((v) => (
-              <CartaoDeVisitante
-                key={v.id}
-                visitante={v}
-                cliente={acharCliente(v)}
-                inicioMs={inicioMs}
-                loadPhoto={loadPhoto}
-                aberto={aberto === v.id}
-                onAlternar={() => setAberto(aberto === v.id ? null : v.id)}
-                emDestaque
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Todo mundo, na ordem de quem vale mais atenção. */}
-      <section className="mt-8">
-        <h2 className="text-lg font-black text-slate-800">Quem passou</h2>
-        <p className="mt-0.5 text-xs text-slate-500">
           {resumo.pessoas === 0
             ? `Ninguém abriu o cardápio em ${janela.descricao}.`
-            : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} em ${janela.descricao}.`}
+            : `${resumo.pessoas} ${resumo.pessoas === 1 ? 'pessoa' : 'pessoas'} em ${janela.descricao}, de quem vale mais atenção para quem só passou. Toque para ver tudo o que a pessoa fez.`}
           {olhandoOPassado && resumo.pessoas > 0 && (
             <span className="block text-[11px] text-slate-400">
-              O carrinho mostrado é o de agora, não um retrato daquele dia.
+              Alguns carrinhos são de dias atrás, e o que aparece é a sacola de agora — não um retrato daquele dia.
             </span>
           )}
         </p>
+
+        {resumo.pessoas > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {FILTROS.map((f) => {
+              const total = f.id === 'todos' ? resumo.pessoas : contagem[f.id];
+              const ativo = filtro === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFiltro(f.id)}
+                  disabled={total === 0}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40',
+                    ativo ? 'bg-slate-800 text-white' : cn(f.fundo, f.texto, 'hover:brightness-95')
+                  )}
+                >
+                  {f.rotulo}
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 text-[11px] font-black',
+                      ativo ? 'bg-white/20 text-white' : 'bg-black/5'
+                    )}
+                  >
+                    {total}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
-          {fila.map((v) => (
+          {lista.map((v) => (
             <CartaoDeVisitante
               key={v.id}
               visitante={v}
@@ -334,6 +348,12 @@ export function VisitantesPage() {
             />
           ))}
         </div>
+
+        {resumo.pessoas > 0 && lista.length === 0 && (
+          <p className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+            Ninguém neste filtro em {janela.descricao}.
+          </p>
+        )}
       </section>
 
       {/* O cardápio visto de fora: o que chama e o que trava. */}
@@ -535,12 +555,86 @@ function Numero({
   );
 }
 
-const ROTULOS: Record<EstadoVisitante, { texto: string; classe: string }> = {
-  abandonou: { texto: 'Carrinho parado', classe: 'bg-amber-100 text-amber-800' },
-  comprou: { texto: 'Fechou pedido', classe: 'bg-emerald-100 text-emerald-800' },
-  olhou: { texto: 'Olhou produtos', classe: 'bg-sky-100 text-sky-800' },
-  passou: { texto: 'Só passou', classe: 'bg-slate-100 text-slate-600' },
+/**
+ * Cada etapa do funil na sua cor. `ponto` pinta a trilha do card, `texto` o
+ * rótulo ao lado dela e `chip` o valor em destaque (sacola ou pedido).
+ *
+ * As cores são as mesmas de antes — o que mudou foi o formato: era uma etiqueta
+ * chapada dizendo o que a pessoa É, virou uma trilha mostrando onde ela PAROU.
+ */
+const ETAPAS: Record<
+  EstadoVisitante,
+  { rotulo: string; ponto: string; halo: string; texto: string; chip: string }
+> = {
+  passou: {
+    rotulo: 'Só entrou',
+    ponto: 'bg-slate-400',
+    halo: 'ring-slate-400/20',
+    texto: 'text-slate-500',
+    chip: 'bg-slate-100 text-slate-600',
+  },
+  olhou: {
+    rotulo: 'Olhou produtos',
+    ponto: 'bg-sky-500',
+    halo: 'ring-sky-500/20',
+    texto: 'text-sky-800',
+    chip: 'bg-sky-100 text-sky-800',
+  },
+  abandonou: {
+    rotulo: 'Parou no carrinho',
+    ponto: 'bg-amber-500',
+    halo: 'ring-amber-500/20',
+    texto: 'text-amber-800',
+    chip: 'bg-amber-100 text-amber-900',
+  },
+  comprou: {
+    rotulo: 'Fechou pedido',
+    ponto: 'bg-emerald-600',
+    halo: 'ring-emerald-600/20',
+    texto: 'text-emerald-800',
+    chip: 'bg-emerald-100 text-emerald-800',
+  },
 };
+
+type FiltroDaLista = 'todos' | EstadoVisitante;
+
+/** Os recortes que antes eram seções separadas da página. */
+const FILTROS: { id: FiltroDaLista; rotulo: string; fundo: string; texto: string }[] = [
+  { id: 'todos', rotulo: 'Todos', fundo: 'bg-slate-100', texto: 'text-slate-600' },
+  { id: 'abandonou', rotulo: 'Carrinho parado', fundo: 'bg-amber-100', texto: 'text-amber-900' },
+  { id: 'comprou', rotulo: 'Fechou pedido', fundo: 'bg-emerald-100', texto: 'text-emerald-800' },
+  { id: 'olhou', rotulo: 'Só olhou', fundo: 'bg-sky-100', texto: 'text-sky-800' },
+  { id: 'passou', rotulo: 'Só entrou', fundo: 'bg-slate-100', texto: 'text-slate-600' },
+];
+
+/**
+ * A trilha: quatro pontos, pintados até onde a pessoa chegou.
+ *
+ * O ponto atual é maior e ganha um halo — sem isso, "olhou" e "carrinho" só se
+ * diferenciam contando bolinhas. Os apagados ficam, porque é a distância até
+ * eles que mostra o que ainda dá para fazer.
+ */
+function TrilhaDeEtapas({ estado }: { estado: EstadoVisitante }) {
+  const nivel = NIVEL_DO_ESTADO[estado];
+  const { ponto: cor, halo } = ETAPAS[estado];
+
+  return (
+    <div className="flex items-center" aria-hidden="true">
+      {[1, 2, 3, 4].map((i) => (
+        <React.Fragment key={i}>
+          {i > 1 && <span className={cn('h-0.5 w-4', i <= nivel ? cor : 'bg-slate-200')} />}
+          <span
+            className={cn(
+              'rounded-full',
+              i === nivel ? cn('h-2.5 w-2.5 ring-4', cor, halo) : 'h-2 w-2',
+              i < nivel ? cor : i > nivel ? 'bg-slate-200' : ''
+            )}
+          />
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
 
 function CartaoDeVisitante({
   visitante,
@@ -549,7 +643,6 @@ function CartaoDeVisitante({
   loadPhoto,
   aberto,
   onAlternar,
-  emDestaque,
 }: {
   visitante: Visitante;
   cliente: any | null;
@@ -557,10 +650,9 @@ function CartaoDeVisitante({
   loadPhoto: (phone: string) => Promise<string | null>;
   aberto: boolean;
   onAlternar: () => void;
-  emDestaque?: boolean;
 }) {
   const estado = estadoDoVisitante(visitante, inicioMs);
-  const rotulo = ROTULOS[estado];
+  const etapa = ETAPAS[estado];
   const identificado = ehIdentificado(visitante);
   const nome = visitante.nome || cliente?.nome || '';
   const telefone = normalizeCreditPhone(visitante.telefone || cliente?.celular || '');
@@ -569,14 +661,37 @@ function CartaoDeVisitante({
   const ultimaVez = paraMillis(visitante.ultimaVez);
   const jaChamou = chamouNoWhatsapp(visitante);
 
+  // O valor em destaque é o que a etapa produziu: a sacola parada de quem não
+  // fechou, o pedido de quem fechou.
+  const valorDaEtapa =
+    estado === 'abandonou' && carrinho?.valor
+      ? brl(carrinho.valor)
+      : estado === 'comprou' && visitante.ultimoPedidoValor
+        ? brl(visitante.ultimoPedidoValor)
+        : null;
+
   return (
     <div
       className={cn(
         'overflow-hidden rounded-2xl border bg-white shadow-sm transition',
-        emDestaque ? 'border-amber-200' : 'border-slate-200'
+        estado === 'abandonou' ? 'border-amber-200' : 'border-slate-200'
       )}
     >
-      <div className="flex items-start gap-3 p-3.5">
+      {/* O card inteiro abre. O botão "Detalhes" virou a seta: a área de toque
+          passou a ser a linha toda, que é o que a pessoa tenta tocar primeiro. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onAlternar}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onAlternar();
+          }
+        }}
+        aria-expanded={aberto}
+        className="flex w-full cursor-pointer items-start gap-3 p-3.5 text-left transition-colors hover:bg-slate-50/70"
+      >
         <ContactAvatar
           phone={telefone}
           initials={iniciais(nome)}
@@ -590,7 +705,6 @@ function CartaoDeVisitante({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="font-bold text-slate-800">{nome || 'Visitante sem cadastro'}</p>
-            <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-black', rotulo.classe)}>{rotulo.texto}</span>
             {jaChamou && (
               <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
                 <WhatsAppIcon className="h-2.5 w-2.5" /> Já te chamou
@@ -617,51 +731,32 @@ function CartaoDeVisitante({
             </p>
           )}
 
-          {/* O que ficou na sacola: é a frase que a dona usa no WhatsApp. */}
-          {estado === 'abandonou' && carrinho && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {carrinho.itens.slice(0, 4).map((item, i) => (
-                <span
-                  key={`${item.id}-${i}`}
-                  className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900"
-                >
-                  {item.qtd}× {item.nome}
-                </span>
-              ))}
-              {carrinho.itens.length > 4 && (
-                <span className="text-[11px] font-semibold text-slate-400">+{carrinho.itens.length - 4}</span>
-              )}
-              <span className="text-[11px] font-black text-amber-700">{brl(carrinho.valor)}</span>
-            </div>
-          )}
-
-          {estado === 'comprou' && (
-            <p className="mt-1.5 text-xs font-bold text-emerald-700">
-              Pedido fechado{visitante.ultimoPedidoValor ? ` · ${brl(visitante.ultimoPedidoValor)}` : ''}
-            </p>
-          )}
+          {/* Onde a pessoa parou, e o que a parada vale. */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <TrilhaDeEtapas estado={estado} />
+            <span className={cn('text-[11px] font-extrabold', etapa.texto)}>{etapa.rotulo}</span>
+            {valorDaEtapa && (
+              <span className={cn('rounded-lg px-2 py-0.5 text-[11px] font-black', etapa.chip)}>{valorDaEtapa}</span>
+            )}
+          </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex shrink-0 items-center gap-2">
           {telefone && (
             <a
               href={linkDoWhatsApp(telefone, nome, estado, carrinho?.valor)}
               target="_blank"
               rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-600"
             >
               <WhatsAppIcon className="h-3.5 w-3.5" />
               {jaChamou ? 'Responder' : 'Chamar'}
             </a>
           )}
-          <button
-            type="button"
-            onClick={onAlternar}
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500 transition hover:bg-slate-100"
-          >
-            Detalhes
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', aberto && 'rotate-180')} />
-          </button>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400">
+            <ChevronDown className={cn('h-4 w-4 transition-transform', aberto && 'rotate-180')} />
+          </span>
         </div>
       </div>
 
@@ -705,6 +800,28 @@ function CartaoDeVisitante({
             </div>
 
             <div className="space-y-1.5 text-xs text-slate-600">
+              {/* A sacola item a item: saiu da linha do card e veio para cá, que
+                  é onde a dona lê antes de escrever a mensagem. */}
+              {estado === 'abandonou' && carrinho && carrinho.itens.length > 0 && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-amber-700">Parado na sacola</p>
+                  <div className="mt-2 space-y-1">
+                    {carrinho.itens.map((item, i) => (
+                      <p key={`${item.id}-${i}`} className="flex items-baseline justify-between gap-3 text-amber-900">
+                        <span>
+                          {item.qtd}× {item.nome}
+                        </span>
+                        <span className="shrink-0 font-bold">{brl(item.valor)}</span>
+                      </p>
+                    ))}
+                  </div>
+                  <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-amber-200 pt-2 text-[13px]">
+                    <span className="font-bold text-amber-800">Total</span>
+                    <span className="font-black text-amber-700">{brl(carrinho.valor)}</span>
+                  </p>
+                </div>
+              )}
+
               <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Histórico</p>
               <Linha rotulo="Visitas ao cardápio" valor={String(visitante.sessoes ?? 1)} />
               <Linha rotulo="Pedidos pelo cardápio" valor={String(visitante.pedidos ?? 0)} />

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LIMITE_LINHA_DO_TEMPO,
+  NIVEL_DO_ESTADO,
   agruparPorPessoa,
+  contarPorEstado,
   chaveDaPessoa,
   docIdVisitante,
   ehIdentificado,
@@ -406,5 +408,41 @@ describe('agruparPorPessoa', () => {
     );
     expect(resumoDoDia(lista, INICIO).pessoas).toBe(3);
     expect(resumoDoDia(agruparPorPessoa(lista), INICIO).pessoas).toBe(1);
+  });
+});
+
+describe('etapas do funil', () => {
+  it('abrir o cardápio já é uma etapa cumprida', () => {
+    // 96 das 120 pessoas da loja param aqui: se valesse 0, a trilha do card
+    // normal ficaria vazia e pareceria defeito.
+    expect(NIVEL_DO_ESTADO.passou).toBe(1);
+    expect(NIVEL_DO_ESTADO.olhou).toBe(2);
+    expect(NIVEL_DO_ESTADO.abandonou).toBe(3);
+    expect(NIVEL_DO_ESTADO.comprou).toBe(4);
+  });
+
+  it('conta quantas pessoas pararam em cada etapa', () => {
+    const agora = Date.now();
+    const inicio = agora - 60 * 60 * 1000;
+    const so = { id: 'a', storeId: 's', visitorId: 'a' } as any;
+    const olhou = { id: 'b', storeId: 's', visitorId: 'b', linhaDoTempo: [{ tipo: 'viu', at: agora }] } as any;
+    const carrinho = {
+      id: 'c',
+      storeId: 's',
+      visitorId: 'c',
+      carrinho: { itens: [{ id: 'p', nome: 'X', qtd: 1, valor: 10 }], valor: 10, emMs: agora },
+    } as any;
+    const comprou = { id: 'd', storeId: 's', visitorId: 'd', ultimoPedidoMs: agora, ultimoPedidoValor: 20 } as any;
+
+    expect(contarPorEstado([so, olhou, carrinho, comprou, so], inicio)).toEqual({
+      passou: 2,
+      olhou: 1,
+      abandonou: 1,
+      comprou: 1,
+    });
+  });
+
+  it('lista vazia devolve tudo zerado em vez de quebrar', () => {
+    expect(contarPorEstado([], 0)).toEqual({ passou: 0, olhou: 0, abandonou: 0, comprou: 0 });
   });
 });
