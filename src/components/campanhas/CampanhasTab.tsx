@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCollection, useMemoFirebase } from '@/firebase';
+import { useVisitantesDaLoja } from '@/hooks/useVisitantesDaLoja';
 import { collection, query, where, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { uploadImage } from '@/lib/upload';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,9 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 const spentOf = (c: ClientLike) => (c.totalPedidos || 0) * (c.ticketMedio || 0);
 
+/** Janela de "olhou e nao pediu": interesse esfria rapido em delivery. */
+const DIAS_DE_INTERESSE = 7;
+
 export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   const { toast } = useToast();
   const [draft, setDraft] = useState<CampaignDraft>(EMPTY_DRAFT);
@@ -88,6 +92,17 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   );
   const { data: clientesRaw } = useCollection(clientesQuery);
   const clients = ((clientesRaw || []) as ClientLike[]).filter((client: any) => client?.archived !== true);
+
+  // Quem abriu o cardapio nos ultimos dias e nao fechou pedido. E o publico
+  // mais quente que existe: interesse recente, demonstrado pela propria pessoa.
+  // Se a leitura falhar, o grupo so fica vazio - campanha nao para por isso.
+  const desdeInteressados = useMemo(() => new Date(Date.now() - DIAS_DE_INTERESSE * 86400000), []);
+  const { visitantes } = useVisitantesDaLoja(user?.uid, desdeInteressados, 500);
+  const contextoDoPublico = useMemo(() => ({
+    telefonesInteressados: visitantes
+      .filter((v) => (v.pedidos || 0) === 0 && (v.telefone || '').trim())
+      .map((v) => v.telefone as string),
+  }), [visitantes]);
 
 
   // Listas de transmissão salvas (seleções de contatos reutilizáveis).
@@ -177,7 +192,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   // Lista base: filtrada pelo preset ativo (se houver), senão todos — e ordenada
   // pelo critério analítico escolhido (nome, nº de compras, valor, ticket, recência).
   const baseList = useMemo(() => {
-    const arr = activePreset ? resolveAudience(clients, activePreset) : [...clients];
+    const arr = activePreset ? resolveAudience(clients, activePreset, contextoDoPublico) : [...clients];
     switch (sortKey) {
       case 'pedidos': arr.sort((a, b) => (b.totalPedidos || 0) - (a.totalPedidos || 0)); break;
       case 'valor': arr.sort((a, b) => spentOf(b) - spentOf(a)); break;
@@ -231,7 +246,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
   // Dropdown de grupos: seleciona o grupo direto (filtra + marca os contatos dele).
   const selectPreset = (id: AudienceId) => {
     setActivePreset(id);
-    setSelectedIds(new Set(resolveAudience(clients, id).map(c => c.id)));
+    setSelectedIds(new Set(resolveAudience(clients, id, contextoDoPublico).map(c => c.id)));
     setActiveListId(null);
   };
   const clearSelection = () => { setSelectedIds(new Set()); setActiveListId(null); };
@@ -647,7 +662,7 @@ export function CampanhasTab({ db, user, storeProfile }: CampanhasTabProps) {
                     <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px]">
                       {AUDIENCE_PRESETS.map((a) => {
                         const active = activePreset === a.id;
-                        const count = resolveAudience(clients, a.id as AudienceId).length;
+                        const count = resolveAudience(clients, a.id as AudienceId, contextoDoPublico).length;
                         return (
                           <DropdownMenuItem key={a.id} onClick={() => selectPreset(a.id as AudienceId)} className="flex items-center justify-between gap-3">
                             <span className="flex items-center gap-2">

@@ -6,7 +6,7 @@
  * o page.tsx. Os componentes em src/components/campanhas/* só consomem isto.
  */
 
-export type AudienceId = 'all' | 'recent' | 'inactive' | 'vip';
+export type AudienceId = 'all' | 'recent' | 'inactive' | 'vip' | 'fiel_sumido' | 'interessado';
 
 export interface AudiencePreset {
   id: AudienceId;

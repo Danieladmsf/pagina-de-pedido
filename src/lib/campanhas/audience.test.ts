@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { dedupeRecipientsByPhone, normalizeCampaignPhone } from '@/lib/campanhas/audience';
+import {
+  FIEL_MINIMO_DE_PEDIDOS,
+  dedupeRecipientsByPhone,
+  normalizeCampaignPhone,
+  resolveAudience,
+} from '@/lib/campanhas/audience';
 
 describe('telefone das campanhas', () => {
   it('completa o código do país sem confundir com o DDD 55', () => {
@@ -56,5 +61,45 @@ describe('dedupe de destinatários', () => {
     dedupeRecipientsByPhone(original);
 
     expect(original[0].nome).toBe('');
+  });
+});
+
+describe('públicos que nascem do cardápio', () => {
+  const diasAtras = (dias: number) => {
+    const d = new Date(Date.now() - dias * 86400000);
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  };
+
+  const base = [
+    // Fiel que sumiu: comprava sempre e parou há dois meses.
+    { id: 'fiel', nome: 'Maria', celular: '16991111111', totalPedidos: 8, ultimoPedido: diasAtras(60) },
+    // Comprou uma vez, faz tempo: é inativo, mas nunca foi fiel.
+    { id: 'uma-vez', nome: 'João', celular: '16992222222', totalPedidos: 1, ultimoPedido: diasAtras(90) },
+    // Fiel ativo: comprou semana passada.
+    { id: 'ativo', nome: 'Ana', celular: '16993333333', totalPedidos: 12, ultimoPedido: diasAtras(5) },
+    // Sem WhatsApp não entra em campanha nenhuma.
+    { id: 'sem-zap', nome: 'Zé', celular: '', totalPedidos: 9, ultimoPedido: diasAtras(70) },
+  ];
+
+  it('"fiéis que sumiram" não é o mesmo que "inativos"', () => {
+    const fieis = resolveAudience(base, 'fiel_sumido').map((c) => c.id);
+    expect(fieis).toEqual(['fiel']);
+
+    // O público antigo pega quem comprou uma única vez e sumiu — outro assunto.
+    const inativos = resolveAudience(base, 'inactive').map((c) => c.id);
+    expect(inativos).toContain('uma-vez');
+    expect(FIEL_MINIMO_DE_PEDIDOS).toBe(3);
+  });
+
+  it('"olharam e não pediram" casa o telefone com a formatação do cadastro', () => {
+    const publico = resolveAudience(base, 'interessado', {
+      telefonesInteressados: ['(16) 99222-2222', '5516993333333'],
+    });
+    expect(publico.map((c) => c.id).sort()).toEqual(['ativo', 'uma-vez']);
+  });
+
+  it('sem ninguém olhando, o grupo fica vazio em vez de virar "todos"', () => {
+    expect(resolveAudience(base, 'interessado')).toEqual([]);
+    expect(resolveAudience(base, 'interessado', { telefonesInteressados: [] })).toEqual([]);
   });
 });

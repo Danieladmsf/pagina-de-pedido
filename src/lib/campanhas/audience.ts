@@ -16,11 +16,30 @@ export interface ClientLike {
   clienteDesde?: string;
 }
 
+/**
+ * Quantos pedidos fazem alguém "fiel". Três é o menor número que separa hábito
+ * de acaso: uma compra é experimento, duas podem ser coincidência.
+ */
+export const FIEL_MINIMO_DE_PEDIDOS = 3;
+/** A partir de quantos dias sem comprar o cliente fiel conta como sumido. */
+export const FIEL_SUMIDO_DIAS = 30;
+
 export const AUDIENCE_PRESETS: AudiencePreset[] = [
   { id: 'all', label: 'Todos os clientes', description: 'Toda a base com WhatsApp válido' },
   { id: 'recent', label: 'Ativos (últimos 30 dias)', description: 'Compraram recentemente', windowDays: 30 },
   { id: 'inactive', label: 'Inativos (60+ dias)', description: 'Reativação — "sentimos sua falta"', windowDays: 60 },
   { id: 'vip', label: 'VIP (maiores compradores)', description: 'Top clientes por volume gasto' },
+  {
+    id: 'fiel_sumido',
+    label: 'Fiéis que sumiram',
+    description: 'Compravam sempre e pararam — quem mais dói perder',
+    windowDays: FIEL_SUMIDO_DIAS,
+  },
+  {
+    id: 'interessado',
+    label: 'Olharam e não pediram',
+    description: 'Abriram o cardápio agora há pouco e não fecharam',
+  },
 ];
 
 export const MESSAGE_TOKENS: MessageToken[] = [
@@ -132,15 +151,48 @@ export function parseDateBR(value?: string): number {
 }
 
 /**
+ * O que o cardápio sabe e o cadastro não: quem está olhando AGORA.
+ *
+ * Vem da tela de visitantes (`store_visitors`), e é por telefone porque é o que
+ * existe dos dois lados. A comparação usa o mesmo normalizador do disparo, para
+ * "(16) 99164-4249" no cadastro e "16991644249" na visita serem a mesma pessoa.
+ */
+export interface ContextoDoPublico {
+  /** Telefones de quem abriu o cardápio no período e NÃO fechou pedido. */
+  telefonesInteressados?: string[];
+}
+
+/**
  * Resolve o público real a partir da base de clientes. Sempre exige WhatsApp
  * válido (é uma campanha por WhatsApp).
  */
-export function resolveAudience(clients: ClientLike[], audienceId: AudienceId): ClientLike[] {
+export function resolveAudience(
+  clients: ClientLike[],
+  audienceId: AudienceId,
+  contexto?: ContextoDoPublico,
+): ClientLike[] {
   const withPhone = (clients || []).filter(hasValidWhatsapp);
   const now = Date.now();
   const DAY = 86400000;
 
   switch (audienceId) {
+    case 'fiel_sumido':
+      // Diferente de "inativo": aqui não entra quem comprou uma vez e nunca
+      // mais. Fiel que some é a perda que dá para reverter com uma mensagem.
+      return withPhone.filter(c => {
+        if ((c.totalPedidos || 0) < FIEL_MINIMO_DE_PEDIDOS) return false;
+        const t = parseDateBR(c.ultimoPedido);
+        return t > 0 && now - t > FIEL_SUMIDO_DIAS * DAY;
+      });
+    case 'interessado': {
+      const alvos = new Set(
+        (contexto?.telefonesInteressados || [])
+          .map(normalizeCampaignPhone)
+          .filter(Boolean),
+      );
+      if (alvos.size === 0) return [];
+      return withPhone.filter(c => alvos.has(normalizeCampaignPhone(c.celular)));
+    }
     case 'recent':
       return withPhone.filter(c => {
         const t = parseDateBR(c.ultimoPedido);

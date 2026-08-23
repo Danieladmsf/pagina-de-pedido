@@ -57,6 +57,7 @@ import {
 } from '@/lib/visitantes';
 import { ORIGEM_DIRETA } from '@/lib/origem';
 import { receitaPorOrigem } from '@/lib/receita-por-origem';
+import { avisosDoCardapio } from '@/lib/avisos-do-cardapio';
 import {
   buscasSemResultado,
   faixasDeCarrinhoParado,
@@ -189,6 +190,18 @@ export function VisitantesPage() {
     () => visitasNaPortaFechada(visitas, storeProfile),
     [visitas, storeProfile],
   );
+  const avisos = useMemo(
+    () =>
+      avisosDoCardapio({
+        origens: receita.linhas,
+        portaFechada,
+        buscas,
+        carrinhosParados: resumo.abandonados,
+        valorParado: resumo.valorAbandonado,
+        periodo: janela.descricao,
+      }),
+    [receita.linhas, portaFechada, buscas, resumo.abandonados, resumo.valorAbandonado, janela.descricao],
+  );
   const lista = useMemo(
     () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),
     [fila, filtro, inicioMs]
@@ -208,6 +221,48 @@ export function VisitantesPage() {
   return (
     <Moldura onVoltar={() => router.back()} descricao={janela.descricao}>
       <BarraDePeriodo periodo={periodo} onMudar={setEscolha} />
+
+      {/* A leitura que um sócio atento faria da tela inteira. Fica em cima
+          porque é a única parte que a dona vai ler todo dia — o resto é para
+          quando ela quiser conferir de onde saiu o número. */}
+      {avisos.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {avisos.map((aviso) => (
+            <div
+              key={aviso.id}
+              className={cn(
+                'flex items-start gap-2.5 rounded-2xl border px-4 py-3',
+                aviso.tom === 'acao' && 'border-amber-200 bg-amber-50/80',
+                aviso.tom === 'atencao' && 'border-sky-200 bg-sky-50/70',
+                aviso.tom === 'bom' && 'border-emerald-200 bg-emerald-50/70',
+              )}
+            >
+              <span
+                className={cn(
+                  'mt-0.5 shrink-0',
+                  aviso.tom === 'acao' && 'text-amber-600',
+                  aviso.tom === 'atencao' && 'text-sky-600',
+                  aviso.tom === 'bom' && 'text-emerald-600',
+                )}
+              >
+                {aviso.tom === 'acao' && <ShoppingBag className="h-4 w-4" />}
+                {aviso.tom === 'atencao' && <Eye className="h-4 w-4" />}
+                {aviso.tom === 'bom' && <TrendingUp className="h-4 w-4" />}
+              </span>
+              <p
+                className={cn(
+                  'text-sm font-semibold leading-snug',
+                  aviso.tom === 'acao' && 'text-amber-900',
+                  aviso.tom === 'atencao' && 'text-sky-900',
+                  aviso.tom === 'bom' && 'text-emerald-900',
+                )}
+              >
+                {aviso.texto}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Números do período. "Visitas" e "pessoas" são coisas diferentes de
           propósito: a mesma pessoa abrindo o link duas vezes conta duas visitas

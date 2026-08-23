@@ -1,6 +1,6 @@
 # Plano — De onde vem a venda (origem, funil de identificação e segmentação)
 
-> **Status:** Fases 1, 2 e 3 implementadas em 23/08/2026 (`68a4544`, `e403b92`, `022350c` e o commit da Fase 3). Falta a Fase 4. O eixo de bairro da Fase 3 ficou de fora por falta de dado — ver 4.6.
+> **Status:** plano COMPLETO — Fases 1 a 4 implementadas em 23/08/2026 (`68a4544`, `e403b92`, `022350c`, `6627bae` e o commit da Fase 4). Único item não feito: o eixo de bairro da Fase 3, por falta de dado — ver 4.6.
 > **Criado em:** 23/08/2026
 > **Origem:** o card do placar mostrava a mesma foto quatro vezes (corrigido em `2730edb`, agrupamento por pessoa). Puxando o fio: a loja não sabe **de onde** vem quem abre o cardápio, e o único jeito de dar nome a alguém hoje depende de um link que pode vazar.
 > **Relação com outros planos:** `docs/PLANO_INTEGRIDADE_DADOS.md` (vínculo por id, não por texto) vale aqui inteiro — origem e identidade só entram como id ou chave normalizada.
@@ -138,6 +138,8 @@ Recência, frequência e valor por pessoa (já dá para calcular com o que exist
 
 Cruzando com Campanhas: "12 clientes fiéis não pedem há 30 dias" vira uma lista pronta para uma mensagem — o módulo de disparo já existe.
 
+**Como ficou:** dois públicos novos em `lib/campanhas/audience.ts`, ao lado dos quatro que já existiam. **Fiéis que sumiram** (3 pedidos ou mais e nada há 30+ dias) é diferente de "inativos 60+ dias", que pega quem comprou uma única vez e nunca voltou — perder um fiel dói mais e reverte mais fácil. **Olharam e não pediram** vem do cardápio, não do cadastro: quem abriu nos últimos 7 dias, deixou telefone e não fechou. É o público mais quente que existe, e nenhum cadastro sabia dele antes deste plano.
+
 > Responde: a quem falar hoje. Custo: médio.
 
 ---
@@ -153,7 +155,7 @@ Ligação visita→pedido por id; tabela de receita, ticket e conversão por ori
 **Fase 3 — Decisões** — ✅ FEITA (menos o bairro, ver 4.6)
 Busca sem resultado; demanda reprimida fora do horário; bairro que visita contra bairro que compra; faixas de carrinho parado.
 
-**Fase 4 — Ação**
+**Fase 4 — Ação** — ✅ FEITA
 Ciclo de vida (novo, fiel, sumido) alimentando Campanhas; avisos em vez de painel — "hoje o Instagram trouxe 30 visitas e nenhum pedido".
 
 ---
