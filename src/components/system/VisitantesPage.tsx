@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
   canAccessRetaguarda,
@@ -57,6 +57,12 @@ import {
 } from '@/lib/visitantes';
 import { ORIGEM_DIRETA } from '@/lib/origem';
 import { receitaPorOrigem } from '@/lib/receita-por-origem';
+import {
+  buscasSemResultado,
+  faixasDeCarrinhoParado,
+  nomeDoDia,
+  visitasNaPortaFechada,
+} from '@/lib/decisoes-do-cardapio';
 import { brl, cn } from '@/lib/utils';
 
 /**
@@ -135,6 +141,13 @@ export function VisitantesPage() {
   }, [db, ownerId]);
   const { data: clientes } = useCollection<any>(clientesQuery);
 
+  // O horario de funcionamento: e ele que diz quem bateu na porta fechada.
+  const perfilRef = useMemoFirebase(() => {
+    if (!db || !ownerId) return null;
+    return doc(db, 'store_profiles', ownerId);
+  }, [db, ownerId]);
+  const { data: storeProfile } = useDoc<any>(perfilRef);
+
   const acharCliente = useMemo(() => {
     const porId = new Map<string, any>();
     const lista: { id: string; data: any }[] = [];
@@ -169,6 +182,12 @@ export function VisitantesPage() {
         })),
       ),
     [visitantes, vendas],
+  );
+  const buscas = useMemo(() => buscasSemResultado(visitantes), [visitantes]);
+  const faixas = useMemo(() => faixasDeCarrinhoParado(visitantes), [visitantes]);
+  const portaFechada = useMemo(
+    () => visitasNaPortaFechada(visitas, storeProfile),
+    [visitas, storeProfile],
   );
   const lista = useMemo(
     () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),
@@ -324,6 +343,28 @@ export function VisitantesPage() {
           )}
         </p>
 
+        {/* Onde está o dinheiro parado. A fila já ordena por oportunidade; isto
+            responde outra coisa: quanto vale gastar tempo ligando. Sacola de
+            R$ 150 e sacola de R$ 12 não pedem o mesmo esforço. */}
+        {faixas.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {faixas.map((faixa) => (
+              <div
+                key={faixa.rotulo}
+                className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2"
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                  {faixa.rotulo}
+                </p>
+                <p className="mt-0.5 text-sm font-black text-amber-900">
+                  {faixa.pessoas} {faixa.pessoas === 1 ? 'pessoa' : 'pessoas'}
+                  <span className="ml-1.5 text-xs font-bold text-amber-700">{brl(faixa.valor)}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {resumo.pessoas > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {FILTROS.map((f) => {
@@ -447,6 +488,87 @@ export function VisitantesPage() {
             Para separar por lugar, gere o link em Retaguarda → WhatsApp → Links de pedido marcando
             onde ele vai ser colado.
           </p>
+        </section>
+      )}
+
+      {/* Pedido de produto com as palavras do cliente. */}
+      {buscas.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-black text-slate-800">Procuraram e não acharam</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            O que as pessoas digitaram na busca do cardápio e não encontrou nada. Pode ser produto
+            que falta, ou nome que o cliente usa e o cadastro não tem.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {buscas.slice(0, 16).map((busca) => (
+              <div
+                key={busca.termo}
+                className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2"
+              >
+                <span className="text-sm font-bold text-sky-900">{busca.termo}</span>
+                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-black text-sky-700">
+                  {busca.pessoas} {busca.pessoas === 1 ? 'pessoa' : 'pessoas'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Demanda que a loja nunca viu: gente que chegou com a porta fechada. */}
+      {portaFechada.visitas > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-black text-slate-800">Bateram na porta fechada</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Visitas que aconteceram fora do horário de funcionamento — {portaFechada.fatia}% do
+            movimento de {janela.descricao}.
+          </p>
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-3xl font-black leading-none text-slate-800">
+              {portaFechada.visitas}
+              <span className="ml-2 text-xs font-bold text-slate-400">
+                {portaFechada.visitas === 1 ? 'visita com a loja fechada' : 'visitas com a loja fechada'}
+              </span>
+            </p>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                  Horários que mais aparecem
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {portaFechada.horas.slice(0, 5).map((h) => (
+                    <span
+                      key={h.hora}
+                      className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700"
+                    >
+                      {String(h.hora).padStart(2, '0')}h · {h.visitas}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                  Dias que mais aparecem
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {portaFechada.dias.slice(0, 4).map((d) => (
+                    <span
+                      key={d.dia}
+                      className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700"
+                    >
+                      {nomeDoDia(d.dia)} · {d.visitas}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+              Conta pelo horário de funcionamento de hoje — se ele mudou no período, os dias
+              anteriores usam o horário novo. Caixa fechado não entra nesta conta.
+            </p>
+          </div>
         </section>
       )}
 

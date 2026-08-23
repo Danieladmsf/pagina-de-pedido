@@ -1,6 +1,6 @@
 # Plano — De onde vem a venda (origem, funil de identificação e segmentação)
 
-> **Status:** Fases 1 e 2 implementadas em 23/08/2026 (`68a4544`, `e403b92` e o commit da Fase 2). Faltam as Fases 3 e 4.
+> **Status:** Fases 1, 2 e 3 implementadas em 23/08/2026 (`68a4544`, `e403b92`, `022350c` e o commit da Fase 3). Falta a Fase 4. O eixo de bairro da Fase 3 ficou de fora por falta de dado — ver 4.6.
 > **Criado em:** 23/08/2026
 > **Origem:** o card do placar mostrava a mesma foto quatro vezes (corrigido em `2730edb`, agrupamento por pessoa). Puxando o fio: a loja não sabe **de onde** vem quem abre o cardápio, e o único jeito de dar nome a alguém hoje depende de um link que pode vazar.
 > **Relação com outros planos:** `docs/PLANO_INTEGRIDADE_DADOS.md` (vínculo por id, não por texto) vale aqui inteiro — origem e identidade só entram como id ou chave normalizada.
@@ -126,7 +126,9 @@ Saída: por origem, no período — visitas, pessoas, pedidos, **receita**, tick
 
 - Visitas **fora do horário de funcionamento** = demanda reprimida: quantas pessoas bateram na porta fechada, e a que horas.
 - Hora e dia da semana da visita comparados aos do pedido.
-- Bairro de quem visita contra bairro de quem compra: bairro que visita muito e compra pouco costuma ser frete espantando.
+- ~~Bairro de quem visita contra bairro de quem compra~~ — **sem base de dados, não implementado.** A visita é anônima: `store_visits` e `store_visitors` não têm endereço, e bairro só existe no pedido (148 dos 1.011 pedidos de 30 dias). Cruzar pelo cadastro cobriria só os identificados (39 numa semana), o que daria uma tabela de 5 linhas com 1 pessoa cada — número que engana mais do que informa. Para valer, o cardápio teria de perguntar o bairro antes do carrinho: decisão de produto, não de código.
+
+**Medido ao implementar (23/08/2026, 30 dias):** Gostinho de Céu teve **127 de 658 visitas (19%) com a loja fechada**; Lima Limão, 30 de 215 (14%). E o padrão não é madrugada — é a BORDA do horário: a hora com mais gente na Gostinho é **18h (28 visitas), o minuto em que ela fecha**, seguida de 09h (18), uma hora antes de abrir. Na Lima Limão, 08h e 16h — mesma coisa. Meia hora a mais em cada ponta pegaria perto de 46 visitas por mês numa loja que faz ~66 pedidos por semana.
 
 > Responde: horário de abertura e política de frete. Custo: baixo.
 
@@ -148,7 +150,7 @@ Cruzando com Campanhas: "12 clientes fiéis não pedem há 30 dias" vira uma lis
 **Fase 2 — Dinheiro por origem** — ✅ FEITA
 Ligação visita→pedido por id; tabela de receita, ticket e conversão por origem; QR por ponto físico (embalagem, balcão, panfleto).
 
-**Fase 3 — Decisões**
+**Fase 3 — Decisões** — ✅ FEITA (menos o bairro, ver 4.6)
 Busca sem resultado; demanda reprimida fora do horário; bairro que visita contra bairro que compra; faixas de carrinho parado.
 
 **Fase 4 — Ação**

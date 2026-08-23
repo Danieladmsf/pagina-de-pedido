@@ -672,6 +672,19 @@ export function MenuPageClient({
     });
   }, [searchQuery, items, visibleCategoryIds, promoOnlyIds, isVisibleForCustomerMenu]);
 
+  // Procurou e não achou: é pedido de produto com as palavras do cliente.
+  //
+  // Espera a pessoa parar de digitar. Sem a pausa, "brigadeiro" viraria onze
+  // eventos — um por letra — e uma pessoa só consumiria a linha do tempo
+  // inteira (40 posições). Só o que NÃO achou nada é gravado: busca que
+  // encontrou o produto vira um `viu` logo em seguida.
+  useEffect(() => {
+    const termo = searchQuery.trim();
+    if (termo.length < 3 || filteredItems.length > 0) return;
+    const timer = setTimeout(() => tracker.buscouSemResultado(termo), 1500);
+    return () => clearTimeout(timer);
+  }, [searchQuery, filteredItems.length, tracker]);
+
   // A Vitrine é a maior peça da home: produto de categoria desligada (ou fora do
   // horário dela) não pode continuar girando lá depois que a dona desligou a
   // categoria — era por aqui que a categoria "voltava" ao cardápio. Filtra por

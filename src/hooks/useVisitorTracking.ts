@@ -41,6 +41,8 @@ export interface DadosDeIdentidade {
 
 export interface VisitorTracker {
   verProduto: (item: any) => void;
+  /** A pessoa procurou algo que o cardápio não tem. */
+  buscouSemResultado: (termo: string) => void;
   atualizarCarrinho: (itens: any[]) => void;
   identificar: (dados: DadosDeIdentidade) => void;
   registrarPedido: (dados: DadosDeIdentidade & { orderId: string; valor: number }) => void;
@@ -58,8 +60,12 @@ interface Opcoes {
   origem?: string;
 }
 
+/** Tamanho máximo do termo gravado — busca é palavra, não redação. */
+const LIMITE_DO_TERMO = 40;
+
 const vazio: VisitorTracker = {
   verProduto: () => {},
+  buscouSemResultado: () => {},
   atualizarCarrinho: () => {},
   identificar: () => {},
   registrarPedido: () => {},
@@ -204,6 +210,25 @@ export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova, 
     [ref, gravar]
   );
 
+  /**
+   * Busca que não achou nada é pedido de produto com as palavras do cliente.
+   *
+   * Quem chama é a tela, depois que a pessoa PARA de digitar — senão "brigadeiro"
+   * viraria onze eventos, um por letra, e a linha do tempo (40 posições) seria
+   * consumida por uma pessoa só.
+   */
+  const buscouSemResultado = useCallback(
+    (termo: string) => {
+      const limpo = String(termo || '').trim().slice(0, LIMITE_DO_TERMO);
+      if (!ref || limpo.length < 3) return;
+      const antes = linha.current;
+      linha.current = empilharEvento(antes, { tipo: 'busca', at: Date.now(), termo: limpo });
+      if (linha.current === antes) return; // mesma busca de novo: nada mudou
+      gravar({ linhaDoTempo: linha.current });
+    },
+    [ref, gravar]
+  );
+
   const atualizarCarrinho = useCallback(
     (itens: any[]) => {
       if (!ref) return;
@@ -286,8 +311,8 @@ export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova, 
   );
 
   const tracker = useMemo<VisitorTracker>(
-    () => ({ verProduto, atualizarCarrinho, identificar, registrarPedido }),
-    [verProduto, atualizarCarrinho, identificar, registrarPedido]
+    () => ({ verProduto, buscouSemResultado, atualizarCarrinho, identificar, registrarPedido }),
+    [verProduto, buscouSemResultado, atualizarCarrinho, identificar, registrarPedido]
   );
 
   return ref ? tracker : vazio;

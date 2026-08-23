@@ -20,7 +20,7 @@
  */
 
 /** Eventos guardados na linha do tempo do visitante. */
-export type TipoEvento = 'viu' | 'carrinho' | 'pedido' | 'whatsapp';
+export type TipoEvento = 'viu' | 'carrinho' | 'pedido' | 'whatsapp' | 'busca';
 
 export interface EventoVisitante {
   tipo: TipoEvento;
@@ -35,6 +35,12 @@ export interface EventoVisitante {
   produtoNome?: string;
   valor?: number;
   orderId?: string;
+  /**
+   * O que a pessoa digitou na busca do cardápio e não encontrou. Só o termo
+   * vazio de resultado é guardado: busca que achou o produto vira `viu` logo em
+   * seguida, e encher a linha do tempo com o caminho até lá não diz nada novo.
+   */
+  termo?: string;
 }
 
 export interface ItemDoCarrinho {
@@ -401,7 +407,8 @@ export function empilharEvento(
     ultimo &&
     ultimo.tipo === evento.tipo &&
     ultimo.produtoId === evento.produtoId &&
-    ultimo.orderId === evento.orderId
+    ultimo.orderId === evento.orderId &&
+    ultimo.termo === evento.termo
   ) {
     return atual;
   }
