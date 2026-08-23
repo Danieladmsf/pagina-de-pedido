@@ -148,7 +148,7 @@ export function VisitantesPage() {
 
   const fila = useMemo(() => ordenarPorOportunidade(visitantes, inicioMs), [visitantes, inicioMs]);
   const resumo = useMemo(() => resumoDoDia(visitantes, inicioMs), [visitantes, inicioMs]);
-  const produtos = useMemo(() => rankingDeProdutos(visitantes), [visitantes]);
+  const produtos = useMemo(() => rankingDeProdutos(visitantes, inicioMs), [visitantes, inicioMs]);
   const contagem = useMemo(() => contarPorEstado(visitantes, inicioMs), [visitantes, inicioMs]);
   const lista = useMemo(
     () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),

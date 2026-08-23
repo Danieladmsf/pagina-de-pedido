@@ -5,6 +5,7 @@ import {
   NIVEL_DO_ESTADO,
   agruparPorPessoa,
   contarPorEstado,
+  eventosDesde,
   chaveDaPessoa,
   docIdVisitante,
   ehIdentificado,
@@ -444,5 +445,77 @@ describe('etapas do funil', () => {
 
   it('lista vazia devolve tudo zerado em vez de quebrar', () => {
     expect(contarPorEstado([], 0)).toEqual({ passou: 0, olhou: 0, abandonou: 0, comprou: 0 });
+  });
+});
+
+describe('relógio do servidor na linha do tempo', () => {
+  const HORA = 60 * 60 * 1000;
+  const DIA = 24 * HORA;
+  const agora = Date.UTC(2026, 7, 23, 12, 0);
+  const inicio = agora - 7 * DIA;
+
+  /** `ultimaVez` é servidor; `at` dos eventos é o relógio do celular. */
+  const visitante = (ultimaVez: number | null, ats: number[], tipo = 'viu') =>
+    ({
+      id: 'v',
+      storeId: 's',
+      visitorId: 'v',
+      ultimaVez,
+      linhaDoTempo: ats.map((at) => ({ tipo, at })),
+    }) as any;
+
+  it('ancora o último evento na hora do servidor e desloca os demais', () => {
+    // Celular adiantado em 3 dias: cru, os dois eventos cairiam no futuro.
+    const cru = [agora + 3 * DIA - HORA, agora + 3 * DIA];
+    const eventos = eventosDesde(visitante(agora, cru), inicio);
+
+    expect(eventos).toHaveLength(2);
+    expect(eventos[1].at).toBe(agora);
+    expect(eventos[0].at).toBe(agora - HORA);
+  });
+
+  it('o último evento sempre cai dentro da janela — ninguém perde a etapa pelo ajuste', () => {
+    // Celular atrasado um ano: cru, tudo ficaria antes do início.
+    const cru = [agora - 365 * DIA];
+    expect(eventosDesde(visitante(agora, cru), inicio)).toHaveLength(1);
+  });
+
+  it('evento anterior ao período fica de fora depois do ajuste', () => {
+    const eventos = eventosDesde(visitante(agora, [agora - 30 * DIA, agora]), inicio);
+    expect(eventos).toHaveLength(1);
+    expect(eventos[0].at).toBe(agora);
+  });
+
+  it('sem hora do servidor devolve a linha inteira em vez de descartar história', () => {
+    expect(eventosDesde(visitante(null, [1, 2, 3]), inicio)).toHaveLength(3);
+  });
+
+  it('sem eventos devolve lista vazia', () => {
+    expect(eventosDesde(visitante(agora, []), inicio)).toEqual([]);
+  });
+
+  it('não mexe na linha do tempo original', () => {
+    const v = visitante(agora, [agora - 5 * DIA, agora]);
+    const antes = v.linhaDoTempo.map((e: any) => e.at);
+    eventosDesde(v, inicio);
+    expect(v.linhaDoTempo.map((e: any) => e.at)).toEqual(antes);
+  });
+
+  it('quem só olhou fora do período volta a ser "só entrou"', () => {
+    // Abriu um produto há 30 dias e voltou hoje sem mexer em nada.
+    const v = visitante(agora, [agora - 30 * DIA, agora - 1 * HORA]);
+    v.linhaDoTempo[0].tipo = 'viu';
+    v.linhaDoTempo[1].tipo = 'carrinho';
+    v.carrinho = { itens: [], valor: 0 };
+
+    expect(estadoDoVisitante(v, inicio)).toBe('passou');
+    // Numa janela larga, o mesmo documento volta a contar como "olhou".
+    expect(estadoDoVisitante(v, agora - 90 * DIA)).toBe('olhou');
+  });
+
+  it('eventosDaSessao continua devolvendo do mais novo para o mais velho', () => {
+    const v = visitante(agora, [agora - 2 * HORA, agora - HORA, agora]);
+    const eventos = eventosDaSessao(v, inicio);
+    expect(eventos.map((e) => e.at)).toEqual([agora, agora - HORA, agora - 2 * HORA]);
   });
 });

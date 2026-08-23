@@ -111,6 +111,35 @@ export function paraMillis(valor: unknown): number | null {
   return null;
 }
 
+/**
+ * A linha do tempo recortada por período, já na hora do SERVIDOR.
+ *
+ * `EventoVisitante.at` é o relógio do CELULAR de quem navegou — celular com
+ * hora errada já causou "online eterno" uma vez (ver `lib/audience.ts`), e por
+ * isso ele nunca serve para filtrar sozinho. O que dá para confiar é
+ * `ultimaVez`, hora do servidor: ancorando o ÚLTIMO evento nela, o mesmo
+ * deslocamento vale para todos os anteriores.
+ *
+ * Sem âncora (visitante sem `ultimaVez`) devolve a linha inteira em vez de
+ * recortar: sem base para excluir, excluir seria inventar.
+ *
+ * O último evento sempre cai dentro da janela — ele é ancorado exatamente em
+ * `ultimaVez`, e a pessoa só está na lista porque essa data está no período.
+ * Ou seja, ninguém perde a etapa inteira por causa do ajuste.
+ *
+ * Devolve do mais ANTIGO para o mais novo, como está guardado.
+ */
+export function eventosDesde(v: Visitante, inicioMs: number): EventoVisitante[] {
+  const eventos = v?.linhaDoTempo || [];
+  if (!eventos.length) return [];
+
+  const ultima = paraMillis(v?.ultimaVez);
+  if (ultima === null) return eventos.map((e) => ({ ...e }));
+
+  const ajuste = ultima - eventos[eventos.length - 1].at;
+  return eventos.map((e) => ({ ...e, at: e.at + ajuste })).filter((e) => e.at >= inicioMs);
+}
+
 /** Só quem deixou nome ou telefone tem rosto e pode ser chamado no WhatsApp. */
 export function ehIdentificado(v: Visitante): boolean {
   return Boolean((v.nome && v.nome.trim()) || (v.telefone && v.telefone.trim()));
@@ -150,7 +179,9 @@ export function estadoDoVisitante(v: Visitante, inicioMs: number): EstadoVisitan
     return 'comprou';
   }
   if (temCarrinho) return 'abandonou';
-  if ((v.linhaDoTempo || []).some((e) => e.tipo === 'viu')) return 'olhou';
+  // Recortado pelo período: quem abriu um produto há três semanas e hoje só
+  // entrou é "Só entrou" hoje, não "Só olhou".
+  if (eventosDesde(v, inicioMs).some((e) => e.tipo === 'viu')) return 'olhou';
   return 'passou';
 }
 
@@ -190,7 +221,9 @@ export function contarPorEstado(
 export function valorDaOportunidade(v: Visitante, inicioMs: number): number {
   const estado = estadoDoVisitante(v, inicioMs);
   if (estado === 'abandonou') return 1_000_000 + (v.carrinho?.valor ?? 0);
-  if (estado === 'olhou') return 1_000 + (v.linhaDoTempo || []).filter((e) => e.tipo === 'viu').length;
+  if (estado === 'olhou') {
+    return 1_000 + eventosDesde(v, inicioMs).filter((e) => e.tipo === 'viu').length;
+  }
   if (estado === 'passou') return 1;
   return 0;
 }
@@ -277,7 +310,7 @@ export interface LinhaDeProduto {
  * fechar. `pessoas` conta gente, não cliques: um produto que uma pessoa abriu 9
  * vezes não é o mesmo que 9 pessoas abrindo uma vez.
  */
-export function rankingDeProdutos(visitantes: Visitante[]): LinhaDeProduto[] {
+export function rankingDeProdutos(visitantes: Visitante[], inicioMs = 0): LinhaDeProduto[] {
   const mapa = new Map<string, LinhaDeProduto & { _pessoas: Set<string> }>();
 
   const garantir = (id: string, nome: string) => {
@@ -291,7 +324,9 @@ export function rankingDeProdutos(visitantes: Visitante[]): LinhaDeProduto[] {
   };
 
   for (const v of visitantes) {
-    for (const evento of v.linhaDoTempo || []) {
+    // Mesma janela da classificação: sem isso, "3 pessoas abriram este produto"
+    // contaria gente que abriu num período que a tela não está mostrando.
+    for (const evento of eventosDesde(v, inicioMs)) {
       if (evento.tipo !== 'viu' || !evento.produtoId) continue;
       const linha = garantir(evento.produtoId, evento.produtoNome || '');
       linha.vistas += 1;
@@ -376,19 +411,9 @@ export function chamouNoWhatsapp(v: Visitante): boolean {
   return (v.linhaDoTempo || []).some((e) => e.tipo === 'whatsapp');
 }
 
-/** Eventos da sessão de caixa atual, do mais novo para o mais velho. */
+/** Eventos do período, do mais novo para o mais velho — a ordem que a tela lê. */
 export function eventosDaSessao(v: Visitante, inicioMs: number): EventoVisitante[] {
-  const ultima = paraMillis(v.ultimaVez);
-  // Relógio do cliente pode estar deslocado: alinhamos a linha do tempo pelo
-  // último evento com a hora do SERVIDOR, então "16:42" na tela é hora real.
-  const eventos = v.linhaDoTempo || [];
-  const ultimoEvento = eventos.length ? eventos[eventos.length - 1].at : null;
-  const ajuste = ultima !== null && ultimoEvento !== null ? ultima - ultimoEvento : 0;
-
-  return eventos
-    .map((e) => ({ ...e, at: e.at + ajuste }))
-    .filter((e) => e.at >= inicioMs)
-    .reverse();
+  return eventosDesde(v, inicioMs).reverse();
 }
 
 /**
