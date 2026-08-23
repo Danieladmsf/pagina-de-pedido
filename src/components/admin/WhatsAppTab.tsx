@@ -640,12 +640,19 @@ const ORDER_LINK_CARD_ICONS: Record<OrderLinkCardId, React.ElementType> = {
 //
 // A biblioteca entra por import dinamico: ela so faz falta quando alguem pede o
 // QR, e nao tem por que pesar o carregamento da Retaguarda inteira.
-function QrDoLink({ url, nomeDoArquivo }: { url: string; nomeDoArquivo: string }) {
+// O botao e o painel sao separados de proposito: o botao vive na LINHA do
+// endereco (ao lado de Copiar) e o painel precisa da largura toda embaixo. Num
+// componente so, o painel virava uma coluna espremida ao lado do input.
+function useQrDoLink(url: string) {
   const { toast } = useToast();
   const [imagem, setImagem] = useState('');
   const [gerando, setGerando] = useState(false);
 
-  async function gerar() {
+  // Mudou o link, o QR na tela deixa de valer: mante-lo seria entregar um
+  // codigo impresso que leva para o endereco antigo.
+  useEffect(() => { setImagem(''); }, [url]);
+
+  async function alternar() {
     if (imagem) {
       setImagem('');
       return;
@@ -663,34 +670,29 @@ function QrDoLink({ url, nomeDoArquivo }: { url: string; nomeDoArquivo: string }
     }
   }
 
-  return (
-    <>
-      <Button type="button" variant="outline" onClick={gerar} disabled={gerando} className="h-9 shrink-0 rounded-xl">
-        {gerando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
-        {imagem ? 'Fechar QR' : 'QR code'}
-      </Button>
+  return { imagem, gerando, alternar, limpar: () => setImagem('') };
+}
 
-      {imagem && (
-        <div className="mt-2 flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imagem} alt="QR code do link" className="h-36 w-36 rounded-xl bg-white p-2 shadow-sm" />
-          <div className="min-w-0 flex-1 text-center sm:text-left">
-            <p className="text-xs font-bold text-slate-700">Imprima onde o cliente pega na mao</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
-              Embalagem, panfleto, cartao ou placa no balcao. Quem apontar a camera cai no cardapio
-              com a marca deste link — e voce ve quantos vieram dai.
-            </p>
-            <a
-              href={imagem}
-              download={`${nomeDoArquivo}.png`}
-              className="mt-2 inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
-            >
-              Baixar PNG
-            </a>
-          </div>
-        </div>
-      )}
-    </>
+function PainelDoQr({ imagem, nomeDoArquivo }: { imagem: string; nomeDoArquivo: string }) {
+  return (
+    <div className="mt-2.5 flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imagem} alt="QR code do link" className="h-36 w-36 shrink-0 rounded-xl bg-white p-2 shadow-sm" />
+      <div className="min-w-0 flex-1 text-center sm:text-left">
+        <p className="text-xs font-bold text-slate-700">Imprima onde o cliente pega na mao</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+          Embalagem, panfleto, cartao ou placa no balcao. Quem apontar a camera cai no cardapio com a
+          marca deste link — e voce ve quantos vieram dai.
+        </p>
+        <a
+          href={imagem}
+          download={`${nomeDoArquivo}.png`}
+          className="mt-2 inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100"
+        >
+          Baixar PNG
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -723,7 +725,7 @@ function CardDaEscolha({
       type="button"
       onClick={onAlternar}
       disabled={!disponivel}
-      className={`flex flex-1 min-w-[9rem] items-center gap-2.5 rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`flex items-center gap-2.5 rounded-2xl border py-2.5 pl-3 pr-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
         marcado
           ? 'border-emerald-500 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-500/20'
           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
@@ -789,6 +791,8 @@ function OrderLinksSection({
         origem,
       )
     : '';
+
+  const qr = useQrDoLink(url);
 
   function alternarCard(id: OrderLinkCardId) {
     setCards((atual) => (atual.includes(id) ? atual.filter((c) => c !== id) : [...atual, id]));
@@ -914,11 +918,15 @@ function OrderLinksSection({
 
           {/* 3 ─────────────────────────────────────────────────────────── */}
           <div className="border-t border-slate-100 pt-4">
+            <p className="text-sm font-black text-slate-800">
+              <span className="mr-1.5 text-emerald-600">3.</span>Pedir o contato de quem e novo?
+            </p>
+
             <button
               type="button"
               onClick={() => hasWhatsapp && setPedirContato(!pedirContato)}
               disabled={!hasWhatsapp}
-              className="flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+              className="mt-2 flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <span
                 className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
@@ -931,15 +939,10 @@ function OrderLinksSection({
                   }`}
                 />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-black text-slate-800">
-                  <span className="mr-1.5 text-emerald-600">3.</span>Pedir o contato de quem e novo
-                </span>
-                <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
-                  {hasWhatsapp
-                    ? 'Quem nunca pediu aqui toca em "Delivery" e manda uma mensagem pronta pelo WhatsApp pedindo o cardapio. Voce recebe o numero e responde com o link. Quem ja e cliente vai direto, sem passar por isso.'
-                    : 'Cadastre o WhatsApp da loja em Perfil da loja para liberar.'}
-                </span>
+              <span className="min-w-0 flex-1 text-xs leading-relaxed text-slate-500">
+                {hasWhatsapp
+                  ? 'Quem nunca pediu aqui toca em "Delivery" e manda uma mensagem pronta pelo WhatsApp pedindo o cardapio. Voce recebe o numero e responde com o link. Quem ja e cliente vai direto, sem passar por isso.'
+                  : 'Cadastre o WhatsApp da loja em Perfil da loja para liberar.'}
               </span>
             </button>
           </div>
@@ -960,8 +963,18 @@ function OrderLinksSection({
                     {copiado ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
                     {copiado ? 'Copiado' : 'Copiar'}
                   </Button>
-                  <QrDoLink url={url} nomeDoArquivo={`cardapio-${origem || codigo}`} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={qr.alternar}
+                    disabled={qr.gerando}
+                    className="h-9 shrink-0 rounded-xl bg-white"
+                  >
+                    {qr.gerando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+                    {qr.imagem ? 'Fechar QR' : 'QR code'}
+                  </Button>
                 </div>
+                {qr.imagem && <PainelDoQr imagem={qr.imagem} nomeDoArquivo={`cardapio-${origem || codigo}`} />}
               </>
             ) : (
               <p className="mt-2 text-xs text-emerald-900/70">
