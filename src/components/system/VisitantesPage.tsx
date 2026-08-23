@@ -739,6 +739,28 @@ function CartaoDeVisitante({
               <span className={cn('rounded-lg px-2 py-0.5 text-[11px] font-black', etapa.chip)}>{valorDaEtapa}</span>
             )}
           </div>
+
+          {/* O que ficou na sacola, sem precisar abrir o card: é a frase que a
+              dona copia para o WhatsApp. Só para quem parou no carrinho — são 9
+              de 120 pessoas, então não é isto que adensa a lista. O total não
+              se repete aqui: ele já está na linha da trilha, acima. */}
+          {estado === 'abandonou' && carrinho && carrinho.itens.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {carrinho.itens.slice(0, 4).map((item, i) => (
+                <span
+                  key={`${item.id}-${i}`}
+                  className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900"
+                >
+                  {item.qtd}× {item.nome}
+                </span>
+              ))}
+              {carrinho.itens.length > 4 && (
+                <span className="text-[11px] font-semibold text-slate-400">
+                  +{carrinho.itens.length - 4}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
