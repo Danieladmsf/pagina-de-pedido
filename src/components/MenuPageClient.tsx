@@ -37,7 +37,13 @@ import { codigoDoVisitante, extrairMarca, MARCA_PARAM } from '@/lib/contato-link
 import { extrairOrigem } from '@/lib/origem';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
-import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
+import {
+  ORDER_LINK_PARAM,
+  cardsDoParam,
+  pedeContato,
+  resolveCardsFromParam,
+  type OrderLinkCardId,
+} from '@/lib/order-link';
 import { OrderChoiceDialog } from '@/components/menu/OrderChoiceDialog';
 
 function promoDateToMillis(value: any) {
@@ -132,6 +138,24 @@ export function MenuPageClient({
   // Tela de escolha do link de pedidos (só para quem entra pelo link da loja)
   const [orderChoiceCards, setOrderChoiceCards] = useState<OrderLinkCardId[]>([]);
   const orderChoiceShownRef = useRef(false);
+  const [pedirContato, setPedirContato] = useState(false);
+  /**
+   * A pessoa já se identificou NESTE aparelho? (`null` = ainda lendo)
+   *
+   * É reconhecimento de aparelho, não de pessoa — o webview do WhatsApp e do
+   * Instagram às vezes começa do zero, e aí cliente antigo passa pelo funil de
+   * novo. Por isso o reconhecimento só ENCURTA caminho; nunca afirma nada na
+   * tela, que seria constrangedor no celular emprestado.
+   */
+  const [conhecido, setConhecido] = useState<boolean | null>(null);
+  useEffect(() => {
+    try {
+      const perfil = JSON.parse(window.localStorage.getItem('customer_profile') || '{}');
+      setConhecido(Boolean(perfil?.phone || window.localStorage.getItem('customer_phone')));
+    } catch {
+      setConhecido(false); // storage bloqueado: trata como gente nova
+    }
+  }, []);
 
   // "Pop" discreto no carrinho flutuante toda vez que um item é adicionado
   const [cartBump, setCartBump] = useState(0);
@@ -385,11 +409,23 @@ export function MenuPageClient({
   // perfil chegar para conferir se a loja ainda oferece cada opção.
   useEffect(() => {
     if (orderChoiceShownRef.current || !storeProfile) return;
-    const cards = resolveCardsFromParam(searchParams.get(ORDER_LINK_PARAM), storeProfile);
-    if (cards.length < 2) return;
+    // Quem já pediu antes neste aparelho não passa pelo funil de identificação:
+    // esperar a leitura do storage antes de decidir evita a tela piscar na cara
+    // de quem seria mandado direto ao cardápio.
+    if (conhecido === null) return;
+
+    const param = searchParams.get(ORDER_LINK_PARAM);
+    const pedir = pedeContato(searchParams) && !conhecido;
+    // Com pedido de contato, a tela aparece mesmo com uma opção só — é ela que
+    // leva ao WhatsApp. Sem ele, vale a regra de sempre: menos de duas opções
+    // não justifica perguntar nada.
+    const cards = pedir ? cardsDoParam(param, storeProfile) : resolveCardsFromParam(param, storeProfile);
+    if (cards.length === 0) return;
+
     orderChoiceShownRef.current = true;
+    setPedirContato(pedir);
     setOrderChoiceCards(cards);
-  }, [searchParams, storeProfile]);
+  }, [searchParams, storeProfile, conhecido]);
 
   // Ao fechar, tira o parâmetro da barra de endereço: recarregar a página (ou
   // voltar para ela) não reabre a tela de escolha.
@@ -1631,7 +1667,7 @@ export function MenuPageClient({
       </Sheet>
 
       {/* Tela de escolha de quem chegou pelo link de pedidos da loja */}
-      {orderChoiceCards.length >= 2 && (
+      {orderChoiceCards.length > 0 && (
         <OrderChoiceDialog
           open
           cards={orderChoiceCards}
@@ -1641,6 +1677,7 @@ export function MenuPageClient({
           theme={theme}
           isStoreOpen={isStoreOpenRightNow.isOpen}
           codigoVisitante={visitorId ? codigoDoVisitante(visitorId) : null}
+          pedirContato={pedirContato}
         />
       )}
 

@@ -54,6 +54,7 @@ import {
   type EstadoVisitante,
   type Visitante,
 } from '@/lib/visitantes';
+import { ORIGEM_DIRETA, agruparPorOrigem } from '@/lib/origem';
 import { brl, cn } from '@/lib/utils';
 
 /**
@@ -150,6 +151,7 @@ export function VisitantesPage() {
   const resumo = useMemo(() => resumoDoDia(visitantes, inicioMs), [visitantes, inicioMs]);
   const produtos = useMemo(() => rankingDeProdutos(visitantes, inicioMs), [visitantes, inicioMs]);
   const contagem = useMemo(() => contarPorEstado(visitantes, inicioMs), [visitantes, inicioMs]);
+  const origens = useMemo(() => agruparPorOrigem(visitantes), [visitantes]);
   const lista = useMemo(
     () => (filtro === 'todos' ? fila : fila.filter((v) => estadoDoVisitante(v, inicioMs) === filtro)),
     [fila, filtro, inicioMs]
@@ -355,6 +357,51 @@ export function VisitantesPage() {
           </p>
         )}
       </section>
+
+      {/* De onde essa gente veio. Só aparece quando existe alguma origem
+          marcada: numa loja que ainda não usou os links por canal, uma tabela
+          inteira dizendo "sem marca" seria só ocupar espaço. */}
+      {origens.some((linha) => linha.origem !== ORIGEM_DIRETA) && (
+        <section className="mt-8">
+          <h2 className="text-lg font-black text-slate-800">De onde vieram</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Conta quem TROUXE a pessoa. Quem descobriu a loja no Instagram e voltou pelo link do
+            WhatsApp continua contando para o Instagram.
+          </p>
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-left font-bold">Origem</th>
+                    <th className="px-3 py-2 text-right font-bold">Pessoas</th>
+                    <th className="px-3 py-2 text-right font-bold">Olharam</th>
+                    <th className="px-3 py-2 text-right font-bold">Pediram</th>
+                    <th className="px-4 py-2 text-right font-bold">Viraram pedido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {origens.map((linha) => (
+                    <tr key={linha.origem} className="border-b border-slate-50 last:border-0">
+                      <td className="px-4 py-2.5 font-semibold text-slate-700">{linha.rotulo}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-slate-700">{linha.pessoas}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-500">{linha.olharam}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{linha.pedidos}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-slate-700">
+                        {linha.pedidos > 0 ? `${linha.conversao}%` : <span className="text-slate-300">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+            Para separar por lugar, gere o link em Retaguarda → WhatsApp → Links de pedido marcando
+            onde ele vai ser colado.
+          </p>
+        </section>
+      )}
 
       {/* O cardápio visto de fora: o que chama e o que trava. */}
       {produtos.length > 0 && (

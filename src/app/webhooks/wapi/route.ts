@@ -8,17 +8,9 @@ import {
   isDisconnectedEvent,
 } from '@/lib/wapi/connection-events';
 import { extractIncomingMessage } from '@/lib/wapi/incoming-message';
-import {
-  buildStoreLink,
-  formatWorkingHours,
-  getStoreOpenState,
-  getWhatsAppMessages,
-  renderWhatsAppTemplate,
-  formatNextOpeningTime,
-} from '@/lib/whatsapp-messages';
-import { VALIDADE_PADRAO_DIAS, adicionarMarca, extrairCodigoDaMensagem } from '@/lib/contato-link';
-import { criarMarcaDeContato } from '@/lib/contato-link.server';
+import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
+import { buildAutoReply } from '@/lib/wapi/auto-reply';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,92 +45,6 @@ function getWebhookToken(url: URL) {
 
 function getConnectedPhone(payload: any) {
   return getWapiConnectedPhone(payload);
-}
-
-/**
- * Acrescenta a marca de contato ao link do cardápio. Best-effort: qualquer
- * problema (servidor sem a chave, telefone estranho) devolve o link como estava
- * — mensagem de cliente não pode deixar de sair por causa disso.
- */
-function marcarParaContato(link: string, empresaId: string, telefone: string): string {
-  if (!link || !telefone) return link;
-  try {
-    return adicionarMarca(link, criarMarcaDeContato(empresaId, telefone, VALIDADE_PADRAO_DIAS));
-  } catch {
-    return link;
-  }
-}
-
-function buildAutoReply(params: {
-  storeProfile: any;
-  empresaId: string;
-  incoming: { phone: string; text?: string };
-  requestOrigin: string;
-  contactData?: { firstInboundAt?: string | number; lastInboundAt?: string | number; firstContactSentAt?: string | number; lastClosedReplyAt?: string | number };
-  hasPriorContact?: boolean;
-}) {
-  const storeProfile = params.storeProfile || {};
-  const messages = getWhatsAppMessages(storeProfile?.whatsappMessages);
-  const storeName = storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja';
-  const storeLinkBase = buildStoreLink(storeProfile, params.empresaId, process.env.NEXT_PUBLIC_APP_URL || params.requestOrigin);
-  // O link sai marcado para ESTE contato: quem clicar é reconhecido no painel
-  // sem digitar nada (o site não tem como ler o telefone de quem abre a página).
-  // Sem telefone — contato fora da agenda, que chega só como @lid — o link vai
-  // limpo, como sempre foi.
-  const storeLink = marcarParaContato(storeLinkBase, params.empresaId, params.incoming.phone);
-  const openState = getStoreOpenState(storeProfile);
-
-  let template = '';
-  let type = '';
-  const nowMs = Date.now();
-  const lastClosedReplyAt = params.contactData?.lastClosedReplyAt
-    ? new Date(params.contactData.lastClosedReplyAt).getTime()
-    : 0;
-
-  const lastInboundMs = params.contactData?.lastInboundAt
-    ? new Date(params.contactData.lastInboundAt).getTime()
-    : 0;
-
-  if (!openState.isOpen) {
-    if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= 2 * 60 * 60 * 1000) {
-      return null;
-    }
-
-    template = messages.storeClosed;
-    type = 'store_closed_auto_reply';
-  } else if (!params.contactData?.firstContactSentAt || (lastInboundMs > 0 && nowMs - lastInboundMs > 12 * 60 * 60 * 1000)) {
-    template = messages.firstContact;
-    type = 'first_contact_auto_reply';
-  }
-
-  const message = renderWhatsAppTemplate(template, {
-    loja: storeName,
-    link: storeLink,
-    horarios: formatWorkingHours(storeProfile?.workingHours),
-    proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
-    cliente: '',
-    primeiro_nome: '',
-    pedido: '',
-    itens: '',
-    total: '',
-    pagamento: '',
-    tempo_estimado: '',
-  }).trim();
-
-  if (!message || !type) return null;
-
-  // A W-API envia texto puro e nao gera o cartao de preview de link (o WhatsApp
-  // so monta o preview quando o proprio app faz o scrape das og tags, o que nao
-  // ocorre via API). Por isso, nas respostas automaticas com link mandamos a
-  // logo da loja como imagem e o texto/link na legenda — assim a marca sempre
-  // aparece junto do link. Sem imagem salva, cai no texto puro.
-  const imageUrl =
-    storeProfile?.general?.logoUrl ||
-    storeProfile?.general?.ogImageUrl ||
-    storeProfile?.general?.bannerUrl ||
-    '';
-
-  return { message, type, imageUrl: imageUrl || undefined };
 }
 
 /**
@@ -252,6 +158,10 @@ async function maybeSendAutoReply(params: {
   const CLAIM_FIELD: Record<string, string> = {
     first_contact_auto_reply: 'firstContactSentAt',
     store_closed_auto_reply: 'lastClosedReplyAt',
+    // O pedido de cardápio tem carimbo próprio: ele não gasta o "primeiro
+    // contato" (que é a saudação) e ainda segura a rajada — retry da W-API e
+    // dois toques seguidos no botão não viram duas respostas.
+    link_request_auto_reply: 'lastLinkReplyAt',
   };
 
   const claimed = await params.adminDb.runTransaction(async (txn: any) => {

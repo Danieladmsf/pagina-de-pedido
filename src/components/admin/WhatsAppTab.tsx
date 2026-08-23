@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
   ORDER_LINK_CARD_SHORT,
+  adicionarPedidoDeContato,
   buildOrderLinkPathForCode,
   getAvailableVariants,
   getMessageVariantCode,
@@ -40,6 +41,7 @@ import {
   type OrderLinkCardId,
   type OrderLinkVariant,
 } from '@/lib/order-link';
+import { CANAIS, CANAL_LABEL, adicionarOrigem, montarOrigem, type CanalOrigem } from '@/lib/origem';
 import { revalidateStorePages } from '@/lib/revalidate-store';
 import {
   DEFAULT_WHATSAPP_MESSAGES,
@@ -727,6 +729,119 @@ function OrderLinkVariantRow({
   );
 }
 
+// "Onde voce vai colar este link?": a marca de origem que faz a tela de
+// visitantes conseguir dizer QUEM TROUXE cada pessoa.
+//
+// A escolha nao e salva em lugar nenhum de proposito: ela so muda o endereco
+// que o dono esta copiando agora. A loja tem um link por lugar onde divulga, e
+// guardar "a origem atual" num campo global daria a impressao errada de que
+// existe uma so.
+function OrigemDoLinkPicker({
+  canal,
+  setCanal,
+  campanha,
+  setCampanha,
+  pedirContato,
+  setPedirContato,
+  temWhatsapp,
+}: {
+  canal: CanalOrigem | '';
+  setCanal: (valor: CanalOrigem | '') => void;
+  campanha: string;
+  setCampanha: (valor: string) => void;
+  pedirContato: boolean;
+  setPedirContato: (valor: boolean) => void;
+  temWhatsapp: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-sm font-black text-slate-800">Onde voce vai colar este link?</p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+        Marcando o lugar, a tela &quot;Quem passou no cardapio&quot; passa a mostrar quantas pessoas
+        vieram de cada um — e quantas compraram. Sem marcar, o link continua funcionando igual.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCanal('')}
+          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+            canal === ''
+              ? 'border-slate-800 bg-slate-800 text-white'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          Sem marca
+        </button>
+        {CANAIS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setCanal(id)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+              canal === id
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            {CANAL_LABEL[id]}
+          </button>
+        ))}
+      </div>
+
+      {canal !== '' && (
+        <div className="mt-3">
+          <Label className="text-xs font-bold text-slate-600">
+            Nome deste anuncio <span className="font-normal text-slate-400">(opcional)</span>
+          </Label>
+          <Input
+            value={campanha}
+            onChange={(event) => setCampanha(event.target.value)}
+            placeholder="bio, post do dia das maes, panfleto de agosto..."
+            className="mt-1 h-9 rounded-xl"
+            maxLength={30}
+          />
+          <p className="mt-1 text-[11px] leading-snug text-slate-500">
+            Use quando tiver mais de um link no mesmo lugar — assim da para saber qual post trouxe
+            gente.
+          </p>
+        </div>
+      )}
+
+      {/* O unico caminho legitimo para o telefone: a propria pessoa mandar a
+          mensagem. Nenhum site le o numero de quem abre a pagina. */}
+      <div className="mt-4 border-t border-slate-100 pt-3.5">
+        <button
+          type="button"
+          onClick={() => temWhatsapp && setPedirContato(!pedirContato)}
+          disabled={!temWhatsapp}
+          className="flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+        >
+          <span
+            className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
+              pedirContato && temWhatsapp ? 'bg-emerald-600' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                pedirContato && temWhatsapp ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-slate-800">Pedir o contato de quem e novo</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+              {temWhatsapp
+                ? 'Quem nunca pediu aqui toca em "Delivery" e manda uma mensagem pronta pelo WhatsApp pedindo o cardapio. Voce recebe o numero e responde com o link. Quem ja e cliente vai direto, sem passar por isso.'
+                : 'Cadastre o WhatsApp da loja em Perfil da loja para liberar.'}
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Secao "Links de pedido": lista todas as combinacoes que a loja consegue
 // oferecer. O dono copia a que combina com o lugar onde vai colar, e marca uma
 // para entrar no {link} das mensagens automaticas.
@@ -752,9 +867,20 @@ function OrderLinksSection({
   const hasEncomendas = storeHasEncomendas(storeProfile);
   const hasWhatsapp = Boolean(storeWhatsappDigits(storeProfile));
 
+  const [canal, setCanal] = useState<CanalOrigem | ''>('');
+  const [campanha, setCampanha] = useState('');
+  const [pedirContato, setPedirContato] = useState(false);
+  const origem = canal ? montarOrigem(canal, campanha) : '';
+
   function urlFor(variant: OrderLinkVariant) {
     if (!baseStoreLink) return 'Link ainda indisponivel';
-    return buildOrderLinkPathForCode(baseStoreLink, variant.code, storeProfile);
+    // A marca de origem entra por ultimo: ela acompanha o endereco para onde
+    // quer que ele seja colado, sem mexer no que o link ABRE.
+    const comCards = buildOrderLinkPathForCode(baseStoreLink, variant.code, storeProfile);
+    return adicionarOrigem(
+      adicionarPedidoDeContato(comCards, pedirContato && hasWhatsapp),
+      origem
+    );
   }
 
   function renderGroup(title: string, hint: string, list: OrderLinkVariant[]) {
@@ -812,6 +938,16 @@ function OrderLinksSection({
             com voce. Ja num post ou na bio do Instagram, essa opcao faz falta.
           </p>
         </div>
+
+        <OrigemDoLinkPicker
+          canal={canal}
+          setCanal={setCanal}
+          campanha={campanha}
+          setCampanha={setCampanha}
+          pedirContato={pedirContato}
+          setPedirContato={setPedirContato}
+          temWhatsapp={hasWhatsapp}
+        />
 
         {renderGroup('Abre direto', 'Sem perguntar nada: o cliente ja cai no lugar.', diretos)}
         {renderGroup('Tela de escolha', 'O cliente escolhe entre as opcoes ao abrir.', comEscolha)}

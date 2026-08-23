@@ -4,7 +4,10 @@ import {
   DEFAULT_VARIANT_CODE,
   ORDER_LINK_VARIANTS,
   buildOrderLinkPath,
+  adicionarPedidoDeContato,
   buildOrderLinkPathForCode,
+  cardsDoParam,
+  pedeContato,
   cardsToCode,
   codeToCards,
   getAvailableVariants,
@@ -141,5 +144,42 @@ describe('resolveCardsFromParam', () => {
     expect(resolveCardsFromParam('1', lojaCompleta)).toEqual(['menu', 'encomendas', 'whatsapp']);
     expect(resolveCardsFromParam('1', lojaSimples)).toEqual(['menu', 'whatsapp']);
     expect(resolveCardsFromParam('1', lojaSemContato)).toEqual([]);
+  });
+});
+
+describe('pedido de contato no link', () => {
+  it('marca o link sem atropelar o que ja estava na query', () => {
+    expect(adicionarPedidoDeContato('https://x.com/loja?pedir=de', true)).toBe(
+      'https://x.com/loja?pedir=de&ident=1'
+    );
+    expect(adicionarPedidoDeContato('https://x.com/loja', true)).toBe('https://x.com/loja?ident=1');
+    expect(adicionarPedidoDeContato('https://x.com/loja#topo', true)).toBe(
+      'https://x.com/loja?ident=1#topo'
+    );
+  });
+
+  it('desligado, o link continua sendo o de sempre', () => {
+    expect(adicionarPedidoDeContato('https://x.com/loja', false)).toBe('https://x.com/loja');
+    expect(adicionarPedidoDeContato('https://x.com/loja?ident=1', true)).toBe(
+      'https://x.com/loja?ident=1'
+    );
+  });
+
+  it('le a marca do endereco aberto', () => {
+    expect(pedeContato(new URLSearchParams('?ident=1'))).toBe(true);
+    expect(pedeContato(new URLSearchParams('?pedir=de'))).toBe(false);
+    expect(pedeContato(null)).toBe(false);
+  });
+
+  it('com pedido de contato a tela aparece mesmo com uma opcao so', () => {
+    // resolveCardsFromParam corta em duas opcoes (nao vale perguntar por uma);
+    // aqui a tela existe justamente para levar ao WhatsApp.
+    expect(resolveCardsFromParam('d', lojaCompleta)).toEqual([]);
+    expect(cardsDoParam('d', lojaCompleta)).toEqual(['menu']);
+    expect(cardsDoParam('', lojaCompleta)).toEqual([]);
+  });
+
+  it('nao oferece o que a loja nao tem, mesmo pedindo contato', () => {
+    expect(cardsDoParam('dew', lojaSimples)).not.toContain('encomendas');
   });
 });

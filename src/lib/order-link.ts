@@ -199,3 +199,35 @@ export function resolveCardsFromParam(param: string | null | undefined, storePro
   const cards = codeToCards(code).filter((id) => isCardAvailable(id, storeProfile));
   return cards.length >= 2 ? cards : [];
 }
+
+// ── Pedido de contato: o link que pergunta quem é quem ──────────────────────
+//
+// Nenhum site lê o telefone de quem abre a página. O que existe é a pessoa
+// PEDIR o cardápio pelo WhatsApp: a mensagem sai do aparelho dela com o código
+// da visita, e é assim que a loja fica sabendo o número — com consentimento, e
+// confirmado (melhor que a marca do link, que é só provável).
+//
+// Fica no link, e não numa configuração da loja, pela mesma razão que a
+// combinação de cards: a loja tem vários links no ar ao mesmo tempo. O link do
+// Instagram pode pedir contato; o que ela manda para quem já é cliente, não.
+export const IDENT_PARAM = 'ident';
+
+export function adicionarPedidoDeContato(url: string, pedir: boolean): string {
+  if (!url || !pedir) return url;
+  if (new RegExp(`[?&]${IDENT_PARAM}=`).test(url)) return url;
+  const [semHash, hash] = url.split('#');
+  const marcado = `${semHash}${semHash.includes('?') ? '&' : '?'}${IDENT_PARAM}=1`;
+  return hash ? `${marcado}#${hash}` : marcado;
+}
+
+export function pedeContato(params: URLSearchParams | null | undefined): boolean {
+  return params?.get(IDENT_PARAM) === '1';
+}
+
+// Os cards do link SEM o corte de dois: quando o link pede contato, a tela
+// aparece mesmo com uma opção só — é ela que leva ao WhatsApp.
+export function cardsDoParam(param: string | null | undefined, storeProfile: any): OrderLinkCardId[] {
+  if (!param) return [];
+  const code = param === '1' ? cardsToCode(ORDER_LINK_CARD_ORDER) : param;
+  return codeToCards(code).filter((id) => isCardAvailable(id, storeProfile));
+}

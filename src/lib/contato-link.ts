@@ -111,6 +111,18 @@ export function textoDoPedidoPeloWhatsapp(codigo?: string | null): string {
 }
 
 /**
+ * A mensagem de quem chegou por um link de divulgação e pediu o cardápio.
+ *
+ * A pessoa aperta enviar; nada sai sozinho do aparelho dela. O código é o que
+ * amarra esse número à visita que estava acontecendo — sem ele, a loja recebe
+ * "me manda o link" de um número que não sabe de onde veio.
+ */
+export function textoDoPedidoDeLink(codigo?: string | null): string {
+  const base = 'Olá! Quero fazer um pedido pelo delivery. Pode me mandar o link do cardápio?';
+  return codigo ? `${base}\n\nCód. #${codigo}` : base;
+}
+
+/**
  * Acha o código na mensagem que chegou. Aceita com ou sem "Cód." na frente e
  * ignora o resto do texto — a pessoa pode ter escrito antes ou depois.
  */

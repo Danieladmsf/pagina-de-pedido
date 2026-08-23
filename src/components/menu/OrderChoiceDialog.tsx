@@ -6,7 +6,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CakeSlice, ChevronRight, ShoppingBag, X } from 'lucide-react';
 import { themeToCssVars, type ThemePreset } from '@/lib/themes';
 import { ORDER_LINK_CARD_LABELS, storeWhatsappDigits, type OrderLinkCardId } from '@/lib/order-link';
-import { textoDoPedidoPeloWhatsapp } from '@/lib/contato-link';
+import { textoDoPedidoDeLink, textoDoPedidoPeloWhatsapp } from '@/lib/contato-link';
 
 // Tela de escolha do "link de pedidos": aparece quando o cliente entra pelo link
 // que a loja mandou e o dono configurou "Tela de escolha" em Mensagens
@@ -39,6 +39,7 @@ export function OrderChoiceDialog({
   theme,
   isStoreOpen,
   codigoVisitante,
+  pedirContato = false,
 }: {
   open: boolean;
   /** Quais opções mostrar — vem do proprio link (?pedir=de). */
@@ -49,6 +50,13 @@ export function OrderChoiceDialog({
   theme: ThemePreset;
   isStoreOpen: boolean;
   /**
+   * O link pediu o contato de quem ainda não é conhecido (`?ident=1`). O card do
+   * Delivery passa a levar ao WhatsApp da loja com a mensagem pronta — é o
+   * único caminho legítimo para o telefone chegar, porque quem envia é a
+   * pessoa. Quem já pediu antes neste aparelho nunca vê isto: chega desligado.
+   */
+  pedirContato?: boolean;
+  /**
    * Código curto desta visita. Vai dentro da mensagem para a loja saber que o
    * número que acabou de chamar é a pessoa que estava vendo os produtos — é o
    * único jeito: o site não tem como ler o telefone de quem abriu a página.
@@ -57,30 +65,42 @@ export function OrderChoiceDialog({
 }) {
   const storeName = storeProfile?.general?.name || 'nossa loja';
   const logoUrl = storeProfile?.general?.logoUrl || '';
-  const whatsappUrl = `https://wa.me/${storeWhatsappDigits(storeProfile)}?text=${encodeURIComponent(textoDoPedidoPeloWhatsapp(codigoVisitante))}`;
+  const whatsappDigits = storeWhatsappDigits(storeProfile);
+  const whatsappUrl = `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(textoDoPedidoPeloWhatsapp(codigoVisitante))}`;
+  const pedirLinkUrl = `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(textoDoPedidoDeLink(codigoVisitante))}`;
+  // Sem WhatsApp cadastrado não há para onde mandar: o card volta a abrir o
+  // cardápio direto, em vez de virar um botão que não leva a lugar nenhum.
+  const desviarDelivery = pedirContato && Boolean(whatsappDigits);
 
   const cardClass =
     'group relative flex w-full items-center gap-3.5 rounded-2xl border border-black/[0.07] bg-white p-3.5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.05)] transition-all hover:-translate-y-px hover:border-primary/35 hover:shadow-[0_8px_20px_-8px_rgba(16,24,40,0.22)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0';
 
   function renderInner(id: OrderLinkCardId) {
+    // O Delivery que passa pelo WhatsApp continua sendo o card do Delivery: o
+    // nome é o mesmo, muda o que acontece ao tocar. Trocar o rótulo para
+    // "WhatsApp" faria a pessoa achar que não é ali que se pede comida.
+    const viaWhats = id === 'menu' && desviarDelivery;
     return (
       <>
         <span
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
           style={
-            id === 'whatsapp'
+            id === 'whatsapp' || viaWhats
               ? { background: 'rgba(37, 211, 102, 0.12)', color: '#128C7E' }
               : { background: 'hsl(var(--primary) / 0.11)', color: 'hsl(var(--primary))' }
           }
         >
-          {id === 'menu' && <ShoppingBag className="h-[22px] w-[22px]" />}
+          {id === 'menu' && !viaWhats && <ShoppingBag className="h-[22px] w-[22px]" />}
+          {id === 'menu' && viaWhats && <WhatsAppGlyph className="h-[22px] w-[22px]" />}
           {id === 'encomendas' && <CakeSlice className="h-[22px] w-[22px]" />}
           {id === 'whatsapp' && <WhatsAppGlyph className="h-[22px] w-[22px]" />}
         </span>
 
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-bold leading-tight text-slate-900">{ORDER_LINK_CARD_LABELS[id]}</span>
-          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{CARD_SUBTITLE[id]}</span>
+          <span className="mt-0.5 block text-xs leading-snug text-slate-500">
+            {viaWhats ? 'Peça pelo WhatsApp e receba em casa' : CARD_SUBTITLE[id]}
+          </span>
         </span>
 
         <ChevronRight className="h-[18px] w-[18px] shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none" />
@@ -144,6 +164,20 @@ export function OrderChoiceDialog({
           <div className="space-y-2.5 px-5">
             {cards.map((id) => {
               if (id === 'menu') {
+                if (desviarDelivery) {
+                  return (
+                    <a
+                      key={id}
+                      href={pedirLinkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => onOpenChange(false)}
+                      className={cardClass}
+                    >
+                      {renderInner(id)}
+                    </a>
+                  );
+                }
                 return (
                   <button key={id} type="button" onClick={() => onOpenChange(false)} className={cardClass}>
                     {renderInner(id)}
@@ -178,6 +212,21 @@ export function OrderChoiceDialog({
               );
             })}
           </div>
+
+          {/* Saída de quem tem pressa. Ganhar o contato é bom; perder a venda de
+              quem só queria ver o preço agora é pior — e quem sai por aqui
+              continua contando na origem, que é gravada na abertura. */}
+          {desviarDelivery && (
+            <div className="mt-3.5 px-5">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="w-full rounded-xl py-2 text-center text-xs font-bold text-slate-500 underline-offset-4 transition-colors hover:bg-black/[0.03] hover:text-slate-700 hover:underline"
+              >
+                Só quero ver o cardápio agora
+              </button>
+            </div>
+          )}
 
           <div className="mx-5 mt-5 border-t border-slate-900/[0.06] pt-3.5">
             <p className="flex items-center justify-center gap-1.5 text-[11px] font-bold">
