@@ -45,8 +45,44 @@ import { useCaixa } from '@/hooks/useCaixa';
 import { Switch } from '@/components/ui/switch';
 import { brl, removeAccents } from '@/lib/utils';
 import { uploadImage } from '@/lib/upload';
-import { MENU_VISIBILITY_TOGGLES, MOTIVO_OCULTO_LABEL, getLigarTudoUpdate, getMotivosOcultoNoCardapio, getToggleUpdate, hasAnyVisibleToggle, isEstoqueParado, isItemVisibleInChannel, isToggleActive, pareceLigadoMasNaoAparece } from '@/lib/menu-visibility';
+import { MENU_VISIBILITY_TOGGLES, getLigarTudoUpdate, getMotivosOcultoNoCardapio, getToggleUpdate, hasAnyVisibleToggle, isEstoqueParado, isItemVisibleInChannel, isToggleActive, pareceLigadoMasNaoAparece } from '@/lib/menu-visibility';
 import { getEffectiveStock, isOutOfStock } from '@/lib/inventory';
+import {
+  ALERTA_EXPLICACAO,
+  ALERTA_LABEL,
+  ALERTA_LABEL_PLURAL,
+  alertasDoProduto,
+  contarAlertas,
+  temAlerta,
+  type TipoDeAlerta,
+} from '@/lib/produtos/alertas';
+
+/**
+ * A cor de cada etiqueta de alerta. Mesma paleta na barra do topo e na linha
+ * do produto: a dona aprende a cor uma vez.
+ */
+const CORES_DO_ALERTA: Record<TipoDeAlerta, { normal: string; ativo: string; linha: string }> = {
+  parado: {
+    normal: 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
+    ativo: 'border-rose-600 bg-rose-600 text-white',
+    linha: 'bg-rose-50 text-rose-700 border-rose-200',
+  },
+  nao_aparece: {
+    normal: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
+    ativo: 'border-amber-500 bg-amber-500 text-white',
+    linha: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
+  esgotado: {
+    normal: 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100',
+    ativo: 'border-slate-700 bg-slate-700 text-white',
+    linha: 'bg-slate-100 text-slate-600 border-slate-200',
+  },
+  sem_preco: {
+    normal: 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+    ativo: 'border-violet-600 bg-violet-600 text-white',
+    linha: 'bg-violet-50 text-violet-700 border-violet-200',
+  },
+};
 import { AdminPasswordDialog } from '@/components/admin/AdminPasswordDialog';
 import { ADMIN_SESSION_UPDATED_EVENT, getAdminSessionRemainingMs, isAdminSessionUnlocked, unlockAdminSession, type AdminSecret } from '@/lib/admin-password';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
@@ -182,7 +218,8 @@ export default function GestaoPage() {
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('todas');
   // Filtro do resumo "mercadoria presa": desligado com estoque esperando.
-  const [soEstoqueParado, setSoEstoqueParado] = useState(false);
+  /** Etiqueta de alerta em foco na lista (null = todos os produtos). */
+  const [filtroAlerta, setFiltroAlerta] = useState<TipoDeAlerta | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [addonSortConfig, setAddonSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
@@ -386,32 +423,41 @@ export default function GestaoPage() {
   }, [categories, editingCategory]);
 
   /**
-   * Mercadoria presa atrás do botão cinza: produto DESLIGADO com estoque
-   * esperando. A loja desliga o produto quando acaba e repõe o estoque depois,
-   * mas repor não mexe no botão — a mercadoria fica invisível sem ninguém
-   * perceber. No Gostinho de Céu isso somava R$ 461,50 em 21/08/2026, com item
-   * desligado desde julho.
+   * Cada produto com o que a regra de alerta precisa: a categoria dele e o
+   * estoque efetivo. Fica em um lugar só para a barra de etiquetas, o filtro e
+   * a linha da tabela contarem exatamente a mesma coisa.
    */
-  const estoqueParado = React.useMemo(() => {
-    const vazio = { itens: [] as Array<{ item: any; estoque: number }>, unidades: 0, valor: 0 };
-    if (!storeProfile?.general?.enableInventory || !items) return vazio;
+  const produtosComContexto = React.useMemo(() => {
     const porId = new Map((categories || []).map((c: any) => [c.id, c]));
-    const itens = (items as any[])
-      .filter((item) => !item.isCombo)
-      .map((item) => ({ item, estoque: getEffectiveStock(item, items as any[]) }))
-      .filter(({ item, estoque }) => isEstoqueParado(item, { estoque, category: porId.get(item.categoryId) }))
-      .map(({ item, estoque }) => ({ item, estoque: estoque as number }));
-    return {
-      itens,
-      unidades: itens.reduce((soma, i) => soma + i.estoque, 0),
-      valor: itens.reduce((soma, i) => soma + i.estoque * (Number(i.item.price) || 0), 0),
-    };
-  }, [items, categories, storeProfile]);
+    return (items || []).map((item: any) => ({
+      item,
+      categoria: porId.get(item.categoryId),
+      estoque: getEffectiveStock(item, (items || []) as any[]),
+    }));
+  }, [items, categories]);
 
-  const estoqueParadoIds = React.useMemo(
-    () => new Set(estoqueParado.itens.map(({ item }) => item.id)),
-    [estoqueParado],
+  const contagemDeAlertas = React.useMemo(
+    () => (storeProfile?.general?.enableInventory === false
+      // Sem controle de estoque, "esgotado" e "parado" não existem: sobra o que
+      // é de cardápio, e a barra some quando não sobra nada.
+      ? contarAlertas(produtosComContexto).filter((c) => c.tipo === 'nao_aparece' || c.tipo === 'sem_preco')
+      : contarAlertas(produtosComContexto)),
+    [produtosComContexto, storeProfile],
   );
+
+  const idsDoFiltroDeAlerta = React.useMemo(() => {
+    if (!filtroAlerta) return null;
+    return new Set(
+      produtosComContexto.filter((p) => temAlerta(p, filtroAlerta)).map((p) => p.item.id),
+    );
+  }, [produtosComContexto, filtroAlerta]);
+
+  /** Os alertas de um produto, para a etiqueta na linha. */
+  const alertasPorId = React.useMemo(() => {
+    const mapa = new Map<string, ReturnType<typeof alertasDoProduto>>();
+    for (const produto of produtosComContexto) mapa.set(produto.item.id, alertasDoProduto(produto));
+    return mapa;
+  }, [produtosComContexto]);
 
   /**
    * Religa o produto em todos os canais. Mesmo tratamento do botão da linha:
@@ -450,8 +496,8 @@ export default function GestaoPage() {
       const s = removeAccents(productSearch.toLowerCase());
       result = result.filter(item => removeAccents(item.name.toLowerCase()).includes(s));
     }
-    if (soEstoqueParado) {
-      result = result.filter(item => estoqueParadoIds.has(item.id));
+    if (idsDoFiltroDeAlerta) {
+      result = result.filter(item => idsDoFiltroDeAlerta.has(item.id));
     }
     
     if (sortConfig) {
@@ -471,7 +517,7 @@ export default function GestaoPage() {
     }
     
     return result;
-  }, [items, productCategoryFilter, productSearch, sortConfig, categories, soEstoqueParado, estoqueParadoIds]);
+  }, [items, productCategoryFilter, productSearch, sortConfig, categories, idsDoFiltroDeAlerta]);
 
 
 
@@ -1066,33 +1112,54 @@ export default function GestaoPage() {
                     <Plus className="mr-2 h-4 w-4" /> Novo Produto
                   </Button>
                 </div>
-                {estoqueParado.itens.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-                    <span className="text-sm font-bold text-rose-700">
-                      {estoqueParado.itens.length === 1
-                        ? '1 produto desligado com estoque'
-                        : `${estoqueParado.itens.length} produtos desligados com estoque`}
-                    </span>
-                    <span className="text-xs text-rose-600">
-                      {estoqueParado.unidades} {estoqueParado.unidades === 1 ? 'unidade parada' : 'unidades paradas'} · {brl(estoqueParado.valor)} que ninguém consegue comprar
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSoEstoqueParado((atual) => !atual);
-                        setProductCategoryFilter('todas');
-                        setProductSearch('');
-                      }}
-                      className="ml-auto shrink-0 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-700"
-                    >
-                      {soEstoqueParado ? 'Ver todos os produtos' : 'Ver só esses'}
-                    </button>
+                {contagemDeAlertas.length > 0 && (
+                  /* As etiquetas de alerta: contam e filtram no mesmo clique.
+                     Antes era uma tarja vermelha fixa no topo para um único
+                     problema (estoque parado), enquanto os outros só existiam
+                     soltos dentro da linha e não davam para filtrar. */
+                  <div className="flex flex-wrap items-center gap-2">
+                    {contagemDeAlertas.map((alerta) => {
+                      const ativo = filtroAlerta === alerta.tipo;
+                      const cor = CORES_DO_ALERTA[alerta.tipo];
+                      return (
+                        <button
+                          key={alerta.tipo}
+                          type="button"
+                          title={ALERTA_EXPLICACAO[alerta.tipo]}
+                          onClick={() => {
+                            setFiltroAlerta(ativo ? null : alerta.tipo);
+                            setProductCategoryFilter('todas');
+                            setProductSearch('');
+                          }}
+                          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold transition-colors ${
+                            ativo ? cor.ativo : cor.normal
+                          }`}
+                        >
+                          {alerta.quantidade}{' '}
+                          {alerta.quantidade === 1
+                            ? ALERTA_LABEL[alerta.tipo].toLowerCase()
+                            : ALERTA_LABEL_PLURAL[alerta.tipo]}
+                          {alerta.tipo === 'parado' && alerta.valor > 0 && (
+                            <span className={ativo ? 'opacity-90' : 'opacity-70'}> · {brl(alerta.valor)}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {filtroAlerta && (
+                      <button
+                        type="button"
+                        onClick={() => setFiltroAlerta(null)}
+                        className="shrink-0 rounded-full px-2 py-1 text-xs font-bold text-slate-500 underline underline-offset-2 hover:text-slate-800"
+                      >
+                        Ver todos
+                      </button>
+                    )}
                   </div>
                 )}
                 <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                   <button
                     type="button"
-                    onClick={() => { setProductCategoryFilter('todas'); setProductSearch(''); setSoEstoqueParado(false); }}
+                    onClick={() => { setProductCategoryFilter('todas'); setProductSearch(''); setFiltroAlerta(null); }}
                     className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
                       productCategoryFilter === 'todas'
                         ? 'border-primary bg-primary text-white'
@@ -1105,7 +1172,7 @@ export default function GestaoPage() {
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => { setProductCategoryFilter(cat.id); setProductSearch(''); setSoEstoqueParado(false); }}
+                      onClick={() => { setProductCategoryFilter(cat.id); setProductSearch(''); setFiltroAlerta(null); }}
                       className={`shrink-0 rounded-full border px-3 py-1.5 text-sm font-bold transition-colors ${
                         productCategoryFilter === cat.id
                           ? 'border-primary bg-primary text-white'
@@ -1217,48 +1284,54 @@ export default function GestaoPage() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-slate-800">{item.name}</span>
-                              {esgotado && (
-                                <Badge className="bg-red-500 hover:bg-red-600 text-[10px] h-4 px-1.5 uppercase tracking-wider">
-                                  Esgotado
-                                </Badge>
-                              )}
                             </div>
-                            {avisarOculto && (
-                              <p className="mt-1 text-[11px] font-medium text-amber-600">
-                                Não aparece no cardápio: {motivosOculto.map((m) => MOTIVO_OCULTO_LABEL[m]).join(' e ')}.{' '}
-                                {/* Um atalho só, para o motivo mais pesado: com os dois links
-                                    lado a lado a linha da tabela fica ilegível. */}
-                                {motivosOculto.includes('categoria_desligada') ? (
+                            {/* Etiquetas em vez de parágrafos: o mesmo problema
+                                que a barra do topo conta, na cor da barra do
+                                topo. A ação continua ao lado da etiqueta que a
+                                pede — quem vê "Parado" quer religar dali. */}
+                            {(alertasPorId.get(item.id) || []).length > 0 && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                {(alertasPorId.get(item.id) || []).map((alerta) => (
+                                  <span
+                                    key={alerta.tipo}
+                                    title={alerta.detalhe || ALERTA_EXPLICACAO[alerta.tipo]}
+                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${CORES_DO_ALERTA[alerta.tipo].linha}`}
+                                  >
+                                    {ALERTA_LABEL[alerta.tipo]}
+                                    {alerta.detalhe && (
+                                      <span className="font-medium opacity-80">· {alerta.detalhe}</span>
+                                    )}
+                                  </span>
+                                ))}
+                                {presoNoEstoque && (
                                   <button
                                     type="button"
-                                    className="underline underline-offset-2 hover:text-amber-700"
+                                    disabled={salvandoVisibilidade.has(`${item.id}:religar`)}
+                                    className="text-[10px] font-bold text-rose-700 underline underline-offset-2 hover:text-rose-900 disabled:cursor-wait disabled:opacity-50"
+                                    onClick={() => religarProduto(item)}
+                                  >
+                                    Religar
+                                  </button>
+                                )}
+                                {avisarOculto && motivosOculto.includes('categoria_desligada') && (
+                                  <button
+                                    type="button"
+                                    className="text-[10px] font-bold text-amber-700 underline underline-offset-2 hover:text-amber-900"
                                     onClick={() => handleTabChange('categorias')}
                                   >
                                     Ver categoria
                                   </button>
-                                ) : motivosOculto.includes('esgotado') ? (
+                                )}
+                                {avisarOculto && !motivosOculto.includes('categoria_desligada') && motivosOculto.includes('esgotado') && (
                                   <button
                                     type="button"
-                                    className="underline underline-offset-2 hover:text-amber-700"
+                                    className="text-[10px] font-bold text-amber-700 underline underline-offset-2 hover:text-amber-900"
                                     onClick={() => handleTabChange('estoque')}
                                   >
                                     Repor estoque
                                   </button>
-                                ) : null}
-                              </p>
-                            )}
-                            {presoNoEstoque && (
-                              <p className="mt-1 text-[11px] font-medium text-rose-600">
-                                Desligado, mas tem {estoqueDoItem} em estoque — ninguém consegue comprar.{' '}
-                                <button
-                                  type="button"
-                                  disabled={salvandoVisibilidade.has(`${item.id}:religar`)}
-                                  className="font-bold underline underline-offset-2 hover:text-rose-700 disabled:cursor-wait disabled:opacity-50"
-                                  onClick={() => religarProduto(item)}
-                                >
-                                  Religar
-                                </button>
-                              </p>
+                                )}
+                              </div>
                             )}
                             {itemAddons.length > 0 && (
                               <div className="mt-1">
