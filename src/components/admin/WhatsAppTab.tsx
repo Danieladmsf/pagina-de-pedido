@@ -30,8 +30,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import {
-  ORDER_LINK_CARD_SHORT,
+  ORDER_LINK_CARD_LABELS,
+  ORDER_LINK_CARD_ORDER,
   adicionarPedidoDeContato,
+  cardsToCode,
+  isCardAvailable,
   buildOrderLinkPathForCode,
   getAvailableVariants,
   getMessageVariantCode,
@@ -39,7 +42,6 @@ import {
   storeHasEncomendas,
   storeWhatsappDigits,
   type OrderLinkCardId,
-  type OrderLinkVariant,
 } from '@/lib/order-link';
 import { CANAIS, CANAL_LABEL, adicionarOrigem, montarOrigem, type CanalOrigem } from '@/lib/origem';
 import { revalidateStorePages } from '@/lib/revalidate-store';
@@ -692,222 +694,56 @@ function QrDoLink({ url, nomeDoArquivo }: { url: string; nomeDoArquivo: string }
   );
 }
 
-// Uma linha da lista: o nome da combinacao, o que ela abre, onde colar e o
-// endereco pronto para copiar. O radio marca qual delas entra nas mensagens
-// automaticas — as outras a loja usa copiando e colando onde quiser.
-function OrderLinkVariantRow({
-  variant,
-  url,
-  selected,
-  onSelect,
+// Montador de link: tres perguntas e UM endereco no fim.
+//
+// Antes esta secao era um catalogo: seis combinacoes prontas, cada uma com o
+// proprio endereco, o proprio botao de copiar e um radio que tambem servia para
+// escolher o link das mensagens automaticas. Duas tarefas diferentes no mesmo
+// controle, e a pessoa saia da tela com seis respostas quando queria uma.
+//
+// Agora as perguntas sao as que a dona realmente faz — onde vou divulgar, o que
+// abre quando clicarem, quero o contato de quem e novo — e a combinacao vira
+// consequencia. As regras nao mudaram: quem monta o endereco continua sendo o
+// buildOrderLinkPathForCode, e os textos de cada combinacao continuam vindo do
+// catalogo de variantes.
+function CardDaEscolha({
+  id,
+  marcado,
+  onAlternar,
+  disponivel,
 }: {
-  variant: OrderLinkVariant;
-  url: string;
-  selected: boolean;
-  onSelect: () => void;
+  id: OrderLinkCardId;
+  marcado: boolean;
+  onAlternar: () => void;
+  disponivel: boolean;
 }) {
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
-
-  async function copyUrl() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      toast({ variant: 'destructive', title: 'Nao consegui copiar', description: 'Copie o endereco manualmente.' });
-    }
-  }
-
+  const Icon = ORDER_LINK_CARD_ICONS[id];
   return (
-    <div
-      role="radio"
-      aria-checked={selected}
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-      className={`cursor-pointer rounded-2xl border p-4 transition-all ${
-        selected
-          ? 'border-emerald-500 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-500/20'
+    <button
+      type="button"
+      onClick={onAlternar}
+      disabled={!disponivel}
+      className={`flex flex-1 min-w-[9rem] items-center gap-2.5 rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+        marcado
+          ? 'border-emerald-500 bg-emerald-50/60 shadow-sm ring-1 ring-emerald-500/20'
           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
       }`}
     >
-      <div className="flex items-start gap-3">
-        <span
-          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
-            selected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
-          }`}
-        >
-          <Check className="h-3 w-3" strokeWidth={3} />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className={`text-sm font-black ${selected ? 'text-emerald-900' : 'text-slate-800'}`}>{variant.title}</p>
-            {selected && (
-              <span className="rounded-md bg-emerald-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
-                Usado nas mensagens
-              </span>
-            )}
-          </div>
-
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {variant.cards.map((id) => {
-              const Icon = ORDER_LINK_CARD_ICONS[id];
-              return (
-                <span
-                  key={id}
-                  className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600"
-                >
-                  <Icon className="h-3 w-3" />
-                  {ORDER_LINK_CARD_SHORT[id]}
-                </span>
-              );
-            })}
-          </div>
-
-          <p className="mt-2 text-xs leading-snug text-slate-600">{variant.opens}</p>
-          <p className="mt-1 text-xs leading-snug text-slate-500">
-            <span className="font-bold text-slate-600">Ideal para:</span> {variant.goodFor}
-          </p>
-
-          <div onClick={(event) => event.stopPropagation()}>
-            <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
-              <Input value={url} readOnly onFocus={(e) => e.target.select()} className="h-9 rounded-xl bg-white font-mono text-[11px]" />
-              <Button type="button" variant="outline" onClick={copyUrl} className="h-9 shrink-0 rounded-xl">
-                {copied ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
-                {copied ? 'Copiado' : 'Copiar'}
-              </Button>
-              <QrDoLink url={url} nomeDoArquivo={`cardapio-${variant.code}`} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+          marcado ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent'
+        }`}
+      >
+        <Check className="h-3 w-3" strokeWidth={3} />
+      </span>
+      <Icon className={`h-4 w-4 shrink-0 ${marcado ? 'text-emerald-700' : 'text-slate-400'}`} />
+      <span className={`text-sm font-bold ${marcado ? 'text-emerald-900' : 'text-slate-700'}`}>
+        {ORDER_LINK_CARD_LABELS[id]}
+      </span>
+    </button>
   );
 }
 
-// "Onde voce vai colar este link?": a marca de origem que faz a tela de
-// visitantes conseguir dizer QUEM TROUXE cada pessoa.
-//
-// A escolha nao e salva em lugar nenhum de proposito: ela so muda o endereco
-// que o dono esta copiando agora. A loja tem um link por lugar onde divulga, e
-// guardar "a origem atual" num campo global daria a impressao errada de que
-// existe uma so.
-function OrigemDoLinkPicker({
-  canal,
-  setCanal,
-  campanha,
-  setCampanha,
-  pedirContato,
-  setPedirContato,
-  temWhatsapp,
-}: {
-  canal: CanalOrigem | '';
-  setCanal: (valor: CanalOrigem | '') => void;
-  campanha: string;
-  setCampanha: (valor: string) => void;
-  pedirContato: boolean;
-  setPedirContato: (valor: boolean) => void;
-  temWhatsapp: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-sm font-black text-slate-800">Onde voce vai colar este link?</p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">
-        Marcando o lugar, a tela &quot;Quem passou no cardapio&quot; passa a mostrar quantas pessoas
-        vieram de cada um — e quantas compraram. Sem marcar, o link continua funcionando igual.
-      </p>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setCanal('')}
-          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-            canal === ''
-              ? 'border-slate-800 bg-slate-800 text-white'
-              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-          }`}
-        >
-          Sem marca
-        </button>
-        {CANAIS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setCanal(id)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-              canal === id
-                ? 'border-emerald-600 bg-emerald-600 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            {CANAL_LABEL[id]}
-          </button>
-        ))}
-      </div>
-
-      {canal !== '' && (
-        <div className="mt-3">
-          <Label className="text-xs font-bold text-slate-600">
-            Nome deste anuncio <span className="font-normal text-slate-400">(opcional)</span>
-          </Label>
-          <Input
-            value={campanha}
-            onChange={(event) => setCampanha(event.target.value)}
-            placeholder="bio, post do dia das maes, panfleto de agosto..."
-            className="mt-1 h-9 rounded-xl"
-            maxLength={30}
-          />
-          <p className="mt-1 text-[11px] leading-snug text-slate-500">
-            Use quando tiver mais de um link no mesmo lugar — assim da para saber qual post trouxe
-            gente.
-          </p>
-        </div>
-      )}
-
-      {/* O unico caminho legitimo para o telefone: a propria pessoa mandar a
-          mensagem. Nenhum site le o numero de quem abre a pagina. */}
-      <div className="mt-4 border-t border-slate-100 pt-3.5">
-        <button
-          type="button"
-          onClick={() => temWhatsapp && setPedirContato(!pedirContato)}
-          disabled={!temWhatsapp}
-          className="flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
-        >
-          <span
-            className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
-              pedirContato && temWhatsapp ? 'bg-emerald-600' : 'bg-slate-300'
-            }`}
-          >
-            <span
-              className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                pedirContato && temWhatsapp ? 'translate-x-4' : 'translate-x-0'
-              }`}
-            />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-slate-800">Pedir o contato de quem e novo</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
-              {temWhatsapp
-                ? 'Quem nunca pediu aqui toca em "Delivery" e manda uma mensagem pronta pelo WhatsApp pedindo o cardapio. Voce recebe o numero e responde com o link. Quem ja e cliente vai direto, sem passar por isso.'
-                : 'Cadastre o WhatsApp da loja em Perfil da loja para liberar.'}
-            </span>
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Secao "Links de pedido": lista todas as combinacoes que a loja consegue
-// oferecer. O dono copia a que combina com o lugar onde vai colar, e marca uma
-// para entrar no {link} das mensagens automaticas.
 function OrderLinksSection({
   messageVariant,
   setMessageVariant,
@@ -923,111 +759,288 @@ function OrderLinksSection({
   baseStoreLink: string;
   storeProfile?: any;
 }) {
-  const variants = getAvailableVariants(storeProfile);
-  const diretos = variants.filter((variant) => variant.cards.length === 1);
-  const comEscolha = variants.filter((variant) => variant.cards.length > 1);
-
+  const { toast } = useToast();
   const hasEncomendas = storeHasEncomendas(storeProfile);
   const hasWhatsapp = Boolean(storeWhatsappDigits(storeProfile));
+  const variants = getAvailableVariants(storeProfile);
 
+  // 1. Onde vai ser colado.
   const [canal, setCanal] = useState<CanalOrigem | ''>('');
   const [campanha, setCampanha] = useState('');
+  // 2. O que abre. Comeca no cardapio, que e o que toda loja tem.
+  const [cards, setCards] = useState<OrderLinkCardId[]>(['menu']);
+  // 3. Pedir o contato de quem ainda nao e conhecido.
   const [pedirContato, setPedirContato] = useState(false);
-  const origem = canal ? montarOrigem(canal, campanha) : '';
+  const [copiado, setCopiado] = useState(false);
 
-  function urlFor(variant: OrderLinkVariant) {
-    if (!baseStoreLink) return 'Link ainda indisponivel';
-    // A marca de origem entra por ultimo: ela acompanha o endereco para onde
-    // quer que ele seja colado, sem mexer no que o link ABRE.
-    const comCards = buildOrderLinkPathForCode(baseStoreLink, variant.code, storeProfile);
-    return adicionarOrigem(
-      adicionarPedidoDeContato(comCards, pedirContato && hasWhatsapp),
-      origem
-    );
+  const origem = canal ? montarOrigem(canal, campanha) : '';
+  const codigo = cardsToCode(cards.filter((id) => isCardAvailable(id, storeProfile)));
+  const variante = getVariantByCode(codigo);
+  // "Falar no WhatsApp" sozinho seria um wa.me com um passo a mais no meio.
+  const soWhatsapp = cards.length === 1 && cards[0] === 'whatsapp';
+  const valido = cards.length > 0 && !soWhatsapp && Boolean(baseStoreLink);
+
+  const url = valido
+    ? adicionarOrigem(
+        adicionarPedidoDeContato(
+          buildOrderLinkPathForCode(baseStoreLink, codigo, storeProfile),
+          pedirContato && hasWhatsapp,
+        ),
+        origem,
+      )
+    : '';
+
+  function alternarCard(id: OrderLinkCardId) {
+    setCards((atual) => (atual.includes(id) ? atual.filter((c) => c !== id) : [...atual, id]));
   }
 
-  function renderGroup(title: string, hint: string, list: OrderLinkVariant[]) {
-    if (list.length === 0) return null;
-    return (
-      <div className="space-y-2.5">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</p>
-          <p className="text-xs text-slate-500">{hint}</p>
-        </div>
-        {list.map((variant) => (
-          <OrderLinkVariantRow
-            key={variant.code}
-            variant={variant}
-            url={urlFor(variant)}
-            selected={messageVariant === variant.code}
-            onSelect={() => setMessageVariant(variant.code)}
-          />
-        ))}
-      </div>
-    );
+  async function copiar() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1600);
+    } catch {
+      toast({ variant: 'destructive', title: 'Nao consegui copiar', description: 'Copie o endereco manualmente.' });
+    }
   }
 
   return (
-    <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
-      <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-4">
+      <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Link2 className="h-5 w-5 text-emerald-600" />
+            Criar link de divulgacao
+          </CardTitle>
+          <p className="mt-1 max-w-2xl text-xs text-slate-500">
+            Responda as tres perguntas e copie o endereco pronto. Cada lugar onde voce divulga pode
+            ter o seu — e ai da para saber de onde vieram os clientes.
+          </p>
+        </CardHeader>
+
+        <CardContent className="space-y-5 p-5 md:p-6">
+          {/* 1 ─────────────────────────────────────────────────────────── */}
           <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Link2 className="h-5 w-5 text-emerald-600" />
-              Links de pedido
-            </CardTitle>
-            <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              Todos levam para a sua loja, mas cada um abre uma coisa diferente. Copie o que combina
-              com o lugar onde voce vai colar e marque qual deles entra nas mensagens automaticas.
+            <p className="text-sm font-black text-slate-800">
+              <span className="mr-1.5 text-emerald-600">1.</span>Onde voce vai divulgar?
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Marcando o lugar, a tela &quot;Quem passou no cardapio&quot; mostra quantas pessoas
+              vieram de cada um — e quanto cada um vendeu.
+            </p>
+
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCanal('')}
+                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                  canal === ''
+                    ? 'border-slate-800 bg-slate-800 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                Sem marca
+              </button>
+              {CANAIS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setCanal(id)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                    canal === id
+                      ? 'border-emerald-600 bg-emerald-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {CANAL_LABEL[id]}
+                </button>
+              ))}
+            </div>
+
+            {canal !== '' && (
+              <div className="mt-2.5 max-w-sm">
+                <Label className="text-xs font-bold text-slate-600">
+                  Nome deste anuncio <span className="font-normal text-slate-400">(opcional)</span>
+                </Label>
+                <Input
+                  value={campanha}
+                  onChange={(event) => setCampanha(event.target.value)}
+                  placeholder="bio, post do dia das maes, panfleto de agosto..."
+                  className="mt-1 h-9 rounded-xl"
+                  maxLength={30}
+                />
+                <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                  Use quando tiver mais de um link no mesmo lugar — assim da para saber qual post
+                  trouxe gente.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* 2 ─────────────────────────────────────────────────────────── */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-sm font-black text-slate-800">
+              <span className="mr-1.5 text-emerald-600">2.</span>O que abre quando clicarem?
+            </p>
+
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {ORDER_LINK_CARD_ORDER.map((id) => (
+                <CardDaEscolha
+                  key={id}
+                  id={id}
+                  marcado={cards.includes(id)}
+                  onAlternar={() => alternarCard(id)}
+                  disponivel={isCardAvailable(id, storeProfile)}
+                />
+              ))}
+            </div>
+
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              {cards.length === 0 && <span className="text-amber-700">Marque pelo menos uma opcao.</span>}
+              {soWhatsapp && (
+                <span className="text-amber-700">
+                  So o WhatsApp nao vira link de pedido — marque tambem o Delivery ou as Encomendas.
+                </span>
+              )}
+              {valido && variante && (
+                <>
+                  <span className="font-bold text-slate-700">O cliente ve:</span> {variante.opens}{' '}
+                  <span className="text-slate-500">{variante.goodFor}</span>
+                </>
+              )}
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={onSave}
-            disabled={saving}
-            className="rounded-full h-9 bg-emerald-600 hover:bg-emerald-700 shrink-0"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Salvar escolha
-          </Button>
-        </div>
-      </CardHeader>
 
-      <CardContent className="p-5 md:p-6 space-y-6">
-        <OrigemDoLinkPicker
-          canal={canal}
-          setCanal={setCanal}
-          campanha={campanha}
-          setCampanha={setCampanha}
-          pedirContato={pedirContato}
-          setPedirContato={setPedirContato}
-          temWhatsapp={hasWhatsapp}
-        />
+          {/* 3 ─────────────────────────────────────────────────────────── */}
+          <div className="border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={() => hasWhatsapp && setPedirContato(!pedirContato)}
+              disabled={!hasWhatsapp}
+              className="flex w-full items-start gap-3 rounded-xl p-1 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <span
+                className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
+                  pedirContato && hasWhatsapp ? 'bg-emerald-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    pedirContato && hasWhatsapp ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-black text-slate-800">
+                  <span className="mr-1.5 text-emerald-600">3.</span>Pedir o contato de quem e novo
+                </span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                  {hasWhatsapp
+                    ? 'Quem nunca pediu aqui toca em "Delivery" e manda uma mensagem pronta pelo WhatsApp pedindo o cardapio. Voce recebe o numero e responde com o link. Quem ja e cliente vai direto, sem passar por isso.'
+                    : 'Cadastre o WhatsApp da loja em Perfil da loja para liberar.'}
+                </span>
+              </span>
+            </button>
+          </div>
 
-        {renderGroup('Abre direto', 'Sem perguntar nada: o cliente ja cai no lugar.', diretos)}
-        {renderGroup('Tela de escolha', 'O cliente escolhe entre as opcoes ao abrir.', comEscolha)}
-
-        {(!hasEncomendas || !hasWhatsapp) && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-1.5">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Links que ainda nao aparecem</p>
-            {!hasEncomendas && (
-              <p className="text-xs text-slate-600">
-                <span className="font-bold">Encomendas:</span> disponivel para lojas de confeitaria com
-                as encomendas ligadas na aba Encomendas.
-              </p>
-            )}
-            {!hasWhatsapp && (
-              <p className="text-xs text-slate-600">
-                <span className="font-bold">Falar no WhatsApp:</span> cadastre o WhatsApp da loja em
-                Perfil da loja para liberar.
+          {/* Resultado ─────────────────────────────────────────────────── */}
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <p className="text-[11px] font-black uppercase tracking-wider text-emerald-700">Seu link</p>
+            {valido ? (
+              <>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={url}
+                    readOnly
+                    onFocus={(e) => e.target.select()}
+                    className="h-9 rounded-xl border-emerald-200 bg-white font-mono text-[11px]"
+                  />
+                  <Button type="button" variant="outline" onClick={copiar} className="h-9 shrink-0 rounded-xl bg-white">
+                    {copiado ? <Check className="mr-2 h-4 w-4 text-emerald-600" /> : <Copy className="mr-2 h-4 w-4" />}
+                    {copiado ? 'Copiado' : 'Copiar'}
+                  </Button>
+                  <QrDoLink url={url} nomeDoArquivo={`cardapio-${origem || codigo}`} />
+                </div>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-900/70">
+                {baseStoreLink ? 'Escolha o que o link abre para ver o endereco.' : 'Link ainda indisponivel.'}
               </p>
             )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {(!hasEncomendas || !hasWhatsapp) && (
+            <div className="space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Opcoes que ainda nao aparecem
+              </p>
+              {!hasEncomendas && (
+                <p className="text-xs text-slate-600">
+                  <span className="font-bold">Encomendas:</span> disponivel para lojas de confeitaria
+                  com as encomendas ligadas na aba Encomendas.
+                </p>
+              )}
+              {!hasWhatsapp && (
+                <p className="text-xs text-slate-600">
+                  <span className="font-bold">Falar no WhatsApp:</span> cadastre o WhatsApp da loja em
+                  Perfil da loja para liberar.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* O que GRAVA no banco fica separado do que e so copiar: e configuracao
+          da loja, nao um link para levar embora. */}
+      <Card className="rounded-2xl border-slate-200 shadow-sm overflow-hidden">
+        <CardHeader className="border-b bg-gradient-to-r from-white to-slate-50/50 py-4">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageCircle className="h-5 w-5 text-emerald-600" />
+            Nas mensagens automaticas
+          </CardTitle>
+          <p className="mt-1 max-w-2xl text-xs text-slate-500">
+            O <span className="font-mono text-[11px]">{'{link}'}</span> das mensagens que a loja
+            manda sozinha (saudacao, aviso de pedido, campanhas) vai abrir isto:
+          </p>
+        </CardHeader>
+
+        <CardContent className="p-5 md:p-6">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <select
+              value={messageVariant}
+              onChange={(event) => setMessageVariant(event.target.value)}
+              className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-emerald-500"
+            >
+              {variants.map((variant) => (
+                <option key={variant.code} value={variant.code}>
+                  {variant.title}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="h-10 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-700"
+            >
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Salvar
+            </Button>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            {getVariantByCode(messageVariant)?.opens}{' '}
+            <span className="text-slate-400">
+              Este link sai marcado como WhatsApp e ja identifica o contato que recebeu a mensagem.
+            </span>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
+
 
 function MessageTemplatesSection({
   templates,
