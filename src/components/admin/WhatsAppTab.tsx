@@ -994,14 +994,6 @@ function OrderLinksSection({
       </CardHeader>
 
       <CardContent className="p-5 md:p-6 space-y-6">
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-          <p className="text-xs leading-relaxed text-emerald-900">
-            <span className="font-black">Por que mais de um link?</span> Quando a mensagem sai pelo
-            WhatsApp, oferecer &quot;falar no WhatsApp&quot; e redundante — o cliente ja esta falando
-            com voce. Ja num post ou na bio do Instagram, essa opcao faz falta.
-          </p>
-        </div>
-
         <OrigemDoLinkPicker
           canal={canal}
           setCanal={setCanal}
