@@ -746,10 +746,14 @@ service cloud.firestore {
     // apaga, e `at` é obrigatoriamente a hora do servidor, então não dá para
     // plantar visita com data escolhida.
     match /store_visits/{visitId} {
-      allow create: if request.resource.data.keys().hasOnly(['storeId', 'at', 'visitorId'])
+      allow create: if request.resource.data.keys().hasOnly(['storeId', 'at', 'visitorId', 'via'])
         && request.resource.data.storeId is string
         && request.resource.data.at == request.time
-        && (!('visitorId' in request.resource.data) || request.resource.data.visitorId is string);
+        && (!('visitorId' in request.resource.data) || request.resource.data.visitorId is string)
+        // `via` = de onde a pessoa veio (marca do link que a loja espalhou).
+        // É dado de navegação, nunca identidade: cabe no mesmo documento aberto.
+        && (!('via' in request.resource.data)
+            || (request.resource.data.via is string && request.resource.data.via.size() <= 40));
       allow update, delete: if false;
       allow get, list: if isOwnerOf(resource.data.storeId)
         || operatorVeModulo(resource.data.storeId, 'visitantes');
@@ -769,7 +773,7 @@ service cloud.firestore {
             'storeId', 'visitorId', 'primeiraVez', 'ultimaVez', 'sessoes',
             'nome', 'telefone', 'clienteId', 'linhaDoTempo', 'carrinho',
             'pedidos', 'ultimoPedidoId', 'ultimoPedidoValor', 'ultimoPedidoMs',
-            'viaLink', 'codigo'
+            'viaLink', 'codigo', 'origemPrimeira', 'origemUltima'
           ])
           && request.resource.data.storeId is string
           && request.resource.data.visitorId is string
@@ -786,6 +790,12 @@ service cloud.firestore {
           && (!('viaLink' in request.resource.data) || request.resource.data.viaLink is bool)
           && (!('codigo' in request.resource.data)
               || (request.resource.data.codigo is string && request.resource.data.codigo.size() <= 12))
+          && (!('origemPrimeira' in request.resource.data)
+              || (request.resource.data.origemPrimeira is string
+                  && request.resource.data.origemPrimeira.size() <= 40))
+          && (!('origemUltima' in request.resource.data)
+              || (request.resource.data.origemUltima is string
+                  && request.resource.data.origemUltima.size() <= 40))
           && (!('carrinho' in request.resource.data) || request.resource.data.carrinho is map);
       }
 
@@ -797,7 +807,13 @@ service cloud.firestore {
         && (('primeiraVez' in resource.data)
             ? request.resource.data.primeiraVez == resource.data.primeiraVez
             : (!('primeiraVez' in request.resource.data)
-               || request.resource.data.primeiraVez == request.time));
+               || request.resource.data.primeiraVez == request.time))
+        // Quem TROUXE a pessoa também não se reescreve. A segunda visita chega
+        // pelo link do WhatsApp e apagaria o Instagram que a trouxe — aí toda
+        // divulgação pareceria não dar resultado nenhum.
+        && (!('origemPrimeira' in resource.data)
+            || !('origemPrimeira' in request.resource.data)
+            || request.resource.data.origemPrimeira == resource.data.origemPrimeira);
       allow delete: if false;
       allow get, list: if isOwnerOf(resource.data.storeId)
         || operatorVeModulo(resource.data.storeId, 'visitantes');

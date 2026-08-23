@@ -519,3 +519,40 @@ describe('relógio do servidor na linha do tempo', () => {
     expect(eventos.map((e) => e.at)).toEqual([agora, agora - HORA, agora - 2 * HORA]);
   });
 });
+
+describe('origem na fusão', () => {
+  it('quem trouxe a pessoa vem do documento mais ANTIGO', () => {
+    // Descobriu a loja pelo Instagram; voltou pelo link do WhatsApp, que abre
+    // num webview novo (documento novo, sem origem herdada).
+    const lista = [
+      visitante({
+        id: 'a',
+        visitorId: 'va',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS,
+        origemPrimeira: 'instagram-bio',
+        origemUltima: 'instagram-bio',
+      }),
+      visitante({
+        id: 'b',
+        visitorId: 'vb',
+        telefone: '16991644249',
+        ultimaVez: DEPOIS + 120_000,
+        origemPrimeira: 'whatsapp',
+        origemUltima: 'whatsapp',
+      }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect(pessoa.origemPrimeira).toBe('instagram-bio');
+    expect(pessoa.origemUltima).toBe('whatsapp');
+  });
+
+  it('documento novo sem origem não apaga a origem do antigo', () => {
+    const lista = [
+      visitante({ id: 'a', visitorId: 'va', telefone: '16991644249', ultimaVez: DEPOIS, origemPrimeira: 'panfleto' }),
+      visitante({ id: 'b', visitorId: 'vb', telefone: '16991644249', ultimaVez: DEPOIS + 60_000 }),
+    ];
+    const [pessoa] = agruparPorPessoa(lista);
+    expect(pessoa.origemPrimeira).toBe('panfleto');
+  });
+});

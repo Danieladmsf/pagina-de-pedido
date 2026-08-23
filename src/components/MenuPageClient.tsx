@@ -34,6 +34,7 @@ import {
 } from '@/lib/audience';
 import { useVisitorTracking } from '@/hooks/useVisitorTracking';
 import { codigoDoVisitante, extrairMarca, MARCA_PARAM } from '@/lib/contato-link';
+import { extrairOrigem } from '@/lib/origem';
 import { itemNeedsCustomization, applyPromoPrice } from '@/lib/cart';
 import { checkCartStock, getEffectiveStock, isOutOfStock } from '@/lib/inventory';
 import { ORDER_LINK_PARAM, resolveCardsFromParam, type OrderLinkCardId } from '@/lib/order-link';
@@ -414,6 +415,13 @@ export function MenuPageClient({
     setVisitorId(obterVisitorId(typeof window === 'undefined' ? null : window.localStorage));
   }, []);
 
+  // De onde a pessoa veio (`?via=instagram`, `?via=embalagem-bolo`). Lido UMA
+  // vez: a barra de endereço muda durante a visita (a tela de escolha tira o
+  // `?pedir` dela), e a origem não pode mudar no meio do caminho.
+  const origemRef = React.useRef<string | null>(null);
+  if (origemRef.current === null) origemRef.current = extrairOrigem(searchParams);
+  const origem = origemRef.current;
+
   // Aparelho da própria loja não é cliente. O botão "Abrir cardápio público" da
   // Retaguarda abre uma ABA NOVA a cada clique, e aba nova era visita nova: a
   // loja inflava o próprio placar só de conferir preço. Espera o login ficar
@@ -488,8 +496,16 @@ export function MenuPageClient({
   // `visitorId` para o painel conseguir dizer quantas PESSOAS são.
   React.useEffect(() => {
     if (!db || !podeRegistrar || sessaoNova !== true || !visitorId) return;
-    addDoc(collection(db, 'store_visits'), { storeId, at: serverTimestamp(), visitorId }).catch(() => {});
-  }, [db, podeRegistrar, sessaoNova, storeId, visitorId]);
+    addDoc(collection(db, 'store_visits'), {
+      storeId,
+      at: serverTimestamp(),
+      visitorId,
+      // De onde veio esta visita. Fica na visita (append-only) além do perfil da
+      // pessoa: é o que permite somar por origem no dia sem depender de ninguém
+      // ter se identificado.
+      ...(origem ? { via: origem } : {}),
+    }).catch(() => {});
+  }, [db, podeRegistrar, sessaoNova, storeId, visitorId, origem]);
 
   // O que a pessoa olhou, o que ficou no carrinho e se o pedido saiu.
   const tracker = useVisitorTracking({
@@ -498,6 +514,7 @@ export function MenuPageClient({
     visitorId,
     ativo: podeRegistrar && sessaoNova !== null,
     sessaoNova: sessaoNova === true,
+    origem,
   });
 
   // Cliente que já pediu antes é reconhecido assim que abre o cardápio: o

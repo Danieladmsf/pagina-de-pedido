@@ -54,6 +54,8 @@ interface Opcoes {
   ativo: boolean;
   /** Marca uma sessão nova (uma por aba/visita), para contar quantas vezes voltou. */
   sessaoNova: boolean;
+  /** De onde a pessoa veio (`?via=`), já normalizado. Vazio = link sem marca. */
+  origem?: string;
 }
 
 const vazio: VisitorTracker = {
@@ -63,7 +65,7 @@ const vazio: VisitorTracker = {
   registrarPedido: () => {},
 };
 
-export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova }: Opcoes): VisitorTracker {
+export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova, origem = '' }: Opcoes): VisitorTracker {
   // Estado local do documento. Começa do que já existe no banco (a pessoa pode
   // ter passado ontem) para a linha do tempo não ser apagada a cada visita.
   const linha = useRef<EventoVisitante[]>([]);
@@ -143,6 +145,14 @@ export function useVisitorTracking({ db, storeId, visitorId, ativo, sessaoNova }
       // Carrinho de uma visita antiga não pode aparecer como oportunidade de
       // hoje: quem voltou amanhã começa com a sacola limpa na tela da dona.
       if (sessaoNova && existente?.carrinho) campos.carrinho = { itens: [], valor: 0, emMs: Date.now() };
+      // De onde a pessoa veio. A PRIMEIRA origem entra uma vez e não se
+      // reescreve (é quem trouxe a pessoa para a loja); a última acompanha a
+      // visita de agora. Sem as duas, quem descobriu a loja no Instagram e
+      // voltou pelo link do WhatsApp aparece como mérito do WhatsApp.
+      if (origem) {
+        if (!existente?.origemPrimeira) campos.origemPrimeira = origem;
+        if (existente?.origemUltima !== origem) campos.origemUltima = origem;
+      }
       // `primeiraVez` pode faltar mesmo em documento que já existe: a
       // identificação pelo aparelho (cliente que já pediu antes) cria o perfil
       // antes desta leitura terminar. A regra deixa preencher quem não tem.

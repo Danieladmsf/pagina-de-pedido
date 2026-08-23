@@ -65,6 +65,12 @@ export interface Visitante {
   telefone?: string;
   /** ID completo do doc em `clientes`. Vínculo por id, nunca por nome. */
   clienteId?: string;
+  /**
+   * De onde a pessoa veio (`lib/origem.ts`). A PRIMEIRA é quem a trouxe para a
+   * loja e não se reescreve; a última é por onde ela entrou desta vez.
+   */
+  origemPrimeira?: string;
+  origemUltima?: string;
   linhaDoTempo?: EventoVisitante[];
   carrinho?: CarrinhoDoVisitante;
   pedidos?: number;
@@ -487,6 +493,12 @@ function fundirVisitas(docs: Visitante[]): Visitante {
   const comCliente = ordenados.find((d) => (d.clienteId || '').trim());
   const comNome = ordenados.find((d) => (d.nome || '').trim());
   const comTelefone = ordenados.find((d) => (d.telefone || '').trim());
+  // Quem TROUXE a pessoa está no documento mais antigo: ela descobriu a loja no
+  // Instagram e voltou pelo link do WhatsApp, que abre num webview novo. Se a
+  // fusão pegasse a origem do documento mais recente, toda descoberta viraria
+  // mérito do WhatsApp e a divulgação pareceria não dar resultado.
+  const trouxe = [...ordenados].reverse().find((d) => (d.origemPrimeira || '').trim());
+  const entrouPor = ordenados.find((d) => (d.origemUltima || d.origemPrimeira || '').trim());
   // Telefone digitado em QUALQUER uma das visitas derruba o "provável" do link:
   // a pessoa já se apresentou, não é mais palpite de quem recebeu o endereço.
   const confirmou = ordenados.some((d) => (d.telefone || '').trim() && d.viaLink !== true);
@@ -518,6 +530,8 @@ function fundirVisitas(docs: Visitante[]): Visitante {
     nome: comNome?.nome ?? recente.nome,
     telefone: comTelefone?.telefone ?? recente.telefone,
     clienteId: comCliente?.clienteId ?? recente.clienteId,
+    origemPrimeira: trouxe?.origemPrimeira ?? recente.origemPrimeira,
+    origemUltima: entrouPor?.origemUltima ?? entrouPor?.origemPrimeira ?? recente.origemUltima,
     viaLink: confirmou ? false : ordenados.some((d) => d.viaLink === true),
     primeiraVez: antigo.primeiraVez ?? recente.primeiraVez,
     ultimaVez: recente.ultimaVez,
