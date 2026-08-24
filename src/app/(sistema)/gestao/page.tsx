@@ -399,9 +399,29 @@ export default function GestaoPage() {
   // antigo gate da página única fazia (db: Firestore | null → Firestore).
   if (!db || !user) return null;
 
+  // A casca fica na tela mesmo enquanto a Retaguarda se verifica.
+  //
+  // Antes estes três estados devolviam tela cheia e o menu sumia junto: quem
+  // voltava de Visitantes via a tela inteira piscar — menu e barra escura
+  // sumiam, entrava um spinner por alguns segundos e tudo voltava. Só o
+  // conteúdo troca agora; o chrome fica parado.
+  const comCasca = (conteudo: React.ReactNode) => (
+    <RetaguardaShell
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      storeName={storeProfile?.general?.name}
+      storeLogo={storeProfile?.general?.logoUrl}
+      theme={storeProfile?.theme}
+      operatorName={operatorName}
+      onLogout={handleLogout}
+    >
+      {conteudo}
+    </RetaguardaShell>
+  );
+
   if (adminSecretError) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-6 text-center">
+    return comCasca(
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="font-semibold text-slate-800">Não foi possível verificar a senha da Retaguarda.</p>
         <p className="max-w-md text-sm text-slate-500">Confira a conexão e tente novamente. O acesso permanece bloqueado até a verificação terminar.</p>
         <Button onClick={() => window.location.reload()}>Tentar novamente</Button>
@@ -410,8 +430,8 @@ export default function GestaoPage() {
   }
 
   if (storeProfileError) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-6 text-center">
+    return comCasca(
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="font-semibold text-slate-800">Não foi possível carregar o perfil da loja.</p>
         <p className="max-w-md text-sm text-slate-500">Confira a conexão e tente novamente. As configurações permanecem bloqueadas enquanto o perfil não puder ser verificado.</p>
         <Button onClick={() => window.location.reload()}>Tentar novamente</Button>
@@ -420,8 +440,8 @@ export default function GestaoPage() {
   }
 
   if (!isAdminGateResolved || !adminSecretResolved) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-100 text-sm font-medium text-slate-500">
+    return comCasca(
+      <div className="flex flex-1 items-center justify-center text-sm font-medium text-slate-500">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verificando acesso à Retaguarda…
       </div>
     );
