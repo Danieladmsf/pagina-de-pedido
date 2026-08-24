@@ -373,11 +373,6 @@ export default function GestaoPage() {
   }, [db, toast]);
 
   const [quickPriceEdit, setQuickPriceEdit] = useState<{ id: string; name: string; price: number; collection?: 'menuItems' | 'addons' } | null>(null);
-  const [reportPeriod, setReportPeriod] = useState<'today' | '7d' | '30d' | 'all' | 'custom'>('30d');
-  const [customFrom, setCustomFrom] = useState<string>('');
-  const [customTo, setCustomTo] = useState<string>('');
-  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
-  const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   // Manage quick price edit dialog
   useEffect(() => {
