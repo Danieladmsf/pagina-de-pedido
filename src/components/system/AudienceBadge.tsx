@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/firebase';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
@@ -31,6 +31,7 @@ const CHAVE_RECOLHIDO = 'audience-badge-recolhido';
 export function AudienceBadge() {
   const { user } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const { ownerId, role, operatorPermissions } = usePdvAccess();
   const podeVerVisitantes = canAccessRetaguarda(
     role,
@@ -64,7 +65,10 @@ export function AudienceBadge() {
   }, [caixaAbertoEm]);
 
   // O placar é a porta de entrada da tela de Visitantes: sem a permissão, some.
+  // E some também DENTRO dela: flutuar por cima da tela que ele mesmo abre só
+  // atrapalha, e lá o número do turno já está na fileira de cima.
   if (!podeVerVisitantes || semAcesso || !caixaAbertoEm) return null;
+  if (pathname === '/visitantes') return null;
 
   const alternar = () => {
     const proximo = !recolhido;

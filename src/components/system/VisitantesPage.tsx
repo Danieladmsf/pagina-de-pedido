@@ -5,7 +5,6 @@ import { collection, doc, query, where } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import {
-  ArrowLeft,
   CalendarDays,
   ChevronDown,
   Eye,
@@ -17,7 +16,9 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { signOut } from 'firebase/auth';
+import { useAuth, useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { RetaguardaShell } from '@/components/admin/RetaguardaShell';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import {
   canAccessRetaguarda,
@@ -86,9 +87,19 @@ import { brl, cn } from '@/lib/utils';
  */
 export function VisitantesPage() {
   const db = useFirestore();
+  const auth = useAuth();
   const router = useRouter();
   const { user } = useUser();
-  const { ownerId, role, operatorPermissions } = usePdvAccess();
+  const { ownerId, role, operatorName, operatorPermissions } = usePdvAccess();
+
+  const sair = async () => {
+    if (!auth) return;
+    await signOut(auth);
+    router.push('/login');
+  };
+  // Esta tela mora em rota própria, então clicar num item do menu não é trocar
+  // de aba: é ir para a Retaguarda já com a aba pedida (ver /gestao?aba=).
+  const irParaAba = (aba: string) => router.push(`/gestao?aba=${encodeURIComponent(aba)}`);
   // Visitantes é um módulo como os outros: o dono liga ou desliga por pessoa.
   const podeVerVisitantes = canAccessRetaguarda(
     role,
@@ -209,7 +220,7 @@ export function VisitantesPage() {
 
   if (!podeVerVisitantes || semAcesso) {
     return (
-      <Moldura onVoltar={() => router.back()}>
+      <Moldura storeProfile={storeProfile} operatorName={operatorName} onLogout={sair} onIrParaAba={irParaAba}>
         <Aviso
           titulo="Sem acesso a esta tela"
           texto="Seu acesso não inclui Visitantes. O dono libera isso em Usuários e acesso, na Retaguarda."
@@ -219,7 +230,7 @@ export function VisitantesPage() {
   }
 
   return (
-    <Moldura onVoltar={() => router.back()} descricao={janela.descricao}>
+    <Moldura descricao={janela.descricao} storeProfile={storeProfile} operatorName={operatorName} onLogout={sair} onIrParaAba={irParaAba}>
       <BarraDePeriodo periodo={periodo} onMudar={setEscolha} />
 
       {/* A leitura que um sócio atento faria da tela inteira. Fica em cima
@@ -762,37 +773,52 @@ function BarraDePeriodo({
   );
 }
 
+/**
+ * A tela dentro da casca do painel — o mesmo menu lateral e a mesma barra
+ * escura do PDV e da Retaguarda.
+ *
+ * Antes daqui saía uma página inteira própria, com fundo mais claro e um botão
+ * de voltar no canto: quem clicava em "Visitantes" no menu via justamente o
+ * menu desaparecer. O botão de voltar sumiu junto com a moldura solta — a
+ * saída agora é o próprio menu, como em qualquer outra tela.
+ */
 function Moldura({
   children,
-  onVoltar,
   descricao,
+  storeProfile,
+  operatorName,
+  onLogout,
+  onIrParaAba,
 }: {
   children: React.ReactNode;
-  onVoltar: () => void;
   descricao?: string;
+  storeProfile?: any;
+  operatorName?: string | null;
+  onLogout: () => void;
+  onIrParaAba: (aba: string) => void;
 }) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-5xl px-4 py-5 md:px-6 md:py-7">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onVoltar}
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100"
-            title="Voltar"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+    <RetaguardaShell
+      activeTab="visitantes"
+      onTabChange={onIrParaAba}
+      storeName={storeProfile?.general?.name}
+      storeLogo={storeProfile?.general?.logoUrl}
+      theme={storeProfile?.theme}
+      operatorName={operatorName}
+      onLogout={onLogout}
+    >
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 md:p-6">
+        <div className="mx-auto w-full max-w-[1600px]">
           <div className="min-w-0">
             <h1 className="text-2xl font-black tracking-tight text-slate-800">Quem passou no cardápio</h1>
             <p className="mt-0.5 text-sm text-slate-500">
               {descricao ? `Movimento do cardápio — ${descricao}.` : 'Movimento do cardápio da loja.'}
             </p>
           </div>
+          <div className="mt-6">{children}</div>
         </div>
-        <div className="mt-6">{children}</div>
       </div>
-    </div>
+    </RetaguardaShell>
   );
 }
 

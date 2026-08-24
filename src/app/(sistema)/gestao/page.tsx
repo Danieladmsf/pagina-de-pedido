@@ -21,7 +21,7 @@ import {
   deleteMenuItemWithCleanup,
   promotionUpdatesForRemovedItems,
 } from '@/lib/menu-item-delete';
-import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Wallet, Store, GripVertical, Search, Copy, HelpCircle, Eye } from 'lucide-react';
+import { Pencil, Trash2, Plus, Utensils, Tag, Loader2, Clock, Upload, ChevronDown, Store, GripVertical, Search, Copy, HelpCircle, Eye } from 'lucide-react';
 import { DashboardTab } from '@/components/admin/DashboardTab';
 import { RelatoriosTab } from '@/components/admin/RelatoriosTab';
 import { useToast } from '@/hooks/use-toast';
@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { ClientesTab } from '@/components/admin/ClientesTab';
 import { StoreProfileTab } from '@/components/admin/StoreProfileTab';
-import { SidebarNav } from '@/components/admin/SidebarNav';
+import { RetaguardaShell } from '@/components/admin/RetaguardaShell';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { AppearanceTab } from '@/components/admin/AppearanceTab';
 import { WhatsAppTab } from '@/components/admin/WhatsAppTab';
@@ -178,6 +178,18 @@ export default function GestaoPage() {
     }
   }, [activeTab, storedActiveTab]);
 
+  // Quem clica num item do menu estando em OUTRA tela do painel (Visitantes é a
+  // primeira delas) chega aqui com a aba pedida na URL: /gestao?aba=produtos.
+  // Lemos uma vez, no primeiro render, e limpamos o endereço — a aba continua
+  // sendo estado da página, e a URL não fica grudada no histórico. Permissão
+  // continua mandando: aba proibida cai no fallback do `activeTab`.
+  useEffect(() => {
+    const pedida = new URLSearchParams(window.location.search).get('aba');
+    if (!pedida) return;
+    setActiveTab(pedida);
+    window.history.replaceState({ type: 'gestao-tab', tab: pedida }, '', '/gestao');
+  }, []);
+
   useEffect(() => {
     if (role === 'operator' && allowedTabs.length === 0) {
       router.replace('/pdv');
@@ -195,7 +207,6 @@ export default function GestaoPage() {
       window.history.pushState({ type: 'gestao-tab', tab: newTab }, '');
     }
   };
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -921,33 +932,16 @@ export default function GestaoPage() {
 
   return (
     <>
-    <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
-      <SidebarNav activeTab={activeTab} setActiveTab={handleTabChange} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} storeName={storeProfile?.general?.name} storeLogo={storeProfile?.general?.logoUrl} theme={storeProfile?.theme} />
-      <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
-        {/* Dark Top Navigation Bar */}
-        <div className="bg-[#2a3042] text-slate-300 h-14 flex justify-between items-center pr-4 pl-14 shrink-0 shadow-sm z-10">
-          <div className="flex h-full items-center">
-            <button
-              onClick={() => router.push('/pdv')}
-              className="px-6 h-full flex items-center gap-2 text-sm font-medium transition-colors hover:bg-white/10"
-              title="Ir para a frente de caixa (pedidos, mesas, caixa)"
-            >
-              <Wallet className="h-4 w-4" />
-              Frente de Caixa
-            </button>
-          </div>
+    <RetaguardaShell
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      storeName={storeProfile?.general?.name}
+      storeLogo={storeProfile?.general?.logoUrl}
+      theme={storeProfile?.theme}
+      operatorName={operatorName}
+      onLogout={handleLogout}
+    >
 
-          <div className="flex items-center gap-4 h-full">
-            {operatorName && <span className="hidden text-xs text-slate-400 sm:inline">{operatorName}</span>}
-            <button onClick={handleLogout} className="text-sm font-medium hover:text-white transition-colors">
-              Sair
-            </button>
-          </div>
-      </div>
-
-      {/* Content Area */}
-      <div className="flex-1 p-2 overflow-hidden flex flex-col min-h-0">
-        
         {activeTab === 'dashboard' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <DashboardTab
@@ -3046,10 +3040,7 @@ export default function GestaoPage() {
           )}
           </div>
         </div>
-      </div>
-
-      </div>
-    </div>
+    </RetaguardaShell>
 
     {db && isRealUser && !storeProfileLoading && !wizardDismissed && !storeProfile?.onboardingCompleted && (
       <WelcomeWizard
