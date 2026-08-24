@@ -5,6 +5,7 @@ import { useFirestore, useUser, useAuth } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { PdvAccessProvider } from '@/contexts/PdvAccessContext';
+import { MenuLateralProvider } from '@/contexts/MenuLateralContext';
 import { OrderAlertsWatcher } from '@/components/system/OrderAlertsWatcher';
 import { AudienceBadge } from '@/components/system/AudienceBadge';
 
@@ -65,9 +66,11 @@ export function SistemaGuard({ children }: { children: React.ReactNode }) {
   // impressão automática) toca em qualquer uma das duas telas.
   return (
     <PdvAccessProvider>
-      <OrderAlertsWatcher />
-      <AudienceBadge />
-      {children}
+      <MenuLateralProvider>
+        <OrderAlertsWatcher />
+        <AudienceBadge />
+        {children}
+      </MenuLateralProvider>
     </PdvAccessProvider>
   );
 }

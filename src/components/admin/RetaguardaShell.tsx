@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wallet } from 'lucide-react';
 import { SidebarNav } from '@/components/admin/SidebarNav';
+import { useMenuLateral } from '@/contexts/MenuLateralContext';
 
 interface RetaguardaShellProps {
   /** Item aceso no menu lateral. */
@@ -39,7 +40,12 @@ export function RetaguardaShell({
   children,
 }: RetaguardaShellProps) {
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // O menu aberto pertence ao layout, não a esta tela: navegar para Visitantes
+  // monta outro shell, e um estado local aqui faria o menu fechar sozinho.
+  const menu = useMenuLateral();
+  const [aberturaLocal, setAberturaLocal] = useState(false);
+  const isSidebarOpen = menu ? menu.aberto : aberturaLocal;
+  const setIsSidebarOpen = menu ? menu.setAberto : setAberturaLocal;
 
   return (
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
