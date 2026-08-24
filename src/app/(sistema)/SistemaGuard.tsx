@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { PdvAccessProvider } from '@/contexts/PdvAccessContext';
 import { MenuLateralProvider } from '@/contexts/MenuLateralContext';
+import { PerfilDaLojaProvider } from '@/contexts/PerfilDaLojaContext';
 import { OrderAlertsWatcher } from '@/components/system/OrderAlertsWatcher';
 import { AudienceBadge } from '@/components/system/AudienceBadge';
 
@@ -67,9 +68,11 @@ export function SistemaGuard({ children }: { children: React.ReactNode }) {
   return (
     <PdvAccessProvider>
       <MenuLateralProvider>
-        <OrderAlertsWatcher />
-        <AudienceBadge />
-        {children}
+        <PerfilDaLojaProvider>
+          <OrderAlertsWatcher />
+          <AudienceBadge />
+          {children}
+        </PerfilDaLojaProvider>
       </MenuLateralProvider>
     </PdvAccessProvider>
   );

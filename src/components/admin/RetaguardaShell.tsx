@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Wallet } from 'lucide-react';
 import { SidebarNav } from '@/components/admin/SidebarNav';
 import { useMenuLateral } from '@/contexts/MenuLateralContext';
+import { usePerfilDaLoja } from '@/contexts/PerfilDaLojaContext';
 
 interface RetaguardaShellProps {
   /** Item aceso no menu lateral. */
@@ -47,6 +48,13 @@ export function RetaguardaShell({
   const isSidebarOpen = menu ? menu.aberto : aberturaLocal;
   const setIsSidebarOpen = menu ? menu.setAberto : setAberturaLocal;
 
+  // Nome e foto vêm do layout, não da tela: a tela busca o perfil ao montar e
+  // o menu piscava "Minha Loja" com as iniciais genéricas nesse intervalo.
+  const perfil = usePerfilDaLoja();
+  const nomeDaLoja = perfil?.storeProfile?.general?.name ?? storeName;
+  const logoDaLoja = perfil?.storeProfile?.general?.logoUrl ?? storeLogo;
+  const temaDaLoja = perfil?.storeProfile?.theme ?? theme;
+
   return (
     <div className="admin-scale h-screen bg-slate-100 flex overflow-hidden">
       <SidebarNav
@@ -54,9 +62,9 @@ export function RetaguardaShell({
         setActiveTab={onTabChange}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
-        storeName={storeName}
-        storeLogo={storeLogo}
-        theme={theme}
+        storeName={nomeDaLoja}
+        storeLogo={logoDaLoja}
+        theme={temaDaLoja}
       />
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300 relative z-0">
         {/* Dark Top Navigation Bar */}
