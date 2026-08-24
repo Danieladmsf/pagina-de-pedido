@@ -27,6 +27,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
+import { useMenuLateral } from '@/contexts/MenuLateralContext';
 import {
   canAccessRetaguardaTab,
   EMPTY_OPERATOR_RETAGUARDA_PERMISSIONS,
@@ -43,7 +44,13 @@ interface SidebarNavProps {
 }
 
 export function SidebarNav({ activeTab, setActiveTab, isOpen, setIsOpen, storeName, storeLogo, theme }: SidebarNavProps) {
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  // Fica no contexto do layout junto com o menu: ao navegar para uma tela de
+  // rota própria (Visitantes, guia dos Adicionais) este componente remonta, e
+  // um estado local faria o acordeão fechar sozinho no meio do caminho.
+  const menu = useMenuLateral();
+  const [perfilLocal, setPerfilLocal] = useState(false);
+  const isProfileOpen = menu ? menu.perfilAberto : perfilLocal;
+  const setIsProfileOpen = menu ? menu.setPerfilAberto : setPerfilLocal;
   const router = useRouter();
   const { role, operatorPermissions } = usePdvAccess();
   const retaguardaPermissions = operatorPermissions?.retaguarda

@@ -5,6 +5,9 @@ import React, { createContext, useContext, useState } from 'react';
 interface MenuLateral {
   aberto: boolean;
   setAberto: (v: boolean) => void;
+  /** O acordeão "Perfil da Loja": mesmo motivo do menu, mesma vida. */
+  perfilAberto: boolean;
+  setPerfilAberto: (v: boolean) => void;
 }
 
 const MenuLateralCtx = createContext<MenuLateral | null>(null);
@@ -21,8 +24,9 @@ const MenuLateralCtx = createContext<MenuLateral | null>(null);
  */
 export function MenuLateralProvider({ children }: { children: React.ReactNode }) {
   const [aberto, setAberto] = useState(false);
+  const [perfilAberto, setPerfilAberto] = useState(false);
   return (
-    <MenuLateralCtx.Provider value={{ aberto, setAberto }}>
+    <MenuLateralCtx.Provider value={{ aberto, setAberto, perfilAberto, setPerfilAberto }}>
       {children}
     </MenuLateralCtx.Provider>
   );
