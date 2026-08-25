@@ -21,6 +21,7 @@ import type {
 } from './catalog';
 import type { Encomenda, EncomendaLineItem } from './types';
 import { normalizeCreditPhone } from '@/lib/customer-credit';
+import { emDinheiro } from '@/lib/dinheiro';
 
 export type Qmap = Record<string, number>;
 
@@ -67,9 +68,17 @@ export function skuTotal(sku: { price: number; priceCento?: number; price50?: nu
   return qty * sku.price;
 }
 
-/** Adicional do bolo: fixo, ou cobrado a cada 2 kg (a receita cobre 2 kg). */
+/**
+ * Adicional do bolo: valor fixo, por kg (multiplica pelo peso do bolo) ou
+ * cobrado a cada 2 kg (a receita cobre 2 kg). O peso pode ser quebrado, então o
+ * valor por kg volta arredondado em centavos — resíduo binário aqui vira
+ * centavo de diferença no total gravado.
+ */
 export function precoDoAdicional(extra: Pick<CakeExtra, 'price' | 'per'>, pesoKg: number): number {
-  return extra.per === '2kg' ? extra.price * Math.ceil((pesoKg || 1) / 2) : extra.price;
+  const peso = pesoKg || 1;
+  if (extra.per === '2kg') return extra.price * Math.ceil(peso / 2);
+  if (extra.per === 'kg') return emDinheiro(extra.price * peso);
+  return extra.price;
 }
 
 const ativos = <T extends { enabled?: boolean }>(list: T[] | undefined) =>

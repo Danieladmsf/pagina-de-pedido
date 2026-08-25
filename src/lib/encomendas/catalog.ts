@@ -72,13 +72,14 @@ export interface CakeWeight {
 }
 
 // Adicionais/acabamentos do bolo (Topper, Glitter, Ganache, Chantininho...).
-// `per`: 'unidade' = valor fixo; '2kg' = cobra a cada 2 kg (ceil(peso/2)) — ex.:
-// a receita de ganache cobre até 2 kg; acima disso soma outra.
+// `per`: 'unidade' = valor fixo; 'kg' = multiplica pelo peso do bolo (ex.: R$ 20/kg
+// num bolo de 3 kg = R$ 60); '2kg' = cobra a cada 2 kg (ceil(peso/2)) — ex.: a
+// receita de ganache cobre até 2 kg; acima disso soma outra.
 export interface CakeExtra {
   id: string;
   name: string;
   price: number;
-  per?: 'unidade' | '2kg';
+  per?: 'unidade' | '2kg' | 'kg';
   desc?: string;
 }
 

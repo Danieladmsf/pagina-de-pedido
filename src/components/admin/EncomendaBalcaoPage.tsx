@@ -521,7 +521,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
                             })}
                             className={`rounded-full border-2 px-3 py-1 text-xs font-bold transition ${marcado ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                           >
-                            {extra.name} · {brl(extra.price)}{extra.per === '2kg' ? '/2kg' : ''}
+                            {extra.name} · {brl(extra.price)}{extra.per === '2kg' ? '/2kg' : extra.per === 'kg' ? '/kg' : ''}
                           </button>
                         );
                       })}

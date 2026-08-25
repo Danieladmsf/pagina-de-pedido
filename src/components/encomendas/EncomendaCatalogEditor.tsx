@@ -166,14 +166,15 @@ export function EncomendaCatalogEditor({ db, user, storeProfile }: { db: any; us
             <StrList items={cat.cakeDoughs} onChange={(i, v) => setStr('cakeDoughs', i, v)} onRemove={(i) => delItem('cakeDoughs', i)} onAdd={() => addItem('cakeDoughs', '')} placeholder="Ex.: Branca" />
           </Section>
 
-          <Section title="Bolo — acabamentos e adicionais" hint='"A cada 2 kg" multiplica pelo peso (ex.: ganache num bolo de 4 kg = 2×). "Valor fixo" cobra uma vez só.'>
+          <Section title="Bolo — acabamentos e adicionais" hint='"Por kg" multiplica pelo peso (ex.: R$ 20/kg num bolo de 3 kg = R$ 60). "A cada 2 kg" cobra de novo a cada 2 kg (ganache num bolo de 4 kg = 2×). "Valor fixo" cobra uma vez só.'>
             {cat.cakeExtras.map((x, i) => (
               <Row key={x.id} onRemove={() => delItem('cakeExtras', i)}>
                 <Col label="Adicional"><Input value={x.name} onChange={(e) => updItem('cakeExtras', i, { name: e.target.value })} /></Col>
                 <Col label="Preço" w="100px"><Input inputMode="decimal" value={x.price} onChange={(e) => updItem('cakeExtras', i, { price: num(e.target.value) })} /></Col>
                 <Col label="Cobrança" w="150px">
-                  <select value={x.per === '2kg' ? '2kg' : 'unidade'} onChange={(e) => updItem('cakeExtras', i, { per: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
+                  <select value={x.per === '2kg' ? '2kg' : x.per === 'kg' ? 'kg' : 'unidade'} onChange={(e) => updItem('cakeExtras', i, { per: e.target.value })} className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm">
                     <option value="unidade">Valor fixo</option>
+                    <option value="kg">Por kg</option>
                     <option value="2kg">A cada 2 kg</option>
                   </select>
                 </Col>

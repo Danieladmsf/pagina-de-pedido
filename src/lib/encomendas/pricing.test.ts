@@ -64,6 +64,21 @@ describe('adicional do bolo', () => {
     expect(precoDoAdicional({ price: 15, per: '2kg' }, 3)).toBe(30);
     expect(precoDoAdicional({ price: 15, per: '2kg' }, 5)).toBe(45);
   });
+
+  it('"por kg" multiplica pelo peso do bolo', () => {
+    expect(precoDoAdicional({ price: 20, per: 'kg' }, 1)).toBe(20);
+    expect(precoDoAdicional({ price: 20, per: 'kg' }, 3)).toBe(60);
+    expect(precoDoAdicional({ price: 20, per: 'kg' }, 10)).toBe(200);
+  });
+
+  it('"por kg" com peso quebrado volta em centavos', () => {
+    expect(precoDoAdicional({ price: 20, per: 'kg' }, 1.5)).toBe(30);
+    expect(precoDoAdicional({ price: 19.9, per: 'kg' }, 2.3)).toBe(45.77);
+  });
+
+  it('sem peso escolhido, "por kg" cobra 1 kg (Baby)', () => {
+    expect(precoDoAdicional({ price: 20, per: 'kg' }, 0)).toBe(20);
+  });
 });
 
 describe('resolverBolo (por kg)', () => {

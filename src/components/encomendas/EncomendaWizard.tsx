@@ -270,7 +270,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   );
 
   const { flavor: flavorObj, weight: weightObj, size: sizeObj, filling: fillObj, cover: coverObj, pesoKg: weightKg } = totais.bolo;
-  const extraPrice = (x: { price: number; per?: 'unidade' | '2kg' }) => precoDoAdicional(x, weightKg);
+  const extraPrice = (x: { price: number; per?: 'unidade' | '2kg' | 'kg' }) => precoDoAdicional(x, weightKg);
   const selectedExtras = totais.bolo.extras;
   const boloTotal = totais.bolo.total;
   const subtotal = totais.subtotal;
@@ -618,6 +618,7 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                         <span>
                           <span className="block font-semibold text-foreground">{x.name}</span>
                           {x.per === '2kg' && <span className="block text-xs text-muted-foreground">cobrado a cada 2 kg</span>}
+                          {x.per === 'kg' && <span className="block text-xs text-muted-foreground">{brl(x.price)} por kg de bolo</span>}
                           {x.desc && <span className="block text-xs text-muted-foreground">{x.desc}</span>}
                         </span>
                       </span>
