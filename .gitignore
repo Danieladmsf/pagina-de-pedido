@@ -59,3 +59,6 @@ pglite-debug.log
 
 # Copia local de instalador; nao versionar.
 baixar-e-instalar-impressao copy.bat
+
+# Segredos: nenhum .env vai para o repositorio.
+.env*
