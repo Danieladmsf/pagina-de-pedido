@@ -19,6 +19,7 @@
  * separa as duas causas — na próxima vez a conversa terá dado, não palpite.
  */
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import { getStoreOpenState } from '@/lib/whatsapp-messages';
 import { configureWapiWebhooks } from '@/lib/wapi/wapi.service';
 import { decryptWapiToken } from '@/lib/wapi/integration-store';
 import type { WhatsAppIntegration } from '@/lib/wapi/types';
@@ -44,6 +45,13 @@ export type VeredictoDoIncidente =
   | 'registro_perdido'
   /** Só voltou muito depois: a entrega do provedor estava fora. */
   | 'entrega_do_provedor'
+  /**
+   * Detectado com a loja FECHADA. Não conclui nada, e é por isso que existe:
+   * de madrugada a mensagem "volta" quando alguém finalmente escreve, não
+   * quando o provedor se recupera — chamar isso de `entrega_do_provedor`
+   * mentiria justamente no dado que a coleção existe para colher.
+   */
+  | 'inconclusivo_sem_movimento'
   /** Ainda mudo. */
   | 'em_aberto';
 
@@ -68,6 +76,8 @@ export interface ResultadoDaVarredura {
 interface DocDeLoja {
   empresaId: string;
   integration: WhatsAppIntegration;
+  /** Estado da loja no momento da varredura; muda o limite de silêncio. */
+  lojaAberta?: boolean;
 }
 
 /**
@@ -81,9 +91,18 @@ async function listarLojasConectadas(adminDb: FirebaseFirestore.Firestore): Prom
     .where('whatsappIntegration.connected', '==', true)
     .get();
 
-  return snap.docs
+  const lojas = snap.docs
     .map((doc) => ({ empresaId: doc.id, integration: (doc.data() || {}).whatsappIntegration as WhatsAppIntegration }))
     .filter((loja) => Boolean(loja.integration?.wapiInstanceId));
+
+  // O estado da loja muda o limite de silêncio, então precisa vir junto: são
+  // poucas leituras (uma por loja conectada, a cada 10 min).
+  return Promise.all(
+    lojas.map(async (loja) => {
+      const perfil = await adminDb.collection('store_profiles').doc(loja.empresaId).get().catch(() => null);
+      return { ...loja, lojaAberta: getStoreOpenState(perfil?.data()).isOpen };
+    }),
+  );
 }
 
 /**
@@ -118,8 +137,11 @@ async function fecharIncidenteSeVoltou(
 
     const ultimaTentativa = Date.parse(dados.ultimaTentativaEm || '') || 0;
     const tempoAteVoltarMs = ultimaTentativa > 0 ? ultimoWebhook - ultimaTentativa : 0;
-    const veredicto: VeredictoDoIncidente =
-      ultimaTentativa > 0 && tempoAteVoltarMs <= JANELA_DE_CURA_MS
+    // Incidente aberto com a loja fechada não vira veredicto: naquele horário
+    // a volta da mensagem não diz nada sobre a causa do silêncio.
+    const veredicto: VeredictoDoIncidente = dados.lojaAbertaNaDeteccao === false
+      ? 'inconclusivo_sem_movimento'
+      : ultimaTentativa > 0 && tempoAteVoltarMs <= JANELA_DE_CURA_MS
         ? 'registro_perdido'
         : 'entrega_do_provedor';
 
@@ -191,6 +213,7 @@ async function registrarTentativa(
       // Referência para saber, na próxima passada, se entrou mensagem nova.
       ultimoWebhookAntes: loja.integration.lastWebhookAt || '',
       silencioNaDeteccao: descreverSilencio(silencioMs),
+      lojaAbertaNaDeteccao: loja.lojaAberta !== false,
       silencioMsNaDeteccao: Number.isFinite(silencioMs) ? silencioMs : null,
       tentativas: [tentativa],
       // A coleção se mantém sozinha, como a de eventos do webhook.
@@ -228,6 +251,7 @@ export async function vigiarRecebimentoDaLoja(
     connected: loja.integration.connected,
     lastWebhookAt: loja.integration.lastWebhookAt,
     ultimaTentativaEm: (loja.integration as any).watchdogUltimaTentativaEm,
+    lojaAberta: loja.lojaAberta,
     agora,
   });
 

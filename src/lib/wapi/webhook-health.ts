@@ -31,6 +31,22 @@
 export const SILENCIO_PARA_REREGISTRAR_MS = 15 * 60 * 1000;
 
 /**
+ * O mesmo limite, mas com a LOJA FECHADA — onde silêncio não é sintoma.
+ *
+ * Medido em produção: entre 22h e 07h, o WhatsApp da Gostinho passa por 46
+ * silêncios de 15 min ou mais a cada 8 dias (o maior: 88 min). Ninguém manda
+ * mensagem de madrugada e os stories alheios param de chegar. Com o limite
+ * único de 15 min, o vigia acusou 7 incidentes numa única noite — todos falsos,
+ * e todos rotulados com um veredicto que sujava justamente o dado que a
+ * coleção existe para colher.
+ *
+ * 120 min fica acima do maior silêncio natural já medido. Um apagão real de
+ * madrugada ainda é pego, só que em até 2h — e nessa faixa o que se perde é o
+ * aviso de "estamos fechados", não um pedido.
+ */
+export const SILENCIO_COM_LOJA_FECHADA_MS = 120 * 60 * 1000;
+
+/**
  * Silêncio a partir do qual a tela avisa a loja. Maior que o de cima de
  * propósito: dá ao vigia uma tentativa inteira de se curar sozinho antes de
  * incomodar quem está atendendo.
@@ -94,7 +110,10 @@ export function avaliarSaudeDoWebhook(entrada: EntradaDaSaude): SaudeDoWebhook {
   const ultimoWebhook = emMillis(entrada.lastWebhookAt);
   const silencioMs = ultimoWebhook > 0 ? Math.max(0, agora - ultimoWebhook) : Number.POSITIVE_INFINITY;
 
-  if (silencioMs < SILENCIO_PARA_REREGISTRAR_MS) {
+  // Fechada, só um silêncio muito maior é sintoma: ver a constante acima.
+  const limite = entrada.lojaAberta === false ? SILENCIO_COM_LOJA_FECHADA_MS : SILENCIO_PARA_REREGISTRAR_MS;
+
+  if (silencioMs < limite) {
     return { estado: 'recebendo', silencioMs, precisaReRegistrar: false, precisaAlertar: false };
   }
 

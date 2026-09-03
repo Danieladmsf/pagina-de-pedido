@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   INTERVALO_ENTRE_TENTATIVAS_MS,
+  SILENCIO_COM_LOJA_FECHADA_MS,
   SILENCIO_PARA_ALERTAR_MS,
   SILENCIO_PARA_REREGISTRAR_MS,
   avaliarSaudeDoWebhook,
@@ -83,6 +84,49 @@ describe('avaliarSaudeDoWebhook', () => {
     expect(saude.estado).toBe('mudo');
     expect(saude.precisaReRegistrar).toBe(true);
     expect(saude.precisaAlertar).toBe(false);
+  });
+
+  // Medido em producao: entre 22h e 07h sao 46 silencios de 15 min ou mais a
+  // cada 8 dias, o maior de 88 min. Com o limite unico, o vigia abriu 7
+  // incidentes falsos numa noite so.
+  it('silencio noturno comum NAO faz o vigia agir com a loja fechada', () => {
+    const agora = Date.now();
+    for (const min of [16, 19, 45, 88]) {
+      const saude = avaliarSaudeDoWebhook({
+        connected: true,
+        lastWebhookAt: new Date(agora - minutos(min)).toISOString(),
+        lojaAberta: false,
+        agora,
+      });
+      expect(saude.estado, `${min} min com a loja fechada`).toBe('recebendo');
+      expect(saude.precisaReRegistrar).toBe(false);
+    }
+  });
+
+  it('mas um apagao de verdade de madrugada ainda e pego', () => {
+    const agora = Date.now();
+    const saude = avaliarSaudeDoWebhook({
+      connected: true,
+      lastWebhookAt: new Date(agora - SILENCIO_COM_LOJA_FECHADA_MS - 1000).toISOString(),
+      lojaAberta: false,
+      agora,
+    });
+
+    expect(saude.estado).toBe('mudo');
+    expect(saude.precisaReRegistrar).toBe(true);
+  });
+
+  it('o mesmo silencio de 16 min com a loja ABERTA faz o vigia agir', () => {
+    const agora = Date.now();
+    const saude = avaliarSaudeDoWebhook({
+      connected: true,
+      lastWebhookAt: new Date(agora - minutos(16)).toISOString(),
+      lojaAberta: true,
+      agora,
+    });
+
+    expect(saude.estado).toBe('mudo');
+    expect(saude.precisaReRegistrar).toBe(true);
   });
 
   it('desconectado nao conta: nada a re-registrar, nada a alertar', () => {
