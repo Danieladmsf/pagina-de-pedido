@@ -8,6 +8,7 @@ import { PdvAccessProvider } from '@/contexts/PdvAccessContext';
 import { MenuLateralProvider } from '@/contexts/MenuLateralContext';
 import { PerfilDaLojaProvider } from '@/contexts/PerfilDaLojaContext';
 import { OrderAlertsWatcher } from '@/components/system/OrderAlertsWatcher';
+import { WhatsAppSilenceAlert } from '@/components/system/WhatsAppSilenceAlert';
 import { AudienceBadge } from '@/components/system/AudienceBadge';
 
 // Guard de autenticação único do sistema interno (PDV + Gestão). É a mesma
@@ -70,6 +71,7 @@ export function SistemaGuard({ children }: { children: React.ReactNode }) {
       <MenuLateralProvider>
         <PerfilDaLojaProvider>
           <OrderAlertsWatcher />
+          <WhatsAppSilenceAlert />
           <AudienceBadge />
           {children}
         </PerfilDaLojaProvider>

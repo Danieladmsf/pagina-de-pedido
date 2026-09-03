@@ -45,6 +45,10 @@ export function sanitizeIntegration(integration: WhatsAppIntegration): Sanitized
     numeroWhatsapp: integration.numeroWhatsapp,
     qrCode: integration.qrCode,
     webhookUrl: integration.webhookUrl,
+    // A tela precisa saber a diferenca entre "o celular esta conectado" e "esta
+    // entrando mensagem": sem este carimbo ela so sabia o primeiro, e por isso
+    // exibia "Online" durante as 4h32 em que nada chegou (02/09/2026).
+    lastWebhookAt: integration.lastWebhookAt,
     lastError: integration.lastError,
     lastStatusAt: integration.lastStatusAt,
     createdAt: integration.createdAt,

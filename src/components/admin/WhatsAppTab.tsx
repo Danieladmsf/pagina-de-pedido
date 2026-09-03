@@ -21,7 +21,9 @@ import {
   ShoppingBag,
   Smartphone,
   Wifi,
+  WifiOff,
 } from 'lucide-react';
+import { avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -96,6 +98,9 @@ interface Integration {
   connected: boolean;
   numeroWhatsapp?: string;
   qrCode?: string;
+  /** Ultimo webhook recebido: prova que ESTA ENTRANDO mensagem, e nao apenas
+   *  que o aparelho esta conectado. Sao coisas diferentes. */
+  lastWebhookAt?: string;
   lastError?: string;
   lastStatusAt?: string;
   tokenConfigured: boolean;
@@ -540,7 +545,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                       onStartPairing={startPairing}
                     />
                   ) : (
-                    <ConnectedCard numero={integration.numeroWhatsapp} />
+                    <ConnectedCard numero={integration.numeroWhatsapp} lastWebhookAt={integration.lastWebhookAt} />
                   )}
                 </>
               )}
@@ -1480,28 +1485,44 @@ function QrSection({
   );
 }
 
-function ConnectedCard({ numero }: { numero?: string }) {
+function ConnectedCard({ numero, lastWebhookAt }: { numero?: string; lastWebhookAt?: string }) {
+  // "Conectado" e "recebendo mensagem" sao duas coisas, e por muito tempo esta
+  // tela so soube dizer a primeira: em 02/09/2026 ela exibiu "Online" durante
+  // as 4h32 em que nenhuma mensagem de cliente chegou. O aparelho estava mesmo
+  // conectado (as notificacoes de pedido sairam normalmente no meio do
+  // apagao) — o que tinha caido era o recebimento.
+  const saude = avaliarSaudeDoWebhook({ connected: true, lastWebhookAt });
+  const mudo = saude.estado === 'mudo';
+
+  const moldura = mudo
+    ? 'border-amber-200 bg-gradient-to-br from-amber-50 via-amber-50/60 to-white'
+    : 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white';
+
   return (
-    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white p-5 relative overflow-hidden">
-      <div className="absolute top-0 right-0 h-32 w-32 bg-emerald-200/30 blur-3xl rounded-full pointer-events-none" />
+    <div className={`rounded-2xl border p-5 relative overflow-hidden ${moldura}`}>
+      <div className={`absolute top-0 right-0 h-32 w-32 blur-3xl rounded-full pointer-events-none ${mudo ? 'bg-amber-200/30' : 'bg-emerald-200/30'}`} />
       <div className="relative flex items-start gap-4">
-        <div className="h-12 w-12 rounded-2xl bg-emerald-600 flex items-center justify-center shadow-md shadow-emerald-500/30 shrink-0">
-          <CheckCircle2 className="h-6 w-6 text-white" />
+        <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shadow-md shrink-0 ${mudo ? 'bg-amber-500 shadow-amber-500/30' : 'bg-emerald-600 shadow-emerald-500/30'}`}>
+          {mudo ? <AlertTriangle className="h-6 w-6 text-white" /> : <CheckCircle2 className="h-6 w-6 text-white" />}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-black text-emerald-900 text-base">WhatsApp conectado</p>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-700 text-[10px] font-bold">
-              <Wifi className="h-3 w-3" />
-              Online
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`font-black text-base ${mudo ? 'text-amber-900' : 'text-emerald-900'}`}>
+              {mudo ? 'Conectado, mas sem receber mensagens' : 'WhatsApp conectado'}
+            </p>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border text-[10px] font-bold ${mudo ? 'border-amber-200 text-amber-700' : 'border-emerald-200 text-emerald-700'}`}>
+              {mudo ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+              {mudo ? `Nada chega ${descreverSilencio(saude.silencioMs)}` : 'Recebendo mensagens'}
             </span>
           </div>
-          <p className="text-sm text-emerald-800 mt-1">
-            As notificacoes desta loja serao enviadas automaticamente por este WhatsApp.
+          <p className={`text-sm mt-1 ${mudo ? 'text-amber-800' : 'text-emerald-800'}`}>
+            {mudo
+              ? 'O aparelho esta conectado e a loja consegue enviar, mas as mensagens dos clientes nao estao chegando — entao as respostas automaticas nao saem. Estamos tentando religar sozinhos; se nao voltar, desconecte e leia o QR Code de novo.'
+              : 'As notificacoes desta loja serao enviadas automaticamente por este WhatsApp.'}
           </p>
           {numero && (
-            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-emerald-200">
-              <Phone className="h-3.5 w-3.5 text-emerald-600" />
+            <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border ${mudo ? 'border-amber-200' : 'border-emerald-200'}`}>
+              <Phone className={`h-3.5 w-3.5 ${mudo ? 'text-amber-600' : 'text-emerald-600'}`} />
               <span className="font-mono text-sm font-bold text-slate-900">{numero}</span>
             </div>
           )}

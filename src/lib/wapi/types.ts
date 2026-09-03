@@ -23,6 +23,10 @@ export interface WhatsAppIntegration {
   lastWebhookAt?: string;
   lastError?: string;
   lastStatusAt?: string;
+  /** Ultima vez que o vigia tentou refazer o registro dos webhooks (ISO). */
+  watchdogUltimaTentativaEm?: string;
+  /** Resultado dessa tentativa: os 5 endpoints aceitos ou nao. */
+  watchdogUltimoResultado?: 'ok' | 'falha';
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +43,7 @@ export interface SanitizedWhatsAppIntegration {
   numeroWhatsapp?: string;
   qrCode?: string;
   webhookUrl?: string;
+  lastWebhookAt?: string;
   lastError?: string;
   lastStatusAt?: string;
   createdAt: string;
