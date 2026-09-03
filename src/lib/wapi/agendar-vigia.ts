@@ -13,6 +13,7 @@
  * em mãos (ele é recuperável no console da Upstash, que é a fonte original).
  */
 import { Client } from '@upstash/qstash';
+import { getOptionalAdminDb } from '@/lib/firebase-admin';
 
 /** A cada 10 min: o limite de silêncio do vigia é 15, então nunca passa dele. */
 export const CRON_DO_VIGIA = '*/10 * * * *';
@@ -70,4 +71,43 @@ export async function agendarVigia(origem: string): Promise<AgendamentoDoVigia> 
   });
 
   return { scheduleId, cron: CRON_DO_VIGIA, destino };
+}
+
+/** Com que frequência vale reconferir se o agendamento continua de pé. */
+const INTERVALO_DA_CONFERENCIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Garante que o vigia está agendado, sem ninguém precisar lembrar disso.
+ *
+ * Chamado pela rota de saúde, que o sistema já consulta enquanto alguém tem o
+ * PDV ou a Retaguarda aberto: na primeira vez que a loja abre o sistema, o
+ * agendamento nasce sozinho. Confere no máximo uma vez por dia por loja (o
+ * carimbo mora na própria integração), então o custo é uma chamada diária ao
+ * QStash — e o agendamento volta sozinho se alguém apagá-lo.
+ *
+ * Best-effort de propósito: isto NUNCA pode derrubar a resposta da tela. Sem
+ * `QSTASH_TOKEN` (ambiente local, por exemplo) simplesmente não faz nada.
+ */
+export async function garantirAgendamentoDoVigia(empresaId: string, origem: string, agora = Date.now()) {
+  const adminDb = getOptionalAdminDb();
+  if (!adminDb || !process.env.QSTASH_TOKEN) return;
+
+  try {
+    const ref = adminDb.collection('roles_admin').doc(empresaId);
+    const snap = await ref.get();
+    const integracao = (snap.data() || {}).whatsappIntegration || {};
+    const conferidoEm = Date.parse(integracao.vigiaConferidoEm || '') || 0;
+    if (agora - conferidoEm < INTERVALO_DA_CONFERENCIA_MS) return;
+
+    const existentes = await listarAgendamentosDoVigia();
+    const jaEstaNoAr = existentes.some((a) => a.cron === CRON_DO_VIGIA);
+    if (!jaEstaNoAr) await agendarVigia(origem);
+
+    await ref.update({
+      'whatsappIntegration.vigiaConferidoEm': new Date(agora).toISOString(),
+    });
+  } catch {
+    // QStash fora, rede ruim, permissao: a tela nao pode quebrar por causa
+    // disso. Na proxima conferencia tenta de novo.
+  }
 }

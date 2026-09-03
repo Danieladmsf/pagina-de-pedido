@@ -5,6 +5,7 @@ import { getWhatsAppIntegrationAdmin } from '@/lib/wapi/integration-store';
 import { getStoreOpenState } from '@/lib/whatsapp-messages';
 import { avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
 import { vigiarRecebimentoDaLoja } from '@/lib/wapi/webhook-watchdog';
+import { garantirAgendamentoDoVigia } from '@/lib/wapi/agendar-vigia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
           (integ, token) => getWebhookUrl(request, integ.empresaId, token, integ.webhookUrl),
         ).catch(() => {});
       }
+
+      // O vigia do servidor se liga sozinho na primeira vez que alguem abre o
+      // sistema, e volta se o agendamento sumir. Confere 1x por dia por loja.
+      await garantirAgendamentoDoVigia(empresaId, new URL(request.url).origin);
 
       return ok({
         estado: saude.estado,
