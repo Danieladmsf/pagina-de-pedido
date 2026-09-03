@@ -826,6 +826,12 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       subtitle={paymentModalOrder?.customerName ? `${paymentModalOrder.orderType === 'pickup' ? 'Retirada' : 'Delivery'} · ${paymentModalOrder.customerName}` : undefined}
       items={paymentModalOrder?.items || []}
       caixaAberto={caixaAberto}
+      // Delivery é a única aba onde a conta pode ser de outro dia: o pedido
+      // chega pelo cardápio e fica esperando, às vezes até a manhã seguinte.
+      // Balcão e Mesa criam a venda no próprio fechamento, e em Encomendas ser
+      // de outro dia é a regra, não a exceção — avisar lá seria alarme constante.
+      pedidoCriadoEm={paymentModalOrder?.createdAt || paymentModalOrder?.orderDateTime}
+      timezone={storeProfile?.general?.timezone}
       prazoCustomer={{
         name: paymentModalOrder?.customerName,
         phone: paymentModalOrder?.customerPhone,

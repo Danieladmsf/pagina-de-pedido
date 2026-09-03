@@ -8,6 +8,7 @@ import { Receipt, ChevronDown, Tag, Wallet } from 'lucide-react';
 import { brl } from '@/lib/utils';
 import type { UseFechamentoReturn } from './useFechamento';
 import type { IdentidadeDaVenda } from '@/lib/vendas/identidade-cliente';
+import { avisoDePedidoDeOutroDia } from '@/lib/pedido-de-outro-dia';
 
 interface FechamentoModalProps {
   open: boolean;
@@ -19,6 +20,16 @@ interface FechamentoModalProps {
   caixaAberto?: boolean;
   /** Avisos extras exibidos na descrição (abaixo do aviso de caixa fechado). */
   warnings?: React.ReactNode;
+  /**
+   * Quando o pedido foi feito. Serve para avisar, ANTES de confirmar, que a
+   * conta é de outro dia — o faturamento é datado pelo lançamento no caixa, e
+   * fechar hoje um pedido de ontem faz a venda aparecer no dia de hoje. Foi o
+   * que assustou a dona da Gostinho em 03/09/2026: R$ 31 no Dashboard de um dia
+   * em que ela ainda não tinha vendido nada. Opcional: sem a data, nada muda.
+   */
+  pedidoCriadoEm?: any;
+  /** Fuso da loja, quando conhecido (padrão: America/Sao_Paulo). */
+  timezone?: string;
   /** Itens para o resumo recolhível (opcional). */
   items?: any[];
   /**
@@ -66,6 +77,8 @@ export function FechamentoModal({
   confirmLabel = '✅ Confirmar Pedido',
   caixaAberto = true,
   warnings,
+  pedidoCriadoEm,
+  timezone,
   items,
   prazoCustomer,
   identidade,
@@ -74,6 +87,14 @@ export function FechamentoModal({
 }: FechamentoModalProps) {
   const [resumoAberto, setResumoAberto] = useState(false);
   useEffect(() => { if (open) setResumoAberto(false); }, [open]);
+
+  // Recalcula só ao (re)abrir: o modal pode ficar aberto enquanto o operador
+  // decide, e não faz sentido a frase mudar sozinha na virada da meia-noite
+  // com a conta já na tela.
+  const avisoDeOutroDia = React.useMemo(
+    () => (open ? avisoDePedidoDeOutroDia(pedidoCriadoEm, new Date(), timezone) : null),
+    [open, pedidoCriadoEm, timezone],
+  );
 
   const totalItens = (items || []).reduce((a: number, i: any) => a + (Number(i.quantity) || 0), 0);
 
@@ -312,6 +333,9 @@ export function FechamentoModal({
           </DialogTitle>
           <DialogDescription className="text-xs">
             {!caixaAberto && <span className="mt-1 block text-red-500">⚠️ Caixa fechado — venda não será registrada nele.</span>}
+            {avisoDeOutroDia && (
+              <span className="mt-1 block font-semibold text-amber-600">📅 {avisoDeOutroDia.texto}</span>
+            )}
             {f.prazoFeeNote && (
               <span className="mt-1 block text-blue-600">🛵 Prazo: a taxa de entrega ({brl(f.deliveryFee)}) fica de fora da cobrança — o cliente paga direto ao motoboy.</span>
             )}
