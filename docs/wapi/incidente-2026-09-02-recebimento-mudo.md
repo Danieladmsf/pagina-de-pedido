@@ -100,6 +100,36 @@ A coleção grava `expireAt` (90 dias); ligar a política de TTL no console do
 Firestore, como já foi feito em `whatsapp_webhook_events` (a service account não
 consegue: 403 em `datastore.indexes.update`).
 
+## O que a primeira noite no ar ensinou (03/09)
+
+O vigia subiu e abriu **7 incidentes entre 23h e 03h**, todos com silêncio de
+15-19 min, todos falsos — e cada um saiu rotulado `entrega_do_provedor`,
+poluindo exatamente o dado que a coleção existe para colher.
+
+Medição que faltava ter sido feita antes: entre 22h e 07h, o WhatsApp da
+Gostinho passa por **46 silêncios de 15 min ou mais a cada 8 dias**, o maior
+deles de **88 min**. De madrugada ninguém escreve e os stories alheios param de
+chegar; 15 min ali não é sintoma de nada.
+
+Correções (`a2d7975`):
+
+- com a loja **fechada**, o limite sobe para **120 min** — acima do maior
+  silêncio natural medido. Um apagão real de madrugada ainda é pego, em até 2h,
+  e nessa faixa o que se perde é o aviso de "estamos fechados", não um pedido;
+- o vigia passou a ler o horário da loja na varredura (`getStoreOpenState`, a
+  mesma fonte que o alerta já usava);
+- incidente detectado com a loja fechada não vira veredicto: fica
+  `inconclusivo_sem_movimento`. Naquele horário a mensagem "volta" quando alguém
+  finalmente escreve, não quando o provedor se recupera.
+
+Os 7 incidentes daquela noite foram reclassificados para
+`inconclusivo_sem_movimento`, com `reclassificadoPorque`, para não contaminar a
+leitura futura dos vereditos.
+
+**A lição, que vale para qualquer vigia:** limite de silêncio precisa ser
+calibrado contra o silêncio NORMAL daquele horário, medido — senão o vigia gera
+alarme onde não há falha e, pior, produz dado errado com cara de dado certo.
+
 ## Como refazer a medição
 
 Tudo saiu de `whatsapp_webhook_events` (payload inteiro, TTL 30 dias) lido pelo
