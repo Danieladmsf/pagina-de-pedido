@@ -20,6 +20,7 @@ import {
   totalDoFreelancer,
   type FreelancerDoCaixa,
 } from '@/lib/caixa/freelancers';
+import { totalEmDinheiro } from '@/lib/caixa/repasses';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
 import { resumoDeVendasDoCaixa, type ResumoDeVendas } from '@/lib/faturamento';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
@@ -43,6 +44,10 @@ type FreelancerEntry = FreelancerDoCaixa;
 interface PaymentSelection {
   include: boolean;
   amount: number;
+  /** Como o repasse foi pago. Só o que sai em dinheiro baixa a gaveta — pagar
+   *  por Pix e marcar aqui fazia o caixa acusar falta, então a loja não
+   *  marcava e a dívida do motoboy crescia sozinha. Padrão: dinheiro. */
+  formaPagamento?: string;
 }
 
 const fechamentoSteps = ['Resumo', 'Pagamentos', 'Apuracao', 'Revisao'];
@@ -216,7 +221,10 @@ export function CaixaTab({
         saldoInicial = v; // já vem negativo
       } else if (lanc.tipo === 'sangria') {
         totalSangria += v; // já vem negativo
-        if (isFormaPagamentoDinheiro(fp)) totalSangriaDinheiro += v;
+        // Repasse do fechamento fica FORA da gaveta aqui: quem o desconta é o
+        // valor esperado, que já soma taxa+motoboys+freelancers. Contá-lo nos
+        // dois lugares tirava o mesmo dinheiro duas vezes.
+        if (isFormaPagamentoDinheiro(fp) && !lanc.repasseFechamento) totalSangriaDinheiro += v;
       } else if (lanc.tipo === 'suprimento') {
         totalSuprimento += v;
         if (isFormaPagamentoDinheiro(fp)) totalSuprimentoDinheiro += v;
@@ -775,6 +783,7 @@ export function CaixaTab({
       return {
         ...m,
         valorPago,
+        formaPagamento: payment?.formaPagamento || 'dinheiro',
         saldoRestante: Math.max(0, m.saldo - valorPago),
         incluidoNoFechamento: valorPago > 0,
       };
@@ -792,6 +801,7 @@ export function CaixaTab({
         ...f,
         paymentKey,
         valorPago,
+        formaPagamento: payment?.formaPagamento || 'dinheiro',
         saldoRestante: Math.max(0, f.saldo - valorPago),
         incluidoNoFechamento: valorPago > 0,
       };
@@ -806,6 +816,13 @@ export function CaixaTab({
     return freelancersFechamento.reduce((s, f) => s + f.valorPago, 0);
   }, [freelancersFechamento]);
 
+  // O que efetivamente sai da GAVETA. Repasse por Pix/cartão é dívida quitada
+  // sem tocar no dinheiro físico: contá-lo na conferência criava uma falta de
+  // caixa do tamanho do pagamento.
+  const totalMotoboysDinheiro = useMemo(() => totalEmDinheiro(motoboysFechamento), [motoboysFechamento]);
+
+  const totalFreelancersDinheiro = useMemo(() => totalEmDinheiro(freelancersFechamento), [freelancersFechamento]);
+
   const motoboysPagosFechamento = useMemo(() => {
     return motoboysFechamento.filter(m => m.valorPago > 0);
   }, [motoboysFechamento]);
@@ -814,7 +831,7 @@ export function CaixaTab({
     return freelancersFechamento.filter(f => f.valorPago > 0);
   }, [freelancersFechamento]);
 
-  const valorEsperadoFechamento = somaDinheiro(totais.valorEmCaixa, -taxaGarcomCalculada, -totalMotoboysFechamento, -totalFreelancersFechamento);
+  const valorEsperadoFechamento = somaDinheiro(totais.valorEmCaixa, -taxaGarcomCalculada, -totalMotoboysDinheiro, -totalFreelancersDinheiro);
 
   const diferencaApuracao = dinheiroApurado !== '' ? somaDinheiro(Number(dinheiroApurado), -valorEsperadoFechamento) : 0;
   const apuracaoComFaltaSemJustificativa = dinheiroApurado !== '' && diferencaApuracao < 0 && !justificativaFalta.trim();
@@ -831,7 +848,11 @@ export function CaixaTab({
 
       return {
         ...prev,
-        [id]: { include, amount: include ? amount : 0 },
+        [id]: {
+          include,
+          amount: include ? amount : 0,
+          formaPagamento: next.formaPagamento ?? current.formaPagamento ?? 'dinheiro',
+        },
       };
     });
   };
@@ -848,7 +869,11 @@ export function CaixaTab({
 
       return {
         ...prev,
-        [key]: { include, amount: include ? amount : 0 },
+        [key]: {
+          include,
+          amount: include ? amount : 0,
+          formaPagamento: next.formaPagamento ?? current.formaPagamento ?? 'dinheiro',
+        },
       };
     });
   };
@@ -923,6 +948,7 @@ export function CaixaTab({
         valorPago: m.valorPago,
         saldoRestante: m.saldoRestante,
         incluidoNoFechamento: m.incluidoNoFechamento,
+        formaPagamento: m.formaPagamento,
       }));
 
       const detalhesFreelancers = freelancersFechamento.map(({ paymentKey, ...f }) => f);
@@ -983,11 +1009,15 @@ export function CaixaTab({
       : freelancersFechamento;
     const totalMotoboys = motoboyRows.reduce((s, m) => s + (m.valorPago ?? m.total), 0);
     const totalFreelancers = freelancerRows.reduce((s, f) => s + (f.valorPago ?? f.total), 0);
-    // VALOR ESPERADO precisa descontar taxa/motoboys/freelancers SEMPRE.
-    // Em caixa fechado, esses pagamentos viram sangria com formaPagamento '--',
-    // que NÃO entra em totalSangriaDinheiro — então valorEmCaixa sozinho ignora
-    // essas saídas e fica inconsistente com a Diferença (gravada no fechamento).
-    const valorEsperado = totais.valorEmCaixa - taxaGarcomCalculada - totalMotoboys - totalFreelancers;
+    // VALOR ESPERADO precisa descontar taxa/motoboys/freelancers SEMPRE — esses
+    // repasses ficam fora de totalSangriaDinheiro (nasciam com formaPagamento
+    // '--' e hoje carregam repasseFechamento), então valorEmCaixa sozinho
+    // ignora essas saídas e fica inconsistente com a Diferença já gravada.
+    // Só a parte paga EM DINHEIRO entra: repasse por Pix não mexe na gaveta.
+    // Sem `formaPagamento` = fechamento anterior a 09/2026, quando todo
+    // repasse era em dinheiro.
+    const valorEsperado = totais.valorEmCaixa - taxaGarcomCalculada
+      - totalEmDinheiro(motoboyRows) - totalEmDinheiro(freelancerRows);
 
     const agora = new Date();
     const dataFormatada = agora.toLocaleDateString('pt-BR');
@@ -1871,7 +1901,7 @@ export function CaixaTab({
                                 </div>
                               </div>
                               {!isJaQuitado && (
-                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_auto_auto] md:min-w-[360px] md:items-end">
+                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_130px_auto_auto] md:min-w-[480px] md:items-end">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Pagar agora</Label>
                                   <CurrencyInput
@@ -1879,6 +1909,20 @@ export function CaixaTab({
                                     onChange={(value) => updateMotoboyPayment(m.id, m.saldo, { include: value > 0, amount: value })}
                                     disabled={!checked || isJaQuitado}
                                   />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Como pagou</Label>
+                                  <Select
+                                    value={m.formaPagamento}
+                                    onValueChange={(value) => updateMotoboyPayment(m.id, m.saldo, { formaPagamento: value })}
+                                    disabled={!checked || isJaQuitado}
+                                  >
+                                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                                      <SelectItem value="pix">Pix</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <Button type="button" variant="outline" size="sm" onClick={() => updateMotoboyPayment(m.id, m.saldo, { include: true, amount: m.saldo })} disabled={isJaQuitado}>
                                   Tudo
@@ -1895,6 +1939,11 @@ export function CaixaTab({
                               <span>Pago agora: <strong className="text-blue-700">{brl(m.valorPago)}</strong></span>
                               <span>Saldo depois: <strong className={m.saldoRestante > 0 ? 'text-rose-600' : 'text-emerald-600'}>{brl(m.saldoRestante)}</strong></span>
                             </div>
+                            )}
+                            {!isJaQuitado && m.valorPago > 0 && !isFormaPagamentoDinheiro(m.formaPagamento) && (
+                            <p className="mt-2 text-xs text-violet-700">
+                              Pago por Pix — não sai do dinheiro da gaveta.
+                            </p>
                             )}
                           </div>
                         );
@@ -1936,7 +1985,7 @@ export function CaixaTab({
                                   Total {brl(f.total)} - Ja pago {brl(f.jaPago)}
                                 </div>
                               </div>
-                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_auto_auto] md:min-w-[360px] md:items-end">
+                              <div className="grid min-w-0 gap-2 sm:grid-cols-[140px_130px_auto_auto] md:min-w-[480px] md:items-end">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Pagar agora</Label>
                                   <CurrencyInput
@@ -1944,6 +1993,20 @@ export function CaixaTab({
                                     onChange={(value) => updateFreelancerPayment(f.paymentKey, f.saldo, { include: value > 0, amount: value })}
                                     disabled={!checked || f.saldo <= 0}
                                   />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Como pagou</Label>
+                                  <Select
+                                    value={f.formaPagamento}
+                                    onValueChange={(value) => updateFreelancerPayment(f.paymentKey, f.saldo, { formaPagamento: value })}
+                                    disabled={!checked || f.saldo <= 0}
+                                  >
+                                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                                      <SelectItem value="pix">Pix</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                                 <Button type="button" variant="outline" size="sm" onClick={() => updateFreelancerPayment(f.paymentKey, f.saldo, { include: true, amount: f.saldo })} disabled={f.saldo <= 0}>
                                   Tudo
@@ -2081,7 +2144,13 @@ export function CaixaTab({
                     <h3 className="font-bold text-sm text-slate-700">Resumo financeiro</h3>
                     <div className="flex justify-between text-sm"><span>Saldo Inicial</span><strong>{brl(Math.abs(totais.saldoInicial))}</strong></div>
                     <div className="flex justify-between text-sm"><span>Entradas (Vendas + Sup)</span><strong className="text-emerald-600">{brl((totais.totalDinheiro + Math.abs(totais.totalSuprimentoDinheiro)))}</strong></div>
-                    <div className="flex justify-between text-sm"><span>Saídas (Sangrias + Pgtos)</span><strong className="text-rose-600">-{brl((Math.abs(totais.totalSangriaDinheiro) + taxaGarcomCalculada + totalMotoboysFechamento + totalFreelancersFechamento))}</strong></div>
+                    <div className="flex justify-between text-sm"><span>Saídas (Sangrias + Pgtos)</span><strong className="text-rose-600">-{brl((Math.abs(totais.totalSangriaDinheiro) + taxaGarcomCalculada + totalMotoboysDinheiro + totalFreelancersDinheiro))}</strong></div>
+                    {(totalMotoboysFechamento - totalMotoboysDinheiro) + (totalFreelancersFechamento - totalFreelancersDinheiro) > 0.001 && (
+                      <div className="flex justify-between text-xs text-violet-700">
+                        <span>Pago por Pix (fora da gaveta)</span>
+                        <strong>{brl((totalMotoboysFechamento - totalMotoboysDinheiro) + (totalFreelancersFechamento - totalFreelancersDinheiro))}</strong>
+                      </div>
+                    )}
                     <div className="flex justify-between border-t pt-2 text-base"><span className="font-bold">(=) Valor Esperado</span><strong className="text-emerald-700">{brl(valorEsperadoFechamento)}</strong></div>
                   </div>
                   <div className="rounded-lg border bg-white p-4 space-y-2">

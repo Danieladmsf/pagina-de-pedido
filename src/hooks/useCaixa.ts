@@ -5,6 +5,7 @@ import { useFirestore, useCollection, useUser, useMemoFirebase } from '@/firebas
 import { collection, query, where, addDoc, updateDoc, setDoc, doc, serverTimestamp, Timestamp, getCountFromServer, writeBatch } from 'firebase/firestore';
 import type { WriteBatch } from 'firebase/firestore';
 import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
+import { totalEmDinheiro } from '@/lib/caixa/repasses';
 
 /** Campos de dinheiro do repasse de motoboy/freelancer (o resto é nome/contagem). */
 const CAMPOS_DE_DINHEIRO = ['taxa', 'total', 'jaPago', 'saldo', 'valorPago', 'saldoRestante', 'diaria', 'comissao'] as const;
@@ -126,6 +127,12 @@ export interface LancamentoCaixa {
   orderId?: string;
   /** Venda de encomenda: mora em `encomendas`, não em `orders`. */
   encomendaId?: string;
+  /** Repasse gravado pelo fechamento (motoboy/freelancer/taxa de garçom). Fica
+   *  fora de `totalSangriaDinheiro` porque quem já o desconta da gaveta é o
+   *  valor esperado do fechamento. Ausente nos lançamentos anteriores a
+   *  09/2026, que nasciam com formaPagamento '--' e por isso nunca entravam
+   *  nesse total — o efeito é o mesmo. */
+  repasseFechamento?: boolean;
   /** Acerto de motoboy: até que dia (YYYY-MM-DD) a dívida foi quitada. O
    *  pagamento aconteceu fora do caixa (Pix semanal), então o lançamento abate
    *  o saldo sem mexer em gaveta nem em sessão nenhuma — por isso nasce sem
@@ -309,6 +316,8 @@ export function useCaixa(options?: UseCaixaOptions) {
       valorPago?: number;
       saldoRestante?: number;
       incluidoNoFechamento?: boolean;
+      /** Como o repasse foi pago. Só 'dinheiro' baixa a gaveta. Padrão: dinheiro. */
+      formaPagamento?: string;
     }>;
     detalhesFreelancers?: Array<{
       /** Id do cadastro; ausente em quem foi digitado na mão no fechamento. */
@@ -326,6 +335,8 @@ export function useCaixa(options?: UseCaixaOptions) {
       valorPago?: number;
       saldoRestante?: number;
       incluidoNoFechamento?: boolean;
+      /** Como o repasse foi pago. Só 'dinheiro' baixa a gaveta. Padrão: dinheiro. */
+      formaPagamento?: string;
     }>;
     dinheiroApurado?: number;
     diferencaCaixa?: number;
@@ -367,6 +378,7 @@ export function useCaixa(options?: UseCaixaOptions) {
         titulo: 'Taxa Garçom / Serviço de Mesa',
         valor: emDinheiro(params.taxaGarcom * -1),
         formaPagamento: '--',
+        repasseFechamento: true,
         data: serverTimestamp(),
         ...autoria,
       });
@@ -383,7 +395,8 @@ export function useCaixa(options?: UseCaixaOptions) {
             tipo: 'sangria',
             titulo: `Motoboy: ${m.name} (${m.entregas} entregas)`,
             valor: valorPago * -1,
-            formaPagamento: '--',
+            formaPagamento: m.formaPagamento || 'dinheiro',
+            repasseFechamento: true,
             data: serverTimestamp(),
             ...autoria,
             ...(m.id && { destinatarioId: m.id }),
@@ -404,7 +417,8 @@ export function useCaixa(options?: UseCaixaOptions) {
             tipo: 'sangria',
             titulo: `Freelancer: ${f.name} (${f.tipo})`,
             valor: valorPago * -1,
-            formaPagamento: '--',
+            formaPagamento: f.formaPagamento || 'dinheiro',
+            repasseFechamento: true,
             data: serverTimestamp(),
             ...autoria,
             // Id do cadastro manda; o nome só entra em quem não tem cadastro.
@@ -417,11 +431,12 @@ export function useCaixa(options?: UseCaixaOptions) {
       }
     }
 
-    // Recalcular totais com as novas sangrias
+    // Recalcular totais com as novas sangrias. Só o repasse pago EM DINHEIRO
+    // sai da gaveta: quitar por Pix não muda o que existe fisicamente lá.
     const totalDeducoes = somaDinheiro(
       params?.taxaGarcom,
-      ...(params?.detalhesMotoboys?.map((m) => m.valorPago ?? m.total) || []),
-      ...(params?.detalhesFreelancers?.map((f) => f.valorPago ?? f.total) || []),
+      totalEmDinheiro(params?.detalhesMotoboys || []),
+      totalEmDinheiro(params?.detalhesFreelancers || []),
     );
 
     // O dinheiro real físico na gaveta é apenas Vendas em Dinheiro, Suprimentos, menos Sangrias e Deduções.
