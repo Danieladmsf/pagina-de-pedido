@@ -108,7 +108,7 @@ export interface LancamentoCaixa {
   id: string;
   caixaId: string;
   ownerId: string;
-  tipo: 'venda' | 'sangria' | 'suprimento' | 'abertura' | 'fechamento' | 'retirada_fechamento';
+  tipo: 'venda' | 'sangria' | 'suprimento' | 'abertura' | 'fechamento' | 'retirada_fechamento' | 'acerto_motoboy';
   titulo: string;
   valor: number;
   formaPagamento: string;
@@ -126,6 +126,11 @@ export interface LancamentoCaixa {
   orderId?: string;
   /** Venda de encomenda: mora em `encomendas`, não em `orders`. */
   encomendaId?: string;
+  /** Acerto de motoboy: até que dia (YYYY-MM-DD) a dívida foi quitada. O
+   *  pagamento aconteceu fora do caixa (Pix semanal), então o lançamento abate
+   *  o saldo sem mexer em gaveta nem em sessão nenhuma — por isso nasce sem
+   *  `caixaId`. Ver [[saldo-motoboy-nao-zera]]. */
+  acertoAte?: string;
   /** Cancelamento lógico: a venda fica na lista (apontada como cancelada),
    *  mas sai de TODOS os somatórios (totalizadores, gaveta e fechamento). */
   canceled?: boolean;

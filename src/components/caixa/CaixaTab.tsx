@@ -658,9 +658,12 @@ export function CaixaTab({
       });
     });
 
-    // Pago: todas as sangrias destinadas a motoboy, em qualquer caixa.
+    // Pago: todas as sangrias destinadas a motoboy, em qualquer caixa, mais os
+    // acertos — dívida quitada por fora do caixa (o Pix semanal), que abate o
+    // saldo sem ter saído da gaveta de nenhuma sessão.
     (todasTransacoes || []).forEach((l: any) => {
-      if (l.tipo === 'sangria' && l.destinatarioTipo === 'motoboy' && l.destinatarioId) {
+      const ehRepasse = l.tipo === 'sangria' || l.tipo === 'acerto_motoboy';
+      if (ehRepasse && l.destinatarioTipo === 'motoboy' && l.destinatarioId && !l.canceled) {
         const mb = motoboys.find((m: any) => m.id === l.destinatarioId);
         ensure(l.destinatarioId, mb?.name || '').totalPago += Math.abs(Number(l.valor) || 0);
       }
