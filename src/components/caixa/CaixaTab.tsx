@@ -407,6 +407,16 @@ export function CaixaTab({
       return;
     }
 
+    // Pagamento a pessoa exige a pessoa. Sem isso o lançamento nascia marcado
+    // como "de motoboy" mas sem dono, e o valor sumia do abatimento: saía da
+    // gaveta e a dívida continuava de pé.
+    if (modalOpen === 'sangria' && destinatarioTipoInput !== 'avulso' && !destinatarioIdInput) {
+      setErrorMsg(destinatarioTipoInput === 'motoboy'
+        ? 'Selecione o motoboy que está recebendo.'
+        : 'Selecione o freelancer que está recebendo.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (modalOpen === 'abrir') {
@@ -661,6 +671,19 @@ export function CaixaTab({
       .filter(m => m.saldo > 0.001)
       .sort((a, b) => b.saldo - a.saldo);
   }, [storeProfile, allOrders, caixasOrdenados, todasTransacoes]);
+
+  // Quem pode receber uma sangria: TODO motoboy cadastrado, com ou sem saldo.
+  // Listar só quem devia (motoboysComSaldoPendente) deixava o seletor vazio em
+  // dois casos reais — motoboy já quitado que vai levar um vale adiantado, e a
+  // tela antes do histórico de pedidos terminar de carregar. Sem ninguém para
+  // escolher, a sangria era confirmada sem destinatarioId e o dinheiro saía da
+  // gaveta sem abater de ninguém (15 vales, R$ 457,30, na Lima Limão).
+  const motoboysParaSangria = useMemo(() => {
+    const saldos = new Map(motoboysComSaldoPendente.map(m => [m.id, m.saldo]));
+    return (storeProfile?.motoboys || [])
+      .map((m: any) => ({ id: m.id, name: m.name || 'Motoboy', saldo: saldos.get(m.id) || 0 }))
+      .sort((a: any, b: any) => b.saldo - a.saldo || String(a.name).localeCompare(String(b.name), 'pt-BR'));
+  }, [storeProfile, motoboysComSaldoPendente]);
 
   const addFreelancer = () => {
     setFreelancers(prev => [...prev, { name: '', tipo: 'diaria', diaria: 0, comissao: 0, entregas: 0 }]);
@@ -1582,17 +1605,19 @@ export function CaixaTab({
                     <Label>Selecione o Motoboy</Label>
                     <Select value={destinatarioIdInput} onValueChange={(val) => {
                       setDestinatarioIdInput(val);
-                      const m = motoboysComSaldoPendente.find(mb => mb.id === val);
-                      if (m) setValorInput(m.saldo);
+                      const m = motoboysParaSangria.find((mb: any) => mb.id === val);
+                      // Quitado entra com valor livre: sobrescrever com 0 apagaria
+                      // o vale que a pessoa acabou de digitar.
+                      if (m && m.saldo > 0.001) setValorInput(m.saldo);
                     }}>
                       <SelectTrigger><SelectValue placeholder="Selecione o motoboy" /></SelectTrigger>
                       <SelectContent>
-                        {motoboysComSaldoPendente.map(m => (
+                        {motoboysParaSangria.map((m: any) => (
                           <SelectItem key={m.id} value={m.id}>
-                            {m.name} (Devido: {brl(m.saldo)})
+                            {m.name} {m.saldo > 0.001 ? `(Devido: ${brl(m.saldo)})` : '(sem valor pendente)'}
                           </SelectItem>
                         ))}
-                        {motoboysComSaldoPendente.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy com valor pendente</SelectItem>}
+                        {motoboysParaSangria.length === 0 && <SelectItem value="none" disabled>Nenhum motoboy cadastrado</SelectItem>}
                       </SelectContent>
                     </Select>
                     {(() => {
