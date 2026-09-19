@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
 import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage, setWapiAutoRead } from '@/lib/wapi/wapi.service';
@@ -250,6 +250,23 @@ async function maybeSendAutoReply(params: {
   return true;
 }
 
+/**
+ * Recibo imediato, trabalho depois.
+ *
+ * A W-API entrega cada webhook UMA VEZ: sem fila, sem retentativa e sem log do
+ * lado dela — confirmado por escrito pelo suporte em 19/09/2026. Num provedor
+ * assim, endpoint lento nao atrasa a mensagem: ele a PERDE, calado.
+ *
+ * Ate aqui o 200 so saia depois de todo o trabalho, incluindo o envio da
+ * resposta automatica pela propria API da W-API, que tem teto de 20s e uma
+ * segunda chance — pior caso ~42s com a conexao do webhook presa. Agora o
+ * recibo sai na hora e o processamento corre em `after()`.
+ *
+ * O que se perde se a funcao morrer no meio do `after()` e exatamente o que ja
+ * se perdia quando o webhook nao chegava; o que se ganha e a entrega. Nada aqui
+ * dispensa o claim atomico de `maybeSendAutoReply`: continua sendo ele que
+ * impede resposta dupla.
+ */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Webhook nao autorizado.' }, { status: 401 });
@@ -257,6 +274,19 @@ export async function POST(request: Request) {
 
   const url = new URL(request.url);
   const payload = await request.json().catch(() => ({}));
+
+  after(async () => {
+    try {
+      await processarEvento(url, payload);
+    } catch (error) {
+      console.error('[W-API webhook] Falha ao processar o evento depois da resposta:', error);
+    }
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
+}
+
+async function processarEvento(url: URL, payload: any) {
   const instanceId = getInstanceId(payload);
   const event = payload?.event || payload?.type || 'unknown';
   const hook = url.searchParams.get('hook') || '';
@@ -271,7 +301,7 @@ export async function POST(request: Request) {
       instanceId,
       empresaId: empresaIdFromUrl,
     });
-    return NextResponse.json({ ok: true, persisted: false, autoReplySent: false });
+    return;
   }
 
   let empresaId = '';
@@ -444,7 +474,7 @@ export async function POST(request: Request) {
         payload,
         event,
         hook,
-        requestOrigin: new URL(request.url).origin,
+        requestOrigin: url.origin,
         now,
       });
     } catch (error) {
@@ -452,5 +482,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, persisted: true, empresaId, integrationUpdated, autoReplySent });
+  console.log('[W-API webhook] concluido:', { event, empresaId, integrationUpdated, autoReplySent });
 }
