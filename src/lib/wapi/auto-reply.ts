@@ -6,15 +6,20 @@
  * fala com CLIENTE de verdade — um erro aqui não aparece em tela nenhuma: ou a
  * loja manda mensagem repetida, ou deixa alguém falando sozinho.
  *
- * As quatro decisões, na ordem em que são tomadas:
+ * As decisões, na ordem em que são tomadas:
  *
- * 1. A pessoa PEDIU o cardápio (a mensagem traz o código da visita, gerado pelo
+ * 1. A LOJA falou com esta pessoa nas últimas 2 horas: cala. Atendimento humano
+ *    em andamento não quer robô por cima — só o pedido explícito de cardápio
+ *    (item 2) passa por essa porta.
+ * 2. A pessoa PEDIU o cardápio (a mensagem traz o código da visita, gerado pelo
  *    botão do próprio cardápio). Responde sempre — só segura repetição em
  *    rajada. É pedido explícito: as janelas de silêncio abaixo não valem.
- * 2. Loja fechada: manda o aviso, no máximo um a cada 2 horas.
- * 3. Primeiro contato do número (ou depois de 12h de silêncio): manda a
+ * 3. Reação no story (o coraçãozinho): agradecimento curto e próprio, no máximo
+ *    um por semana. Nunca o horário de funcionamento inteiro.
+ * 4. Loja fechada: manda o aviso, no máximo um a cada 2 horas.
+ * 5. Primeiro contato do número (ou depois de 12h de silêncio): manda a
  *    saudação com o link.
- * 4. Fora disso, cala: quem já está conversando com a loja não quer robô no
+ * 6. Fora disso, cala: quem já está conversando com a loja não quer robô no
  *    meio da conversa.
  */
 import {
@@ -35,6 +40,23 @@ export const JANELA_DO_PEDIDO_DE_LINK_MS = 2 * 60 * 1000;
 export const JANELA_DA_LOJA_FECHADA_MS = 2 * 60 * 60 * 1000;
 /** Depois disso, a conversa é considerada nova e a saudação volta a valer. */
 export const JANELA_DA_SAUDACAO_MS = 12 * 60 * 60 * 1000;
+/**
+ * Quanto tempo o robô fica calado depois que a LOJA falou com a pessoa.
+ *
+ * Em 18/09/2026 a dona respondeu uma cliente por áudio às 16:34 e mandou três
+ * documentos às 16:35; às 16:36 o robô soltou "seja bem-vindo, veja o cardápio"
+ * na mesma conversa. Duas horas cobrem um atendimento em andamento sem segurar
+ * a saudação de quem volta no dia seguinte.
+ */
+export const JANELA_DA_CONVERSA_HUMANA_MS = 2 * 60 * 60 * 1000;
+/**
+ * Silêncio mínimo entre dois agradecimentos por reação no story.
+ *
+ * Quem acompanha a loja reage quase todo dia: uma cliente recebeu 16 respostas
+ * automáticas em 6 semanas, 7 delas só por mandar um coração verde. Uma por
+ * semana mantém o carinho sem virar perseguição.
+ */
+export const JANELA_DA_REACAO_NO_STORY_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface ContatoDoAutoReply {
   firstInboundAt?: string | number;
@@ -42,6 +64,9 @@ export interface ContatoDoAutoReply {
   firstContactSentAt?: string | number;
   lastClosedReplyAt?: string | number;
   lastLinkReplyAt?: string | number;
+  /** Última vez que a LOJA (pessoa, não robô) mandou mensagem para este contato. */
+  lastOutboundAt?: string | number;
+  lastStoryReactionReplyAt?: string | number;
 }
 
 export interface AutoReply {
@@ -69,7 +94,7 @@ const emMillis = (valor?: string | number) => (valor ? new Date(valor).getTime()
 export function buildAutoReply(params: {
   storeProfile: any;
   empresaId: string;
-  incoming: { phone: string; text?: string };
+  incoming: { phone: string; text?: string; isStoryReaction?: boolean };
   requestOrigin: string;
   contactData?: ContatoDoAutoReply;
   hasPriorContact?: boolean;
@@ -105,6 +130,39 @@ export function buildAutoReply(params: {
   // cliente que já falou com a loja de manhã pediria o link à tarde e ficaria
   // esperando uma resposta que nunca sairia.
   const pediuLink = Boolean(extrairCodigoDaMensagem(params.incoming.text || ''));
+
+  // A loja está atendendo esta pessoa agora: o robô não entra por cima. Vale
+  // para a saudação, para o aviso de fechado e para o agradecimento de story —
+  // só o pedido explícito de cardápio passa, porque aí a pessoa apertou um
+  // botão esperando o link de volta.
+  const lastOutboundMs = emMillis(params.contactData?.lastOutboundAt);
+  const lojaFalouAgora = lastOutboundMs > 0 && nowMs - lastOutboundMs <= JANELA_DA_CONVERSA_HUMANA_MS;
+  if (lojaFalouAgora && !pediuLink) return null;
+
+  // Reação no story não é pergunta: ela ganha um agradecimento curto e próprio,
+  // nunca o horário de funcionamento inteiro. Fora da janela, o silêncio é a
+  // resposta certa — e ela não gasta o "primeiro contato" de quem ainda vai
+  // escrever de verdade.
+  if (params.incoming.isStoryReaction) {
+    const ultimo = emMillis(params.contactData?.lastStoryReactionReplyAt);
+    if (ultimo && nowMs - ultimo <= JANELA_DA_REACAO_NO_STORY_MS) return null;
+
+    const texto = renderWhatsAppTemplate(messages.storyReaction, {
+      loja: storeName,
+      link: storeLink,
+      horarios: formatWorkingHours(storeProfile?.workingHours),
+      proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
+      cliente: '',
+      primeiro_nome: '',
+      pedido: '',
+      itens: '',
+      total: '',
+      pagamento: '',
+      tempo_estimado: '',
+    }).trim();
+    if (!texto) return null;
+    return { message: texto, type: 'story_reaction_auto_reply' };
+  }
 
   if (pediuLink && (!lastLinkReplyAt || nowMs - lastLinkReplyAt > JANELA_DO_PEDIDO_DE_LINK_MS)) {
     // Fechada, a pessoa recebe o aviso E o link: quem pede o cardápio às 23h

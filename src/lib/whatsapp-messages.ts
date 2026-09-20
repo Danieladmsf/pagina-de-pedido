@@ -11,7 +11,8 @@ export type WhatsAppMessageKey =
   | 'orderPickupReady'
   | 'orderDineInReady'
   | 'orderCanceled'
-  | 'storeClosed';
+  | 'storeClosed'
+  | 'storyReaction';
 
 export type WhatsAppMessageTemplates = Record<WhatsAppMessageKey, string>;
 
@@ -34,6 +35,7 @@ export const WHATSAPP_MESSAGE_LABELS: Record<WhatsAppMessageKey, string> = {
   orderDineInReady: 'Disponivel no salao',
   orderCanceled: 'Pedido cancelado',
   storeClosed: 'Loja fechada',
+  storyReaction: 'Reagiu ao story (o coraçãozinho)',
 };
 
 export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
@@ -59,6 +61,11 @@ export const DEFAULT_WHATSAPP_MESSAGES: WhatsAppMessageTemplates = {
     'Ol\u00e1, {primeiro_nome}. \u{1F614}\nInfelizmente seu pedido n\u00ba #{pedido} foi *cancelado*.\n\nQualquer d\u00favida, \u00e9 s\u00f3 falar com a gente. Obrigado pela compreens\u00e3o!',
   storeClosed:
     'Olá! No momento a {loja} está fechada.\n\nNosso horário de atendimento:\n{horarios}\n\n{proxima_abertura}\n\nEnquanto isso, você já pode dar uma espiadinha no nosso cardápio e deixar tudo pronto para pedir quando abrirmos:\n{link}\n\nAgradecemos o carinho e a preferência! 🥰',
+  // Curta de proposito. Quem reage ao story nao perguntou nada: mandar o
+  // horario de funcionamento inteiro ali vira ruido — uma cliente levou 7
+  // dessas em 6 semanas so por mandar um coracao verde.
+  storyReaction:
+    'Oi! Que bom ver você por aqui 💛\n\nQualquer coisa que quiser, é só chamar. Nosso cardápio está aqui:\n{link}',
 };
 
 export function getWhatsAppMessages(saved?: Partial<WhatsAppMessageTemplates> | null): WhatsAppMessageTemplates {

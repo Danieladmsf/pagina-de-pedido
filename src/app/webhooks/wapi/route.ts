@@ -108,6 +108,43 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Carimba no contato a ultima vez que a LOJA falou com esta pessoa.
+ *
+ * `fromApi: false` e o que separa o que a dona digitou ou gravou no celular do
+ * que o proprio robo mandou. Sem essa distincao a resposta automatica
+ * carimbaria a si mesma e a trava de `JANELA_DA_CONVERSA_HUMANA_MS` nunca
+ * soltaria — a loja ficaria muda para sempre com quem ja foi saudado uma vez.
+ *
+ * O destino vem em `chat.id`, que chega como telefone quando a mensagem saiu
+ * pela API e como `<lid>@lid` quando saiu do celular. Os dois precisam cair no
+ * MESMO doc que `maybeSendAutoReply` vai ler depois, entao a ponte pelo
+ * `telefoneConhecido` e a mesma de `resolverDestino`.
+ */
+async function registrarSaidaDaLoja(adminDb: any, empresaId: string, payload: any, now: string) {
+  if (payload?.fromMe !== true || payload?.fromApi === true) return;
+
+  const chatId = String(payload?.chat?.id || '').trim();
+  const alvo = chatId.toLowerCase();
+  if (!chatId || alvo === 'status' || alvo.includes('@g.us') || alvo.includes('broadcast')) return;
+
+  const contatos = adminDb.collection('whatsapp_auto_reply_contacts');
+  let address = chatId;
+
+  if (alvo.endsWith('@lid')) {
+    const conhecido = await contatos
+      .doc(`${empresaId}_${chatId}`)
+      .get()
+      .then((snap: any) => snap.data()?.telefoneConhecido || '')
+      .catch(() => '');
+    if (conhecido) address = String(conhecido);
+  }
+
+  await contatos
+    .doc(`${empresaId}_${address}`)
+    .set({ empresaId, address, lastOutboundAt: now, updatedAt: now }, { merge: true });
+}
+
 async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
@@ -162,6 +199,10 @@ async function maybeSendAutoReply(params: {
     // contato" (que é a saudação) e ainda segura a rajada — retry da W-API e
     // dois toques seguidos no botão não viram duas respostas.
     link_request_auto_reply: 'lastLinkReplyAt',
+    // O agradecimento por reacao no story tem carimbo proprio pelo mesmo
+    // motivo: nao gasta o "primeiro contato" de quem ainda vai escrever, e
+    // segura a rajada de quem reage em varios stories seguidos.
+    story_reaction_auto_reply: 'lastStoryReactionReplyAt',
   };
 
   const claimed = await params.adminDb.runTransaction(async (txn: any) => {
@@ -461,6 +502,14 @@ async function processarEvento(url: URL, payload: any) {
       }
     } catch (error) {
       console.warn('[W-API webhook] Falha ao reconhecer visitante pelo codigo:', { empresaId, error });
+    }
+  }
+
+  if (adminRef && empresaId) {
+    try {
+      await registrarSaidaDaLoja(adminDb, empresaId, payload, now);
+    } catch (error) {
+      console.warn('[W-API webhook] Falha ao carimbar saida da loja:', { empresaId, error });
     }
   }
 

@@ -255,6 +255,9 @@ describe('extractIncomingMessage', () => {
       // A reacao nunca traz telefone: o LID nao vira numero.
       expect(incoming?.phone).toBe('');
       expect(incoming?.senderLid).toBe('168835248328839@lid');
+      // A marca que faz `buildAutoReply` mandar o agradecimento curto em vez
+      // do horario de funcionamento inteiro.
+      expect(incoming?.isStoryReaction).toBe(true);
     });
 
     it('aceita quando o autor do story vem como telefone, nao como LID', () => {

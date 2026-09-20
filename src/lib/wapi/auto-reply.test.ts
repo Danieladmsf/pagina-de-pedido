@@ -122,3 +122,75 @@ describe('as regras que já existiam continuam valendo', () => {
     expect(horasDepois?.type).toBe('store_closed_auto_reply');
   });
 });
+
+describe('a loja está atendendo: o robô não fala por cima', () => {
+  // 18/09/2026: a dona respondeu uma cliente por áudio às 16:34 e mandou três
+  // documentos às 16:35; às 16:36 o robô soltou "seja bem-vindo, veja o
+  // cardápio" na mesma conversa. Ela não falava desde a véspera, então a janela
+  // de 12h da saudação estava aberta e ninguém segurava o robô.
+  it('cala quando a loja falou com a pessoa há pouco', () => {
+    const semCarimbo = responder({ contactData: { lastInboundAt: AGORA - 20 * HORA } });
+    expect(semCarimbo?.type).toBe('first_contact_auto_reply');
+
+    const comCarimbo = responder({
+      contactData: { lastInboundAt: AGORA - 20 * HORA, lastOutboundAt: AGORA - 2 * 60 * 1000 },
+    });
+    expect(comCarimbo).toBeNull();
+  });
+
+  it('volta a responder quando o atendimento esfriou', () => {
+    const reply = responder({
+      contactData: { lastInboundAt: AGORA - 20 * HORA, lastOutboundAt: AGORA - 3 * HORA },
+    });
+    expect(reply?.type).toBe('first_contact_auto_reply');
+  });
+
+  it('cala também com a loja fechada', () => {
+    const reply = responder({
+      storeProfile: lojaFechada,
+      contactData: { lastOutboundAt: AGORA - 5 * 60 * 1000 },
+    });
+    expect(reply).toBeNull();
+  });
+
+  it('mas entrega o cardápio para quem apertou o botão', () => {
+    // Pedido explícito atravessa: a pessoa está esperando o link de volta.
+    const reply = responder({
+      incoming: { phone: '16994272353', text: 'Quero pedir.\n\nCód. #PRD8T' },
+      contactData: { lastOutboundAt: AGORA - 60 * 1000 },
+    });
+    expect(reply?.type).toBe('link_request_auto_reply');
+  });
+});
+
+describe('reação no story (o coraçãozinho)', () => {
+  const reacao = { phone: '16993407645', text: '💚', isStoryReaction: true };
+
+  it('agradece curto, sem despejar o horário de funcionamento', () => {
+    const reply = responder({ incoming: reacao, storeProfile: lojaFechada });
+    expect(reply?.type).toBe('story_reaction_auto_reply');
+    expect(reply?.message).not.toContain('Nosso horário de atendimento');
+    expect(reply?.message).toContain('gostinho-de-ceu');
+  });
+
+  it('não gasta o primeiro contato de quem ainda vai escrever', () => {
+    const reply = responder({ incoming: reacao });
+    expect(reply?.type).not.toBe('first_contact_auto_reply');
+  });
+
+  it('não repete para quem reage todo dia', () => {
+    // Uma cliente levou 16 respostas automáticas em 6 semanas, 7 delas só por
+    // mandar um coração verde.
+    const ontem = responder({
+      incoming: reacao,
+      contactData: { lastStoryReactionReplyAt: AGORA - 24 * HORA },
+    });
+    expect(ontem).toBeNull();
+
+    const semanaPassada = responder({
+      incoming: reacao,
+      contactData: { lastStoryReactionReplyAt: AGORA - 8 * 24 * HORA },
+    });
+    expect(semanaPassada?.type).toBe('story_reaction_auto_reply');
+  });
+});

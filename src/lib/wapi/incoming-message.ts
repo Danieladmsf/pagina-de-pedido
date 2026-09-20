@@ -39,6 +39,16 @@ export type IncomingMessage = {
    * reacao ao story (onde telefone nao vem). E o que costura as duas.
    */
   senderLid: string;
+  /**
+   * Verdadeiro so quando isto e a REACAO (o coracaozinho) no story da loja —
+   * nao uma DM, nem um comentario em texto no story, que sao conversa de
+   * verdade e seguem o caminho normal.
+   *
+   * Quem reage nao fez pergunta nenhuma: devolver o horario de funcionamento
+   * inteiro ali e ruido. Uma cliente levou 16 respostas automaticas em 6
+   * semanas, 7 delas so por mandar um coracao verde. Ver `buildAutoReply`.
+   */
+  isStoryReaction?: boolean;
 };
 
 function normalizePhone(phone: string) {
@@ -265,6 +275,7 @@ function extractStoryReaction(payload: any, data: any): IncomingMessage | null {
     timestamp: 0,
     pushName: String(pushName || '').trim().slice(0, 80),
     senderLid: lid,
+    isStoryReaction: true,
   };
 }
 
