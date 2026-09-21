@@ -76,7 +76,6 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'orderDineInReady',
   'orderCanceled',
   'storeClosed',
-  'storyReaction',
 ];
 
 // O QR Code do W-API (/instance/qr-code) NAO e uma leitura: e a acao de parear

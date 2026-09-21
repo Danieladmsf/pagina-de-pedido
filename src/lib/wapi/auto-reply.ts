@@ -14,8 +14,8 @@
  * 2. A pessoa PEDIU o cardápio (a mensagem traz o código da visita, gerado pelo
  *    botão do próprio cardápio). Responde sempre — só segura repetição em
  *    rajada. É pedido explícito: as janelas de silêncio abaixo não valem.
- * 3. Reação no story (o coraçãozinho): agradecimento curto e próprio, no máximo
- *    um por semana. Nunca o horário de funcionamento inteiro.
+ * 3. Reação no story (o coraçãozinho): manda a saudação que a loja escreveu, no
+ *    máximo uma por semana. Nunca o horário de funcionamento inteiro.
  * 4. Loja fechada: manda o aviso, no máximo um a cada 2 horas.
  * 5. Primeiro contato do número (ou depois de 12h de silêncio): manda a
  *    saudação com o link.
@@ -150,15 +150,17 @@ export function buildAutoReply(params: {
   const lojaFalouAgora = lastOutboundMs > 0 && nowMs - lastOutboundMs <= JANELA_DA_CONVERSA_HUMANA_MS;
   if (lojaFalouAgora && !pediuLink) return null;
 
-  // Reação no story não é pergunta: ela ganha um agradecimento curto e próprio,
-  // nunca o horário de funcionamento inteiro. Fora da janela, o silêncio é a
-  // resposta certa — e ela não gasta o "primeiro contato" de quem ainda vai
-  // escrever de verdade.
+  // Reação no story não é pergunta: o que sai é a SAUDAÇÃO que a dona escreveu
+  // na tela de mensagens automáticas — a mesma de quem chega pela primeira vez,
+  // curta e com o link. Nunca o horário de funcionamento inteiro, e nunca um
+  // texto inventado aqui no código: o cliente tem que reconhecer a loja no que
+  // recebe. Fora da janela, o silêncio é a resposta certa, e ela não gasta o
+  // "primeiro contato" de quem ainda vai escrever de verdade.
   if (params.incoming.isStoryReaction) {
     const ultimo = emMillis(params.contactData?.lastStoryReactionReplyAt);
     if (ultimo && nowMs - ultimo <= JANELA_DA_REACAO_NO_STORY_MS) return null;
 
-    const texto = renderWhatsAppTemplate(messages.storyReaction, {
+    const texto = renderWhatsAppTemplate(messages.firstContact, {
       loja: storeName,
       link: storeLink,
       horarios: formatWorkingHours(storeProfile?.workingHours),
@@ -180,14 +182,15 @@ export function buildAutoReply(params: {
 
   if (pediuLink && (!lastLinkReplyAt || nowMs - lastLinkReplyAt > JANELA_DO_PEDIDO_DE_LINK_MS)) {
     // Fechada, a pessoa recebe o aviso E o link: quem pede o cardápio às 23h
-    // quer olhar agora e pedir amanhã. Só acrescenta o endereço se o texto do
-    // aviso não trouxer o {link} por conta própria.
+    // quer olhar agora e pedir amanhã. Quando o aviso que a loja escreveu não
+    // traz o {link}, o que vai junto é a SAUDAÇÃO dela — que traz —, nunca uma
+    // linha de endereço inventada aqui no código.
     const aviso = openState.isOpen ? '' : messages.storeClosed;
     template = !aviso
       ? messages.firstContact
       : aviso.includes('{link}')
         ? aviso
-        : `${aviso}\n\n🍽️ Cardápio: {link}`;
+        : `${aviso}\n\n${messages.firstContact}`;
     type = 'link_request_auto_reply';
   } else if (!openState.isOpen) {
     if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= JANELA_DA_LOJA_FECHADA_MS) {

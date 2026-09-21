@@ -76,6 +76,26 @@ describe('pedido de cardápio (mensagem com o código da visita)', () => {
     expect(fechada?.message.toLowerCase()).toMatch(/fechad|horário|volta/);
   });
 
+  it('aviso de fechado sem link: o que vai junto é a saudação da loja', () => {
+    // A Gostinho de Céu escreveu o aviso dela sem o {link}. O robô completava
+    // com uma linha de endereço própria; agora completa com a saudação que ela
+    // mesma escreveu — só texto que existe na tela de mensagens automáticas.
+    const avisoSemLink = {
+      ...lojaFechada,
+      whatsappMessages: {
+        storeClosed: 'Estamos fechados agora.',
+        firstContact: 'Oi, aqui é a {loja}! Nosso cardápio: {link}',
+      },
+    };
+
+    const reply = responder({ storeProfile: avisoSemLink, incoming: pedido });
+
+    expect(reply?.type).toBe('link_request_auto_reply');
+    expect(reply?.message).toContain('Estamos fechados agora.');
+    expect(reply?.message).toContain('Oi, aqui é a Gostinho de Céu!');
+    expect(reply?.message).toContain('gostinho-de-ceu');
+  });
+
   it('o link que sai já nasce marcado como origem whatsapp', () => {
     const reply = responder({ incoming: pedido });
     expect(reply?.message).toContain('via=whatsapp');
@@ -171,6 +191,24 @@ describe('reação no story (o coraçãozinho)', () => {
     expect(reply?.type).toBe('story_reaction_auto_reply');
     expect(reply?.message).not.toContain('Nosso horário de atendimento');
     expect(reply?.message).toContain('gostinho-de-ceu');
+  });
+
+  it('usa a saudação que a loja escreveu, não um texto do código', () => {
+    // Regra da casa: o robô só manda mensagem que a dona pode ler e editar na
+    // tela de mensagens automáticas. O texto próprio que existia aqui chegava
+    // em voz de outra loja no meio de uma conversa em que todo o resto é dela.
+    const comSaudacaoPropria = {
+      ...lojaAberta,
+      whatsappMessages: { firstContact: 'Oi, aqui é a {loja}! Nosso cardápio: {link}' },
+    };
+    const mesmoTelefone = { ...reacao, phone: '16994272353' };
+
+    const story = responder({ incoming: mesmoTelefone, storeProfile: comSaudacaoPropria });
+    const saudacao = responder({ storeProfile: comSaudacaoPropria });
+
+    expect(story?.type).toBe('story_reaction_auto_reply');
+    expect(story?.message).toContain('Oi, aqui é a Gostinho de Céu!');
+    expect(story?.message).toBe(saudacao?.message);
   });
 
   it('não gasta o primeiro contato de quem ainda vai escrever', () => {
