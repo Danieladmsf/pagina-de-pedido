@@ -193,4 +193,17 @@ describe('reação no story (o coraçãozinho)', () => {
     });
     expect(semanaPassada?.type).toBe('story_reaction_auto_reply');
   });
+
+  it('sai com a logo, igual às outras respostas da loja', () => {
+    // Ia como texto pelado com o link cru: quem recebia via uma mensagem com
+    // cara de outra loja, no meio de uma conversa em que todo o resto chega
+    // como foto + legenda. Foi o que a dona viu e chamou de fora do padrão.
+    const comLogo = { ...lojaAberta, general: { ...lojaAberta.general, logoUrl: 'https://exemplo.com/logo.png' } };
+
+    const story = responder({ incoming: reacao, storeProfile: comLogo });
+    const saudacao = responder({ storeProfile: comLogo });
+
+    expect(story?.imageUrl).toBe('https://exemplo.com/logo.png');
+    expect(story?.imageUrl).toBe(saudacao?.imageUrl);
+  });
 });

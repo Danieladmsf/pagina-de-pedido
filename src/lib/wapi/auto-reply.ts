@@ -118,6 +118,17 @@ export function buildAutoReply(params: {
   const storeLink = marcarParaContato(storeLinkBase, params.empresaId, params.incoming.phone);
   const openState = getStoreOpenState(storeProfile);
 
+  // A W-API envia texto puro e nao gera o cartao de preview de link (o WhatsApp
+  // so monta o preview quando o proprio app faz o scrape das og tags, o que nao
+  // ocorre via API). Por isso TODA resposta automatica daqui sai como a logo da
+  // loja + o texto na legenda: e o formato que o cliente reconhece como sendo da
+  // loja. Sem imagem salva, cai no texto puro.
+  const imageUrl =
+    storeProfile?.general?.logoUrl ||
+    storeProfile?.general?.ogImageUrl ||
+    storeProfile?.general?.bannerUrl ||
+    '';
+
   let template = '';
   let type = '';
   const nowMs = params.agora ?? Date.now();
@@ -161,7 +172,10 @@ export function buildAutoReply(params: {
       tempo_estimado: '',
     }).trim();
     if (!texto) return null;
-    return { message: texto, type: 'story_reaction_auto_reply' };
+    // Com a logo, como todas as outras. Este ramo saia daqui antes da linha que
+    // monta a imagem, entao o agradecimento chegava como texto pelado com o link
+    // cru — a unica resposta da loja com cara diferente das demais.
+    return { message: texto, type: 'story_reaction_auto_reply', imageUrl: imageUrl || undefined };
   }
 
   if (pediuLink && (!lastLinkReplyAt || nowMs - lastLinkReplyAt > JANELA_DO_PEDIDO_DE_LINK_MS)) {
@@ -205,17 +219,6 @@ export function buildAutoReply(params: {
   }).trim();
 
   if (!message || !type) return null;
-
-  // A W-API envia texto puro e nao gera o cartao de preview de link (o WhatsApp
-  // so monta o preview quando o proprio app faz o scrape das og tags, o que nao
-  // ocorre via API). Por isso, nas respostas automaticas com link mandamos a
-  // logo da loja como imagem e o texto/link na legenda — assim a marca sempre
-  // aparece junto do link. Sem imagem salva, cai no texto puro.
-  const imageUrl =
-    storeProfile?.general?.logoUrl ||
-    storeProfile?.general?.ogImageUrl ||
-    storeProfile?.general?.bannerUrl ||
-    '';
 
   return { message, type, imageUrl: imageUrl || undefined };
 }
