@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
@@ -63,8 +64,9 @@ import {
 } from '@/lib/prazo-statement';
 import { encomendaComoPedido } from '@/lib/encomendas/pedido';
 import { printExtratoPrazo } from '@/lib/prazo-receipt';
+import { buildExtratoWhatsApp } from '@/lib/prazo-whatsapp';
 import { FiltroPeriodo } from '@/components/admin/FiltroPeriodo';
-import { dentroDaJanela, janelaDoPeriodo, type PeriodoSelecionado } from '@/lib/periodo';
+import { dentroDaJanela, diaDoInput, janelaDoPeriodo, type PeriodoSelecionado } from '@/lib/periodo';
 import { ContactAvatar } from '@/components/shared/ContactAvatar';
 import { WhatsAppIcon } from '@/components/shared/WhatsAppIcon';
 import { makeProfilePhotoLoader } from '@/lib/wapi/profile-photo';
@@ -134,6 +136,12 @@ const KpiCard = ({
   );
 };
 
+/** Negrito do WhatsApp (*assim*) na prévia; o resto do texto vai como está. */
+const textoDoWhatsApp = (texto: string) =>
+  texto.split(/(\*[^*\n]+\*)/g).map((parte, i) => (/^\*[^*\n]+\*$/.test(parte)
+    ? <strong key={i}>{parte.slice(1, -1)}</strong>
+    : <React.Fragment key={i}>{parte}</React.Fragment>));
+
 /**
  * Teto de uma faixa "o id começa com X" no Firestore: o último caractere
  * Unicode de uso comum. Escrito por código porque, solto no meio da linha,
@@ -159,6 +167,10 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sendingWhats, setSendingWhats] = useState(false);
+  // Janela do "Enviar extrato": o período que vai para o cliente é escolhido
+  // ali, separado do filtro da lista.
+  const [envioAberto, setEnvioAberto] = useState(false);
+  const [periodoEnvio, setPeriodoEnvio] = useState<PeriodoSelecionado>({ preset: '30' });
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [estornandoId, setEstornandoId] = useState<string | null>(null);
 
@@ -663,47 +675,45 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
     });
   };
 
-  const handleSendWhatsApp = async () => {
-    if (!user) return;
+  // Ponto de partida da janela de envio: a conta em aberto inteira, da compra
+  // mais antiga que ainda não foi paga até hoje. Conta quitada não tem "em
+  // aberto", então sugere 30 dias. Antes saía sempre o histórico todo.
+  const periodoSugerido = useMemo<PeriodoSelecionado>(() => (
+    totals.debtSince
+      ? { preset: 'custom', de: diaDoInput(totals.debtSince), ate: diaDoInput(new Date()) }
+      : { preset: '30' }
+  ), [totals.debtSince]);
+  const sugestaoAtiva = periodoSugerido.preset === 'custom'
+    && periodoEnvio.preset === 'custom'
+    && periodoEnvio.de === periodoSugerido.de
+    && periodoEnvio.ate === periodoSugerido.ate;
+
+  const abrirEnvio = () => {
     if (phoneDigits.length < 10) {
       toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
       return;
     }
-    const SEP = '━━━━━━━━━━━━━━';
-    const blocos = [...filteredRows].reverse().map(({ tx, order }) => {
-      const data = new Date(tx.date).toLocaleDateString('pt-BR');
-      if (tx.type !== 'debit') {
-        return `${SEP}\n✅ ${data} · ${tx.description || 'Pagamento recebido'}\n− ${brl(tx.amount)}`;
-      }
-      const itens = (order?.items || []).map((item: any) => {
-        const addons = (item.addons?.length > 0) ? ` (${item.addons.map((a: any) => a.name).join(', ')})` : '';
-        return `${item.quantity}x ${item.name}${addons}`;
-      });
-      let bloco = `${SEP}\n🛒 ${data} · ${tx.description || 'Compra'}`;
-      if (itens.length > 0) bloco += `\n${itens.join('\n')}`;
-      bloco += `\nSubtotal: ${brl(tx.amount)}`;
-      return bloco;
-    });
+    // Período já escolhido na lista vale como ponto de partida.
+    setPeriodoEnvio(periodo.preset !== 'tudo' ? periodo : periodoSugerido);
+    setEnvioAberto(true);
+  };
 
-    let msg = '🧾 *EXTRATO DA SUA CONTA*\n';
-    if (cliente?.nome) msg += `\n👤 *${cliente.nome}*\n`;
-    if (blocos.length > 0) msg += `\n${blocos.join('\n')}\n${SEP}\n`;
-    // Conta quitada (ou com crédito sobrando) não pede pagamento nem manda PIX.
-    if (creditoAFavor > 0) {
-      msg += `\n✅ *CONTA QUITADA*\n💚 Crédito a favor: *${brl(creditoAFavor)}* — vira desconto na próxima compra`;
-    } else if (saldo <= 0.009) {
-      msg += '\n✅ *CONTA QUITADA* — nada a pagar 🙌';
-    } else {
-      msg += `\n💰 *SALDO DEVEDOR: ${brl(saldo)}*`;
-      if (vencimento) msg += `\n🗓️ ${vencimento.texto}`;
-      const pixKey = storeProfile?.creditPixKey || '';
-      const pixName = storeProfile?.creditPixName || '';
-      if (pixKey || pixName) {
-        msg += '\n\n📲 *Pague via PIX*';
-        if (pixKey) msg += `\n🔑 ${pixKey}`;
-        if (pixName) msg += `\n🏦 ${pixName}`;
-      }
-      msg += '\n\nEnvie o comprovante por aqui após o pagamento 🙏';
+  // A prévia e o envio saem da MESMA montagem: o que a tela mostra é o que o
+  // cliente recebe.
+  const extratoEnvio = useMemo(() => (envioAberto ? buildExtratoWhatsApp({
+    rows: allRows,
+    janela: janelaDoPeriodo(periodoEnvio),
+    nome: cliente?.nome,
+    vencimento: vencimento?.texto,
+    pixKey: storeProfile?.creditPixKey || '',
+    pixName: storeProfile?.creditPixName || '',
+  }) : null), [envioAberto, allRows, periodoEnvio, cliente?.nome, vencimento?.texto, storeProfile?.creditPixKey, storeProfile?.creditPixName]);
+
+  const handleSendWhatsApp = async () => {
+    if (!user || !extratoEnvio) return;
+    if (phoneDigits.length < 10) {
+      toast({ variant: 'destructive', title: 'Telefone inválido', description: 'Cliente sem telefone válido para enviar no WhatsApp.' });
+      return;
     }
 
     setSendingWhats(true);
@@ -712,11 +722,12 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
       const res = await fetch('/wapi/send-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ empresaId: ownerId, phone: phoneDigits, message: msg, type: 'credit_statement' }),
+        body: JSON.stringify({ empresaId: ownerId, phone: phoneDigits, message: extratoEnvio.mensagem, type: 'credit_statement' }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || data?.error) throw new Error(data?.error || 'A integração do WhatsApp recusou o envio.');
       toast({ title: 'Extrato enviado no WhatsApp!' });
+      setEnvioAberto(false);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Não foi possível enviar', description: err?.message || 'Falha ao enviar pelo WhatsApp.' });
     } finally {
@@ -769,12 +780,11 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
             <Button
               variant="outline"
               size="sm"
-              onClick={handleSendWhatsApp}
-              disabled={sendingWhats}
+              onClick={abrirEnvio}
               className="h-8 gap-1.5 border-[#25D366]/40 text-xs font-bold text-[#128C4A] hover:bg-[#25D366]/10"
             >
-              {sendingWhats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
-              {sendingWhats ? 'Enviando…' : 'Enviar extrato'}
+              <WhatsAppIcon className="h-3.5 w-3.5" />
+              Enviar extrato
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 gap-1.5 text-xs font-bold">
               <Printer className="h-3.5 w-3.5" /> Imprimir
@@ -1164,6 +1174,69 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           </div>
         </section>
       </div>
+
+      {/* Enviar extrato: escolhe o período e vê a mensagem antes de mandar */}
+      <Dialog open={envioAberto} onOpenChange={(aberto) => { if (!sendingWhats) setEnvioAberto(aberto); }}>
+        <DialogContent className="gap-3 sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <WhatsAppIcon className="h-5 w-5 text-[#128C4A]" /> Enviar extrato no WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Para {cliente?.nome || 'o cliente'} · {formatBrazilPhone(phoneDigits) || cliente?.celular}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Período do extrato</Label>
+            <FiltroPeriodo valor={periodoEnvio} onChange={setPeriodoEnvio} className="rounded-xl bg-slate-100 p-1" />
+            {sugestaoAtiva && totals.debtSince && (
+              <p className="text-[11px] text-slate-500">
+                Começa na compra mais antiga que ainda não foi paga ({totals.debtSince.toLocaleDateString('pt-BR')}).
+              </p>
+            )}
+          </div>
+
+          {extratoEnvio && (
+            <>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-500">
+                <span>
+                  {extratoEnvio.lancamentos === 0
+                    ? 'Nenhum lançamento no período'
+                    : `${extratoEnvio.lancamentos} lançamento${extratoEnvio.lancamentos === 1 ? '' : 's'}`}
+                </span>
+                <span>Compras <span className="font-bold tabular-nums text-rose-600">{brl(extratoEnvio.compras)}</span></span>
+                <span>Pagamentos <span className="font-bold tabular-nums text-emerald-600">{brl(extratoEnvio.pagamentos)}</span></span>
+              </div>
+
+              <div>
+                <div className="max-h-[42vh] overflow-y-auto rounded-xl bg-[#e5ddd5] p-3 custom-scrollbar">
+                  <div className="max-w-[92%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 shadow-sm">
+                    <p className="whitespace-pre-wrap break-words text-[13px] leading-snug text-slate-800">
+                      {textoDoWhatsApp(extratoEnvio.mensagem)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-1 text-center text-[11px] text-slate-400">Assim o cliente recebe</p>
+              </div>
+            </>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEnvioAberto(false)} disabled={sendingWhats}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSendWhatsApp}
+              disabled={sendingWhats || !extratoEnvio}
+              className="gap-1.5 bg-[#25D366] font-bold text-white hover:bg-[#1fb457]"
+            >
+              {sendingWhats ? <Loader2 className="h-4 w-4 animate-spin" /> : <WhatsAppIcon className="h-4 w-4" />}
+              {sendingWhats ? 'Enviando…' : 'Enviar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

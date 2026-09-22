@@ -40,6 +40,10 @@ const DIA = 24 * 60 * 60 * 1000;
 const comecoDoDia = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const dataBR = (t: number) => new Date(t).toLocaleDateString('pt-BR');
 
+/** Dia local no formato do input de data ('AAAA-MM-DD') — o inverso de `de`/`ate`. */
+export const diaDoInput = (data: Date) =>
+  `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+
 export function janelaDoPeriodo(sel: PeriodoSelecionado, agora = Date.now()): JanelaDePeriodo {
   const preset = sel?.preset || 'tudo';
 
