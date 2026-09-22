@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ambiguousCreditCustomerResult,
   creditOrderMatchesCustomer,
@@ -10,7 +10,31 @@ import {
   matchUniqueActiveCustomerByPhone,
   normalizeCreditPhone,
   quickRegistrationCreditDefaults,
+  validateCustomerCredit,
 } from './customer-credit';
+
+// Firestore em memória só para `validateCustomerCredit`: a busca do cadastro
+// pelo telefone e o extrato de cada cliente.
+const fake = vi.hoisted(() => ({
+  clientes: new Map<string, any>(),
+  extratos: new Map<string, any[]>(),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  collection: (_db: any, ...path: string[]) => ({ path }),
+  where: (field: string, op: string, value: any) => ({ field, op, value }),
+  query: (ref: { path: string[] }, ...constraints: any[]) => ({ ...ref, constraints }),
+  getDocs: async ({ path, constraints = [] }: { path: string[]; constraints?: any[] }) => {
+    if (path.length === 3) {
+      return { docs: (fake.extratos.get(path[1]) || []).map((tx) => ({ id: tx.date, data: () => tx })) };
+    }
+    const docs = [...fake.clientes.entries()]
+      .filter(([, data]) => constraints.every(({ field, op, value }) =>
+        (op === 'in' ? value.includes(data[field]) : data[field] === value)))
+      .map(([id, data]) => ({ id, data: () => data }));
+    return { docs };
+  },
+}));
 
 describe('contrato de telefone do cliente', () => {
   it('normaliza formatos brasileiros no mesmo identificador', () => {
@@ -146,5 +170,83 @@ describe('matchUniqueActiveCustomerByPhone', () => {
     expect(matchUniqueActiveCustomerByPhone([
       { id: 'arquivado', data: { celular: '16999998877', archived: true } },
     ], target)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('saldo do Prazo em centavos', () => {
+  const OWNER = 'loja-1';
+  const TELEFONE = '16999998877';
+  const lancamento = (date: string, type: 'debit' | 'credit', amount: number) => ({ date, type, amount });
+  // O servidor soma cada `increment` em binário, na ordem em que chegam.
+  const somaComoOServidor = (extrato: any[]) =>
+    extrato.reduce((saldo, tx) => saldo + (tx.type === 'debit' ? tx.amount : -tx.amount), 0);
+  const cadastro = (over: any) => ({
+    ownerId: OWNER,
+    celular: TELEFONE,
+    creditEnabled: true,
+    creditLimit: 200,
+    creditPayDay: 10,
+    ...over,
+  });
+
+  beforeEach(() => {
+    fake.clientes.clear();
+    fake.extratos.clear();
+    // Dia 16/09/2026, 11h47 em Brasília: a foto do balcão barrado.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-16T14:47:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('conta quitada com resto binário no cadastro não bloqueia por vencimento', async () => {
+    // Extrato real de uma cliente que quitou tudo em 15/09 (70 + 95 + 0,90) e
+    // no dia seguinte ouviu "dívida de R$ 0,00 venceu no dia 10".
+    const extrato = [
+      lancamento('2026-08-11T18:51:13.079Z', 'debit', 61),
+      lancamento('2026-08-14T21:53:33.855Z', 'debit', 24),
+      lancamento('2026-08-20T19:20:52.370Z', 'debit', 18.9),
+      lancamento('2026-08-26T19:33:14.612Z', 'debit', 38),
+      lancamento('2026-09-03T18:34:08.222Z', 'debit', 24),
+      lancamento('2026-09-15T14:26:31.082Z', 'credit', 70),
+      lancamento('2026-09-15T18:41:56.529Z', 'credit', 95),
+      lancamento('2026-09-15T18:44:06.904Z', 'credit', 0.9),
+    ];
+    const gravado = somaComoOServidor(extrato);
+    expect(gravado).toBe(5.662137425588298e-15); // o que estava no banco
+    fake.clientes.set('c1', cadastro({ creditBalance: gravado }));
+    fake.extratos.set('c1', extrato);
+
+    const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 30);
+
+    expect(resultado).toMatchObject({ allowed: true, balance: 0, nextBalance: 30 });
+  });
+
+  it('dívida de verdade vencida continua bloqueando', async () => {
+    const extrato = [lancamento('2026-08-20T19:20:52.370Z', 'debit', 18.9)];
+    fake.clientes.set('c1', cadastro({ creditBalance: 18.9 }));
+    fake.extratos.set('c1', extrato);
+
+    const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 30);
+
+    expect(resultado).toMatchObject({ allowed: false, reason: 'past_due', balance: 18.9 });
+    expect(resultado.message).toMatch(/18,90 venceu no dia 10/);
+  });
+
+  it('compra que fecha o limite exato não passa dele por resto binário', async () => {
+    // Deve R$ 0,90 (95,90 − 95 gravou 0,9000000000000057) e compra R$ 49,10
+    // com limite de R$ 50: somado cru dá 50,00000000000001.
+    const gravado = somaComoOServidor([
+      lancamento('2026-09-15T14:00:00.000Z', 'debit', 95.9),
+      lancamento('2026-09-15T15:00:00.000Z', 'credit', 95),
+    ]);
+    expect(gravado + 49.1).toBeGreaterThan(50);
+    fake.clientes.set('c1', cadastro({ creditBalance: gravado, creditLimit: 50, creditPayDay: 0 }));
+
+    const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 49.1);
+
+    expect(resultado).toMatchObject({ allowed: true, balance: 0.9, nextBalance: 50 });
   });
 });

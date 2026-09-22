@@ -1,5 +1,5 @@
 import { brl } from '@/lib/utils';
-import { isCreditEnabled, isValidCreditPhone, normalizeCreditPhone } from '@/lib/customer-credit';
+import { creditBalanceOf, isCreditEnabled, isValidCreditPhone, normalizeCreditPhone } from '@/lib/customer-credit';
 
 /**
  * Quem é o cliente desta venda — e, por consequência, se o Prazo existe.
@@ -68,7 +68,8 @@ function comCliente(cliente: any): IdentidadeDaVenda {
   }
 
   const limite = Number(cliente?.creditLimit) || 0;
-  const saldo = Number(cliente?.creditBalance) || 0;
+  // Em centavos, igual ao confirmar: senão a tela e a trava discordam no limite.
+  const saldo = creditBalanceOf(cliente);
   // Limite 0 é "sem limite definido", não "limite zerado" — mesma leitura de
   // validateCreditData (`limit > 0 && limitReached`).
   const disponivel = limite > 0 ? Math.max(0, limite - saldo) : null;

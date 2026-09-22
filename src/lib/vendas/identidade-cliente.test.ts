@@ -104,5 +104,16 @@ describe('resolverIdentidadeDaVenda', () => {
       expect(id.prazoBloqueado).toBe(false);
       expect(id.disponivel).toBe(37);
     });
+
+    it('lê o saldo em centavos, como a trava do confirmar', () => {
+      // O contador é somado em binário pelo servidor: R$ 100,00 pode estar
+      // gravado como 99,99999999999999 e a tela liberava o que o confirmar barra.
+      const id = resolverIdentidadeDaVenda({
+        telefone: '16992156780',
+        clientes: [cliente({ creditLimit: 100, creditBalance: 99.99999999999999 })],
+      });
+      expect(id.prazoBloqueado).toBe(true);
+      expect(id.disponivel).toBe(0);
+    });
   });
 });

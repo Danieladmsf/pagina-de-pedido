@@ -1,4 +1,5 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
+import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
 import { brl } from '@/lib/utils';
 
 export type CreditCustomer = {
@@ -39,6 +40,16 @@ export const isCreditEnabled = (data: any) =>
     data?.creditEnabled === true ||
     (data?.creditEnabled === undefined && data?.contaCasa?.enabled === true)
   );
+
+/**
+ * Saldo do cadastro em centavos — é assim que toda decisão do Prazo o lê.
+ *
+ * `creditBalance` é escrito com `increment`, e quem soma é o servidor, em
+ * binário: numa cliente que quitou tudo (165,90 − 70 − 95 − 0,90) ficou
+ * gravado 0,0000000000000057. Comparado cru com `> 0`, esse resto virava
+ * dívida e travou o Prazo dela com "dívida de R$ 0,00 venceu no dia 10".
+ */
+export const creditBalanceOf = (data: any) => emDinheiro(data?.creditBalance);
 
 export const normalizeCreditPhone = (phone: string) => {
   const digits = (phone || '').replace(/\D/g, '');
@@ -293,14 +304,15 @@ function validateCreditData(
     };
   }
 
-  const balance = Number(data.creditBalance) || 0;
+  const balance = creditBalanceOf(data);
   const limit = Number(data.creditLimit) || 0;
   const payDay = Number(data.creditPayDay) || 0;
-  const safeAmount = Number(amount) || 0;
+  const safeAmount = emDinheiro(amount);
   // Pedidos a prazo ainda não entregues também consomem o limite
-  const pendingAmount = Number(options?.pendingAmount) || 0;
-  const effectiveBalance = balance + pendingAmount;
-  const nextBalance = effectiveBalance + safeAmount;
+  const pendingAmount = emDinheiro(options?.pendingAmount);
+  // Somas em centavos pelo mesmo motivo: resto binário não pode passar do limite.
+  const effectiveBalance = somaDinheiro(balance, pendingAmount);
+  const nextBalance = somaDinheiro(effectiveBalance, safeAmount);
 
   if (payDay > 0 && balance > 0) {
     // Dívida vencida bloqueia em qualquer mês, até quitar. O vencimento é o
@@ -380,7 +392,7 @@ export async function validateCustomerCredit(
   const debtSinceById = new Map<string, Date | null>();
   await Promise.all(enabledCustomers.map(async (customer) => {
     const data = customer.data || {};
-    if ((Number(data.creditPayDay) || 0) > 0 && (Number(data.creditBalance) || 0) > 0) {
+    if ((Number(data.creditPayDay) || 0) > 0 && creditBalanceOf(data) > 0) {
       try {
         debtSinceById.set(customer.id, await getDebtSince(db, customer.id));
       } catch {
