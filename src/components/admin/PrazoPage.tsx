@@ -740,6 +740,29 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const iniciais = (cliente?.nome || '?').split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const endereco = [cliente?.bairro, cliente?.cidade].filter(Boolean).join(' - ');
 
+  const botoesDoExtrato = (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={abrirEnvio}
+        className="h-8 gap-1.5 border-[#25D366]/40 text-xs font-bold text-[#128C4A] hover:bg-[#25D366]/10"
+      >
+        <WhatsAppIcon className="h-3.5 w-3.5" />
+        Enviar extrato
+      </Button>
+      <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 gap-1.5 text-xs font-bold">
+        <Printer className="h-3.5 w-3.5" /> Imprimir
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleExportExtrato} className="h-8 gap-1.5 text-xs font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+        <Download className="h-3.5 w-3.5" /> Extrato (CSV)
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleExportItens} className="h-8 gap-1.5 text-xs font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+        <Download className="h-3.5 w-3.5" /> Itens (CSV)
+      </Button>
+    </>
+  );
+
   return (
     <div className="flex h-full min-h-0 w-full max-w-[1400px] mx-auto flex-col gap-4 pt-4 pb-2">
       {/* Cabeçalho */}
@@ -777,24 +800,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={abrirEnvio}
-              className="h-8 gap-1.5 border-[#25D366]/40 text-xs font-bold text-[#128C4A] hover:bg-[#25D366]/10"
-            >
-              <WhatsAppIcon className="h-3.5 w-3.5" />
-              Enviar extrato
-            </Button>
-            <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 gap-1.5 text-xs font-bold">
-              <Printer className="h-3.5 w-3.5" /> Imprimir
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleExportExtrato} className="h-8 gap-1.5 text-xs font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-              <Download className="h-3.5 w-3.5" /> Extrato (CSV)
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleExportItens} className="h-8 gap-1.5 text-xs font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-              <Download className="h-3.5 w-3.5" /> Itens (CSV)
-            </Button>
+            {botoesDoExtrato}
             {onEditCliente && (
               <Button variant="ghost" size="sm" onClick={() => onEditCliente(cliente)} className="h-8 gap-1.5 text-xs font-bold text-amber-600 hover:bg-amber-50">
                 <Pencil className="h-3.5 w-3.5" /> Cadastro
@@ -803,6 +809,14 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
           </div>
         </div>
       </header>}
+
+      {/* Na Ficha o cabeçalho é da casca (nome, avatar, "Cadastro"); os botões
+          do extrato vêm numa linha própria para não sumirem junto com ele. */}
+      {semCabecalho && (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-2">
+          {botoesDoExtrato}
+        </div>
+      )}
 
       {/* Indicadores */}
       <div className="grid shrink-0 grid-cols-2 gap-3 px-2 md:grid-cols-3 xl:grid-cols-5">
