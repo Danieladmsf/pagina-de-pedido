@@ -60,12 +60,27 @@ export const SILENCIO_PARA_ALERTAR_MS = 30 * 60 * 1000;
  */
 export const INTERVALO_ENTRE_TENTATIVAS_MS = 15 * 60 * 1000;
 
+/**
+ * Evento de janela que a aba WhatsApp dispara quando o aparelho conecta.
+ *
+ * O aviso do topo só pergunta ao servidor a cada 5 min. Sem este sinal, quem
+ * acabou de ler o QR Code continuaria vendo "WhatsApp desconectado" por minutos,
+ * como se não tivesse funcionado.
+ */
+export const EVENTO_WHATSAPP_CONECTOU = 'whatsapp:conectou';
+
 export type EstadoDoRecebimento =
   /** Chegou mensagem há pouco: o registro está de pé. */
   | 'recebendo'
   /** Conectado, mas nada entra há tempo demais. */
   | 'mudo'
-  /** Desconectado ou sem integração: silêncio aqui é esperado, não é falha. */
+  /**
+   * A loja tem WhatsApp vinculado, mas ele não está conectado: nada entra e
+   * nada sai até alguém ler o QR Code de novo. Re-registrar webhook não cura
+   * isso — só o dono, com o celular da loja na mão.
+   */
+  | 'desconectado'
+  /** Sem WhatsApp vinculado: não há o que vigiar. */
   | 'nao_se_aplica';
 
 export interface SaudeDoWebhook {
@@ -101,10 +116,19 @@ const emMillis = (valor?: string) => (valor ? Date.parse(valor) || 0 : 0);
 export function avaliarSaudeDoWebhook(entrada: EntradaDaSaude): SaudeDoWebhook {
   const agora = entrada.agora ?? Date.now();
 
-  // Desconectada não entra na conta: silêncio de quem não está conectado é o
-  // esperado, e re-registrar aí seria ruído puro (e alarme falso na tela).
+  // Desconectada não é silêncio a curar: re-registrar webhook não religa um
+  // aparelho que saiu da conexão. Mas também não pode ficar calada. Em
+  // 22/09/2026 a Gostinho passou mais de 5h desconectada, sem resposta
+  // automática e sem aviso de pedido, e nenhuma tela avisou — este ramo
+  // devolvia "não se aplica". Com a loja aberta, avisa na hora: não há o que
+  // esperar, só alguém ler o QR Code resolve.
   if (!entrada.connected) {
-    return { estado: 'nao_se_aplica', silencioMs: 0, precisaReRegistrar: false, precisaAlertar: false };
+    return {
+      estado: 'desconectado',
+      silencioMs: 0,
+      precisaReRegistrar: false,
+      precisaAlertar: entrada.lojaAberta !== false,
+    };
   }
 
   const ultimoWebhook = emMillis(entrada.lastWebhookAt);

@@ -27,6 +27,7 @@ import {
   SILENCIO_PARA_REREGISTRAR_MS,
   avaliarSaudeDoWebhook,
   descreverSilencio,
+  type EstadoDoRecebimento,
 } from '@/lib/wapi/webhook-health';
 
 /** Onde ficam os incidentes. Só o Admin SDK escreve; a tela não lê. */
@@ -58,7 +59,7 @@ export type VeredictoDoIncidente =
 export interface ResultadoDaLoja {
   empresaId: string;
   instanceId: string;
-  estado: 'recebendo' | 'mudo' | 'nao_se_aplica';
+  estado: EstadoDoRecebimento;
   silencioMs: number;
   reRegistrou: boolean;
   registroConfirmado: boolean;

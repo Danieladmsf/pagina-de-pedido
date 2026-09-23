@@ -23,7 +23,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
+import { EVENTO_WHATSAPP_CONECTOU, avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -286,6 +286,10 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     setPairing(false);
     setQrAttempts(0);
     setQrCode('');
+    // O aviso vermelho do topo ("WhatsApp desconectado") só pergunta ao
+    // servidor a cada 5 min; sem este sinal ele continuaria na tela depois do
+    // QR Code lido, como se não tivesse funcionado.
+    window.dispatchEvent(new Event(EVENTO_WHATSAPP_CONECTOU));
   }, [integration?.connected]);
 
   // Renova o QR só enquanto o dono estiver de fato parenado um aparelho, e por
@@ -336,7 +340,15 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   }
 
   async function disconnect() {
-    if (!confirm('Desconectar este WhatsApp da loja? Voce podera conectar novamente depois.')) return;
+    // Desconectar tira o número da W-API (logout): só volta com o QR Code lido
+    // de novo. Em 22/09/2026 alguém desconectou para "consertar" um silêncio
+    // que já tinha passado sozinho, ninguém leu o QR e a loja ficou mais de 5h
+    // sem resposta automática e sem aviso de pedido. A pergunta diz o preço.
+    if (!confirm(
+      'Desconectar o WhatsApp da loja?\n\n'
+      + 'As respostas automáticas e os avisos de pedido param na hora, e só voltam quando alguém ler o QR Code de novo com o celular da loja.\n\n'
+      + 'Se as mensagens só pararam de chegar, não desconecte: o sistema tenta religar sozinho.',
+    )) return;
     setLoading(true);
     try {
       await apiFetch('/wapi/disconnect', {
@@ -1516,9 +1528,12 @@ function ConnectedCard({ numero, lastWebhookAt }: { numero?: string; lastWebhook
             </span>
           </div>
           <p className={`text-sm mt-1 ${mudo ? 'text-amber-800' : 'text-emerald-800'}`}>
+            {/* Nunca mandar desconectar daqui: em 22/09/2026 este texto mandava,
+                alguém obedeceu depois de o recebimento já ter voltado sozinho, e a
+                loja ficou mais de 5h fora do ar esperando o QR Code. */}
             {mudo
-              ? 'O aparelho esta conectado e a loja consegue enviar, mas as mensagens dos clientes nao estao chegando — entao as respostas automaticas nao saem. Estamos tentando religar sozinhos; se nao voltar, desconecte e leia o QR Code de novo.'
-              : 'As notificacoes desta loja serao enviadas automaticamente por este WhatsApp.'}
+              ? 'As mensagens dos clientes não estão chegando ao sistema, então as respostas automáticas não saem. No celular da loja elas continuam chegando: responda por lá enquanto isso. O sistema está tentando religar sozinho. Não desconecte — isso deixa a loja sem respostas e sem avisos de pedido até alguém ler o QR Code de novo.'
+              : 'As notificações desta loja serão enviadas automaticamente por este WhatsApp.'}
           </p>
           {numero && (
             <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border ${mudo ? 'border-amber-200' : 'border-emerald-200'}`}>

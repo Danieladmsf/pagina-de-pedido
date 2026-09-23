@@ -129,15 +129,31 @@ describe('avaliarSaudeDoWebhook', () => {
     expect(saude.precisaReRegistrar).toBe(true);
   });
 
-  it('desconectado nao conta: nada a re-registrar, nada a alertar', () => {
+  // 22/09/2026: a loja seguiu a tela, desconectou, e ficou mais de 5h sem
+  // WhatsApp — sem resposta automática, sem aviso de pedido e sem alerta.
+  it('desconectado com a loja aberta avisa na hora, sem esperar silêncio', () => {
+    const saude = avaliarSaudeDoWebhook({
+      connected: false,
+      lastWebhookAt: new Date(Date.now() - minutos(1)).toISOString(),
+      lojaAberta: true,
+    });
+
+    expect(saude.estado).toBe('desconectado');
+    expect(saude.precisaAlertar).toBe(true);
+    // Re-registrar webhook não religa aparelho: só o QR Code resolve.
+    expect(saude.precisaReRegistrar).toBe(false);
+  });
+
+  it('desconectado com a loja fechada não acorda ninguém', () => {
     const saude = avaliarSaudeDoWebhook({
       connected: false,
       lastWebhookAt: new Date(Date.now() - minutos(500)).toISOString(),
+      lojaAberta: false,
     });
 
-    expect(saude.estado).toBe('nao_se_aplica');
-    expect(saude.precisaReRegistrar).toBe(false);
+    expect(saude.estado).toBe('desconectado');
     expect(saude.precisaAlertar).toBe(false);
+    expect(saude.precisaReRegistrar).toBe(false);
   });
 
   it('instancia que nunca recebeu webhook conta como muda', () => {

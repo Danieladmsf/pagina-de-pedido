@@ -380,6 +380,19 @@ export function getWapiConnectedPhone(response: WapiStatusResponse | any) {
   return '';
 }
 
+/**
+ * A W-API AFIRMA que o aparelho saiu da conexão? Só um "não" explícito conta:
+ * formato desconhecido, resposta vazia ou um telefone presente (prova de vida)
+ * não derrubam ninguém. É a mesma regra do poll de `/wapi/status`.
+ */
+export function wapiAfirmaDesconectado(response: WapiStatusResponse | any) {
+  return (
+    !isWapiConnectedStatus(response) &&
+    !getWapiConnectedPhone(response) &&
+    hasExplicitWapiConnectionState(response)
+  );
+}
+
 export function createWapiInstance(input: CreateWapiInstanceInput) {
   const apiKey = getWapiMainToken();
   const instancePlan = (process.env.WAPI_INSTANCE_PLAN || '').trim().toLowerCase();

@@ -1,17 +1,33 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
 import { getWebhookUrl, ok, requireOperationalEmpresa, withAuth } from '@/app/wapi/_lib';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
-import { getWhatsAppIntegrationAdmin } from '@/lib/wapi/integration-store';
+import { decryptWapiToken, getWhatsAppIntegrationAdmin } from '@/lib/wapi/integration-store';
 import { getStoreOpenState } from '@/lib/whatsapp-messages';
 import { avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
 import { vigiarRecebimentoDaLoja } from '@/lib/wapi/webhook-watchdog';
 import { garantirAgendamentoDoVigia } from '@/lib/wapi/agendar-vigia';
+import { getWapiStatus, wapiAfirmaDesconectado } from '@/lib/wapi/wapi.service';
+import type { WhatsAppIntegration } from '@/lib/wapi/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Estado do RECEBIMENTO para quem está com o sistema aberto — e, de quebra, o
+ * Pergunta à W-API se o aparelho saiu da conexão. Falha de rede ou resposta em
+ * formato estranho contam como "não sei", e "não sei" mantém o que se sabia.
+ */
+async function wapiAfirmaQueCaiu(integration: WhatsAppIntegration) {
+  try {
+    const status = await getWapiStatus(integration.wapiInstanceId, decryptWapiToken(integration));
+    return wapiAfirmaDesconectado(status);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Estado do RECEBIMENTO para quem está com o sistema aberto — incluindo o
+ * WhatsApp vinculado que caiu da conexão (`desconectado`) — e, de quebra, o
  * segundo gatilho do vigia.
  *
  * Existe separada de `/wapi/status` porque aquela consulta a W-API a cada
@@ -39,12 +55,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const perfil = adminDb ? (await adminDb.collection('store_profiles').doc(empresaId).get()).data() : null;
       const lojaAberta = getStoreOpenState(perfil).isOpen;
 
-      const saude = avaliarSaudeDoWebhook({
+      let saude = avaliarSaudeDoWebhook({
         connected: integration.connected,
         lastWebhookAt: integration.lastWebhookAt,
         ultimaTentativaEm: (integration as any).watchdogUltimaTentativaEm,
         lojaAberta,
       });
+
+      // Antes de mandar a loja esperar, confere se o silêncio não é desconexão
+      // disfarçada: o aviso de desconexão da W-API chega uma vez só e pode se
+      // perder, e aí o banco segue dizendo "conectado". Os dois avisos pedem
+      // coisas opostas (esperar x ler o QR Code), então, na hora de avisar,
+      // pergunta. Só troca quando a W-API AFIRMA que caiu.
+      if (saude.estado === 'mudo' && saude.precisaAlertar && (await wapiAfirmaQueCaiu(integration))) {
+        saude = { ...saude, estado: 'desconectado', precisaReRegistrar: false };
+      }
 
       // Muda e sem tentativa recente: cura antes de responder. É o caminho que
       // faz a loja voltar sozinha mesmo se o agendamento do QStash falhar.
