@@ -10,6 +10,7 @@ import {
   matchOrderForTransaction,
   missingOrderRefs,
   statementTotals,
+  unpaidSince,
   type CreditTransaction,
 } from './prazo-statement';
 
@@ -167,6 +168,79 @@ describe('statementTotals', () => {
     const totals = statementTotals([]);
     expect(totals.balance).toBe(0);
     expect(totals.averageTicket).toBe(0);
+  });
+});
+
+describe('unpaidSince', () => {
+  const desde = (extrato: CreditTransaction[]) => unpaidSince(extrato)?.toISOString() ?? null;
+
+  it('paga a conta antiga e compra na mesma visita: a dívida conta da compra nova', () => {
+    // No dia do pagamento a cliente compra e depois paga só a conta de agosto.
+    // O saldo nunca zera, e a regra antiga datava a dívida em 12/08 (vencida).
+    expect(desde([
+      tx({ id: 'agosto', amount: 50, date: '2026-08-12T15:00:00.000Z' }),
+      tx({ id: 'no-dia', amount: 20, date: '2026-09-10T17:00:00.000Z' }),
+      tx({ id: 'pag', type: 'credit', amount: 50, date: '2026-09-10T17:05:00.000Z' }),
+    ])).toBe('2026-09-10T17:00:00.000Z');
+  });
+
+  it('conta antiga paga com atraso libera a compra nova', () => {
+    expect(desde([
+      tx({ id: 'agosto', amount: 50, date: '2026-08-12T15:00:00.000Z' }),
+      tx({ id: 'setembro', amount: 30, date: '2026-09-11T15:00:00.000Z' }),
+      tx({ id: 'pag', type: 'credit', amount: 50, date: '2026-09-12T15:00:00.000Z' }),
+    ])).toBe('2026-09-11T15:00:00.000Z');
+  });
+
+  it('pagamento parcial deixa a compra antiga em aberto', () => {
+    expect(desde([
+      tx({ id: 'agosto', amount: 100, date: '2026-08-12T15:00:00.000Z' }),
+      tx({ id: 'pag', type: 'credit', amount: 60, date: '2026-09-10T15:00:00.000Z' }),
+    ])).toBe('2026-08-12T15:00:00.000Z');
+  });
+
+  it('crédito a favor abate as compras seguintes', () => {
+    expect(desde([
+      tx({ id: 'adiantado', type: 'credit', amount: 50, date: '2026-09-01T15:00:00.000Z' }),
+      tx({ id: 'c1', amount: 30, date: '2026-09-05T15:00:00.000Z' }),
+      tx({ id: 'c2', amount: 40, date: '2026-09-06T15:00:00.000Z' }),
+    ])).toBe('2026-09-06T15:00:00.000Z');
+  });
+
+  it('conta quitada ou com crédito a favor não tem data', () => {
+    expect(desde([
+      tx({ id: 'c1', amount: 24, date: '2026-07-01T10:00:00.000Z' }),
+      tx({ id: 'pag1', type: 'credit', amount: 24, date: '2026-07-02T10:00:00.000Z' }),
+      tx({ id: 'pag2', type: 'credit', amount: 24, date: '2026-07-02T10:05:00.000Z' }),
+    ])).toBeNull();
+    expect(desde([])).toBeNull();
+  });
+
+  it('estorno de compra nova não quita a compra antiga vencida', () => {
+    // Quitando por ordem, o estorno de R$ 30 pagaria a compra de agosto e a
+    // dívida vencida sumiria da trava.
+    expect(desde([
+      tx({ id: 'agosto', amount: 20, date: '2026-08-12T15:00:00.000Z' }),
+      tx({ id: 'engano', amount: 30, date: '2026-09-15T15:00:00.000Z' }),
+      tx({ id: 'estorno', type: 'credit', amount: 30, reversalOf: 'engano', date: '2026-09-16T15:00:00.000Z' }),
+    ])).toBe('2026-08-12T15:00:00.000Z');
+  });
+
+  it('estorno de pagamento devolve a dívida às compras que ele tinha quitado', () => {
+    expect(desde([
+      tx({ id: 'c1', amount: 40, date: '2026-09-05T15:00:00.000Z' }),
+      tx({ id: 'pag', type: 'credit', amount: 40, date: '2026-09-08T15:00:00.000Z' }),
+      tx({ id: 'c2', amount: 30, date: '2026-09-15T15:00:00.000Z' }),
+      tx({ id: 'estorno', type: 'debit', amount: 40, reversalOf: 'pag', date: '2026-09-16T15:00:00.000Z' }),
+    ])).toBe('2026-09-05T15:00:00.000Z');
+  });
+
+  it('estorno do estorno faz a compra voltar a valer', () => {
+    expect(desde([
+      tx({ id: 'c1', amount: 50, date: '2026-08-12T15:00:00.000Z' }),
+      tx({ id: 'e1', type: 'credit', amount: 50, reversalOf: 'c1', date: '2026-08-13T15:00:00.000Z' }),
+      tx({ id: 'e2', type: 'debit', amount: 50, reversalOf: 'e1', date: '2026-08-14T15:00:00.000Z' }),
+    ])).toBe('2026-08-12T15:00:00.000Z');
   });
 });
 

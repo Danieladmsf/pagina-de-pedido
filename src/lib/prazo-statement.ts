@@ -35,6 +35,8 @@ export type CreditTransaction = {
   channel?: string;
   /** Forma usada no recebimento (pix, dinheiro...). Só em `credit`. */
   paymentMethod?: string;
+  /** Estorno: id do lançamento que este desfaz (o estorno da tela do Prazo). */
+  reversalOf?: string;
 };
 
 export type StatementRow = {
@@ -55,7 +57,7 @@ export type StatementTotals = {
   purchaseCount: number;
   paymentCount: number;
   averageTicket: number;
-  /** Data da compra que abriu a dívida atual (null se está quite). */
+  /** Data da compra mais antiga que ainda não foi paga (null se está quite). */
   debtSince: Date | null;
   lastPurchaseAt: Date | null;
   lastPaymentAt: Date | null;
@@ -152,21 +154,80 @@ export function buildStatement(transactions: CreditTransaction[], orders: any[] 
 }
 
 /**
- * Desde quando o cliente está devendo: percorre o extrato e acha o início do
- * período em que o saldo ficou positivo sem nunca zerar. Pagamento total zera a
- * idade da dívida. Mesma regra do bloqueio por vencimento (customer-credit.ts),
- * só que aqui já com o extrato em mãos, sem ida ao banco.
+ * Desde quando o cliente está devendo: a data da compra mais antiga que ainda
+ * não foi paga. É dela que o vencimento conta, aqui na tela e na trava da venda
+ * (customer-credit.ts), então as duas leem esta mesma função.
+ *
+ * Os pagamentos quitam da compra mais antiga para a mais nova, como no
+ * `allocatePayment`, e o que sobra vira crédito a favor das compras seguintes.
+ * A regra antiga era "desde quando o saldo não zera": quem comprava e, na mesma
+ * visita, pagava só a conta antiga ficava com a data da compra já paga e era
+ * barrado no dia seguinte.
+ *
+ * Estorno anula o lançamento que ele desfaz em vez de quitar por ordem: estornar
+ * uma compra nova não pode pagar a antiga vencida, e estornar um pagamento
+ * devolve a dívida às compras que ele tinha quitado. Estorno do estorno faz o
+ * original voltar a valer, por isso a leitura vai do mais novo para o mais
+ * antigo.
  */
+export function unpaidSince(transactions: CreditTransaction[]): Date | null {
+  const EPS = 0.009;
+  const ascending = [...transactions].sort((a, b) => toTime(a.date) - toTime(b.date));
+
+  const byId = new Map(ascending.map((tx) => [tx.id, tx]));
+  const anulados = new Set<string>();
+  for (const tx of [...ascending].reverse()) {
+    if (!tx.reversalOf || anulados.has(tx.id)) continue;
+    const alvo = byId.get(tx.reversalOf);
+    if (
+      alvo && alvo !== tx && !anulados.has(alvo.id) && alvo.type !== tx.type
+      && Math.abs((Number(alvo.amount) || 0) - (Number(tx.amount) || 0)) < EPS
+    ) {
+      anulados.add(alvo.id);
+      anulados.add(tx.id);
+    }
+  }
+
+  /** Compras ainda em aberto, da mais antiga para a mais nova. */
+  const open: Array<{ tx: CreditTransaction; remaining: number }> = [];
+  /** Pagamento adiantado ainda não consumido por nenhuma compra. */
+  let creditPool = 0;
+
+  for (const tx of ascending) {
+    if (anulados.has(tx.id)) continue;
+    const amount = Number(tx.amount) || 0;
+
+    if (tx.type === 'debit') {
+      const usaCredito = Math.min(creditPool, amount);
+      creditPool -= usaCredito;
+      if (amount - usaCredito > EPS) open.push({ tx, remaining: amount - usaCredito });
+      continue;
+    }
+
+    let rest = amount;
+    while (rest > EPS && open.length > 0) {
+      const applied = Math.min(open[0].remaining, rest);
+      open[0].remaining -= applied;
+      rest -= applied;
+      if (open[0].remaining <= EPS) open.shift();
+    }
+    creditPool += rest;
+  }
+
+  // Compra sem data válida não tem como datar a dívida; fica a próxima.
+  const oldest = open.find(({ tx }) => toTime(tx.date) > 0);
+  return oldest ? new Date(oldest.tx.date) : null;
+}
+
 export function statementTotals(rows: StatementRow[]): StatementTotals {
   let totalPurchases = 0;
   let totalPaid = 0;
   let purchaseCount = 0;
   let paymentCount = 0;
-  let debtSince: string | null = null;
   let lastPurchaseAt: string | null = null;
   let lastPaymentAt: string | null = null;
 
-  rows.forEach(({ tx, balanceAfter }) => {
+  rows.forEach(({ tx }) => {
     const amount = Number(tx.amount) || 0;
     if (tx.type === 'debit') {
       totalPurchases += amount;
@@ -176,11 +237,6 @@ export function statementTotals(rows: StatementRow[]): StatementTotals {
       totalPaid += amount;
       paymentCount += 1;
       lastPaymentAt = tx.date;
-    }
-    if (balanceAfter > 0.009) {
-      if (!debtSince) debtSince = tx.date;
-    } else {
-      debtSince = null;
     }
   });
 
@@ -193,7 +249,7 @@ export function statementTotals(rows: StatementRow[]): StatementTotals {
     purchaseCount,
     paymentCount,
     averageTicket: purchaseCount > 0 ? totalPurchases / purchaseCount : 0,
-    debtSince: debtSince ? new Date(debtSince) : null,
+    debtSince: unpaidSince(rows.map(({ tx }) => tx)),
     lastPurchaseAt: lastPurchaseAt ? new Date(lastPurchaseAt) : null,
     lastPaymentAt: lastPaymentAt ? new Date(lastPaymentAt) : null,
   };

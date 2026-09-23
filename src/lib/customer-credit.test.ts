@@ -324,3 +324,62 @@ describe('vencimento do Prazo', () => {
     });
   });
 });
+
+describe('idade da dívida na trava da venda', () => {
+  const OWNER = 'loja-1';
+  const TELEFONE = '16999998877';
+
+  beforeEach(() => {
+    fake.clientes.clear();
+    fake.extratos.clear();
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('quem compra e paga a conta antiga na mesma visita não é barrado no dia seguinte', async () => {
+    // Dia de pagamento 10. No dia 10 a cliente compra R$ 20 e depois paga os
+    // R$ 50 de agosto. O saldo nunca zerou, e a regra antiga datava a dívida na
+    // compra de agosto: "venceu no dia 10" já no dia 11.
+    fake.clientes.set('c1', {
+      ownerId: OWNER,
+      celular: TELEFONE,
+      creditEnabled: true,
+      creditLimit: 200,
+      creditPayDay: 10,
+      creditBalance: 20,
+    });
+    fake.extratos.set('c1', [
+      { date: '2026-08-12T15:00:00.000Z', type: 'debit', amount: 50 },
+      { date: '2026-09-10T17:00:00.000Z', type: 'debit', amount: 20 },
+      { date: '2026-09-10T17:05:00.000Z', type: 'credit', amount: 50 },
+    ]);
+    vi.setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
+
+    const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 30);
+
+    expect(resultado).toMatchObject({ allowed: true, balance: 20, nextBalance: 50 });
+  });
+
+  it('quem paga só parte da conta vencida continua barrado', async () => {
+    fake.clientes.set('c1', {
+      ownerId: OWNER,
+      celular: TELEFONE,
+      creditEnabled: true,
+      creditLimit: 200,
+      creditPayDay: 10,
+      creditBalance: 40,
+    });
+    fake.extratos.set('c1', [
+      { date: '2026-08-12T15:00:00.000Z', type: 'debit', amount: 100 },
+      { date: '2026-09-10T15:00:00.000Z', type: 'credit', amount: 60 },
+    ]);
+    vi.setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
+
+    const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 30);
+
+    expect(resultado).toMatchObject({ allowed: false, reason: 'past_due', balance: 40 });
+  });
+});

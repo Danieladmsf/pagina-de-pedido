@@ -1,5 +1,6 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
+import { unpaidSince } from '@/lib/prazo-statement';
 import { brl } from '@/lib/utils';
 
 export type CreditCustomer = {
@@ -167,30 +168,15 @@ export const matchUniqueActiveCustomerByPhone = (
   return { kind: 'unique', customer: unique[0] };
 };
 
-// Desde quando o cliente está devendo, reconstruído pelo extrato: percorre as
-// transações em ordem e acha o início do período em que o saldo ficou > 0 sem
-// nunca zerar. Pagamento total zera e "reseta" a idade da dívida.
+// Desde quando o cliente está devendo: a compra mais antiga que ainda não foi
+// paga, pela mesma quitação da tela do Prazo (`unpaidSince`), senão a trava e o
+// "Vence em" da tela discordam.
 async function getDebtSince(db: any, clienteId: string): Promise<Date | null> {
   const snap = await getDocs(collection(db, 'clientes', clienteId, 'credit_transactions'));
-  const transactions = snap.docs
-    .map((transactionDoc: any) => transactionDoc.data())
-    .filter((transaction: any) => transaction?.date)
-    .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
-
-  let runningBalance = 0;
-  let since: string | null = null;
-  for (const transaction of transactions) {
-    const amount = Number(transaction.amount) || 0;
-    if (transaction.type === 'debit') runningBalance += amount;
-    else if (transaction.type === 'credit') runningBalance -= amount;
-    else continue;
-    if (runningBalance > 0.009) {
-      if (!since) since = transaction.date;
-    } else {
-      since = null;
-    }
-  }
-  return since ? new Date(since) : null;
+  return unpaidSince(snap.docs.map((transactionDoc: any) => ({
+    ...transactionDoc.data(),
+    id: transactionDoc.id,
+  })));
 }
 
 // Vencimento da dívida: o próximo "dia de pagamento" DEPOIS da compra.
