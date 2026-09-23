@@ -3,6 +3,7 @@ import {
   ambiguousCreditCustomerResult,
   creditOrderMatchesCustomer,
   creditPhonesAreEqual,
+  dueDateFor,
   isValidCreditPhone,
   getPhoneVariants,
   isCreditEnabled,
@@ -248,5 +249,78 @@ describe('saldo do Prazo em centavos', () => {
     const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 49.1);
 
     expect(resultado).toMatchObject({ allowed: true, balance: 0.9, nextBalance: 50 });
+  });
+});
+
+describe('vencimento do Prazo', () => {
+  // Datas no fuso de quem roda: o vencimento é "dia X às 23h59" do relógio da loja.
+  const dia = (ano: number, mes: number, d: number, h = 12) => new Date(ano, mes - 1, d, h);
+  const fimDoDia = (ano: number, mes: number, d: number) => new Date(ano, mes - 1, d, 23, 59, 59, 999);
+
+  it('compra no próprio dia de pagamento vence no mês seguinte', () => {
+    // Gostinho, 23/09: comprou 05/09 com dia de pagamento 5 e a tela dizia
+    // "Vencida em 05/09/2026" — a dívida vencia no mesmo dia da compra.
+    expect(dueDateFor(dia(2026, 9, 5, 13), 5)).toEqual(fimDoDia(2026, 10, 5));
+  });
+
+  it('compra antes do dia de pagamento vence no mesmo mês', () => {
+    expect(dueDateFor(dia(2026, 9, 4), 8)).toEqual(fimDoDia(2026, 9, 8));
+  });
+
+  it('compra depois do dia de pagamento vence no mês seguinte, inclusive na virada do ano', () => {
+    expect(dueDateFor(dia(2026, 8, 12), 10)).toEqual(fimDoDia(2026, 9, 10));
+    expect(dueDateFor(dia(2026, 12, 15), 10)).toEqual(fimDoDia(2027, 1, 10));
+  });
+
+  it('em mês curto o dia de pagamento é o último dia, e comprar nele também vira o mês', () => {
+    expect(dueDateFor(dia(2027, 2, 27), 30)).toEqual(fimDoDia(2027, 2, 28));
+    expect(dueDateFor(dia(2027, 2, 28), 30)).toEqual(fimDoDia(2027, 3, 30));
+    expect(dueDateFor(dia(2026, 11, 30), 31)).toEqual(fimDoDia(2026, 12, 31));
+  });
+
+  describe('na trava da venda', () => {
+    const OWNER = 'loja-1';
+    const TELEFONE = '16999998877';
+    // Extrato real: três compras no balcão em 05/09, dia de pagamento 5.
+    const extrato = [
+      { date: '2026-09-05T16:05:40.052Z', type: 'debit', amount: 36 },
+      { date: '2026-09-05T18:28:04.780Z', type: 'debit', amount: 18 },
+      { date: '2026-09-05T19:01:12.251Z', type: 'debit', amount: 20 },
+    ];
+
+    beforeEach(() => {
+      fake.clientes.clear();
+      fake.extratos.clear();
+      fake.clientes.set('c1', {
+        ownerId: OWNER,
+        celular: TELEFONE,
+        creditEnabled: true,
+        creditLimit: 200,
+        creditPayDay: 5,
+        creditBalance: 74,
+      });
+      fake.extratos.set('c1', extrato);
+      vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('libera o Prazo antes do vencimento do mês seguinte', async () => {
+      vi.setSystemTime(new Date('2026-09-23T19:51:00.000Z')); // 16h51 da foto
+
+      const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 56);
+
+      expect(resultado).toMatchObject({ allowed: true, balance: 74, nextBalance: 130 });
+    });
+
+    it('bloqueia depois do dia 5 do mês seguinte', async () => {
+      vi.setSystemTime(new Date('2026-10-06T15:00:00.000Z'));
+
+      const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 56);
+
+      expect(resultado).toMatchObject({ allowed: false, reason: 'past_due' });
+    });
   });
 });

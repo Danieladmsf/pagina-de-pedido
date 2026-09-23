@@ -193,15 +193,20 @@ async function getDebtSince(db: any, clienteId: string): Promise<Date | null> {
   return since ? new Date(since) : null;
 }
 
-// Vencimento da dívida: o próximo "dia de pagamento" depois da compra.
-// Comprou até o dia X -> vence no dia X do mesmo mês; depois -> mês seguinte.
+// Vencimento da dívida: o próximo "dia de pagamento" DEPOIS da compra.
+// Comprou antes do dia X -> vence no dia X do mesmo mês; comprou no próprio
+// dia X ou depois -> dia X do mês seguinte. Com "até o dia X", quem comprava no
+// dia do pagamento vencia no mesmo dia às 23h59 e era barrado no dia seguinte
+// (Gostinho, 23/09: comprou 05/09 com dia 5 e a tela dizia "Vencida em 05/09").
+// Em mês curto o dia X vira o último dia do mês, e a comparação é contra esse
+// dia: senão, dia 30 com compra em 28/02 venceria no próprio dia também.
 // Exportado para a tela do Prazo mostrar a MESMA data que bloqueia a venda.
 export const dueDateFor = (debtSince: Date, payDay: number) => {
-  const monthOffset = debtSince.getDate() <= payDay ? 0 : 1;
   const year = debtSince.getFullYear();
-  const month = debtSince.getMonth() + monthOffset;
-  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-  return new Date(year, month, Math.min(payDay, lastDayOfMonth), 23, 59, 59, 999);
+  const payDayIn = (month: number) => Math.min(payDay, new Date(year, month + 1, 0).getDate());
+  const month = debtSince.getMonth();
+  const dueMonth = debtSince.getDate() < payDayIn(month) ? month : month + 1;
+  return new Date(year, dueMonth, payDayIn(dueMonth), 23, 59, 59, 999);
 };
 
 const isPendingCreditOrder = (order: any, ownerId: string) =>
