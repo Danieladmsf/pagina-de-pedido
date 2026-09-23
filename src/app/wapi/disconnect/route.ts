@@ -1,35 +1,26 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
-import { ok, requireEmpresa, withAuth } from '@/app/wapi/_lib';
-import { disconnectWapiInstance } from '@/lib/wapi/wapi.service';
-import {
-  decryptWapiToken,
-  deleteWhatsAppIntegration,
-  getWhatsAppIntegration,
-  isBlockedSharedWapiInstance,
-} from '@/lib/wapi/integration-store';
+import { ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
+import { sanitizeIntegration } from '@/lib/wapi/integration-store';
+import { desconectarCelular } from '@/lib/wapi/desconexao';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * Desconecta só o CELULAR da loja: o cadastro (ID e chave da instância) fica
+ * salvo, e religar é ler o QR Code de novo. Apagar o cadastro é outra rota,
+ * `/wapi/remove`, com outro botão e outro aviso (ver `lib/wapi/desconexao`).
+ */
 export async function POST(request: Request) {
   return withAuth(request, async (user) => {
     try {
       const body = await request.json().catch(() => ({}));
       const empresaId = requireEmpresa(user, body.empresaId);
-      const integration = await getWhatsAppIntegration(empresaId, user.idToken);
+      const { integration, token } = await requireIntegration(empresaId, user.idToken);
 
-      if (integration?.wapiInstanceId && !isBlockedSharedWapiInstance(integration.wapiInstanceId)) {
-        try {
-          const token = decryptWapiToken(integration);
-          await disconnectWapiInstance(integration.wapiInstanceId, token);
-        } catch (error) {
-          console.warn('[W-API] Falha ao desconectar da W-API (a instancia pode estar inativa ou o token pode ter mudado):', error);
-        }
-      }
+      const atualizada = await desconectarCelular({ empresaId, integration, token, idToken: user.idToken });
 
-      await deleteWhatsAppIntegration(empresaId, user.idToken);
-
-      return ok({ disconnected: true, cleared: true });
+      return ok({ disconnected: true, integration: sanitizeIntegration(atualizada) });
     } catch (error) {
       return jsonError(error);
     }

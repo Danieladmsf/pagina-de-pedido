@@ -20,10 +20,21 @@ import {
   Send,
   ShoppingBag,
   Smartphone,
+  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import { EVENTO_WHATSAPP_CONECTOU, avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -147,6 +158,12 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [pairing, setPairing] = useState(false);
   const [qrAttempts, setQrAttempts] = useState(0);
   const [checkFailed, setCheckFailed] = useState('');
+  // O tipo fica guardado mesmo com a caixa fechada: limpar junto faria o texto
+  // trocar para o do outro botão durante a animação de fechar.
+  const [confirmacao, setConfirmacao] = useState<{ tipo: 'desconectar' | 'remover'; aberta: boolean }>({
+    tipo: 'desconectar',
+    aberta: false,
+  });
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
   const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens' | 'links'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
@@ -339,19 +356,36 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }
 
-  async function disconnect() {
-    // Desconectar tira o número da W-API (logout): só volta com o QR Code lido
-    // de novo. Em 22/09/2026 alguém desconectou para "consertar" um silêncio
-    // que já tinha passado sozinho, ninguém leu o QR e a loja ficou mais de 5h
-    // sem resposta automática e sem aviso de pedido. A pergunta diz o preço.
-    if (!confirm(
-      'Desconectar o WhatsApp da loja?\n\n'
-      + 'As respostas automáticas e os avisos de pedido param na hora, e só voltam quando alguém ler o QR Code de novo com o celular da loja.\n\n'
-      + 'Se as mensagens só pararam de chegar, não desconecte: o sistema tenta religar sozinho.',
-    )) return;
+  // Desconectar é só o celular: o cadastro (ID e chave da instância) fica salvo
+  // e religar é ler o QR Code. Até 23/09/2026 este botão também apagava o ID e a
+  // chave, e religar passava a depender do suporte. Apagar o cadastro agora é o
+  // "Remover integração", separado e com aviso próprio.
+  async function desconectarCelular() {
     setLoading(true);
     try {
-      await apiFetch('/wapi/disconnect', {
+      const data = await apiFetch('/wapi/disconnect', {
+        method: 'POST',
+        body: JSON.stringify({ empresaId }),
+      });
+      if (data.integration) setIntegration(data.integration);
+      setQrCode('');
+      setPairing(false);
+      setQrAttempts(0);
+      toast({
+        title: 'Celular desconectado',
+        description: 'O cadastro do WhatsApp continua salvo. Para conectar de novo, gere o QR Code e leia com o celular da loja.',
+      });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Erro ao desconectar', description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removerIntegracao() {
+    setLoading(true);
+    try {
+      await apiFetch('/wapi/remove', {
         method: 'POST',
         body: JSON.stringify({ empresaId }),
       });
@@ -359,12 +393,22 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
       setQrCode('');
       setPairing(false);
       setQrAttempts(0);
-      toast({ title: 'WhatsApp desconectado', description: 'Clique em Conectar WhatsApp para conectar novamente.' });
+      toast({
+        title: 'Integração removida',
+        description: 'Para conectar o WhatsApp de novo, peça ao suporte o ID e a chave da instância.',
+      });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao desconectar', description: error.message });
+      toast({ variant: 'destructive', title: 'Erro ao remover', description: error.message });
     } finally {
       setLoading(false);
     }
+  }
+
+  function confirmarAcao() {
+    const { tipo } = confirmacao;
+    setConfirmacao((atual) => ({ ...atual, aberta: false }));
+    if (tipo === 'remover') void removerIntegracao();
+    else void desconectarCelular();
   }
 
   async function sendTestMessage() {
@@ -544,7 +588,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 
                   <ConnectionSupportActions
                     loading={loading || loadingStatus}
-                    onDisconnect={disconnect}
+                    connected={isConnected}
+                    onDisconnect={() => setConfirmacao({ tipo: 'desconectar', aberta: true })}
                   />
 
                   {!isConnected ? (
@@ -559,6 +604,11 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                   ) : (
                     <ConnectedCard numero={integration.numeroWhatsapp} lastWebhookAt={integration.lastWebhookAt} />
                   )}
+
+                  <RemoverIntegracaoRodape
+                    loading={loading || loadingStatus}
+                    onRemove={() => setConfirmacao({ tipo: 'remover', aberta: true })}
+                  />
                 </>
               )}
             </CardContent>
@@ -619,17 +669,83 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
           </Card>
         </div>
       )}
+
+      <AlertDialog
+        open={confirmacao.aberta}
+        onOpenChange={(aberta) => setConfirmacao((atual) => ({ ...atual, aberta }))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {confirmacao.tipo === 'remover' ? (
+                <>
+                  <Trash2 className="h-5 w-5 shrink-0 text-red-600" />
+                  Remover a integração do WhatsApp?
+                </>
+              ) : (
+                <>
+                  <Power className="h-5 w-5 shrink-0 text-red-600" />
+                  Desconectar o celular da loja?
+                </>
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              {confirmacao.tipo === 'remover' ? (
+                <div className="space-y-2">
+                  <p>
+                    Isso desconecta o celular e <strong>apaga do sistema o ID da instância e a chave de
+                    acesso</strong> do WhatsApp da loja. As respostas automáticas e os avisos de pedido
+                    param na hora.
+                  </p>
+                  <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-red-800">
+                    <strong>Para conectar de novo, vai ser preciso entrar em contato com o suporte</strong>{' '}
+                    para receber esses dados outra vez.
+                  </p>
+                  <p>
+                    Se você só quer trocar de celular ou religar, use <strong>Desconectar celular</strong>:
+                    ele mantém o cadastro.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p>
+                    As respostas automáticas e os avisos de pedido param na hora e só voltam quando alguém
+                    ler o QR Code de novo com o celular da loja.
+                  </p>
+                  <p>O cadastro do WhatsApp continua salvo: para religar, não precisa do suporte.</p>
+                  <p>Se as mensagens só pararam de chegar, não desconecte: o sistema tenta religar sozinho.</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={confirmarAcao}
+            >
+              {confirmacao.tipo === 'remover' ? 'Remover definitivamente' : 'Desconectar celular'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 function ConnectionSupportActions({
   loading,
+  connected,
   onDisconnect,
 }: {
   loading: boolean;
+  connected: boolean;
   onDisconnect: () => void;
 }) {
+  // Deslogar um celular que já não está conectado não faz nada: o botão só
+  // aparece com o aparelho ligado.
+  if (!connected) return null;
+
   return (
     <div className="flex flex-wrap gap-2">
       <Button
@@ -639,7 +755,29 @@ function ConnectionSupportActions({
         className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
       >
         <Power className="h-4 w-4" />
-        Desconectar
+        Desconectar celular
+      </Button>
+    </div>
+  );
+}
+
+// No pé do cartão e sem cor de destaque, de propósito: apagar o cadastro não
+// religa nada, e só o suporte desfaz. Quem quer trocar ou religar o celular
+// usa o "Desconectar celular".
+function RemoverIntegracaoRodape({ loading, onRemove }: { loading: boolean; onRemove: () => void }) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs text-slate-500">
+        Remover apaga o ID e a chave da instância. Para conectar de novo, só com o suporte.
+      </p>
+      <Button
+        variant="ghost"
+        onClick={onRemove}
+        disabled={loading}
+        className="h-8 shrink-0 self-start rounded-lg px-2.5 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700 sm:self-auto"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Remover integração
       </Button>
     </div>
   );

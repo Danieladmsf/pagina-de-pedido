@@ -164,7 +164,9 @@ function resolveIntegration(integration: WhatsAppIntegration | null): { integrat
   try {
     token = decryptWapiToken(integration);
   } catch (err) {
-    throw new ApiError(500, 'Erro ao descriptografar o token da instancia. Tente desconectar e reconectar.');
+    // "Desconectar" passa por aqui e falharia igual: com a chave ilegível, o
+    // único caminho é remover a integração e vincular de novo.
+    throw new ApiError(500, 'Não consegui abrir a chave salva do WhatsApp. Remova a integração e vincule de novo com o ID e a chave que o suporte passar.');
   }
 
   return { integration, token };
