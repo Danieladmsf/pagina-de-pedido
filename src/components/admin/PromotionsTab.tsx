@@ -15,11 +15,12 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { useSalvando } from '@/hooks/useSalvando';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import {
   Plus, Trash2, Pencil, Clock, Tag, Flame, Search,
-  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy, Box, Check
+  CalendarDays, Package, Percent, Eye, EyeOff, Play, Pause, Copy, Box, Check, Loader2
 } from 'lucide-react';
 
 interface PromotionsTabProps {
@@ -113,6 +114,7 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
   const [formEndDate, setFormEndDate] = useState('');
   const [formNoEndDate, setFormNoEndDate] = useState(false);
   const [formActive, setFormActive] = useState(true);
+  const promocao = useSalvando();
   const [formItems, setFormItems] = useState<PromoItem[]>([]);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
   const [itemCategoryFilter, setItemCategoryFilter] = useState('all');
@@ -286,22 +288,25 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
       updatedAt: Timestamp.now(),
     };
 
-    try {
-      if (editingPromo) {
-        await setDoc(doc(db, 'promotions', editingPromo.id), data, { merge: true });
-        toast({ title: '✅ Promoção atualizada!' });
-      } else {
-        data.createdAt = Timestamp.now();
-        const ref = doc(collection(db, 'promotions'));
-        data.id = ref.id;
-        await setDoc(ref, data);
-        toast({ title: '🔥 Promoção criada com sucesso!' });
+    // Segundo clique durante a gravação criaria outra promoção igual.
+    await promocao.salvar(async () => {
+      try {
+        if (editingPromo) {
+          await setDoc(doc(db, 'promotions', editingPromo.id), data, { merge: true });
+          toast({ title: '✅ Promoção atualizada!' });
+        } else {
+          data.createdAt = Timestamp.now();
+          const ref = doc(collection(db, 'promotions'));
+          data.id = ref.id;
+          await setDoc(ref, data);
+          toast({ title: '🔥 Promoção criada com sucesso!' });
+        }
+        setIsModalOpen(false);
+        resetForm();
+      } catch (err: any) {
+        toast({ title: 'Erro', description: err.message });
       }
-      setIsModalOpen(false);
-      resetForm();
-    } catch (err: any) {
-      toast({ title: 'Erro', description: err.message });
-    }
+    });
   };
 
   const handleDelete = async (promoId: string) => {
@@ -835,9 +840,9 @@ export function PromotionsTab({ db, user, items, categories, setEditingCombo }: 
 
           <DialogFooter className="pt-4">
             <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} className="bg-orange-500 hover:bg-orange-600 text-white gap-2">
-              <Flame className="h-4 w-4" />
-              {editingPromo ? 'Salvar Alterações' : 'Criar Promoção'}
+            <Button onClick={handleSave} disabled={promocao.salvando} className="bg-orange-500 hover:bg-orange-600 text-white gap-2">
+              {promocao.salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
+              {promocao.salvando ? 'Salvando...' : editingPromo ? 'Salvar Alterações' : 'Criar Promoção'}
             </Button>
           </DialogFooter>
         </DialogContent>

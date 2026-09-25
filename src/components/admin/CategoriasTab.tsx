@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useSalvando } from '@/hooks/useSalvando';
 import { useToast } from '@/hooks/use-toast';
 import { comboReferenceWarning, promotionUpdatesForRemovedItems } from '@/lib/menu-item-delete';
 import { isItemVisibleInChannel } from '@/lib/menu-visibility';
@@ -56,6 +57,7 @@ export function CategoriasTab({
   // Estados para modal de Categoria
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const novaCategoria = useSalvando();
   
   // Estados para edição da categoria (nome + disponibilidade)
   const [editingCategory, setEditingCategory] = useState<any>(null);
@@ -297,9 +299,9 @@ export function CategoriasTab({
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>Cancelar</Button>
-              <Button onClick={async () => {
+              <Button disabled={novaCategoria.salvando} onClick={() => novaCategoria.salvar(async () => {
                 if (!db || !ownerId || !newCategoryName.trim()) return;
-                
+
                 // Divide por vírgula ou ponto-e-vírgula e remove espaços vazios
                 const nomes = newCategoryName.split(/[,;]/).map(n => n.trim()).filter(n => n.length > 0);
                 
@@ -330,8 +332,8 @@ export function CategoriasTab({
                 } catch (err: any) {
                   toast({ variant: 'destructive', title: 'Erro ao criar', description: err.message });
                 }
-              }} className="bg-primary text-white">
-                Salvar
+              })} className="bg-primary text-white">
+                {novaCategoria.salvando ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
               </Button>
             </DialogFooter>
           </DialogContent>

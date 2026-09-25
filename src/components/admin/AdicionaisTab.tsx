@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { collection, deleteDoc, doc, setDoc, updateDoc, writeBatch, type Firestore } from 'firebase/firestore';
-import { HelpCircle, Pencil, Plus, Search, Store, Tag, Trash2 } from 'lucide-react';
+import { HelpCircle, Loader2, Pencil, Plus, Search, Store, Tag, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CurrencyInput } from '@/components/ui/currency-input';
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { useSalvando } from '@/hooks/useSalvando';
 import { useToast } from '@/hooks/use-toast';
 import { findUnderSuppliedProducts } from '@/lib/addon-groups';
 import { hasAnyVisibleToggle } from '@/lib/menu-visibility';
@@ -83,6 +84,9 @@ export function AdicionaisTab({
   const [isEditCategoryModalOpen, setIsEditCategoryModalOpen] = useState(false);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryNewName, setEditCategoryNewName] = useState('');
+  const salvarAdicional = useSalvando();
+  const novoContainer = useSalvando();
+  const renomearContainer = useSalvando();
 
   // Manage history state for addon edit dialog
   useEffect(() => {
@@ -361,26 +365,29 @@ export function AdicionaisTab({
       toast({ variant: 'destructive', title: 'Erro', description: 'Informe ao menos um nome.' });
       return;
     }
-    try {
-      if (editingAddon?.id) {
-        await updateDoc(doc(db, 'addons', editingAddon.id), { ...baseData, name: names[0] });
-        await syncAddonContainers(editingAddon.id, editingAddonContainers);
-      } else {
-        for (const name of names) {
-          const newDoc = doc(collection(db, 'addons'));
-          await setDoc(newDoc, { ...baseData, name, id: newDoc.id });
-          await syncAddonContainers(newDoc.id, editingAddonContainers);
+    // Segundo clique durante a gravação criaria os adicionais de novo.
+    await salvarAdicional.salvar(async () => {
+      try {
+        if (editingAddon?.id) {
+          await updateDoc(doc(db, 'addons', editingAddon.id), { ...baseData, name: names[0] });
+          await syncAddonContainers(editingAddon.id, editingAddonContainers);
+        } else {
+          for (const name of names) {
+            const newDoc = doc(collection(db, 'addons'));
+            await setDoc(newDoc, { ...baseData, name, id: newDoc.id });
+            await syncAddonContainers(newDoc.id, editingAddonContainers);
+          }
         }
+        setEditingAddon(null);
+        toast({
+          title: 'Sucesso',
+          description: names.length > 1 ? `${names.length} adicionais criados.` : 'Adicional salvo.',
+        });
+      } catch (err: any) {
+        console.error('Erro ao salvar adicional:', err);
+        toast({ variant: 'destructive', title: 'Erro', description: err?.message || 'Falha ao salvar adicional.' });
       }
-      setEditingAddon(null);
-      toast({
-        title: 'Sucesso',
-        description: names.length > 1 ? `${names.length} adicionais criados.` : 'Adicional salvo.',
-      });
-    } catch (err: any) {
-      console.error('Erro ao salvar adicional:', err);
-      toast({ variant: 'destructive', title: 'Erro', description: err?.message || 'Falha ao salvar adicional.' });
-    }
+    });
   };
   const normalizeAddonLookup = (value: string) =>
     removeAccents(value.toLowerCase()).replace(/\s+/g, ' ').trim();
@@ -638,7 +645,7 @@ export function AdicionaisTab({
                 </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setIsEditCategoryModalOpen(false)}>Cancelar</Button>
-                  <Button onClick={async () => {
+                  <Button disabled={renomearContainer.salvando} onClick={() => renomearContainer.salvar(async () => {
                     if (!db || !ownerId || !editCategoryName || !editCategoryNewName.trim() || editCategoryName === editCategoryNewName.trim()) return;
                     try {
                       const batch = writeBatch(db);
@@ -669,8 +676,8 @@ export function AdicionaisTab({
                     } catch (err: any) {
                       toast({ variant: 'destructive', title: 'Erro', description: err.message });
                     }
-                  }} className="bg-primary text-white">
-                    Salvar
+                  })} className="bg-primary text-white">
+                    {renomearContainer.salvando ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
                   </Button>
                 </div>
               </DialogFooter>
@@ -783,7 +790,7 @@ export function AdicionaisTab({
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddonCategoryModalOpen(false)}>Cancelar</Button>
-              <Button onClick={async () => {
+              <Button disabled={novoContainer.salvando} onClick={() => novoContainer.salvar(async () => {
                 if (!db || !ownerId || !newAddonCategoryName.trim()) return;
                 try {
                   const newDoc = doc(collection(db, 'addonCategories'));
@@ -794,8 +801,8 @@ export function AdicionaisTab({
                 } catch (err: any) {
                   toast({ variant: 'destructive', title: 'Erro', description: err.message });
                 }
-              }} className="bg-primary text-white">
-                Salvar
+              })} className="bg-primary text-white">
+                {novoContainer.salvando ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -893,7 +900,9 @@ export function AdicionaisTab({
               </div>
               </div>
               <DialogFooter>
-                <Button type="submit" className="w-full h-12 font-bold">Salvar</Button>
+                <Button type="submit" className="w-full h-12 font-bold" disabled={salvarAdicional.salvando}>
+                  {salvarAdicional.salvando ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : 'Salvar'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
