@@ -17,6 +17,7 @@ import {
   statusFromWapi,
 } from '@/lib/wapi/integration-store';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
+import { ehInstanciaZapi } from '@/lib/zapi/zapi.service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,12 @@ export async function POST(request: Request) {
       const body = await request.json().catch(() => ({}));
       const empresaId = requireEmpresa(user, body.empresaId);
       
-      const { wapiInstanceId, token, instanceName } = body;
+      const { instanceName } = body;
+      const token = String(body.token || '').trim();
+      // O ID da Z-API chega nos webhooks em maiúsculas; o da W-API segue como veio.
+      const idDigitado = String(body.wapiInstanceId || '').trim();
+      const zapi = ehInstanciaZapi(idDigitado);
+      const wapiInstanceId = zapi ? idDigitado.toUpperCase() : idDigitado;
       
       if (!wapiInstanceId || !token) {
         throw new ApiError(400, 'ID e Token da instancia sao obrigatorios.');
@@ -52,7 +58,8 @@ export async function POST(request: Request) {
       try {
         statusResponse = await getWapiStatus(wapiInstanceId, token);
       } catch (error: any) {
-        throw new ApiError(400, `Nao consegui acessar esta conexao na W-API. Confira o ID da instancia e a chave (os dois aparecem no painel da W-API). Detalhe: ${error?.message || 'sem resposta'}`);
+        const painel = zapi ? 'da Z-API' : 'da W-API';
+        throw new ApiError(400, `Nao consegui acessar esta conexao ${painel}. Confira o ID da instancia e a chave (os dois aparecem no painel ${painel}). Detalhe: ${error?.message || 'sem resposta'}`);
       }
 
       const connected = isWapiConnectedStatus(statusResponse) || Boolean(getWapiConnectedPhone(statusResponse));
@@ -79,7 +86,7 @@ export async function POST(request: Request) {
         ownerId: user.uid,
         clienteId: user.uid,
         empresaId,
-        provider: 'wapi',
+        provider: zapi ? 'zapi' : 'wapi',
         wapiInstanceId,
         wapiTokenEncrypted: encryptWapiToken(token),
         instanceName: finalInstanceName,

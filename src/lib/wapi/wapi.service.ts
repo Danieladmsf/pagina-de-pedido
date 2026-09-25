@@ -1,5 +1,23 @@
 import { ApiError } from '@/lib/firebase-auth-rest';
 import { Buffer } from 'buffer';
+import {
+  configureZapiWebhooks,
+  disconnectZapiInstance,
+  ehInstanciaZapi,
+  getZapiProfilePicture,
+  getZapiQrCode,
+  getZapiStatus,
+  restartZapiInstance,
+  sendZapiDocument,
+  sendZapiImage,
+  sendZapiText,
+  setZapiAutoRead,
+} from '@/lib/zapi/zapi.service';
+
+// Loja com instância da Z-API (ID de 32 caracteres hexadecimais) é atendida por
+// `lib/zapi`: cada função de rede abaixo desvia para lá no começo, e devolve o
+// mesmo formato. Assim nenhum dos pontos que chamam estas funções precisa saber
+// qual provedor a loja usa.
 
 const DEFAULT_BASE_URL = 'https://api.w-api.app/v1';
 const DEFAULT_CREATE_INSTANCE_PATH = '/integrator/create-instance';
@@ -431,6 +449,7 @@ export function createWapiInstance(input: CreateWapiInstanceInput) {
 }
 
 export function getWapiQrCode(instanceId: string, token: string) {
+  if (ehInstanciaZapi(instanceId)) return getZapiQrCode(instanceId, token) as Promise<WapiQrCodeResponse>;
   return requestWapi<WapiQrCodeResponse>(getQrCodePath(), {
     token,
     query: { instanceId, image: 'enable', syncContacts: 'disable' },
@@ -439,6 +458,7 @@ export function getWapiQrCode(instanceId: string, token: string) {
 }
 
 export function getWapiStatus(instanceId: string, token: string) {
+  if (ehInstanciaZapi(instanceId)) return getZapiStatus(instanceId, token) as Promise<WapiStatusResponse>;
   return requestWapi<WapiStatusResponse>('/instance/status-instance', {
     token,
     query: { instanceId },
@@ -447,6 +467,7 @@ export function getWapiStatus(instanceId: string, token: string) {
 }
 
 export function disconnectWapiInstance(instanceId: string, token: string) {
+  if (ehInstanciaZapi(instanceId)) return disconnectZapiInstance(instanceId, token) as Promise<{ error?: boolean; message?: string }>;
   return requestWapi<{ error?: boolean; message?: string }>('/instance/disconnect', {
     token,
     query: { instanceId },
@@ -455,6 +476,7 @@ export function disconnectWapiInstance(instanceId: string, token: string) {
 }
 
 export function restartWapiInstance(instanceId: string, token: string) {
+  if (ehInstanciaZapi(instanceId)) return restartZapiInstance(instanceId, token) as Promise<{ error?: boolean; message?: string }>;
   return requestWapi<{ error?: boolean; message?: string }>('/instance/restart', {
     token,
     query: { instanceId },
@@ -469,6 +491,7 @@ export function restartWapiInstance(instanceId: string, token: string) {
  * mundo sozinha. Chamamos sempre com `false` para nunca ver status de ninguem.
  */
 export function setWapiAutoRead(instanceId: string, token: string, enabled: boolean) {
+  if (ehInstanciaZapi(instanceId)) return setZapiAutoRead(instanceId, token, enabled) as Promise<{ error?: boolean; message?: string }>;
   return requestWapi<{ error?: boolean; message?: string }>('/instance/update-auto-read-message', {
     method: 'PUT',
     token,
@@ -502,6 +525,7 @@ function buildWebhookUrlForHook(webhookUrl: string, hook: string) {
 }
 
 export async function configureWapiWebhooks(instanceId: string, token: string, webhookUrl: string) {
+  if (ehInstanciaZapi(instanceId)) return configureZapiWebhooks(instanceId, token, webhookUrl);
   const results = await Promise.allSettled(
     WEBHOOK_ENDPOINTS.map(({ endpoint, hook }) =>
       updateWapiWebhook(instanceId, token, endpoint, buildWebhookUrlForHook(webhookUrl, hook)).then(() => endpoint),
@@ -529,6 +553,7 @@ export function sendWapiTextMessage(
   token: string,
   input: { phone: string; message: string; delayMessage?: number; messageId?: string },
 ) {
+  if (ehInstanciaZapi(instanceId)) return sendZapiText(instanceId, token, input);
   return requestWapi<{ instanceId: string; messageId: string; insertedId?: string }>('/message/send-text', {
     method: 'POST',
     token,
@@ -555,6 +580,7 @@ export async function getWapiProfilePicture(
   token: string,
   phoneNumber: string,
 ): Promise<{ link: string | null }> {
+  if (ehInstanciaZapi(instanceId)) return getZapiProfilePicture(instanceId, token, phoneNumber);
   const paths = process.env.WAPI_PROFILE_PIC_PATH
     ? [process.env.WAPI_PROFILE_PIC_PATH]
     : ['/contacts/profile-picture', '/contacts/contacts/profile-picture'];
@@ -579,6 +605,7 @@ export function sendWapiImageMessage(
   token: string,
   input: { phone: string; image: string; caption?: string; delayMessage?: number },
 ) {
+  if (ehInstanciaZapi(instanceId)) return sendZapiImage(instanceId, token, input);
   return requestWapi<{ instanceId: string; messageId: string; insertedId?: string }>('/message/send-image', {
     method: 'POST',
     token,
@@ -598,6 +625,7 @@ export function sendWapiDocumentMessage(
   token: string,
   input: { phone: string; document: string; extension: string; fileName?: string; caption?: string; delayMessage?: number },
 ) {
+  if (ehInstanciaZapi(instanceId)) return sendZapiDocument(instanceId, token, input);
   return requestWapi<{ instanceId: string; messageId: string; insertedId?: string }>('/message/send-document', {
     method: 'POST',
     token,

@@ -7,7 +7,8 @@ import {
   isConnectedEvent,
   isDisconnectedEvent,
 } from '@/lib/wapi/connection-events';
-import { extractIncomingMessage } from '@/lib/wapi/incoming-message';
+import { extractIncomingMessage, type IncomingMessage } from '@/lib/wapi/incoming-message';
+import { ehEventoZapi, lerEventoZapi } from '@/lib/zapi/incoming';
 import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
 import { buildAutoReply } from '@/lib/wapi/auto-reply';
@@ -109,6 +110,15 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Mensagem que a loja mandou pelo celular, no formato da W-API: `fromMe` sem
+ * `fromApi`, com o destino em `chat.id`. A Z-API tem o seu em `lib/zapi/incoming`.
+ */
+function saidaDaLojaWapi(payload: any) {
+  if (payload?.fromMe !== true || payload?.fromApi === true) return null;
+  return { chatId: String(payload?.chat?.id || '').trim() };
+}
+
+/**
  * Carimba no contato a ultima vez que a LOJA falou com esta pessoa.
  *
  * `fromApi: false` e o que separa o que a dona digitou ou gravou no celular do
@@ -121,10 +131,15 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
  * MESMO doc que `maybeSendAutoReply` vai ler depois, entao a ponte pelo
  * `telefoneConhecido` e a mesma de `resolverDestino`.
  */
-async function registrarSaidaDaLoja(adminDb: any, empresaId: string, payload: any, now: string) {
-  if (payload?.fromMe !== true || payload?.fromApi === true) return;
+async function registrarSaidaDaLoja(
+  adminDb: any,
+  empresaId: string,
+  saida: { chatId: string } | null,
+  now: string,
+) {
+  if (!saida) return;
 
-  const chatId = String(payload?.chat?.id || '').trim();
+  const chatId = String(saida.chatId || '').trim();
   const alvo = chatId.toLowerCase();
   if (!chatId || alvo === 'status' || alvo.includes('@g.us') || alvo.includes('broadcast')) return;
 
@@ -149,13 +164,12 @@ async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
   empresaId: string;
-  payload: any;
-  event: string;
-  hook?: string;
+  /** A mensagem já lida pelo leitor do provedor (W-API ou Z-API). */
+  incoming: IncomingMessage | null;
   requestOrigin: string;
   now: string;
 }) {
-  const incoming = extractIncomingMessage(params.payload, params.event, params.hook);
+  const incoming = params.incoming;
   // `address` e o telefone quando ele veio, senao o "<lid>@lid" — contato fora
   // da agenda da loja chega so com LID, e a W-API aceita ele no lugar do numero.
   if (!incoming?.address) return false;
@@ -328,6 +342,9 @@ export async function POST(request: Request) {
 }
 
 async function processarEvento(url: URL, payload: any) {
+  // A mesma URL recebe as duas: loja com instância da Z-API manda `type:
+  // "...Callback"`, e o leitor dela decide conexão, mensagem e saída da loja.
+  const zapi = ehEventoZapi(payload) ? lerEventoZapi(payload) : null;
   const instanceId = getInstanceId(payload);
   const event = payload?.event || payload?.type || 'unknown';
   const hook = url.searchParams.get('hook') || '';
@@ -401,7 +418,7 @@ async function processarEvento(url: URL, payload: any) {
   }
 
   await adminDb.collection('whatsapp_webhook_events').add({
-    provider: 'wapi',
+    provider: zapi ? 'zapi' : 'wapi',
     event,
     hook,
     instanceId,
@@ -415,9 +432,10 @@ async function processarEvento(url: URL, payload: any) {
   });
 
   let integrationUpdated = false;
-  const connected = isConnectedEvent(payload, event, hook);
-  const disconnected = isDisconnectedEvent(payload, event, hook);
-  const livePhone = disconnected ? '' : getLiveConnectedPhone(payload);
+  const connected = zapi ? zapi.connected : isConnectedEvent(payload, event, hook);
+  const disconnected = zapi ? zapi.disconnected : isDisconnectedEvent(payload, event, hook);
+  const livePhone = disconnected ? '' : (zapi ? zapi.livePhone : getLiveConnectedPhone(payload));
+  const incoming = zapi ? zapi.incoming : extractIncomingMessage(payload, event, hook);
 
   console.log('[W-API webhook] processando:', { event, hook, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
 
@@ -433,7 +451,9 @@ async function processarEvento(url: URL, payload: any) {
         patch['whatsappIntegration.status'] = 'disconnected';
       }
     } else if (connected || livePhone) {
-      const phone = livePhone || getConnectedPhone(payload) || integration.numeroWhatsapp || '';
+      // Na Z-API o `phone` de uma mensagem é o do CLIENTE: o da loja só vem no
+      // `livePhone` (connectedPhone / phone do ConnectedCallback).
+      const phone = livePhone || (zapi ? '' : getConnectedPhone(payload)) || integration.numeroWhatsapp || '';
       // `livePhone` chega junto de TODA mensagem, entao so gravamos quando algo
       // realmente mudou — senao seria uma escrita no Firestore por mensagem
       // recebida (milhares por dia).
@@ -490,7 +510,6 @@ async function processarEvento(url: URL, payload: any) {
   // visita que estava vendo os produtos.
   if (adminRef && empresaId) {
     try {
-      const incoming = extractIncomingMessage(payload, event, hook);
       const codigo = extrairCodigoDaMensagem(incoming?.text || '');
       if (codigo) {
         await identificarVisitantePeloCodigo(adminDb, {
@@ -507,7 +526,7 @@ async function processarEvento(url: URL, payload: any) {
 
   if (adminRef && empresaId) {
     try {
-      await registrarSaidaDaLoja(adminDb, empresaId, payload, now);
+      await registrarSaidaDaLoja(adminDb, empresaId, zapi ? zapi.saidaDaLoja : saidaDaLojaWapi(payload), now);
     } catch (error) {
       console.warn('[W-API webhook] Falha ao carimbar saida da loja:', { empresaId, error });
     }
@@ -520,9 +539,7 @@ async function processarEvento(url: URL, payload: any) {
         adminDb,
         adminRef,
         empresaId,
-        payload,
-        event,
-        hook,
+        incoming,
         requestOrigin: url.origin,
         now,
       });
