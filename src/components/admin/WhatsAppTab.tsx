@@ -104,6 +104,8 @@ type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'discon
 
 interface Integration {
   empresaId: string;
+  /** 'wapi', 'zapi' ou 'wuzapi' (servidor próprio). Cadastro antigo não tem. */
+  provider?: string;
   wapiInstanceId: string;
   instanceName: string;
   status: IntegrationStatus;
@@ -329,6 +331,20 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     setPairing(true);
     refreshQrCode(false);
   }
+
+  // Loja no servidor próprio e ainda sem celular: o QR abre sozinho ao carregar
+  // a tela, e o dono só precisa ler. Lá pedir QR não derruba ninguém (sessão já
+  // pareada devolve QR vazio). Na W-API continua sob clique, porque pedir QR é
+  // PAREAR e derrubava o celular conectado.
+  const qrAutomaticoFeitoRef = React.useRef(false);
+  useEffect(() => {
+    if (qrAutomaticoFeitoRef.current || initialLoading || !integration || integration.connected) return;
+    const servidorProprio = integration.provider === 'wuzapi' || /^WUZ-/i.test(integration.wapiInstanceId || '');
+    if (!servidorProprio) return;
+    qrAutomaticoFeitoRef.current = true;
+    startPairing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLoading, integration?.provider, integration?.wapiInstanceId, integration?.connected]);
 
   async function linkInstance(wapiInstanceId: string, token: string): Promise<boolean> {
     setLoading(true);
