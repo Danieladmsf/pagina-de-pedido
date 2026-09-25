@@ -1,4 +1,4 @@
-# Estado do Projeto — retomar daqui (atualizado 2026-07-25)
+# Estado do Projeto — retomar daqui (atualizado 2026-07-25; WhatsApp em 2026-09-25)
 
 > Documento de handoff. Se o contexto se perder, comece por aqui.
 > Nada ficou pela metade em produção.
@@ -11,7 +11,7 @@ As três frentes que abriram este documento (19–20/07):
 
 1. **Permissões do PDV** — PRONTO e NO AR. Nada a fazer.
 2. **Usuários / login de operador** — **PUBLICADO e validado em produção** em 20/07 (commit `4e51258` + regras). Sobraram duas pontas, nenhuma urgente: a **decisão de design da Retaguarda** (§2) e a **Etapa 2** do relatório de vendas por funcionário (§2).
-3. **WhatsApp parado (Lima Limão + Gostinho de Céu)** — DIAGNOSTICADO em 20/07 e **não é o código**. Depende de ação do dono na tela (reconectar/reler QR). **Nada mudou aqui desde então: confirmar com ele antes de assumir que segue quebrado.**
+3. **WhatsApp** — desde **25/09/2026** Lima Limão e Gostinho de Céu estão no **servidor próprio** (WuzAPI no Google Cloud, R$ 0/mês), fora da W-API. O sistema aceita três provedores, escolhidos pelo ID da loja. Manual: `docs/wapi/servidor-proprio-wuzapi.md`. Histórico de julho em §3.
 
 Depois disso o trabalho foi para outro lado (21–25/07): **Encomendas** ganhou o fluxo de confeitaria completo (bolo por kg, doces por cento, catálogo editável, acompanhamento do cliente), entrou **venda por peso (kg)** no PDV, a **auditoria** de quem fez cada lançamento do caixa, **frete editável** no pedido, e a **consolidação da impressão de cupom** (§5).
 
@@ -82,7 +82,24 @@ O dono propôs: **Retaguarda = sistema completo (operar caixa/delivery/mesa SEM 
 
 ---
 
-## 3. WhatsApp não dispara — 🔴 DIAGNOSTICADO, ação do dono
+## 3. WhatsApp — ✅ SERVIDOR PRÓPRIO NO AR (25/09/2026)
+
+Em 25/09/2026 a W-API derrubou as duas lojas às 10:25 e não gerava QR nem pelo
+próprio painel. No mesmo dia o sistema ganhou dois provedores novos, escolhidos
+pelo ID da instância da loja: Z-API (ID de 32 hexadecimais) e **servidor
+próprio** (`WUZ-<LOJA>`, WuzAPI numa e2-micro gratuita do Google Cloud). Lima e
+Gostinho foram migradas para o servidor próprio; a aba WhatsApp abre o QR
+sozinha e esconde ID, troca e remoção nessas lojas. Tudo sobre acesso, chaves,
+cópia e como migrar outra loja: `docs/wapi/servidor-proprio-wuzapi.md`.
+
+Commits: `7b13641` (Trocar ID e chave), `60c5950` (Z-API), `56411a1`
+(servidor próprio), `5e4ca84` (QR automático), `2a7aa74` (tela da loja no
+servidor próprio), `dbe798e` (nome do evento).
+
+As assinaturas da W-API das duas lojas (R$ 19,90 cada) ficaram sem uso e podem
+ser canceladas no painel da W-API.
+
+### Histórico de julho (resolvido pela migração)
 
 Detalhe completo na memória `wapi-instancia-token-troca.md`. Resumo:
 
