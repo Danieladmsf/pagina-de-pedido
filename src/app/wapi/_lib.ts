@@ -165,8 +165,9 @@ function resolveIntegration(integration: WhatsAppIntegration | null): { integrat
     token = decryptWapiToken(integration);
   } catch (err) {
     // "Desconectar" passa por aqui e falharia igual: com a chave ilegível, o
-    // único caminho é remover a integração e vincular de novo.
-    throw new ApiError(500, 'Não consegui abrir a chave salva do WhatsApp. Remova a integração e vincule de novo com o ID e a chave que o suporte passar.');
+    // caminho é gravar ID e chave de novo. O "Trocar ID e chave" não precisa
+    // abrir a chave antiga (link-instance só confere o par novo com a W-API).
+    throw new ApiError(500, 'Não consegui abrir a chave salva do WhatsApp. Use Trocar ID e chave, na aba WhatsApp, com o ID e a chave que o suporte passar.');
   }
 
   return { integration, token };

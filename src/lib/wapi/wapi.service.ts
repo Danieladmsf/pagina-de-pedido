@@ -144,7 +144,7 @@ function buildWapiError(
       404,
       // "Desconectar" só desloga o celular e mantém esta chave; quando é a
       // própria chave que não serve, o caminho é remover e vincular de novo.
-      providerMessage || 'A instância da W-API não foi encontrada ou a chave salva não pertence a ela. Remova a integração e vincule o WhatsApp de novo com o ID e a chave que o suporte passar.',
+      providerMessage || 'A instância da W-API não foi encontrada ou a chave salva não pertence a ela. Use Trocar ID e chave, na aba WhatsApp, com o ID e a chave que o suporte passar.',
       data,
     );
   }
