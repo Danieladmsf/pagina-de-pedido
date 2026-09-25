@@ -349,7 +349,10 @@ async function processarEvento(url: URL, payload: any) {
   const provedor = ehEventoZapi(payload) ? 'zapi' : ehEventoWuzapi(payload) ? 'wuzapi' : 'wapi';
   const lido = provedor === 'zapi' ? lerEventoZapi(payload) : provedor === 'wuzapi' ? lerEventoWuzapi(payload) : null;
   const instanceId = getInstanceId(payload);
-  const event = payload?.event || payload?.type || 'unknown';
+  // Na WuzAPI `event` é o objeto do whatsmeow; o nome do evento é o `type`, que
+  // o leitor já separou. Sem isso o objeto inteiro ia para logs e para o campo
+  // `event` do registro, duplicando o payload.
+  const event = lido ? lido.event : (payload?.event || payload?.type || 'unknown');
   const hook = url.searchParams.get('hook') || '';
   const empresaIdFromUrl = url.searchParams.get('empresaId') || '';
   const webhookAuth = getWebhookToken(url);
