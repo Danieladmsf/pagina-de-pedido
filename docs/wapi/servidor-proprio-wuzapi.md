@@ -47,9 +47,10 @@ instância, e o formato dele escolhe o provedor:
 
 | ID | Provedor | Código |
 |---|---|---|
-| `LITE-...` / `PRO-...` | W-API | `lib/wapi` |
-| 32 caracteres hexadecimais | Z-API | `lib/zapi` |
-| `WUZ-<LOJA>` | servidor próprio | `lib/wuzapi` |
+| `WUZ-<LOJA>` | **servidor próprio (oficial)** | `lib/wuzapi` |
+| `LITE-...` / `PRO-...` | W-API (só caminho de volta da migração; vai ser removida) | `lib/wapi` |
+
+A Z-API foi integrada em 25/09/2026 e removida no mesmo dia.
 
 As funções de rede de `lib/wapi/wapi.service.ts` desviam no começo para o
 provedor certo e devolvem o mesmo formato, então rotas, vigia, campanhas e telas

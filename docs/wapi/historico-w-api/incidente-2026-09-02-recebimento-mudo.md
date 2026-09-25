@@ -1,3 +1,7 @@
+> **HISTÓRICO.** Este documento é da época da W-API. Desde 25/09/2026 o WhatsApp das lojas
+> roda no servidor próprio: veja [`../servidor-proprio-wuzapi.md`](../servidor-proprio-wuzapi.md).
+> Não siga as instruções abaixo para configurar W-API ou Z-API.
+
 # 02/09/2026 — 4h32 sem resposta automática (o recebimento caiu, não o WhatsApp)
 
 A dona da Gostinho de Céu avisou que "a partir de certo horário" as respostas

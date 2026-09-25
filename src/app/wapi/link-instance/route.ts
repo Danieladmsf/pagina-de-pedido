@@ -17,7 +17,6 @@ import {
   statusFromWapi,
 } from '@/lib/wapi/integration-store';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
-import { ehInstanciaZapi } from '@/lib/zapi/zapi.service';
 import { ehInstanciaWuzapi } from '@/lib/wuzapi/wuzapi.service';
 
 export const runtime = 'nodejs';
@@ -31,11 +30,10 @@ export async function POST(request: Request) {
       
       const { instanceName } = body;
       const token = String(body.token || '').trim();
-      // O ID da Z-API chega nos webhooks em maiúsculas; o da W-API segue como veio.
+      // O ID do servidor próprio vai em maiúsculas; o da W-API segue como veio.
       const idDigitado = String(body.wapiInstanceId || '').trim();
-      const zapi = ehInstanciaZapi(idDigitado);
       const proprio = ehInstanciaWuzapi(idDigitado);
-      const wapiInstanceId = zapi || proprio ? idDigitado.toUpperCase() : idDigitado;
+      const wapiInstanceId = proprio ? idDigitado.toUpperCase() : idDigitado;
       
       if (!wapiInstanceId || !token) {
         throw new ApiError(400, 'ID e Token da instancia sao obrigatorios.');
@@ -60,7 +58,7 @@ export async function POST(request: Request) {
       try {
         statusResponse = await getWapiStatus(wapiInstanceId, token);
       } catch (error: any) {
-        const painel = zapi ? 'da Z-API' : proprio ? 'do servidor proprio' : 'da W-API';
+        const painel = proprio ? 'do servidor proprio' : 'da W-API';
         throw new ApiError(400, `Nao consegui acessar esta conexao ${painel}. Confira o ID da instancia e a chave (os dois aparecem no painel ${painel}). Detalhe: ${error?.message || 'sem resposta'}`);
       }
 
@@ -88,7 +86,7 @@ export async function POST(request: Request) {
         ownerId: user.uid,
         clienteId: user.uid,
         empresaId,
-        provider: zapi ? 'zapi' : proprio ? 'wuzapi' : 'wapi',
+        provider: proprio ? 'wuzapi' : 'wapi',
         wapiInstanceId,
         wapiTokenEncrypted: encryptWapiToken(token),
         instanceName: finalInstanceName,

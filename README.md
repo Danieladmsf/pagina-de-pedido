@@ -31,7 +31,7 @@ bash claude-auto.sh
 ## 📂 Organização das pastas
 - `src/` — código do app (Next.js App Router).
 - `public/` — arquivos servidos publicamente, inclusive `instalar-impressao-automatica.bat` (é este que o lojista baixa).
-- `docs/` — documentação. Comece por `docs/ESTADO_DO_PROJETO.md`. Subpastas: `docs/wapi/` (WhatsApp/W-API) e `docs/encomendas/` (transcrições dos cardápios em PDF).
+- `docs/` — documentação. Comece por `docs/ESTADO_DO_PROJETO.md`. Subpastas: `docs/wapi/` (WhatsApp: comece pelo `README.md` dela; o provedor é o servidor próprio, e a W-API é histórico) e `docs/encomendas/` (transcrições dos cardápios em PDF).
 - `scripts/` — scripts utilitários (seed, testes de regras do Firestore).
 - `arquivos/` — material pessoal da loja (fotos, PDFs, prints, áudios, notas). **Fora do git.**
 - `scratch/` — scripts avulsos de diagnóstico, descartáveis. **Fora do git.**

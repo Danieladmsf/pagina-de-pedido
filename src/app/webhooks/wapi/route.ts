@@ -8,7 +8,6 @@ import {
   isDisconnectedEvent,
 } from '@/lib/wapi/connection-events';
 import { extractIncomingMessage, type IncomingMessage } from '@/lib/wapi/incoming-message';
-import { ehEventoZapi, lerEventoZapi } from '@/lib/zapi/incoming';
 import { ehEventoWuzapi, lerEventoWuzapi } from '@/lib/wuzapi/incoming';
 import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
@@ -112,7 +111,7 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
 
 /**
  * Mensagem que a loja mandou pelo celular, no formato da W-API: `fromMe` sem
- * `fromApi`, com o destino em `chat.id`. A Z-API tem o seu em `lib/zapi/incoming`.
+ * `fromApi`, com o destino em `chat.id`. O servidor próprio tem o seu em `lib/wuzapi/incoming`.
  */
 function saidaDaLojaWapi(payload: any) {
   if (payload?.fromMe !== true || payload?.fromApi === true) return null;
@@ -165,7 +164,7 @@ async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
   empresaId: string;
-  /** A mensagem já lida pelo leitor do provedor (W-API ou Z-API). */
+  /** A mensagem já lida pelo leitor do provedor (servidor próprio ou W-API). */
   incoming: IncomingMessage | null;
   requestOrigin: string;
   now: string;
@@ -343,11 +342,11 @@ export async function POST(request: Request) {
 }
 
 async function processarEvento(url: URL, payload: any) {
-  // A mesma URL recebe os três provedores. Z-API manda `type: "...Callback"`;
-  // o servidor próprio (WuzAPI) manda `type` + `event` em objeto. O leitor de
-  // cada um decide conexão, mensagem e saída da loja; sem leitor, é a W-API.
-  const provedor = ehEventoZapi(payload) ? 'zapi' : ehEventoWuzapi(payload) ? 'wuzapi' : 'wapi';
-  const lido = provedor === 'zapi' ? lerEventoZapi(payload) : provedor === 'wuzapi' ? lerEventoWuzapi(payload) : null;
+  // O servidor próprio (WuzAPI), provedor oficial, manda `type` + `event` em
+  // objeto, e o leitor dele decide conexão, mensagem e saída da loja. Sem
+  // leitor é a W-API, que só segue aqui como caminho de volta da migração.
+  const provedor = ehEventoWuzapi(payload) ? 'wuzapi' : 'wapi';
+  const lido = provedor === 'wuzapi' ? lerEventoWuzapi(payload) : null;
   const instanceId = getInstanceId(payload);
   // Na WuzAPI `event` é o objeto do whatsmeow; o nome do evento é o `type`, que
   // o leitor já separou. Sem isso o objeto inteiro ia para logs e para o campo
@@ -457,8 +456,7 @@ async function processarEvento(url: URL, payload: any) {
         patch['whatsappIntegration.status'] = 'disconnected';
       }
     } else if (connected || livePhone) {
-      // Na Z-API e no servidor próprio o telefone de uma mensagem é o do
-      // CLIENTE: o da loja só vem no `livePhone` que o leitor separou.
+      // No servidor próprio o telefone de uma mensagem é o do CLIENTE: o da loja só vem no `livePhone` que o leitor separou.
       const phone = livePhone || (lido ? '' : getConnectedPhone(payload)) || integration.numeroWhatsapp || '';
       // `livePhone` chega junto de TODA mensagem, entao so gravamos quando algo
       // realmente mudou — senao seria uma escrita no Firestore por mensagem

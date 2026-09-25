@@ -1,3 +1,7 @@
+> **HISTÓRICO.** Este documento é da época da W-API. Desde 25/09/2026 o WhatsApp das lojas
+> roda no servidor próprio: veja [`../servidor-proprio-wuzapi.md`](../servidor-proprio-wuzapi.md).
+> Não siga as instruções abaixo para configurar W-API ou Z-API.
+
 # 22/08/2026 — "o status comentado/reagido não responde"
 
 Oitava queixa sobre as mensagens automáticas. Desta vez a dona do Gostinho de Céu
