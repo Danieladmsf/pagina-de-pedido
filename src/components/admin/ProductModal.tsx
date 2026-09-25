@@ -39,6 +39,12 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
   const [uploadingImage, setUploadingImage] = useState(false);
   const [removeImage, setRemoveImage] = useState(false);
   const galleryRef = useRef<GalleryUploaderHandle>(null);
+  // Trava do clique até o fim da gravação. O botão destravava assim que a foto
+  // subia, com o produto e o estoque inicial ainda gravando: o segundo clique
+  // criava outro produto do zero (Gostinho de Céu, 4 pares em set/2026). O ref
+  // barra no mesmo instante; o estado só pinta o botão no próximo render.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const isMarmita = editingProduct?.isMarmita === true;
 
@@ -103,13 +109,13 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
 
   const handleSaveProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!db || !user) return;
-    
+    if (!db || !user || savingRef.current) return;
+
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const priceStr = formData.get('price') as string;
     const price = parseFloat(priceStr) || 0;
-    
+
     const effectiveSaleUnit = isMarmita ? 'un' : saleUnit;
 
     // Esta tela NÃO mexe em estoque — a contagem vive só na aba Estoque, por
@@ -119,7 +125,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     const clearStockForKg = effectiveSaleUnit === 'kg' && editingProduct?.stockQuantity != null;
 
     let imageUrl = editingProduct?.imageUrl || '';
-    
+
+    savingRef.current = true;
+    setSaving(true);
     try {
       if (imageFile) {
         imageUrl = await handleUploadImage();
@@ -193,6 +201,9 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
     } catch (err: any) {
       toast({ title: 'Erro ao salvar produto', description: err.message, variant: 'destructive' });
       setUploadingImage(false);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -665,8 +676,10 @@ export function ProductModal({ db, user, addons, addonCategories = [], editingPr
         <Button type="button" variant="outline" className="h-10 px-6" onClick={() => setEditingProduct(null)}>
           Cancelar
         </Button>
-        <Button type="submit" form="product-form" className="h-10 px-10 font-bold" disabled={uploadingImage}>
-          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</> : 'Salvar Produto'}
+        <Button type="submit" form="product-form" className="h-10 px-10 font-bold" disabled={saving}>
+          {uploadingImage ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Enviando foto...</>
+            : saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</>
+            : 'Salvar Produto'}
         </Button>
       </div>
     </div>

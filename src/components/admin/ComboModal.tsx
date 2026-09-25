@@ -11,7 +11,7 @@ import { brl, normalizeSearch } from '@/lib/utils';
 import { formatStock } from '@/lib/inventory';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Upload, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Upload, X } from 'lucide-react';
 import { uploadImage } from '@/lib/upload';
 import { GalleryUploader, type GalleryUploaderHandle } from '@/components/admin/GalleryUploader';
 
@@ -38,6 +38,10 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
   const [imagePreview, setImagePreview] = useState<string>(editingCombo?.imageUrl || '');
   const [removeImage, setRemoveImage] = useState(false);
   const galleryRef = useRef<GalleryUploaderHandle>(null);
+  // Trava do clique até o fim da gravação, como no ProductModal: sem ela, um
+  // segundo clique durante a gravação cria outro combo do zero.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,8 +69,8 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
 
   const handleSaveCombo = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!db || !user) return;
-    
+    if (!db || !user || savingRef.current) return;
+
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const priceStr = formData.get('price') as string;
@@ -74,6 +78,8 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
 
     const manualDescription = formData.get('description') as string;
 
+    savingRef.current = true;
+    setSaving(true);
     try {
       // Capa
       let imageUrl = editingCombo?.imageUrl || '';
@@ -117,6 +123,9 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
       setEditingCombo(null);
     } catch (err: any) {
       toast({ title: 'Erro ao salvar combo', description: err.message, variant: 'destructive' });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -311,7 +320,9 @@ export function ComboModal({ db, user, items, editingCombo, setEditingCombo, cat
         <Button type="button" variant="outline" className="h-10 px-6" onClick={() => setEditingCombo(null)}>
           Cancelar
         </Button>
-        <Button type="submit" form="combo-form" className="h-10 px-10 font-bold">Salvar Combo</Button>
+        <Button type="submit" form="combo-form" className="h-10 px-10 font-bold" disabled={saving}>
+          {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando...</> : 'Salvar Combo'}
+        </Button>
       </div>
     </div>
   );
