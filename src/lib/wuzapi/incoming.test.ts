@@ -98,18 +98,45 @@ describe('o que nunca responde', () => {
 });
 
 describe('reação no story da loja', () => {
+  // Chave como chega de verdade (W-API, 25/09): montada por quem reagiu, com
+  // `fromMe: false` e o LID da loja em `participant`.
+  const reacaoNoStory = (texto: string) => ({
+    reactionMessage: {
+      key: { ID: '2AA611D5DC3F4BBB8204', fromMe: false, participant: '62160000000025@lid', remoteJID: 'status@broadcast' },
+      text: texto,
+    },
+  });
+
   it('coraçãozinho no story da loja vira agradecimento', () => {
-    const incoming = lerEventoWuzapi(mensagem({ Chat: 'status@broadcast', Sender: '81896604192873@lid', SenderAlt: '' }, {
-      reactionMessage: { key: { remoteJID: 'status@broadcast', fromMe: true, ID: 'X', participant: '5516993638485@s.whatsapp.net' }, text: '❤️' },
-    })).incoming;
+    const incoming = lerEventoWuzapi(mensagem({ Chat: 'status@broadcast', IsGroup: true, Sender: '81896604192873@lid', SenderAlt: '' }, reacaoNoStory('❤️'))).incoming;
     expect(incoming).toMatchObject({ address: '81896604192873@lid', text: '❤️', isStoryReaction: true });
   });
 
-  it('reação ao story de outra pessoa não é com a loja', () => {
-    const incoming = lerEventoWuzapi(mensagem({ Chat: 'status@broadcast' }, {
-      reactionMessage: { key: { remoteJID: 'status@broadcast', fromMe: false, ID: 'X' }, text: '❤️' },
+  it('com o telefone de quem reagiu, responde pelo telefone', () => {
+    const incoming = lerEventoWuzapi(mensagem({ Chat: 'status@broadcast', IsGroup: true, Sender: '81896604192873@lid', SenderAlt: '5516999998877@s.whatsapp.net' }, reacaoNoStory('😍'))).incoming;
+    expect(incoming).toMatchObject({ phone: '5516999998877', address: '5516999998877', isStoryReaction: true });
+  });
+
+  it('a própria loja reagindo pelo celular não é cliente', () => {
+    expect(lerEventoWuzapi(mensagem({ Chat: 'status@broadcast', IsFromMe: true }, reacaoNoStory('❤️'))).incoming).toBeNull();
+  });
+
+  it('reação a mensagem comum do chat (formato real do servidor próprio) fica sem resposta', () => {
+    const incoming = lerEventoWuzapi(mensagem({ Chat: '17220000000060@lid', Sender: '17220000000060@lid' }, {
+      reactionMessage: { key: { ID: '2A39AEE74A4147C9C912', fromMe: false, remoteJID: '62160000000025@lid' }, text: '😂' },
     })).incoming;
     expect(incoming).toBeNull();
+  });
+
+  it('comentário no story (formato real do servidor próprio) é conversa', () => {
+    const incoming = lerEventoWuzapi(mensagem({ Chat: '13350000000050@lid', Sender: '13350000000050@lid', SenderAlt: '' }, {
+      extendedTextMessage: {
+        text: 'Oi Ca qual valor ?',
+        contextInfo: { remoteJID: 'status@broadcast', participant: '62160000000025@lid', stanzaID: 'X' },
+      },
+    })).incoming;
+    expect(incoming).toMatchObject({ address: '13350000000050@lid', text: 'Oi Ca qual valor ?' });
+    expect(incoming?.isStoryReaction).toBeUndefined();
   });
 });
 

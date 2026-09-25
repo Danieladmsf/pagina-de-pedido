@@ -124,13 +124,18 @@ export function lerEventoWuzapi(payload: any): EventoWuzapi {
   const telefone = pessoas.map(telefoneDe).find(Boolean) || '';
   const lid = pessoas.map(lidDe).find(Boolean) || '';
 
-  // Reação no story DA LOJA: chega pelo "status@broadcast" apontando para um
-  // status nosso (`key.fromMe`). Reação a mensagem comum não é pergunta.
+  // Reação no story DA LOJA: a mensagem reagida é um status
+  // (`key.remoteJID = "status@broadcast"`). A chave é montada por quem reagiu,
+  // então `key.fromMe` vem FALSO (o story não é dele) e o autor do story vai em
+  // `key.participant`. O WhatsApp só entrega reação de story a quem publicou,
+  // então toda reação de story que chega aqui é num story nosso: nas 3 reações
+  // reais da W-API em 25/09, `participant` era sempre o LID da própria loja.
+  // Reação a mensagem comum (sem status) não é pergunta e fica sem resposta.
   const reacao = mensagem?.reactionMessage;
   if (reacao) {
     const citada = String(reacao?.key?.remoteJID || reacao?.key?.remoteJid || '').toLowerCase();
     const emoji = texto(reacao?.text);
-    if (info?.IsFromMe !== true && citada.includes('status@broadcast') && reacao?.key?.fromMe === true && emoji && (telefone || lid)) {
+    if (info?.IsFromMe !== true && citada.includes('status@broadcast') && emoji && (telefone || lid)) {
       resultado.incoming = {
         phone: telefone,
         address: telefone || lid,
