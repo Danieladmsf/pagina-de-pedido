@@ -6,7 +6,7 @@ export interface WhatsAppIntegration {
   clienteId: string;
   empresaId: string;
   /** Quem atende a loja. O ID e a chave ficam nos mesmos campos `wapi*`. */
-  provider: 'wapi' | 'zapi';
+  provider: 'wapi' | 'zapi' | 'wuzapi';
   wapiInstanceId: string;
   wapiTokenEncrypted: string;
   instanceName: string;
@@ -36,7 +36,7 @@ export interface SanitizedWhatsAppIntegration {
   ownerId: string;
   clienteId: string;
   empresaId: string;
-  provider: 'wapi' | 'zapi';
+  provider: 'wapi' | 'zapi' | 'wuzapi';
   wapiInstanceId: string;
   instanceName: string;
   status: WapiConnectionStatus;

@@ -9,6 +9,7 @@ import {
 } from '@/lib/wapi/connection-events';
 import { extractIncomingMessage, type IncomingMessage } from '@/lib/wapi/incoming-message';
 import { ehEventoZapi, lerEventoZapi } from '@/lib/zapi/incoming';
+import { ehEventoWuzapi, lerEventoWuzapi } from '@/lib/wuzapi/incoming';
 import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
 import { buildAutoReply } from '@/lib/wapi/auto-reply';
@@ -342,9 +343,11 @@ export async function POST(request: Request) {
 }
 
 async function processarEvento(url: URL, payload: any) {
-  // A mesma URL recebe as duas: loja com instância da Z-API manda `type:
-  // "...Callback"`, e o leitor dela decide conexão, mensagem e saída da loja.
-  const zapi = ehEventoZapi(payload) ? lerEventoZapi(payload) : null;
+  // A mesma URL recebe os três provedores. Z-API manda `type: "...Callback"`;
+  // o servidor próprio (WuzAPI) manda `type` + `event` em objeto. O leitor de
+  // cada um decide conexão, mensagem e saída da loja; sem leitor, é a W-API.
+  const provedor = ehEventoZapi(payload) ? 'zapi' : ehEventoWuzapi(payload) ? 'wuzapi' : 'wapi';
+  const lido = provedor === 'zapi' ? lerEventoZapi(payload) : provedor === 'wuzapi' ? lerEventoWuzapi(payload) : null;
   const instanceId = getInstanceId(payload);
   const event = payload?.event || payload?.type || 'unknown';
   const hook = url.searchParams.get('hook') || '';
@@ -418,7 +421,7 @@ async function processarEvento(url: URL, payload: any) {
   }
 
   await adminDb.collection('whatsapp_webhook_events').add({
-    provider: zapi ? 'zapi' : 'wapi',
+    provider: provedor,
     event,
     hook,
     instanceId,
@@ -432,10 +435,10 @@ async function processarEvento(url: URL, payload: any) {
   });
 
   let integrationUpdated = false;
-  const connected = zapi ? zapi.connected : isConnectedEvent(payload, event, hook);
-  const disconnected = zapi ? zapi.disconnected : isDisconnectedEvent(payload, event, hook);
-  const livePhone = disconnected ? '' : (zapi ? zapi.livePhone : getLiveConnectedPhone(payload));
-  const incoming = zapi ? zapi.incoming : extractIncomingMessage(payload, event, hook);
+  const connected = lido ? lido.connected : isConnectedEvent(payload, event, hook);
+  const disconnected = lido ? lido.disconnected : isDisconnectedEvent(payload, event, hook);
+  const livePhone = disconnected ? '' : (lido ? lido.livePhone : getLiveConnectedPhone(payload));
+  const incoming = lido ? lido.incoming : extractIncomingMessage(payload, event, hook);
 
   console.log('[W-API webhook] processando:', { event, hook, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
 
@@ -451,9 +454,9 @@ async function processarEvento(url: URL, payload: any) {
         patch['whatsappIntegration.status'] = 'disconnected';
       }
     } else if (connected || livePhone) {
-      // Na Z-API o `phone` de uma mensagem é o do CLIENTE: o da loja só vem no
-      // `livePhone` (connectedPhone / phone do ConnectedCallback).
-      const phone = livePhone || (zapi ? '' : getConnectedPhone(payload)) || integration.numeroWhatsapp || '';
+      // Na Z-API e no servidor próprio o telefone de uma mensagem é o do
+      // CLIENTE: o da loja só vem no `livePhone` que o leitor separou.
+      const phone = livePhone || (lido ? '' : getConnectedPhone(payload)) || integration.numeroWhatsapp || '';
       // `livePhone` chega junto de TODA mensagem, entao so gravamos quando algo
       // realmente mudou — senao seria uma escrita no Firestore por mensagem
       // recebida (milhares por dia).
@@ -526,7 +529,7 @@ async function processarEvento(url: URL, payload: any) {
 
   if (adminRef && empresaId) {
     try {
-      await registrarSaidaDaLoja(adminDb, empresaId, zapi ? zapi.saidaDaLoja : saidaDaLojaWapi(payload), now);
+      await registrarSaidaDaLoja(adminDb, empresaId, lido ? lido.saidaDaLoja : saidaDaLojaWapi(payload), now);
     } catch (error) {
       console.warn('[W-API webhook] Falha ao carimbar saida da loja:', { empresaId, error });
     }
