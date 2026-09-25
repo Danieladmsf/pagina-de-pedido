@@ -120,6 +120,15 @@ interface Integration {
   tokenConfigured: boolean;
 }
 
+/**
+ * Loja no servidor próprio (WuzAPI). O ID e a chave dela são criados e
+ * guardados por nós: a dona nunca tem esses dados, então a tela não mostra
+ * nada de instância e não oferece trocar nem remover.
+ */
+function ehServidorProprio(integration: Integration | null) {
+  return integration?.provider === 'wuzapi' || /^WUZ-/i.test(integration?.wapiInstanceId || '');
+}
+
 function statusLabel(status?: IntegrationStatus) {
   switch (status) {
     case 'connected': return 'Conectado';
@@ -339,8 +348,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const qrAutomaticoFeitoRef = React.useRef(false);
   useEffect(() => {
     if (qrAutomaticoFeitoRef.current || initialLoading || !integration || integration.connected) return;
-    const servidorProprio = integration.provider === 'wuzapi' || /^WUZ-/i.test(integration.wapiInstanceId || '');
-    if (!servidorProprio) return;
+    if (!ehServidorProprio(integration)) return;
     qrAutomaticoFeitoRef.current = true;
     startPairing();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -508,6 +516,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 
   const isConnected = integration?.connected || integration?.status === 'connected';
   const status = integration?.status;
+  const servidorProprio = ehServidorProprio(integration);
 
   return (
     <div className="max-w-[1500px] w-full mx-auto p-4 md:p-8 space-y-5 overflow-y-auto custom-scrollbar">
@@ -618,12 +627,14 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                   <InfoGrid
                     storeName={storeName}
                     integration={integration}
+                    mostrarInstancia={!servidorProprio}
                   />
 
                   <ConnectionSupportActions
                     loading={loading || loadingStatus}
                     connected={isConnected}
                     trocando={trocandoCredenciais}
+                    permitirTroca={!servidorProprio}
                     onDisconnect={() => setConfirmacao({ tipo: 'desconectar', aberta: true })}
                     onTrocar={abrirTrocaDeCredenciais}
                   />
@@ -648,10 +659,13 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                     <ConnectedCard numero={integration.numeroWhatsapp} lastWebhookAt={integration.lastWebhookAt} />
                   )}
 
-                  <RemoverIntegracaoRodape
-                    loading={loading || loadingStatus}
-                    onRemove={() => setConfirmacao({ tipo: 'remover', aberta: true })}
-                  />
+                  {/* No servidor próprio, remover apagaria o que só nós recriamos. */}
+                  {!servidorProprio && (
+                    <RemoverIntegracaoRodape
+                      loading={loading || loadingStatus}
+                      onRemove={() => setConfirmacao({ tipo: 'remover', aberta: true })}
+                    />
+                  )}
                 </>
               )}
             </CardContent>
@@ -781,15 +795,19 @@ function ConnectionSupportActions({
   loading,
   connected,
   trocando,
+  permitirTroca,
   onDisconnect,
   onTrocar,
 }: {
   loading: boolean;
   connected: boolean;
   trocando: boolean;
+  /** Falso no servidor próprio: ID e chave de lá são criados por nós. */
+  permitirTroca: boolean;
   onDisconnect: () => void;
   onTrocar: () => void;
 }) {
+  if (!connected && !permitirTroca) return null;
   return (
     <div className="flex flex-wrap gap-2">
       {/* Deslogar um celular que já não está conectado não faz nada: o botão
@@ -805,7 +823,7 @@ function ConnectionSupportActions({
           Desconectar celular
         </Button>
       )}
-      {!trocando && (
+      {permitirTroca && !trocando && (
         <Button
           variant="ghost"
           onClick={onTrocar}
@@ -1585,9 +1603,12 @@ function EmptyState({ onLink, loading, disabled }: { onLink: (id: string, token:
 function InfoGrid({
   storeName,
   integration,
+  mostrarInstancia,
 }: {
   storeName: string;
   integration: Integration;
+  /** Falso no servidor próprio: o ID ali é nosso, não algo que a dona usa. */
+  mostrarInstancia: boolean;
 }) {
   const { toast } = useToast();
 
@@ -1624,28 +1645,30 @@ function InfoGrid({
           )}
         </p>
       </div>
-      <div className="rounded-xl border bg-white p-3.5 md:col-span-2">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1">
-          <Hash className="h-3 w-3 text-slate-400" />
-          ID da instancia
-        </p>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <code className="font-mono text-sm font-bold text-slate-900 truncate">
-            {integration.wapiInstanceId || '—'}
-          </code>
-          {integration.wapiInstanceId && (
-            <button
-              type="button"
-              onClick={copyInstanceId}
-              title="Copiar ID da instancia"
-              className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 transition-colors"
-            >
-              <Copy className="h-3 w-3" />
-              Copiar
-            </button>
-          )}
+      {mostrarInstancia && (
+        <div className="rounded-xl border bg-white p-3.5 md:col-span-2">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1">
+            <Hash className="h-3 w-3 text-slate-400" />
+            ID da instancia
+          </p>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <code className="font-mono text-sm font-bold text-slate-900 truncate">
+              {integration.wapiInstanceId || '—'}
+            </code>
+            {integration.wapiInstanceId && (
+              <button
+                type="button"
+                onClick={copyInstanceId}
+                title="Copiar ID da instancia"
+                className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 transition-colors"
+              >
+                <Copy className="h-3 w-3" />
+                Copiar
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
