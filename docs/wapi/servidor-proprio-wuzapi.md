@@ -40,6 +40,26 @@ permissão 600), `data/` (banco SQLite e sessões do WhatsApp), `backups/`.
 endereço do servidor em `app_config/wuzapi.baseUrl` (ou da variável
 `WUZAPI_URL`, se um dia for criada na Vercel).
 
+## Variáveis na Vercel
+
+Os nomes começam com `WAPI_` por história, mas a maioria segue em uso com o
+servidor próprio. **Não apague achando que são da W-API.**
+
+| Variável | Uso hoje | Pode sair? |
+|---|---|---|
+| `WAPI_WEBHOOK_SECRET` | senha na URL do webhook que o servidor próprio chama | não |
+| `WAPI_TOKEN_ENCRYPTION_KEY` | cifra a chave de cada loja no Firestore, o `wt` do webhook e o código do link de contato | não (sem ela as lojas param) |
+| `WAPI_PUBLIC_BASE_URL` | endereço público para o vigia e para as campanhas agendadas | não |
+| `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | agenda do vigia e das campanhas | não |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | acesso do servidor ao Firestore | não |
+| `WAPI_BASE_URL` | só a W-API | sim, junto com o código da W-API |
+| `WAPI_API_KEY` | a W-API e chave reserva de decifrar dados antigos | só depois de conferir que nenhum dado cifrado depende dela |
+
+O endereço do servidor próprio não precisa de variável: vem de
+`app_config/wuzapi.baseUrl` (a variável `WUZAPI_URL`, se criada, tem prioridade).
+Renomear uma variável exige criar a nova, publicar o código que lê as duas,
+registrar de novo o webhook das lojas e só então apagar a antiga.
+
 ## Como o sistema escolhe o provedor
 
 A integração da loja (`roles_admin/{loja}.whatsappIntegration`) guarda um ID de

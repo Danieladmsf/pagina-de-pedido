@@ -20,3 +20,4 @@ Antes de alterar um contrato de vínculo, rode `npm run audit:integridade` e os 
 - O código do servidor próprio está em `src/lib/wuzapi/`. Loja ligada nele tem ID de instância `WUZ-<LOJA>`.
 - Nomes com "wapi" (pasta `src/lib/wapi`, rotas `/wapi/*` e `/webhooks/wapi`, campos `wapiInstanceId` e `wapiTokenEncrypted`) são nomes históricos: hoje atendem o servidor próprio. Não renomeie sem migrar junto o webhook registrado no servidor e os campos gravados no Firestore.
 - Chaves nunca vão para o git. Ficam no `.env.local` da máquina de desenvolvimento e no `.env` do servidor (`/opt/wuzapi/.env`).
+- **Não apague variáveis `WAPI_*` da Vercel achando que são da W-API.** `WAPI_WEBHOOK_SECRET`, `WAPI_TOKEN_ENCRYPTION_KEY` e `WAPI_PUBLIC_BASE_URL` são usadas pelo servidor próprio, pelo link de contato do cardápio e pelas campanhas. Só `WAPI_BASE_URL` e `WAPI_API_KEY` são da W-API, e saem junto com o código dela. Lista completa em `docs/wapi/servidor-proprio-wuzapi.md`.
