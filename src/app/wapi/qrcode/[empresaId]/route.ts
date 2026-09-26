@@ -1,6 +1,6 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
 import { ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
-import { extractWapiQrCode, getWapiQrCode } from '@/lib/wapi/wapi.service';
+import { getWuzQrCode } from '@/lib/wuzapi/wuzapi.service';
 import { patchWhatsAppIntegration, sanitizeIntegration } from '@/lib/wapi/integration-store';
 
 export const runtime = 'nodejs';
@@ -12,8 +12,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const { empresaId: rawEmpresaId } = await params;
       const empresaId = requireEmpresa(user, rawEmpresaId);
       const { integration, token } = await requireIntegration(empresaId, user.idToken);
-      const qr = await getWapiQrCode(integration.wapiInstanceId, token);
-      const qrCode = extractWapiQrCode(qr);
+      const { qrcode: qrCode } = await getWuzQrCode(integration.wapiInstanceId, token);
 
       const updated = await patchWhatsAppIntegration(empresaId, {
         qrCode,

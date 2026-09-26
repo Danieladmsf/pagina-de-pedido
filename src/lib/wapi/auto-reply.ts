@@ -118,11 +118,11 @@ export function buildAutoReply(params: {
   const storeLink = marcarParaContato(storeLinkBase, params.empresaId, params.incoming.phone);
   const openState = getStoreOpenState(storeProfile);
 
-  // A W-API envia texto puro e nao gera o cartao de preview de link (o WhatsApp
-  // so monta o preview quando o proprio app faz o scrape das og tags, o que nao
-  // ocorre via API). Por isso TODA resposta automatica daqui sai como a logo da
-  // loja + o texto na legenda: e o formato que o cliente reconhece como sendo da
-  // loja. Sem imagem salva, cai no texto puro.
+  // Mensagem enviada pela API sai como texto puro, sem o cartao de preview de
+  // link (o WhatsApp so monta o preview quando o proprio app faz o scrape das og
+  // tags). Por isso TODA resposta automatica daqui sai como a logo da loja + o
+  // texto na legenda: e o formato que o cliente reconhece como sendo da loja.
+  // Sem imagem salva, cai no texto puro.
   const imageUrl =
     storeProfile?.general?.logoUrl ||
     storeProfile?.general?.ogImageUrl ||

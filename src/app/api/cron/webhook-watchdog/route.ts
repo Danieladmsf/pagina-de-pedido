@@ -18,8 +18,8 @@ export const maxDuration = 120;
  *    manual para conferir na hora.
  *
  * A varredura é idempotente e barata quando está tudo bem (lê os documentos das
- * lojas conectadas e para por aí); só fala com a W-API quando alguma instância
- * está muda de verdade.
+ * lojas conectadas e para por aí); só fala com o servidor de WhatsApp quando
+ * alguma loja está muda de verdade.
  */
 
 function autorizadoPorSegredo(request: Request) {

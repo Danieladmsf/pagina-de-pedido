@@ -1,65 +1,27 @@
-import { ApiError, jsonError } from '@/lib/firebase-auth-rest';
+import { jsonError } from '@/lib/firebase-auth-rest';
 import { getWebhookUrl, ok, requireEmpresa, withAuth } from '@/app/wapi/_lib';
-import {
-  configureWapiWebhooks,
-  createWapiInstance,
-  extractWapiQrCode,
-  getWapiConnectedPhone,
-  getWapiMainToken,
-  getWapiQrCode,
-  getWapiStatus,
-  isWapiConnectedStatus,
-  setWapiAutoRead,
-} from '@/lib/wapi/wapi.service';
+import { configurarWebhook, criarSessaoDaLoja } from '@/lib/wuzapi/wuzapi.service';
 import {
   encryptWapiToken,
   getWhatsAppIntegration,
-  isBlockedSharedWapiInstance,
   sanitizeIntegration,
   saveWhatsAppIntegration,
-  statusFromWapi,
+  statusDaConexao,
 } from '@/lib/wapi/integration-store';
-import { WhatsAppIntegration } from '@/lib/wapi/types';
+import type { WhatsAppIntegration } from '@/lib/wapi/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function buildInstanceName(inputName: unknown, empresaId: string) {
-  const baseName = String(inputName || `Loja ${empresaId}`)
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 60);
-  return `${baseName || 'Loja'} - ${empresaId.slice(0, 10)}`.slice(0, 80);
-}
-
-async function getInitialWapiState(instanceId: string, token: string) {
-  let qrCode = '';
-  let connected = false;
-  let status = statusFromWapi(false);
-  let numeroWhatsapp = '';
-
-  const [qrResult, statusResult] = await Promise.allSettled([
-    getWapiQrCode(instanceId, token),
-    getWapiStatus(instanceId, token),
-  ]);
-
-  if (qrResult.status === 'fulfilled') {
-    qrCode = extractWapiQrCode(qrResult.value);
-  } else {
-    console.warn('[W-API] Falha ao buscar QR Code inicial:', qrResult.reason);
-  }
-
-  if (statusResult.status === 'fulfilled') {
-    connected = isWapiConnectedStatus(statusResult.value);
-    status = statusFromWapi(connected);
-    numeroWhatsapp = getWapiConnectedPhone(statusResult.value);
-  } else {
-    console.warn('[W-API] Falha ao buscar status inicial:', statusResult.reason);
-  }
-
-  return { qrCode, connected, status, numeroWhatsapp };
-}
-
+/**
+ * Prepara o WhatsApp da loja no servidor próprio: cria a sessão dela (ou acha a
+ * que já existe) e grava o cadastro em "aguardando conexão". Chamada pelo
+ * cadastro de loja nova e pelo botão "Conectar WhatsApp" da aba; depois disso a
+ * dona só lê o QR Code.
+ *
+ * Idempotente: loja com cadastro recebe o que está salvo, e a sessão no servidor
+ * é achada pelo nome ("WUZ-<empresaId>") em vez de criada de novo.
+ */
 export async function POST(request: Request) {
   return withAuth(request, async (user) => {
     try {
@@ -67,69 +29,43 @@ export async function POST(request: Request) {
       const empresaId = requireEmpresa(user, body.empresaId);
 
       const existing = await getWhatsAppIntegration(empresaId, user.idToken);
-      const hasBlockedSharedInstance = isBlockedSharedWapiInstance(existing?.wapiInstanceId);
-      const hasUsableExistingInstance = Boolean(existing?.wapiInstanceId && existing?.wapiTokenEncrypted);
-
-      if (existing && hasUsableExistingInstance && !body.force && !hasBlockedSharedInstance) {
-        return ok({
-          integration: sanitizeIntegration(existing),
-          alreadyConfigured: true,
-        });
+      if (existing?.wapiInstanceId && existing?.wapiTokenEncrypted) {
+        return ok({ integration: sanitizeIntegration(existing), alreadyConfigured: true });
       }
 
-      if (existing?.wapiInstanceId && !existing?.wapiTokenEncrypted) {
-        console.warn('[W-API] Substituindo registro sem token por uma nova instancia.', {
-          empresaId,
-          oldInstanceId: existing.wapiInstanceId,
-        });
-      }
+      const instanceId = `WUZ-${empresaId}`;
+      const { token } = await criarSessaoDaLoja(instanceId);
+      const webhookUrl = getWebhookUrl(request, empresaId, token);
 
-      if (hasBlockedSharedInstance) {
-        console.warn('[W-API] Substituindo instancia compartilhada antiga por uma instancia exclusiva.', {
-          empresaId,
-          oldInstanceId: existing?.wapiInstanceId,
-        });
+      // O webhook é tentativa aqui: se falhar, o cadastro sai sem `webhookUrl` e
+      // o poll de status da aba registra de novo (ele compara com a URL salva).
+      let webhookRegistrado = false;
+      try {
+        await configurarWebhook(token, webhookUrl);
+        webhookRegistrado = true;
+      } catch (error) {
+        console.warn('[WhatsApp] Sessao criada, mas o webhook nao foi registrado:', { empresaId, error });
       }
 
       const now = new Date().toISOString();
-      const instanceName = buildInstanceName(body.instanceName || body.storeName, empresaId);
-
-      if (!getWapiMainToken()) {
-        return ok({
-          error: 'WAPI_API_KEY nao configurada no servidor. Para usar uma instancia ja paga, clique em "Usar instancia ja paga" e informe o ID/token da loja.',
-        }, 500);
-      }
-
-      const created = await createWapiInstance({ instanceName });
-      if (!created.instanceId || !created.token) {
-        throw new ApiError(502, 'A W-API nao retornou instanceId/token para a nova instancia.', created);
-      }
-
-      const webhookUrl = getWebhookUrl(request, empresaId, created.token);
-      await configureWapiWebhooks(created.instanceId, created.token, webhookUrl);
-
-      // Garante que a instancia nunca marque mensagens (nem status/stories) como
-      // lidas sozinha — senao a conta "visualiza" o status de todos os contatos.
-      // Best-effort: nao bloqueia a criacao se a W-API recusar.
-      await setWapiAutoRead(created.instanceId, created.token, false).catch((error) => {
-        console.warn('[W-API] Falha ao desligar leitura automatica na criacao:', error);
-      });
-
-      const { qrCode, connected, status, numeroWhatsapp } = await getInitialWapiState(created.instanceId, created.token);
+      const instanceName = String(body.instanceName || body.storeName || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80);
 
       const integration: WhatsAppIntegration = {
         ownerId: user.uid,
         clienteId: user.uid,
         empresaId,
-        provider: 'wapi',
-        wapiInstanceId: created.instanceId,
-        wapiTokenEncrypted: encryptWapiToken(created.token),
-        instanceName,
-        status,
-        connected,
-        numeroWhatsapp,
-        qrCode,
-        webhookUrl,
+        provider: 'wuzapi',
+        wapiInstanceId: instanceId,
+        wapiTokenEncrypted: encryptWapiToken(token),
+        instanceName: instanceName || 'Loja',
+        status: statusDaConexao(false),
+        connected: false,
+        numeroWhatsapp: '',
+        qrCode: '',
+        ...(webhookRegistrado ? { webhookUrl } : {}),
         lastStatusAt: now,
         createdAt: existing?.createdAt || now,
         updatedAt: now,
@@ -137,11 +73,7 @@ export async function POST(request: Request) {
 
       await saveWhatsAppIntegration(empresaId, integration, user.idToken);
 
-      return ok({
-        integration: sanitizeIntegration(integration),
-        qrCode,
-        replacedSharedInstance: hasBlockedSharedInstance,
-      }, 201);
+      return ok({ integration: sanitizeIntegration(integration) }, 201);
     } catch (error) {
       return jsonError(error);
     }

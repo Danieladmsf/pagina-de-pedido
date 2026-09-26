@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /wapi/integration/{empresaId}
- * Retorna a integracao salva no Firestore SEM consultar a W-API ao vivo.
+ * Retorna a integracao salva no Firestore SEM consultar o servidor de WhatsApp.
  * Usado no carregamento inicial da pagina para exibir os dados rapidamente.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ empresaId: string }> }) {

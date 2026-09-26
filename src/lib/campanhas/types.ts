@@ -1,8 +1,8 @@
 /**
  * Tipos centrais do módulo de Campanhas (marketing via WhatsApp).
  *
- * A lógica de negócio (públicos, render de preview e — no futuro — o disparo
- * pela w-api) fica concentrada em src/lib/campanhas/* para NÃO inflar a UI nem
+ * A lógica de negócio (públicos, render de preview e o disparo pelo servidor
+ * de WhatsApp) fica concentrada em src/lib/campanhas/* para NÃO inflar a UI nem
  * o page.tsx. Os componentes em src/components/campanhas/* só consomem isto.
  */
 

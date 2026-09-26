@@ -156,7 +156,7 @@ describe('marca cifrada (servidor)', () => {
   const ler = (m: string) => lerBruto(LOJA, m);
 
   beforeAll(async () => {
-    process.env.WAPI_API_KEY = 'segredo-de-teste';
+    process.env.WAPI_TOKEN_ENCRYPTION_KEY = 'segredo-de-teste';
     const mod = await import('./contato-link.server');
     criarBruto = mod.criarMarcaDeContato;
     lerBruto = mod.lerMarcaDeContato;

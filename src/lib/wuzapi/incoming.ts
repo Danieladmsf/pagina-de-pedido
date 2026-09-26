@@ -1,5 +1,5 @@
 /**
- * Leitura dos webhooks do servidor próprio (WuzAPI) para a mesma mensagem que o
+ * Leitura dos webhooks do servidor de WhatsApp (WuzAPI) para a mensagem que o
  * robô entende (`IncomingMessage`).
  *
  * A WuzAPI manda `{ "type": "Message", "event": <evento cru do whatsmeow> }`.
@@ -8,12 +8,52 @@
  * `extendedTextMessage.text`, `reactionMessage.key.remoteJID`...). JIDs chegam
  * como texto: "5516...@s.whatsapp.net", "8189...@lid", "status@broadcast".
  *
- * Regras, as mesmas da W-API e da Z-API: grupo, canal, lista de transmissão e
- * story de contato não respondem; reação só no story da loja; mensagem editada
- * ou de protocolo não é mensagem nova; contato fora da agenda é respondido pelo
- * `@lid`; o que a loja digita no celular cala o robô naquele contato.
+ * Regras: grupo, canal, lista de transmissão e story de contato não respondem;
+ * reação só no story da loja; mensagem editada ou de protocolo não é mensagem
+ * nova; contato fora da agenda é respondido pelo `@lid`; o que a loja digita no
+ * celular cala o robô naquele contato. Bloqueio olha o DESTINO da mensagem,
+ * nunca o que ela cita: comentário no story chega como conversa 1:1 que CITA o
+ * story, e é conversa de verdade.
  */
-import type { IncomingMessage } from '@/lib/wapi/incoming-message';
+
+export type IncomingMessage = {
+  /**
+   * Telefone real do cliente. Vem VAZIO quando o contato nao esta salvo na
+   * agenda da loja: nesse caso o WhatsApp so entrega o @lid, e nao deixa
+   * converter LID em telefone (e privacidade, por design).
+   */
+  phone: string;
+  /**
+   * Para onde responder — o telefone ou `"<lid>@lid"`. Nunca vazio. O envio
+   * aceita o @lid no lugar do telefone, entao da pra responder um contato novo
+   * sem nunca saber o numero dele.
+   */
+  address: string;
+  text: string;
+  timestamp: number;
+  /**
+   * Nome que a pessoa usa no WhatsApp, quando vem. E o unico nome disponivel
+   * para contato fora da agenda da loja — sem ele, quem chega pelo codigo do
+   * cardapio aparece so como um numero no painel.
+   */
+  pushName: string;
+  /**
+   * O `@lid` de quem escreveu, quando vem. E o unico identificador que aparece
+   * nos dois lados da mesma pessoa: na DM (ao lado do telefone) e na reacao ao
+   * story (onde telefone pode nao vir). E o que costura as duas.
+   */
+  senderLid: string;
+  /**
+   * Verdadeiro so quando isto e a REACAO (o coracaozinho) no story da loja —
+   * nao uma DM, nem um comentario em texto no story, que sao conversa de
+   * verdade e seguem o caminho normal.
+   *
+   * Quem reage nao fez pergunta nenhuma: devolver o horario de funcionamento
+   * inteiro ali e ruido. Uma cliente levou 16 respostas automaticas em 6
+   * semanas, 7 delas so por mandar um coracao verde. Ver `buildAutoReply`.
+   */
+  isStoryReaction?: boolean;
+};
 
 export type EventoWuzapi = {
   event: string;
@@ -31,7 +71,7 @@ const TIPOS_WUZAPI = new Set([
   'KeepAliveRestored', 'AppStateSyncComplete', 'PushNameSetting',
 ]);
 
-/** Evento da WuzAPI: `type` conhecido e `event` em objeto (na W-API `event` é texto). */
+/** Evento da WuzAPI: `type` conhecido e `event` em objeto. */
 export function ehEventoWuzapi(payload: any) {
   return (
     typeof payload?.type === 'string' &&
@@ -128,8 +168,8 @@ export function lerEventoWuzapi(payload: any): EventoWuzapi {
   // (`key.remoteJID = "status@broadcast"`). A chave é montada por quem reagiu,
   // então `key.fromMe` vem FALSO (o story não é dele) e o autor do story vai em
   // `key.participant`. O WhatsApp só entrega reação de story a quem publicou,
-  // então toda reação de story que chega aqui é num story nosso: nas 3 reações
-  // reais da W-API em 25/09, `participant` era sempre o LID da própria loja.
+  // então toda reação de story que chega aqui é num story nosso: nas reações
+  // reais de 25/09, `participant` era sempre o LID da própria loja.
   // Reação a mensagem comum (sem status) não é pergunta e fica sem resposta.
   const reacao = mensagem?.reactionMessage;
   if (reacao) {

@@ -3,25 +3,24 @@ import crypto from 'crypto';
 const PREFIX = 'v1';
 
 /**
- * Chaves aceitas para LER o token salvo, em ordem de preferencia — a primeira e
- * tambem a que GRAVA.
+ * Chaves aceitas para LER o que foi cifrado, em ordem de preferencia — a
+ * primeira e tambem a que GRAVA.
  *
- * Historicamente nao existia `WAPI_TOKEN_ENCRYPTION_KEY` e o token de cada
- * instancia acabava cifrado com a propria `WAPI_API_KEY`. Como a chave deriva do
- * sha256 do segredo, trocar a API key da conta W-API tornava TODOS os tokens
- * salvos ilegiveis de uma vez, em todas as lojas, sem volta — o dono so via
- * "erro ao descriptografar" e precisava recadastrar tudo.
+ * `WAPI_TOKEN_ENCRYPTION_KEY` e a chave (o prefixo `WAPI_` e historico). Para
+ * trocar a chave sem tornar ilegivel o que ja esta salvo, a antiga vai para
+ * `WAPI_TOKEN_ENCRYPTION_KEY_LEGACY` (lista separada por virgula): o valor
+ * continua sendo lido com ela e volta a ser gravado com a nova no proximo save,
+ * sem migracao de dados.
  *
- * Aceitar as chaves antigas na leitura torna a rotacao segura: o token continua
- * sendo lido com a chave velha e volta a ser gravado com a nova no proximo save,
- * sem migracao de dados. `WAPI_TOKEN_ENCRYPTION_KEY_LEGACY` (lista separada por
- * virgula) guarda chaves aposentadas enquanto ainda houver token antigo por ai.
+ * Ate 25/09/2026 a chave da conta W-API (`WAPI_API_KEY`) tambem valia aqui,
+ * porque os tokens antigos tinham sido cifrados com ela. Saiu junto com a
+ * W-API: tudo o que esta cifrado hoje (chave de cada loja, `wt` do webhook,
+ * chave de admin do servidor) abre so com a chave dedicada — conferido nos
+ * dados antes de tirar.
  */
 function getCandidateSecrets() {
   const secrets = [
     process.env.WAPI_TOKEN_ENCRYPTION_KEY,
-    process.env.WAPI_API_KEY,
-    process.env.WAPI_INTEGRATOR_TOKEN,
     ...(process.env.WAPI_TOKEN_ENCRYPTION_KEY_LEGACY || '').split(','),
   ]
     .map((secret) => (secret || '').trim())
@@ -29,7 +28,7 @@ function getCandidateSecrets() {
 
   const unique = [...new Set(secrets)];
   if (!unique.length) {
-    throw new Error('Configure WAPI_API_KEY ou WAPI_TOKEN_ENCRYPTION_KEY no servidor.');
+    throw new Error('Configure WAPI_TOKEN_ENCRYPTION_KEY no servidor.');
   }
   return unique;
 }
@@ -64,7 +63,7 @@ function openWith(secret: string, iv: string, tag: string, encrypted: string) {
 export function decryptSecret(value: string) {
   const [prefix, iv, tag, encrypted] = String(value || '').split(':');
   if (prefix !== PREFIX || !iv || !tag || !encrypted) {
-    throw new Error('Token W-API salvo em formato invalido.');
+    throw new Error('Chave salva em formato invalido.');
   }
 
   for (const secret of getCandidateSecrets()) {
@@ -75,10 +74,10 @@ export function decryptSecret(value: string) {
     }
   }
 
-  throw new Error('Token W-API salvo nao confere com nenhuma chave conhecida do servidor.');
+  throw new Error('Chave salva nao confere com nenhuma chave conhecida do servidor.');
 }
 
-/** Grava de novo com a chave preferencial quando o token veio de uma chave antiga. */
+/** Grava de novo com a chave preferencial quando o valor veio de uma chave antiga. */
 export function needsReencrypt(value: string) {
   const [prefix, iv, tag, encrypted] = String(value || '').split(':');
   if (prefix !== PREFIX || !iv || !tag || !encrypted) return false;

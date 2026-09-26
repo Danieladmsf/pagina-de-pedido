@@ -16,7 +16,7 @@ import { createConcurrencyQueue } from '@/lib/throttle-queue';
 const cache = new Map<string, string | null>();
 const inflight = new Map<string, Promise<string | null>>();
 const TTL = 24 * 60 * 60 * 1000; // 24h
-// Limita as buscas simultâneas à w-api: a lista toda pode pedir foto de uma vez,
+// Limita as buscas simultâneas ao servidor: a lista toda pode pedir foto de uma vez,
 // mas só algumas vão à rede por vez (gentil com a API, sem travar a tela).
 const fetchQueue = createConcurrencyQueue(6);
 

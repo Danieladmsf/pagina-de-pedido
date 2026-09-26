@@ -1,6 +1,7 @@
 /**
  * O vigia do recebimento: percebe que parou de entrar mensagem e refaz o
- * registro dos webhooks na W-API sem depender de ninguém abrir tela nenhuma.
+ * registro do webhook no servidor de WhatsApp (e reabre a sessão da loja) sem
+ * depender de ninguém abrir tela nenhuma.
  *
  * Por que ele existe: a auto-cura já existia em `/wapi/status`, mas só rodava
  * enquanto alguém estivesse com a aba de conexão do WhatsApp aberta no
@@ -9,18 +10,18 @@
  * registro, mas uma única vez por carregamento de página e só para `owner`.
  *
  * O que ele NÃO faz, e é importante não prometer: nada aqui recupera mensagem
- * perdida. A W-API não guarda o que não conseguiu entregar e não reenvia. Este
- * vigia encurta a janela (de horas para ~15 min) e deixa rastro do que houve.
+ * perdida. O servidor tenta entregar cada webhook algumas vezes (5, a cada 30 s)
+ * e depois desiste. Este vigia encurta a janela (de horas para ~15 min) e deixa
+ * rastro do que houve.
  *
- * O rastro é o segundo motivo de ele existir. Hoje não dá para saber se o
- * silêncio foi "o registro caiu do lado deles" (isto aqui cura) ou "a entrega
- * deles estava fora" (isto aqui não cura). Cada incidente registra quanto tempo
- * levou para a primeira mensagem voltar DEPOIS do re-registro, e é isso que
- * separa as duas causas — na próxima vez a conversa terá dado, não palpite.
+ * O rastro é o segundo motivo de ele existir. Cada incidente registra quanto
+ * tempo levou para a primeira mensagem voltar DEPOIS do re-registro, e é isso
+ * que separa "o registro tinha caído" (isto aqui cura) de "a entrega estava
+ * fora" (isto aqui não cura) — com dado, não palpite.
  */
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { getStoreOpenState } from '@/lib/whatsapp-messages';
-import { configureWapiWebhooks } from '@/lib/wapi/wapi.service';
+import { configurarWebhook } from '@/lib/wuzapi/wuzapi.service';
 import { decryptWapiToken } from '@/lib/wapi/integration-store';
 import type { WhatsAppIntegration } from '@/lib/wapi/types';
 import {
@@ -35,16 +36,16 @@ const COLECAO_INCIDENTES = 'whatsapp_webhook_incidents';
 
 /**
  * Se a mensagem voltar dentro desta janela depois do re-registro, o que estava
- * quebrado era o REGISTRO na W-API — e o vigia resolveu. Passou muito disso, o
- * registro não era o problema: a entrega do provedor é que estava fora, e aí
- * nenhum código nosso teria evitado o silêncio.
+ * quebrado era o REGISTRO do webhook — e o vigia resolveu. Passou muito disso,
+ * o registro não era o problema: a entrega é que estava fora, e aí nenhum
+ * re-registro teria evitado o silêncio.
  */
 const JANELA_DE_CURA_MS = 5 * 60 * 1000;
 
 export type VeredictoDoIncidente =
-  /** Voltou logo após o re-registro: registro perdido do lado da W-API. */
+  /** Voltou logo após o re-registro: o registro do webhook tinha caído. */
   | 'registro_perdido'
-  /** Só voltou muito depois: a entrega do provedor estava fora. */
+  /** Só voltou muito depois: a entrega é que estava fora. */
   | 'entrega_do_provedor'
   /**
    * Detectado com a loja FECHADA. Não conclui nada, e é por isso que existe:
@@ -224,7 +225,7 @@ async function registrarTentativa(
 }
 
 /**
- * Verifica uma loja e, se estiver muda, refaz o registro dos 5 webhooks.
+ * Verifica uma loja e, se estiver muda, refaz o registro do webhook.
  *
  * `webhookUrl` vem pronto de quem chama (a rota sabe montar a URL a partir do
  * request); assim esta camada não depende de `next/server` e continua testável.
@@ -268,18 +269,8 @@ export async function vigiarRecebimentoDaLoja(
     const token = decryptWapiToken(loja.integration);
     if (!token) throw new Error('Token da instancia indisponivel.');
 
-    const resultado = await configureWapiWebhooks(
-      loja.integration.wapiInstanceId,
-      token,
-      montarWebhookUrl(loja.integration, token),
-    );
-    // `configureWapiWebhooks` engole falha parcial (Promise.allSettled): sem
-    // esta checagem um 429 deixaria o registro pela metade e ainda contaria
-    // como sucesso — o mesmo erro que já mordeu no poll de status.
-    registroConfirmado = resultado.failed.length === 0;
-    if (!registroConfirmado) {
-      erro = `Endpoints recusados: ${resultado.failed.map((f) => f.endpoint).join(', ')}`;
-    }
+    await configurarWebhook(token, montarWebhookUrl(loja.integration, token));
+    registroConfirmado = true;
   } catch (error: any) {
     erro = String(error?.message || error);
   }
@@ -318,9 +309,9 @@ export async function vigiarRecebimentoDeTodasAsLojas(
   const lojas = await listarLojasConectadas(adminDb);
   const resultados: ResultadoDaLoja[] = [];
 
-  // Sequencial de propósito: são poucas lojas e cada re-registro são 5 PUTs na
-  // W-API. Em paralelo, uma varredura viraria rajada em cima de um provedor que
-  // pode estar justamente instável.
+  // Sequencial de propósito: todas as lojas estão no mesmo servidor, e em
+  // paralelo uma varredura viraria rajada em cima dele justamente quando pode
+  // estar instável.
   for (const loja of lojas) {
     resultados.push(await vigiarRecebimentoDaLoja(loja, montarWebhookUrl, agora));
   }

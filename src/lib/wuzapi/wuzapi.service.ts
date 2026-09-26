@@ -1,20 +1,24 @@
 /**
- * Servidor PRÓPRIO de WhatsApp: WuzAPI (github.com/asternic/wuzapi, Go sobre
- * whatsmeow) numa máquina nossa no Google Cloud. Montado em 25/09/2026, depois
- * da queda da W-API, para não depender de provedor pago.
+ * Cliente do servidor de WhatsApp das lojas: WuzAPI (github.com/asternic/wuzapi,
+ * Go sobre whatsmeow) numa máquina nossa no Google Cloud, no ar desde
+ * 25/09/2026. É o único provedor do sistema; o manual está em
+ * docs/wapi/servidor-proprio-wuzapi.md.
  *
- * Cada loja é um "usuário" da WuzAPI, com token próprio. No nosso cadastro o ID
- * da instância é "WUZ-<nome>" (só um rótulo nosso; a WuzAPI identifica pela
- * chave) e o endereço do servidor vem de `WUZAPI_URL` ou `app_config/wuzapi`.
+ * Cada loja é um "usuário" da WuzAPI, com chave própria (cabeçalho `token`). No
+ * nosso cadastro o ID da instância é "WUZ-<...>", só um rótulo nosso: o servidor
+ * reconhece a loja pela chave. O endereço do servidor e a chave de admin (que
+ * cria a sessão de loja nova) vêm de `WUZAPI_URL`/`WUZAPI_ADMIN_TOKEN` ou de
+ * `app_config/wuzapi`.
  *
- * Como na Z-API, as funções devolvem o MESMO formato das da W-API, que desvia
- * para cá pelo ID. Diferenças da WuzAPI tratadas aqui:
+ * Particularidades da WuzAPI tratadas aqui:
  * - imagem e documento só vão em base64: o link do logo é baixado e convertido;
  * - o QR só existe com a sessão aberta, então pedir QR abre a sessão antes;
  * - quem entra na assinatura de eventos decide o que chega no webhook.
  */
+import crypto from 'crypto';
 import { ApiError } from '@/lib/firebase-auth-rest';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
+import { decryptSecret } from '@/lib/wapi/crypto';
 
 const TIMEOUT_MS = 20000;
 
@@ -30,36 +34,52 @@ export const EVENTOS_WUZAPI = [
   'ClientOutdated',
 ];
 
-/** ID de instância do servidor próprio no nosso cadastro: "WUZ-...". */
-export function ehInstanciaWuzapi(instanceId: unknown) {
-  return /^WUZ-[A-Z0-9_-]+$/i.test(String(instanceId || '').trim());
-}
-
 const CONFIG_CACHE_MS = 5 * 60 * 1000;
-let urlCache: { valor: string; lidoEm: number } | null = null;
+let configCache: { baseUrl: string; adminTokenEncrypted: string; lidoEm: number } | null = null;
+
+async function lerConfig() {
+  if (configCache && Date.now() - configCache.lidoEm < CONFIG_CACHE_MS) return configCache;
+  let dados: Record<string, unknown> = {};
+  try {
+    const snap = await getOptionalAdminDb()?.collection('app_config').doc('wuzapi').get();
+    dados = snap?.data() || {};
+  } catch (error) {
+    console.warn('[WuzAPI] Nao consegui ler app_config/wuzapi:', error);
+  }
+  configCache = {
+    baseUrl: String(dados.baseUrl || '').trim().replace(/\/$/, ''),
+    adminTokenEncrypted: String(dados.adminTokenEncrypted || ''),
+    lidoEm: Date.now(),
+  };
+  return configCache;
+}
 
 /** Endereço do servidor: `WUZAPI_URL` na Vercel, ou `app_config/wuzapi.baseUrl`. */
 async function obterUrlDoServidor() {
   const doAmbiente = (process.env.WUZAPI_URL || '').trim();
   if (doAmbiente) return doAmbiente.replace(/\/$/, '');
-  if (urlCache && Date.now() - urlCache.lidoEm < CONFIG_CACHE_MS) return urlCache.valor;
-  let valor = '';
-  try {
-    const snap = await getOptionalAdminDb()?.collection('app_config').doc('wuzapi').get();
-    valor = String(snap?.data()?.baseUrl || '').trim().replace(/\/$/, '');
-  } catch (error) {
-    console.warn('[WuzAPI] Nao consegui ler o endereco do servidor:', error);
-  }
-  urlCache = { valor, lidoEm: Date.now() };
-  return valor;
+  return (await lerConfig()).baseUrl;
 }
 
-async function requestWuz<T>(
-  token: string,
+/** Chave de admin: `WUZAPI_ADMIN_TOKEN` na Vercel, ou a cifrada em `app_config/wuzapi`. */
+async function obterChaveDeAdmin() {
+  const doAmbiente = (process.env.WUZAPI_ADMIN_TOKEN || '').trim();
+  if (doAmbiente) return doAmbiente;
+  const cifrada = (await lerConfig()).adminTokenEncrypted;
+  if (!cifrada) return '';
+  try {
+    return decryptSecret(cifrada);
+  } catch (error) {
+    console.warn('[WuzAPI] Nao consegui abrir a chave de admin salva:', error);
+    return '';
+  }
+}
+
+async function chamarServidor<T>(
+  cabecalhos: Record<string, string>,
   path: string,
   options: { method?: string; body?: Record<string, unknown>; timeoutMs?: number } = {},
 ): Promise<T> {
-  if (!token) throw new ApiError(500, 'Chave do servidor de WhatsApp nao configurada.');
   const base = await obterUrlDoServidor();
   if (!base) throw new ApiError(500, 'Endereco do servidor de WhatsApp nao configurado.');
 
@@ -69,13 +89,14 @@ async function requestWuz<T>(
       method: options.method || 'GET',
       cache: 'no-store',
       headers: {
-        token: token.trim(),
+        ...cabecalhos,
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
     });
   } catch (error: any) {
+    // 408 é o sinal de "vale tentar de novo" para quem chamou.
     const expirou = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     throw new ApiError(
       expirou ? 408 : 503,
@@ -101,6 +122,44 @@ async function requestWuz<T>(
   return (data?.data ?? data) as T;
 }
 
+/** Chamada em nome de uma loja, com a chave dela. */
+async function requestWuz<T>(
+  token: string,
+  path: string,
+  options: { method?: string; body?: Record<string, unknown>; timeoutMs?: number } = {},
+): Promise<T> {
+  if (!token) throw new ApiError(500, 'Chave do servidor de WhatsApp nao configurada.');
+  return chamarServidor<T>({ token: token.trim() }, path, options);
+}
+
+/**
+ * Sessão da loja no servidor, criada se ainda não existir. Idempotente pelo
+ * nome: pedir de novo devolve a chave da sessão que já existe, em vez de criar
+ * uma segunda (duas sessões para a mesma loja disputariam o mesmo celular).
+ *
+ * O nome é o ID que fica no cadastro da loja ("WUZ-<empresaId>"); as sessões
+ * criadas à mão antes disso levam o nome da loja depois do ID
+ * ("WUZ-GOSTINHO Gostinho de Ceu"), e também são reconhecidas.
+ */
+export async function criarSessaoDaLoja(nome: string) {
+  const admin = await obterChaveDeAdmin();
+  if (!admin) throw new ApiError(500, 'Chave de admin do servidor de WhatsApp nao configurada.');
+
+  const usuarios = await chamarServidor<any[]>({ Authorization: admin }, '/admin/users');
+  const existente = (Array.isArray(usuarios) ? usuarios : []).find((usuario) => {
+    const nomeSalvo = String(usuario?.name || '');
+    return nomeSalvo === nome || nomeSalvo.startsWith(`${nome} `);
+  });
+  if (existente?.token) return { token: String(existente.token), criada: false };
+
+  const token = crypto.randomBytes(24).toString('hex');
+  await chamarServidor({ Authorization: admin }, '/admin/users', {
+    method: 'POST',
+    body: { name: nome, token, events: EVENTOS_WUZAPI.join(',') },
+  });
+  return { token, criada: true };
+}
+
 /** Só os dígitos do usuário de um JID ("5516...:12@s.whatsapp.net" → "5516..."). */
 function digitosDoJid(jid: unknown) {
   const usuario = String(jid || '').split('@')[0].split(':')[0].split('.')[0];
@@ -108,9 +167,9 @@ function digitosDoJid(jid: unknown) {
 }
 
 /**
- * Status no formato que `isWapiConnectedStatus` lê. `LoggedIn` é a sessão
- * pareada; `Connected` é o socket, que cai e volta sozinho. Conta como conectada
- * a loja com sessão válida: o socket oscilando não pede QR de novo.
+ * `LoggedIn` é a sessão pareada; `Connected` é o socket, que cai e volta
+ * sozinho. Conta como conectada a loja com sessão válida: o socket oscilando
+ * não pede QR de novo.
  */
 export async function getWuzStatus(instanceId: string, token: string) {
   const data = await requestWuz<any>(token, '/session/status');
@@ -120,7 +179,7 @@ export async function getWuzStatus(instanceId: string, token: string) {
     instanceId,
     connected: logado,
     socketConectado: data?.Connected === true || data?.connected === true,
-    ...(phone.length >= 10 ? { phone } : {}),
+    phone: phone.length >= 10 ? phone : '',
   };
 }
 
@@ -134,8 +193,9 @@ async function abrirSessao(token: string) {
 }
 
 /**
- * QR em `qrcode`. A WuzAPI só gera o QR com a sessão aberta e leva um instante
- * para ele sair, então abre a sessão e pergunta algumas vezes.
+ * QR em data URL (`qrcode`). A WuzAPI só gera o QR com a sessão aberta e leva
+ * um instante para ele sair, então abre a sessão e pergunta algumas vezes.
+ * Sessão já pareada devolve QR vazio: pedir QR não derruba celular conectado.
  */
 export async function getWuzQrCode(instanceId: string, token: string) {
   await abrirSessao(token);
@@ -151,40 +211,25 @@ export async function getWuzQrCode(instanceId: string, token: string) {
   return { instanceId, qrcode: '' };
 }
 
-/** Deslogar o celular: o próximo pareamento pede QR. O usuário continua no servidor. */
+/** Deslogar o celular: o próximo pareamento pede QR. A sessão continua no servidor. */
 export function logoutWuz(_instanceId: string, token: string) {
   return requestWuz<any>(token, '/session/logout', { method: 'POST' });
 }
 
-/** Reiniciar: fecha o socket (a sessão fica) e abre de novo. */
-export async function restartWuz(_instanceId: string, token: string) {
-  await requestWuz(token, '/session/disconnect', { method: 'POST' }).catch(() => {});
-  await abrirSessao(token);
-  return { value: true };
-}
-
 /**
- * Webhook da loja. O retorno segue o `configureWapiWebhooks`, que rotas e vigia
- * conferem pelo nome `update-webhook-received`.
+ * Registra o webhook da loja e abre a sessão com a assinatura de eventos (sem
+ * ela a WuzAPI não manda os avisos de conexão). Lança se o servidor recusar o
+ * webhook; a abertura da sessão é tentativa.
  */
-export async function configureWuzWebhooks(_instanceId: string, token: string, webhookUrl: string) {
-  try {
-    await requestWuz(token, '/webhook', {
-      method: 'POST',
-      body: { webhook: webhookUrl, events: EVENTOS_WUZAPI, WebhookURL: webhookUrl, Events: EVENTOS_WUZAPI },
-    });
-    // Assinatura de eventos também vale na sessão: sem ela a WuzAPI não manda
-    // os avisos de conexão.
-    await abrirSessao(token).catch(() => {});
-    return { configured: ['update-webhook-received'], failed: [] as Array<{ endpoint: string; reason: string }>, webhookUrl };
-  } catch (error: any) {
-    const reason = String(error?.message || error || 'Falha desconhecida');
-    console.warn('[WuzAPI] Webhook nao foi configurado:', reason);
-    return { configured: [] as string[], failed: [{ endpoint: 'update-webhook-received', reason }], webhookUrl };
-  }
+export async function configurarWebhook(token: string, webhookUrl: string) {
+  await requestWuz(token, '/webhook', {
+    method: 'POST',
+    body: { webhook: webhookUrl, events: EVENTOS_WUZAPI, WebhookURL: webhookUrl, Events: EVENTOS_WUZAPI },
+  });
+  await abrirSessao(token).catch(() => {});
 }
 
-type ResultadoDeEnvio = { instanceId: string; messageId: string; insertedId?: string };
+type ResultadoDeEnvio = { instanceId: string; messageId: string };
 
 export async function sendWuzText(
   instanceId: string,
@@ -256,7 +301,7 @@ export async function getWuzProfilePicture(_instanceId: string, token: string, p
       method: 'POST',
       body: { Phone: String(phone || '').replace(/\D/g, ''), Preview: true },
     });
-    return { link: data?.URL || data?.url || null };
+    return { link: (data?.URL || data?.url || null) as string | null };
   } catch {
     return { link: null };
   }

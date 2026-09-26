@@ -9,8 +9,6 @@ import {
   Check,
   CheckCircle2,
   Copy,
-  Hash,
-  KeyRound,
   Link2,
   Loader2,
   MessageCircle,
@@ -21,7 +19,6 @@ import {
   Send,
   ShoppingBag,
   Smartphone,
-  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -90,11 +87,10 @@ const MESSAGE_KEYS: WhatsAppMessageKey[] = [
   'storeClosed',
 ];
 
-// O QR Code do W-API (/instance/qr-code) NAO e uma leitura: e a acao de parear
-// um aparelho. Pedir QR em laco enquanto a loja aparece como desconectada
-// derruba a sessao que estava de pe no celular — era exatamente por isso que o
-// WhatsApp caia sempre que alguem abria esta tela. Agora o pareamento so comeca
-// quando o dono pede, e para sozinho depois de alguns minutos.
+// O QR Code vale poucos segundos e e renovado so enquanto o dono esta
+// pareando, por tempo limitado: pedir QR abre a sessao da loja no servidor, e
+// deixar isso em laco numa aba esquecida nao serve para nada. (Na W-API, que
+// saiu em 25/09/2026, pedir QR era PAREAR e derrubava o celular conectado.)
 const QR_CODE_REFRESH_INTERVAL_MS = 25000;
 const QR_CODE_MAX_REFRESHES = 8;
 const CONNECTED_STATUS_REFRESH_INTERVAL_MS = 20000;
@@ -104,8 +100,6 @@ type IntegrationStatus = 'not_configured' | 'pending_qr' | 'connected' | 'discon
 
 interface Integration {
   empresaId: string;
-  /** 'wapi', 'zapi' ou 'wuzapi' (servidor próprio). Cadastro antigo não tem. */
-  provider?: string;
   wapiInstanceId: string;
   instanceName: string;
   status: IntegrationStatus;
@@ -118,15 +112,6 @@ interface Integration {
   lastError?: string;
   lastStatusAt?: string;
   tokenConfigured: boolean;
-}
-
-/**
- * Loja no servidor próprio (WuzAPI). O ID e a chave dela são criados e
- * guardados por nós: a dona nunca tem esses dados, então a tela não mostra
- * nada de instância e não oferece trocar nem remover.
- */
-function ehServidorProprio(integration: Integration | null) {
-  return integration?.provider === 'wuzapi' || /^WUZ-/i.test(integration?.wapiInstanceId || '');
 }
 
 function statusLabel(status?: IntegrationStatus) {
@@ -169,14 +154,8 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
   const [testPhone, setTestPhone] = useState('');
   const [pairing, setPairing] = useState(false);
   const [qrAttempts, setQrAttempts] = useState(0);
-  const [trocandoCredenciais, setTrocandoCredenciais] = useState(false);
   const [checkFailed, setCheckFailed] = useState('');
-  // O tipo fica guardado mesmo com a caixa fechada: limpar junto faria o texto
-  // trocar para o do outro botão durante a animação de fechar.
-  const [confirmacao, setConfirmacao] = useState<{ tipo: 'desconectar' | 'remover'; aberta: boolean }>({
-    tipo: 'desconectar',
-    aberta: false,
-  });
+  const [confirmarDesconexao, setConfirmarDesconexao] = useState(false);
   const [testMessage, setTestMessage] = useState('Ola! Esta e uma mensagem de teste do cardapio digital.');
   const [activeSection, setActiveSection] = useState<'conexao' | 'mensagens' | 'links'>('conexao');
   const [messageTemplates, setMessageTemplates] = useState<WhatsAppMessageTemplates>(() => getWhatsAppMessages(storeProfile?.whatsappMessages));
@@ -224,7 +203,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     return data;
   }
 
-  // Carrega os dados salvos do Firestore (rapido, sem chamar W-API)
+  // Carrega os dados salvos do Firestore (rapido, sem chamar o servidor de WhatsApp)
   const loadSavedIntegration = React.useCallback(async () => {
     if (!empresaId) {
       setInitialLoading(false);
@@ -254,7 +233,7 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     }
   }, [empresaId, user]);
 
-  // Consulta status ao vivo na W-API e atualiza
+  // Consulta o status ao vivo no servidor de WhatsApp e atualiza
   const loadStatus = React.useCallback(async (silent = false) => {
     if (!empresaId) return;
     if (!silent) setLoadingStatus(true);
@@ -341,67 +320,38 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     refreshQrCode(false);
   }
 
-  // Loja no servidor próprio e ainda sem celular: o QR abre sozinho ao carregar
-  // a tela, e o dono só precisa ler. Lá pedir QR não derruba ninguém (sessão já
-  // pareada devolve QR vazio). Na W-API continua sob clique, porque pedir QR é
-  // PAREAR e derrubava o celular conectado.
+  // Loja ainda sem celular: o QR abre sozinho ao carregar a tela, e o dono só
+  // precisa ler. Pedir QR não derruba ninguém (sessão já pareada devolve QR
+  // vazio).
   const qrAutomaticoFeitoRef = React.useRef(false);
   useEffect(() => {
     if (qrAutomaticoFeitoRef.current || initialLoading || !integration || integration.connected) return;
-    if (!ehServidorProprio(integration)) return;
     qrAutomaticoFeitoRef.current = true;
     startPairing();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLoading, integration?.provider, integration?.wapiInstanceId, integration?.connected]);
+  }, [initialLoading, integration?.wapiInstanceId, integration?.connected]);
 
-  async function linkInstance(wapiInstanceId: string, token: string): Promise<boolean> {
+  // Loja sem WhatsApp preparado (cadastro antigo, ou o preparo do cadastro de
+  // loja nova falhou): cria a sessão dela no servidor, e o QR abre sozinho.
+  async function conectarWhatsApp() {
     setLoading(true);
     try {
-      const data = await apiFetch('/wapi/link-instance', {
+      const data = await apiFetch('/wapi/create-instance', {
         method: 'POST',
-        body: JSON.stringify({ empresaId, instanceName: storeName, wapiInstanceId, token }),
+        body: JSON.stringify({ empresaId, instanceName: storeName }),
       });
       setIntegration(data.integration);
       setCheckFailed('');
-      const nextQrCode = data.qrCode || data.integration?.qrCode || '';
-      setQrCode(nextQrCode);
-      if (!data.integration?.connected) {
-        setQrAttempts(0);
-        setPairing(true);
-      }
-      toast({
-        title: 'WhatsApp vinculado',
-        description: data.integration?.connected
-          ? 'A conexao foi vinculada e ja esta ativa.'
-          : 'Conexao vinculada. Escaneie o QR Code para ativar.',
-      });
-      return true;
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao vincular', description: error.message });
-      return false;
+      toast({ variant: 'destructive', title: 'Não consegui preparar o WhatsApp', description: error.message });
     } finally {
       setLoading(false);
     }
   }
 
-  // Abrir a troca encerra o pareamento em andamento: pedir QR é a ação de
-  // PAREAR na W-API, e seguir pedindo o da instância que está saindo não serve
-  // para nada.
-  function abrirTrocaDeCredenciais() {
-    setPairing(false);
-    setQrAttempts(0);
-    setQrCode('');
-    setTrocandoCredenciais(true);
-  }
-
-  async function trocarCredenciais(wapiInstanceId: string, token: string) {
-    if (await linkInstance(wapiInstanceId, token)) setTrocandoCredenciais(false);
-  }
-
-  // Desconectar é só o celular: o cadastro (ID e chave da instância) fica salvo
-  // e religar é ler o QR Code. Até 23/09/2026 este botão também apagava o ID e a
-  // chave, e religar passava a depender do suporte. Apagar o cadastro agora é o
-  // "Remover integração", separado e com aviso próprio.
+  // Desconectar é só o celular: a sessão da loja fica no servidor e religar é
+  // ler o QR Code. Até 23/09/2026 este botão também apagava o ID e a chave, e
+  // religar passava a depender do suporte.
   async function desconectarCelular() {
     setLoading(true);
     try {
@@ -422,35 +372,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function removerIntegracao() {
-    setLoading(true);
-    try {
-      await apiFetch('/wapi/remove', {
-        method: 'POST',
-        body: JSON.stringify({ empresaId }),
-      });
-      setIntegration(null);
-      setQrCode('');
-      setPairing(false);
-      setQrAttempts(0);
-      toast({
-        title: 'Integração removida',
-        description: 'Para conectar o WhatsApp de novo, peça ao suporte o ID e a chave da instância.',
-      });
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Erro ao remover', description: error.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function confirmarAcao() {
-    const { tipo } = confirmacao;
-    setConfirmacao((atual) => ({ ...atual, aberta: false }));
-    if (tipo === 'remover') void removerIntegracao();
-    else void desconectarCelular();
   }
 
   async function sendTestMessage() {
@@ -516,7 +437,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
 
   const isConnected = integration?.connected || integration?.status === 'connected';
   const status = integration?.status;
-  const servidorProprio = ehServidorProprio(integration);
 
   return (
     <div className="max-w-[1500px] w-full mx-auto p-4 md:p-8 space-y-5 overflow-y-auto custom-scrollbar">
@@ -621,32 +541,28 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
             </CardHeader>
             <CardContent className="p-5 md:p-6 space-y-5">
               {!integration ? (
-                <EmptyState onLink={linkInstance} loading={loading} disabled={!user} />
+                <EmptyState onConnect={conectarWhatsApp} loading={loading} disabled={!user} />
               ) : (
                 <>
-                  <InfoGrid
-                    storeName={storeName}
-                    integration={integration}
-                    mostrarInstancia={!servidorProprio}
-                  />
+                  <InfoGrid storeName={storeName} integration={integration} />
 
-                  <ConnectionSupportActions
-                    loading={loading || loadingStatus}
-                    connected={isConnected}
-                    trocando={trocandoCredenciais}
-                    permitirTroca={!servidorProprio}
-                    onDisconnect={() => setConfirmacao({ tipo: 'desconectar', aberta: true })}
-                    onTrocar={abrirTrocaDeCredenciais}
-                  />
+                  {/* Deslogar um celular que já não está conectado não faz nada: o
+                      botão só aparece com o aparelho ligado. */}
+                  {isConnected && (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setConfirmarDesconexao(true)}
+                        disabled={loading || loadingStatus}
+                        className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <Power className="h-4 w-4" />
+                        Desconectar celular
+                      </Button>
+                    </div>
+                  )}
 
-                  {trocandoCredenciais ? (
-                    <TrocarCredenciais
-                      onSubmit={trocarCredenciais}
-                      onCancel={() => setTrocandoCredenciais(false)}
-                      loading={loading}
-                      disabled={!user}
-                    />
-                  ) : !isConnected ? (
+                  {!isConnected ? (
                     <QrSection
                       qrCode={qrCode}
                       status={status}
@@ -657,14 +573,6 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
                     />
                   ) : (
                     <ConnectedCard numero={integration.numeroWhatsapp} lastWebhookAt={integration.lastWebhookAt} />
-                  )}
-
-                  {/* No servidor próprio, remover apagaria o que só nós recriamos. */}
-                  {!servidorProprio && (
-                    <RemoverIntegracaoRodape
-                      loading={loading || loadingStatus}
-                      onRemove={() => setConfirmacao({ tipo: 'remover', aberta: true })}
-                    />
                   )}
                 </>
               )}
@@ -727,136 +635,38 @@ export function WhatsAppTab({ user, storeProfile, db }: WhatsAppTabProps) {
         </div>
       )}
 
-      <AlertDialog
-        open={confirmacao.aberta}
-        onOpenChange={(aberta) => setConfirmacao((atual) => ({ ...atual, aberta }))}
-      >
+      <AlertDialog open={confirmarDesconexao} onOpenChange={setConfirmarDesconexao}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              {confirmacao.tipo === 'remover' ? (
-                <>
-                  <Trash2 className="h-5 w-5 shrink-0 text-red-600" />
-                  Remover a integração do WhatsApp?
-                </>
-              ) : (
-                <>
-                  <Power className="h-5 w-5 shrink-0 text-red-600" />
-                  Desconectar o celular da loja?
-                </>
-              )}
+              <Power className="h-5 w-5 shrink-0 text-red-600" />
+              Desconectar o celular da loja?
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              {confirmacao.tipo === 'remover' ? (
-                <div className="space-y-2">
-                  <p>
-                    Isso desconecta o celular e <strong>apaga do sistema o ID da instância e a chave de
-                    acesso</strong> do WhatsApp da loja. As respostas automáticas e os avisos de pedido
-                    param na hora.
-                  </p>
-                  <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-red-800">
-                    <strong>Para conectar de novo, vai ser preciso entrar em contato com o suporte</strong>{' '}
-                    para receber esses dados outra vez.
-                  </p>
-                  <p>
-                    Se você só quer trocar de celular ou religar, use <strong>Desconectar celular</strong>:
-                    ele mantém o cadastro. Se recebeu um ID e uma chave novos, use{' '}
-                    <strong>Trocar ID e chave</strong>.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <p>
-                    As respostas automáticas e os avisos de pedido param na hora e só voltam quando alguém
-                    ler o QR Code de novo com o celular da loja.
-                  </p>
-                  <p>O cadastro do WhatsApp continua salvo: para religar, não precisa do suporte.</p>
-                  <p>Se as mensagens só pararam de chegar, não desconecte: o sistema tenta religar sozinho.</p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <p>
+                  As respostas automáticas e os avisos de pedido param na hora e só voltam quando alguém
+                  ler o QR Code de novo com o celular da loja.
+                </p>
+                <p>O cadastro do WhatsApp continua salvo: para religar, não precisa do suporte.</p>
+                <p>Se as mensagens só pararam de chegar, não desconecte: o sistema tenta religar sozinho.</p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
-              onClick={confirmarAcao}
+              onClick={() => {
+                setConfirmarDesconexao(false);
+                void desconectarCelular();
+              }}
             >
-              {confirmacao.tipo === 'remover' ? 'Remover definitivamente' : 'Desconectar celular'}
+              Desconectar celular
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-function ConnectionSupportActions({
-  loading,
-  connected,
-  trocando,
-  permitirTroca,
-  onDisconnect,
-  onTrocar,
-}: {
-  loading: boolean;
-  connected: boolean;
-  trocando: boolean;
-  /** Falso no servidor próprio: ID e chave de lá são criados por nós. */
-  permitirTroca: boolean;
-  onDisconnect: () => void;
-  onTrocar: () => void;
-}) {
-  if (!connected && !permitirTroca) return null;
-  return (
-    <div className="flex flex-wrap gap-2">
-      {/* Deslogar um celular que já não está conectado não faz nada: o botão
-          só aparece com o aparelho ligado. */}
-      {connected && (
-        <Button
-          variant="ghost"
-          onClick={onDisconnect}
-          disabled={loading}
-          className="h-9 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
-        >
-          <Power className="h-4 w-4" />
-          Desconectar celular
-        </Button>
-      )}
-      {permitirTroca && !trocando && (
-        <Button
-          variant="ghost"
-          onClick={onTrocar}
-          disabled={loading}
-          className="h-9 rounded-lg text-slate-700 hover:bg-slate-100"
-        >
-          <KeyRound className="h-4 w-4" />
-          Trocar ID e chave
-        </Button>
-      )}
-    </div>
-  );
-}
-
-// No pé do cartão e sem cor de destaque, de propósito: apagar o cadastro não
-// religa nada, e só o suporte desfaz. Quem quer trocar ou religar o celular
-// usa o "Desconectar celular"; quem recebeu ID e chave novos, o "Trocar ID e
-// chave".
-function RemoverIntegracaoRodape({ loading, onRemove }: { loading: boolean; onRemove: () => void }) {
-  return (
-    <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs text-slate-500">
-        Remover apaga o ID e a chave da instância. Para usar um ID e uma chave novos, use Trocar ID e chave.
-      </p>
-      <Button
-        variant="ghost"
-        onClick={onRemove}
-        disabled={loading}
-        className="h-8 shrink-0 self-start rounded-lg px-2.5 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700 sm:self-auto"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        Remover integração
-      </Button>
     </div>
   );
 }
@@ -1455,114 +1265,7 @@ function LoadingState() {
   );
 }
 
-/**
- * ID e chave da instância: o mesmo formulário no primeiro vínculo e na troca.
- * Nos dois casos o servidor confere o par com a W-API antes de gravar, então um
- * par errado não mexe no que já está salvo.
- */
-function CredenciaisDaInstancia({
-  onSubmit,
-  onCancel,
-  loading,
-  disabled,
-}: {
-  onSubmit: (id: string, token: string) => void;
-  onCancel?: () => void;
-  loading: boolean;
-  disabled: boolean;
-}) {
-  const [manualId, setManualId] = useState('');
-  const [manualToken, setManualToken] = useState('');
-
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <Label className="text-xs text-slate-600">ID da instancia</Label>
-        <Input
-          id="wapiInstanceId"
-          name="wapiInstanceId"
-          autoComplete="off"
-          data-lpignore="true"
-          value={manualId}
-          onChange={(e) => setManualId(e.target.value)}
-          placeholder="Ex: LITE-HYYZ0N..."
-          className="text-xs h-9"
-          disabled={disabled}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-slate-600">Token da instancia</Label>
-        <Input
-          id="wapiToken"
-          name="wapiToken"
-          type="password"
-          autoComplete="new-password"
-          data-lpignore="true"
-          value={manualToken}
-          onChange={(e) => setManualToken(e.target.value)}
-          placeholder="Cole a chave aqui"
-          className="text-xs h-9"
-          disabled={disabled}
-        />
-      </div>
-      <div className="pt-2 flex gap-2">
-        <Button
-          variant="outline"
-          className="flex-1 h-9 text-xs"
-          onClick={() => {
-            setManualId('');
-            setManualToken('');
-            onCancel?.();
-          }}
-          disabled={loading || disabled}
-        >
-          Cancelar
-        </Button>
-        <Button
-          className="flex-1 h-9 text-xs bg-emerald-600 hover:bg-emerald-700"
-          disabled={!manualId.trim() || !manualToken.trim() || loading || disabled}
-          onClick={() => onSubmit(manualId.trim(), manualToken.trim())}
-        >
-          {loading ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <QrCode className="h-3 w-3 mr-2" />}
-          Salvar e gerar QR
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Troca o ID e a chave com a integração já salva. Antes disso, a única saída
- * era "Remover integração" — com o aviso de que depois só o suporte religa — e
- * só então o formulário aparecia. Em 25/09/2026 a W-API derrubou as duas lojas
- * no mesmo minuto e quem tinha o ID e a chave novos não achou onde colocar.
- */
-function TrocarCredenciais({
-  onSubmit,
-  onCancel,
-  loading,
-  disabled,
-}: {
-  onSubmit: (id: string, token: string) => void;
-  onCancel: () => void;
-  loading: boolean;
-  disabled: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-      <div>
-        <p className="font-bold text-slate-900 text-sm">Trocar ID e chave da instancia</p>
-        <p className="text-xs text-slate-600 mt-1">
-          Use quando receber um ID e uma chave novos. Antes de trocar, o sistema confere os dois:
-          se nao baterem, o cadastro atual continua como esta.
-        </p>
-      </div>
-      <CredenciaisDaInstancia onSubmit={onSubmit} onCancel={onCancel} loading={loading} disabled={disabled} />
-    </div>
-  );
-}
-
-function EmptyState({ onLink, loading, disabled }: { onLink: (id: string, token: string) => void; loading: boolean; disabled: boolean }) {
+function EmptyState({ onConnect, loading, disabled }: { onConnect: () => void; loading: boolean; disabled: boolean }) {
   return (
     <div className="rounded-2xl border border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 p-8 md:p-10 text-center relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl pointer-events-none" />
@@ -1570,21 +1273,25 @@ function EmptyState({ onLink, loading, disabled }: { onLink: (id: string, token:
         <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4">
           <Smartphone className="h-8 w-8 text-white" />
         </div>
-        <h2 className="font-black text-lg text-slate-900">WhatsApp ainda nao conectado</h2>
+        <h2 className="font-black text-lg text-slate-900">WhatsApp ainda não conectado</h2>
         <p className="text-sm text-slate-600 mt-1.5 max-w-md mx-auto">
-          Gere o QR Code e conecte o numero que a loja vai usar para falar com os clientes.
+          Conecte o número que a loja vai usar para falar com os clientes. Só precisa do celular da loja na mão.
         </p>
 
-        <div className="mt-6 max-w-sm mx-auto bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm text-left">
-          <h3 className="text-sm font-bold text-slate-800 mb-3">Usar instancia ja paga</h3>
-          <CredenciaisDaInstancia onSubmit={onLink} loading={loading} disabled={disabled} />
-        </div>
+        <Button
+          onClick={onConnect}
+          disabled={loading || disabled}
+          className="mt-6 rounded-full h-11 px-6 bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <QrCode className="h-4 w-4 mr-2" />}
+          Conectar WhatsApp
+        </Button>
 
         <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
           {[
-            { n: 1, t: 'Conectar', d: 'Prepare o QR Code para o WhatsApp da loja.' },
-            { n: 2, t: 'Escanear QR', d: 'Abra o WhatsApp do celular e leia o codigo gerado.' },
-            { n: 3, t: 'Pronto', d: 'Notificacoes comecam a ser enviadas automaticamente.' },
+            { n: 1, t: 'Conectar', d: 'Toque em Conectar WhatsApp para gerar o QR Code.' },
+            { n: 2, t: 'Escanear QR', d: 'Abra o WhatsApp do celular e leia o código gerado.' },
+            { n: 3, t: 'Pronto', d: 'Notificações começam a ser enviadas automaticamente.' },
           ].map((step) => (
             <div key={step.n} className="rounded-xl border border-emerald-100 bg-white/80 backdrop-blur p-3">
               <div className="h-6 w-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center mb-2">
@@ -1600,28 +1307,8 @@ function EmptyState({ onLink, loading, disabled }: { onLink: (id: string, token:
   );
 }
 
-function InfoGrid({
-  storeName,
-  integration,
-  mostrarInstancia,
-}: {
-  storeName: string;
-  integration: Integration;
-  /** Falso no servidor próprio: o ID ali é nosso, não algo que a dona usa. */
-  mostrarInstancia: boolean;
-}) {
-  const { toast } = useToast();
-
-  const copyInstanceId = async () => {
-    if (!integration.wapiInstanceId) return;
-    try {
-      await navigator.clipboard.writeText(integration.wapiInstanceId);
-      toast({ title: 'ID copiado', description: 'ID da instancia copiado para a area de transferencia.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Nao foi possivel copiar', description: 'Copie o ID manualmente.' });
-    }
-  };
-
+// O ID da sessão ("WUZ-...") não aparece: é nosso, não algo que a dona usa.
+function InfoGrid({ storeName, integration }: { storeName: string; integration: Integration }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="rounded-xl border bg-white p-3.5">
@@ -1645,30 +1332,6 @@ function InfoGrid({
           )}
         </p>
       </div>
-      {mostrarInstancia && (
-        <div className="rounded-xl border bg-white p-3.5 md:col-span-2">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1">
-            <Hash className="h-3 w-3 text-slate-400" />
-            ID da instancia
-          </p>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <code className="font-mono text-sm font-bold text-slate-900 truncate">
-              {integration.wapiInstanceId || '—'}
-            </code>
-            {integration.wapiInstanceId && (
-              <button
-                type="button"
-                onClick={copyInstanceId}
-                title="Copiar ID da instancia"
-                className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-700 transition-colors"
-              >
-                <Copy className="h-3 w-3" />
-                Copiar
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1699,8 +1362,7 @@ function QrSection({
           </div>
           <p className="font-black text-slate-900">Conectar o celular da loja</p>
           <p className="text-sm text-slate-600 mt-1.5">
-            Gere o QR Code so quando o celular estiver na mao para escanear. Gerar o codigo
-            desconecta qualquer aparelho que ja esteja ligado nesta conexao.
+            Com o celular da loja na mão, gere o QR Code e leia pelo WhatsApp.
           </p>
           <Button
             onClick={onStartPairing}

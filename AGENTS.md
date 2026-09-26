@@ -15,9 +15,9 @@ Antes de alterar um contrato de vínculo, rode `npm run audit:integridade` e os 
 
 ## WhatsApp das lojas
 
-- O WhatsApp das lojas roda no **servidor próprio**: WuzAPI na máquina `whatsapp-lojas` do Google Cloud (`https://35-237-85-231.sslip.io`). É o único provedor oficial desde 25/09/2026. Manual completo: `docs/wapi/servidor-proprio-wuzapi.md`.
-- **Não integre, reative nem tente "consertar" W-API ou Z-API.** A Z-API foi removida do código. A W-API ainda aparece no código só como caminho de volta da migração e vai ser removida; não escreva código novo em cima dela.
-- O código do servidor próprio está em `src/lib/wuzapi/`. Loja ligada nele tem ID de instância `WUZ-<LOJA>`.
-- Nomes com "wapi" (pasta `src/lib/wapi`, rotas `/wapi/*` e `/webhooks/wapi`, campos `wapiInstanceId` e `wapiTokenEncrypted`) são nomes históricos: hoje atendem o servidor próprio. Não renomeie sem migrar junto o webhook registrado no servidor e os campos gravados no Firestore.
-- Chaves nunca vão para o git. Ficam no `.env.local` da máquina de desenvolvimento e no `.env` do servidor (`/opt/wuzapi/.env`).
-- **Não apague variáveis `WAPI_*` da Vercel achando que são da W-API.** `WAPI_WEBHOOK_SECRET`, `WAPI_TOKEN_ENCRYPTION_KEY` e `WAPI_PUBLIC_BASE_URL` são usadas pelo servidor próprio, pelo link de contato do cardápio e pelas campanhas. Só `WAPI_BASE_URL` e `WAPI_API_KEY` são da W-API, e saem junto com o código dela. Lista completa em `docs/wapi/servidor-proprio-wuzapi.md`.
+- O WhatsApp das lojas roda no **servidor próprio**: WuzAPI na máquina `whatsapp-lojas` do Google Cloud (`https://35-237-85-231.sslip.io`). É o único provedor desde 25/09/2026. Manual completo: `docs/wapi/servidor-proprio-wuzapi.md`.
+- **Não integre, reative nem tente "consertar" W-API ou Z-API.** As duas foram removidas do código em 25/09/2026; o que sobrou delas é só documento histórico em `docs/wapi/historico-w-api/`.
+- O cliente do servidor está em `src/lib/wuzapi/` (`wuzapi.service.ts` fala com o servidor, `incoming.ts` lê o webhook). A sessão de cada loja é criada pelo sistema (`/wapi/create-instance`, ID `WUZ-<empresaId>`): a dona só lê o QR Code, não há ID nem chave para digitar.
+- Nomes com "wapi" (pasta `src/lib/wapi`, rotas `/wapi/*` e `/webhooks/wapi`, campos `wapiInstanceId` e `wapiTokenEncrypted`, variáveis `WAPI_*`) são nomes históricos: hoje atendem o servidor próprio. Não renomeie sem migrar junto o webhook registrado no servidor e os campos gravados no Firestore.
+- Chaves nunca vão para o git. Ficam no `.env.local` da máquina de desenvolvimento e no `.env` do servidor (`/opt/wuzapi/.env`); a produção lê o endereço e a chave de admin do servidor em `app_config/wuzapi` (a chave de admin, cifrada).
+- **Não apague variáveis `WAPI_*` da Vercel achando que são da W-API.** `WAPI_WEBHOOK_SECRET`, `WAPI_TOKEN_ENCRYPTION_KEY` e `WAPI_PUBLIC_BASE_URL` estão em uso (webhook, cifra das chaves das lojas, link de contato do cardápio, campanhas e vigia). Lista completa em `docs/wapi/servidor-proprio-wuzapi.md`.

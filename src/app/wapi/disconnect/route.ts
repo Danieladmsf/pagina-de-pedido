@@ -7,9 +7,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Desconecta só o CELULAR da loja: o cadastro (ID e chave da instância) fica
- * salvo, e religar é ler o QR Code de novo. Apagar o cadastro é outra rota,
- * `/wapi/remove`, com outro botão e outro aviso (ver `lib/wapi/desconexao`).
+ * Desconecta só o CELULAR da loja: a sessão no servidor e o cadastro ficam, e
+ * religar é ler o QR Code de novo (ver `lib/wapi/desconexao`).
  */
 export async function POST(request: Request) {
   return withAuth(request, async (user) => {

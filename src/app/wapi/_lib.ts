@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ApiError, AuthenticatedFirebaseUser, jsonError, requireFirebaseUser } from '@/lib/firebase-auth-rest';
-import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, getWhatsAppIntegrationAdmin, isBlockedSharedWapiInstance } from '@/lib/wapi/integration-store';
+import { assertEmpresaOwner, decryptWapiToken, getWhatsAppIntegration, getWhatsAppIntegrationAdmin } from '@/lib/wapi/integration-store';
 import { encryptSecret } from '@/lib/wapi/crypto';
 import { WhatsAppIntegration } from '@/lib/wapi/types';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
@@ -156,24 +156,19 @@ function resolveIntegration(integration: WhatsAppIntegration | null): { integrat
     throw new ApiError(404, 'WhatsApp ainda nao configurado para esta empresa.');
   }
 
-  if (isBlockedSharedWapiInstance(integration.wapiInstanceId)) {
-    throw new ApiError(409, 'Esta empresa ainda aponta para uma instancia W-API compartilhada de testes. Crie uma nova instancia para isolar o WhatsApp da loja.');
-  }
-
   let token: string;
   try {
     token = decryptWapiToken(integration);
   } catch (err) {
-    // "Desconectar" passa por aqui e falharia igual: com a chave ilegível, o
-    // caminho é gravar ID e chave de novo. O "Trocar ID e chave" não precisa
-    // abrir a chave antiga (link-instance só confere o par novo com a W-API).
-    throw new ApiError(500, 'Não consegui abrir a chave salva do WhatsApp. Use Trocar ID e chave, na aba WhatsApp, com o ID e a chave que o suporte passar.');
+    // Chave ilegível só acontece se a chave de cifra do servidor mudar sem a
+    // antiga ir para WAPI_TOKEN_ENCRYPTION_KEY_LEGACY (ver lib/wapi/crypto).
+    throw new ApiError(500, 'Não consegui abrir a chave salva do WhatsApp desta loja. Chame o suporte.');
   }
 
   return { integration, token };
 }
 
-/** Resolve a instância w-api da empresa a partir do token do usuário (REST). */
+/** Resolve a sessão de WhatsApp da empresa a partir do token do usuário (REST). */
 export async function requireIntegration(empresaId: string, idToken: string): Promise<{ integration: WhatsAppIntegration; token: string }> {
   return resolveIntegration(await getWhatsAppIntegration(empresaId, idToken));
 }

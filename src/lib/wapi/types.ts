@@ -5,8 +5,11 @@ export interface WhatsAppIntegration {
   ownerId: string;
   clienteId: string;
   empresaId: string;
-  /** Quem atende a loja. O ID e a chave ficam nos mesmos campos `wapi*`. */
-  provider: 'wapi' | 'wuzapi';
+  /**
+   * O servidor de WhatsApp das lojas (WuzAPI). Os campos `wapi*` têm esse nome
+   * por história: guardam o ID ("WUZ-...") e a chave da sessão da loja.
+   */
+  provider: 'wuzapi';
   wapiInstanceId: string;
   wapiTokenEncrypted: string;
   instanceName: string;
@@ -19,14 +22,14 @@ export interface WhatsAppIntegration {
    * Ultimo webhook recebido desta instancia (ISO). Prova que o REGISTRO do
    * webhook esta de pe — nao confundir com `connected`, que e o celular. O
    * handler carimba no maximo a cada 5 min; o poll de status usa para saber se
-   * precisa refazer o registro na W-API.
+   * precisa refazer o registro do webhook no servidor.
    */
   lastWebhookAt?: string;
   lastError?: string;
   lastStatusAt?: string;
   /** Ultima vez que o vigia tentou refazer o registro dos webhooks (ISO). */
   watchdogUltimaTentativaEm?: string;
-  /** Resultado dessa tentativa: os 5 endpoints aceitos ou nao. */
+  /** Resultado dessa tentativa: o servidor aceitou o webhook ou nao. */
   watchdogUltimoResultado?: 'ok' | 'falha';
   createdAt: string;
   updatedAt: string;
@@ -36,7 +39,7 @@ export interface SanitizedWhatsAppIntegration {
   ownerId: string;
   clienteId: string;
   empresaId: string;
-  provider: 'wapi' | 'wuzapi';
+  provider: 'wuzapi';
   wapiInstanceId: string;
   instanceName: string;
   status: WapiConnectionStatus;

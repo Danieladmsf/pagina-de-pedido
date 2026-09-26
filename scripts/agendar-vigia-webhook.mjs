@@ -83,7 +83,7 @@ if (!APLICAR) {
 }
 
 // Recriar em vez de acumular: rodar o script duas vezes nao pode virar duas
-// varreduras simultaneas em cima da mesma W-API.
+// varreduras simultaneas em cima do mesmo servidor de WhatsApp.
 for (const s of doVigia) {
   await client.schedules.delete(s.scheduleId);
   console.log(`removido o anterior: ${s.scheduleId}`);

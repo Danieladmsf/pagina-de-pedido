@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ehEventoWuzapi, lerEventoWuzapi } from './incoming';
-import { ehInstanciaWuzapi } from './wuzapi.service';
 
 // Formato da WuzAPI: { type, event } com o evento cru do whatsmeow (Info + Message).
 const mensagem = (info: Record<string, unknown> = {}, message: Record<string, unknown> = { conversation: 'oi, tem bolo hoje?' }) => ({
@@ -24,17 +23,16 @@ const mensagem = (info: Record<string, unknown> = {}, message: Record<string, un
   },
 });
 
-describe('qual provedor', () => {
-  it('ID "WUZ-..." é o servidor próprio', () => {
-    expect(ehInstanciaWuzapi('WUZ-GOSTINHO')).toBe(true);
-    expect(ehInstanciaWuzapi('LITE-8NDQT1-UWX43P')).toBe(false);
-    expect(ehInstanciaWuzapi('3F9B1E3257CB713CA2E05E00F85CEB2F')).toBe(false);
+describe('formato do evento', () => {
+  it('evento do servidor tem `type` conhecido e `event` em objeto', () => {
+    expect(ehEventoWuzapi(mensagem())).toBe(true);
+    expect(ehEventoWuzapi({ type: 'LoggedOut', event: { Reason: 401 } })).toBe(true);
   });
 
-  it('evento da WuzAPI tem `event` em objeto; o da W-API tem `event` em texto', () => {
-    expect(ehEventoWuzapi(mensagem())).toBe(true);
+  it('qualquer outro formato é ignorado', () => {
     expect(ehEventoWuzapi({ event: 'webhookReceived', type: 'Message' })).toBe(false);
     expect(ehEventoWuzapi({ type: 'ReceivedCallback', phone: '55' })).toBe(false);
+    expect(ehEventoWuzapi(null)).toBe(false);
   });
 });
 
@@ -98,8 +96,8 @@ describe('o que nunca responde', () => {
 });
 
 describe('reação no story da loja', () => {
-  // Chave como chega de verdade (W-API, 25/09): montada por quem reagiu, com
-  // `fromMe: false` e o LID da loja em `participant`.
+  // Chave como chega de verdade (reações reais de 25/09): montada por quem
+  // reagiu, com `fromMe: false` e o LID da loja em `participant`.
   const reacaoNoStory = (texto: string) => ({
     reactionMessage: {
       key: { ID: '2AA611D5DC3F4BBB8204', fromMe: false, participant: '62160000000025@lid', remoteJID: 'status@broadcast' },

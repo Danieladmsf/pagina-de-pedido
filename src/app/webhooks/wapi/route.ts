@@ -1,14 +1,8 @@
 import { NextResponse, after } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { decryptSecret } from '@/lib/wapi/crypto';
-import { getWapiConnectedPhone, sendWapiTextMessage, sendWapiImageMessage, setWapiAutoRead } from '@/lib/wapi/wapi.service';
-import {
-  getLiveConnectedPhone,
-  isConnectedEvent,
-  isDisconnectedEvent,
-} from '@/lib/wapi/connection-events';
-import { extractIncomingMessage, type IncomingMessage } from '@/lib/wapi/incoming-message';
-import { ehEventoWuzapi, lerEventoWuzapi } from '@/lib/wuzapi/incoming';
+import { sendWuzImage, sendWuzText } from '@/lib/wuzapi/wuzapi.service';
+import { ehEventoWuzapi, lerEventoWuzapi, type IncomingMessage } from '@/lib/wuzapi/incoming';
 import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
 import { buildAutoReply } from '@/lib/wapi/auto-reply';
@@ -28,10 +22,6 @@ function isAuthorized(request: Request) {
   return received === expected;
 }
 
-function getInstanceId(payload: any) {
-  return payload?.instanceId || payload?.instance_id || payload?.instance?.id || '';
-}
-
 function getWebhookToken(url: URL) {
   const encryptedToken = url.searchParams.get('wt');
   if (!encryptedToken) return { present: false, token: '' };
@@ -39,13 +29,9 @@ function getWebhookToken(url: URL) {
   try {
     return { present: true, token: decryptSecret(encryptedToken) };
   } catch (error) {
-    console.warn('[W-API webhook] Token do webhook invalido ou expirado:', error);
+    console.warn('[WhatsApp webhook] Token do webhook invalido ou expirado:', error);
     return { present: true, token: '' };
   }
-}
-
-function getConnectedPhone(payload: any) {
-  return getWapiConnectedPhone(payload);
 }
 
 /**
@@ -87,10 +73,10 @@ async function resolverDestino(
 /**
  * Uma segunda chance para o envio.
  *
- * Em 22/08/2026 tres respostas automaticas morreram com a W-API pendurada por
- * 31 segundos: o claim voltava atras e a mensagem sumia sem deixar rastro. Erro
- * de dado (4xx) nao melhora repetindo; queda de rede, timeout e erro do
- * provedor, sim.
+ * Em 22/08/2026 tres respostas automaticas morreram com o provedor da epoca
+ * pendurado por 31 segundos: o claim voltava atras e a mensagem sumia sem
+ * deixar rastro. Erro de dado (4xx) nao melhora repetindo; queda de rede,
+ * timeout e erro do servidor, sim.
  */
 async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
   try {
@@ -100,7 +86,7 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
     const valeRepetir = status === 0 || status === 408 || status === 429 || status >= 500;
     if (!valeRepetir) throw error;
 
-    console.warn('[W-API webhook] Envio falhou; tentando uma segunda vez:', {
+    console.warn('[WhatsApp webhook] Envio falhou; tentando uma segunda vez:', {
       status,
       erro: String(error?.message || error),
     });
@@ -110,24 +96,15 @@ async function enviarComSegundaChance<T>(enviar: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Mensagem que a loja mandou pelo celular, no formato da W-API: `fromMe` sem
- * `fromApi`, com o destino em `chat.id`. O servidor próprio tem o seu em `lib/wuzapi/incoming`.
- */
-function saidaDaLojaWapi(payload: any) {
-  if (payload?.fromMe !== true || payload?.fromApi === true) return null;
-  return { chatId: String(payload?.chat?.id || '').trim() };
-}
-
-/**
  * Carimba no contato a ultima vez que a LOJA falou com esta pessoa.
  *
- * `fromApi: false` e o que separa o que a dona digitou ou gravou no celular do
- * que o proprio robo mandou. Sem essa distincao a resposta automatica
- * carimbaria a si mesma e a trava de `JANELA_DA_CONVERSA_HUMANA_MS` nunca
- * soltaria — a loja ficaria muda para sempre com quem ja foi saudado uma vez.
+ * So entra aqui o que a dona digitou ou gravou no celular: o que o proprio robo
+ * envia pelo servidor nao volta como evento (ver `lib/wuzapi/incoming`). Se
+ * voltasse, a resposta automatica carimbaria a si mesma e a trava de
+ * `JANELA_DA_CONVERSA_HUMANA_MS` nunca soltaria — a loja ficaria muda para
+ * sempre com quem ja foi saudado uma vez.
  *
- * O destino vem em `chat.id`, que chega como telefone quando a mensagem saiu
- * pela API e como `<lid>@lid` quando saiu do celular. Os dois precisam cair no
+ * O destino chega como telefone ou como `<lid>@lid`. Os dois precisam cair no
  * MESMO doc que `maybeSendAutoReply` vai ler depois, entao a ponte pelo
  * `telefoneConhecido` e a mesma de `resolverDestino`.
  */
@@ -164,14 +141,14 @@ async function maybeSendAutoReply(params: {
   adminDb: any;
   adminRef: any;
   empresaId: string;
-  /** A mensagem já lida pelo leitor do provedor (servidor próprio ou W-API). */
+  /** A mensagem já lida pelo leitor do servidor (`lib/wuzapi/incoming`). */
   incoming: IncomingMessage | null;
   requestOrigin: string;
   now: string;
 }) {
   const incoming = params.incoming;
   // `address` e o telefone quando ele veio, senao o "<lid>@lid" — contato fora
-  // da agenda da loja chega so com LID, e a W-API aceita ele no lugar do numero.
+  // da agenda da loja chega so com LID, e o envio aceita ele no lugar do numero.
   if (!incoming?.address) return false;
 
   // Proteção contra sincronização de histórico: 
@@ -180,7 +157,7 @@ async function maybeSendAutoReply(params: {
     const msgTimeMs = incoming.timestamp > 9999999999 ? incoming.timestamp : incoming.timestamp * 1000;
     const nowMs = Date.now();
     if (nowMs - msgTimeMs > 5 * 60 * 1000) {
-      console.log('[W-API webhook] Ignorando mensagem antiga (sincronização de histórico):', { address: incoming.address, ageMs: nowMs - msgTimeMs });
+      console.log('[WhatsApp webhook] Ignorando mensagem antiga (sincronização de histórico):', { address: incoming.address, ageMs: nowMs - msgTimeMs });
       return false;
     }
   }
@@ -204,14 +181,14 @@ async function maybeSendAutoReply(params: {
 
   // Claim atomico ANTES do envio (mesmo padrao do whatsapp_send_claims):
   // decidir e gravar o carimbo na mesma transacao faz webhooks concorrentes
-  // (rajada de mensagens, retries da W-API) relerem o doc ja carimbado e
+  // (rajada de mensagens, reenvio do servidor) relerem o doc ja carimbado e
   // desistirem. Se o envio falhar, o claim e devolvido no catch abaixo.
   const CLAIM_FIELD: Record<string, string> = {
     first_contact_auto_reply: 'firstContactSentAt',
     store_closed_auto_reply: 'lastClosedReplyAt',
     // O pedido de cardápio tem carimbo próprio: ele não gasta o "primeiro
-    // contato" (que é a saudação) e ainda segura a rajada — retry da W-API e
-    // dois toques seguidos no botão não viram duas respostas.
+    // contato" (que é a saudação) e ainda segura a rajada — reenvio do servidor
+    // e dois toques seguidos no botão não viram duas respostas.
     link_request_auto_reply: 'lastLinkReplyAt',
     // O agradecimento por reacao no story tem carimbo proprio pelo mesmo
     // motivo: nao gasta o "primeiro contato" de quem ainda vai escrever, e
@@ -261,16 +238,14 @@ async function maybeSendAutoReply(params: {
   try {
     result = await enviarComSegundaChance(() =>
       reply.imageUrl
-        ? sendWapiImageMessage(integration.wapiInstanceId, token, {
+        ? sendWuzImage(integration.wapiInstanceId, token, {
             phone: alvo.address,
             image: reply.imageUrl,
             caption: reply.message,
-            delayMessage: 2,
           })
-        : sendWapiTextMessage(integration.wapiInstanceId, token, {
+        : sendWuzText(integration.wapiInstanceId, token, {
             phone: alvo.address,
             message: reply.message,
-            delayMessage: 2,
           }),
     );
   } catch (error) {
@@ -297,7 +272,7 @@ async function maybeSendAutoReply(params: {
     address: alvo.address,
     type: reply.type,
     message: reply.message.slice(0, 500),
-    providerMessageId: result?.messageId || result?.insertedId || '',
+    providerMessageId: result?.messageId || '',
     incomingText: alvo.text || '',
     createdAt: params.now,
   });
@@ -308,19 +283,17 @@ async function maybeSendAutoReply(params: {
 /**
  * Recibo imediato, trabalho depois.
  *
- * A W-API entrega cada webhook UMA VEZ: sem fila, sem retentativa e sem log do
- * lado dela — confirmado por escrito pelo suporte em 19/09/2026. Num provedor
- * assim, endpoint lento nao atrasa a mensagem: ele a PERDE, calado.
+ * O envio da resposta automatica tem teto de 20s e uma segunda chance — pior
+ * caso ~42s com a conexao do webhook presa. Por isso o 200 sai na hora e o
+ * processamento corre em `after()`. Nasceu com a W-API (19/09/2026), que
+ * entregava cada webhook UMA vez e perdia calada a mensagem de um endpoint
+ * lento; o servidor proprio reenvia (5 vezes, a cada 30 s), mas recibo rapido
+ * continua sendo o que evita reenvio a toa.
  *
- * Ate aqui o 200 so saia depois de todo o trabalho, incluindo o envio da
- * resposta automatica pela propria API da W-API, que tem teto de 20s e uma
- * segunda chance — pior caso ~42s com a conexao do webhook presa. Agora o
- * recibo sai na hora e o processamento corre em `after()`.
- *
- * O que se perde se a funcao morrer no meio do `after()` e exatamente o que ja
- * se perdia quando o webhook nao chegava; o que se ganha e a entrega. Nada aqui
- * dispensa o claim atomico de `maybeSendAutoReply`: continua sendo ele que
- * impede resposta dupla.
+ * O que se perde se a funcao morrer no meio do `after()` e exatamente o que se
+ * perderia se o webhook nao chegasse. Nada aqui dispensa o claim atomico de
+ * `maybeSendAutoReply`: continua sendo ele que impede resposta dupla, inclusive
+ * quando o servidor reenvia o mesmo evento.
  */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
@@ -334,7 +307,7 @@ export async function POST(request: Request) {
     try {
       await processarEvento(url, payload);
     } catch (error) {
-      console.error('[W-API webhook] Falha ao processar o evento depois da resposta:', error);
+      console.error('[WhatsApp webhook] Falha ao processar o evento depois da resposta:', error);
     }
   });
 
@@ -342,26 +315,28 @@ export async function POST(request: Request) {
 }
 
 async function processarEvento(url: URL, payload: any) {
-  // O servidor próprio (WuzAPI), provedor oficial, manda `type` + `event` em
-  // objeto, e o leitor dele decide conexão, mensagem e saída da loja. Sem
-  // leitor é a W-API, que só segue aqui como caminho de volta da migração.
-  const provedor = ehEventoWuzapi(payload) ? 'wuzapi' : 'wapi';
-  const lido = provedor === 'wuzapi' ? lerEventoWuzapi(payload) : null;
-  const instanceId = getInstanceId(payload);
-  // Na WuzAPI `event` é o objeto do whatsmeow; o nome do evento é o `type`, que
-  // o leitor já separou. Sem isso o objeto inteiro ia para logs e para o campo
-  // `event` do registro, duplicando o payload.
-  const event = lido ? lido.event : (payload?.event || payload?.type || 'unknown');
-  const hook = url.searchParams.get('hook') || '';
+  // Só o servidor de WhatsApp (WuzAPI) chama aqui: `type` + `event` em objeto,
+  // e o leitor dele decide conexão, mensagem e saída da loja. Qualquer outro
+  // formato é ignorado sem gravar nada.
+  if (!ehEventoWuzapi(payload)) {
+    console.warn('[WhatsApp webhook] Evento fora do formato do servidor; ignorado:', {
+      chaves: Object.keys(payload || {}).slice(0, 10),
+    });
+    return;
+  }
+
+  const lido = lerEventoWuzapi(payload);
+  // `event` no payload é o objeto do whatsmeow; o nome do evento é o `type`,
+  // que o leitor já separou.
+  const event = lido.event;
   const empresaIdFromUrl = url.searchParams.get('empresaId') || '';
   const webhookAuth = getWebhookToken(url);
   const now = new Date().toISOString();
   const adminDb = getOptionalAdminDb();
 
   if (!adminDb) {
-    console.warn('[W-API webhook] Firebase Admin indisponivel; evento ignorado sem envio automatico:', {
+    console.warn('[WhatsApp webhook] Firebase Admin indisponivel; evento ignorado sem envio automatico:', {
       event,
-      instanceId,
       empresaId: empresaIdFromUrl,
     });
     return;
@@ -371,39 +346,19 @@ async function processarEvento(url: URL, payload: any) {
   let adminRef: FirebaseFirestore.DocumentReference | null = null;
   let integration: any = null;
 
-  // A loja indicada na URL do webhook tem prioridade, desde que ela realmente
-  // use esta instancia. A busca por instanceId com `.limit(1)` escolhia sempre a
-  // primeira loja na ordem do indice: com duas lojas apontando para a mesma
-  // instancia (ja aconteceu em producao), a segunda ficava permanentemente muda.
+  // Cada loja registra o webhook com o id dela na URL; a chave cifrada no `wt`
+  // prova que o evento veio da sessão dessa loja (conferida logo abaixo).
   if (empresaIdFromUrl) {
     const ref = adminDb.collection('roles_admin').doc(empresaIdFromUrl);
     const data = (await ref.get()).data()?.whatsappIntegration;
-    if (data && (!instanceId || data.wapiInstanceId === instanceId)) {
+    if (data) {
       adminRef = ref;
       empresaId = empresaIdFromUrl;
       integration = data;
     }
   }
 
-  if (!adminRef && instanceId) {
-    const snap = await adminDb
-      .collection('roles_admin')
-      .where('whatsappIntegration.wapiInstanceId', '==', instanceId)
-      .limit(2)
-      .get();
-
-    if (snap.size > 1) {
-      console.warn('[W-API webhook] Instancia usada por mais de uma loja; evento atribuido a primeira:', {
-        instanceId,
-        lojas: snap.docs.map((doc) => doc.id),
-      });
-    }
-    if (!snap.empty) {
-      adminRef = snap.docs[0].ref;
-      empresaId = snap.docs[0].id;
-      integration = snap.docs[0].data()?.whatsappIntegration;
-    }
-  }
+  const instanceId = String(integration?.wapiInstanceId || '');
 
   if (adminRef && webhookAuth.present) {
     let tokenMatches = false;
@@ -411,11 +366,11 @@ async function processarEvento(url: URL, payload: any) {
     try {
       tokenMatches = Boolean(integration?.wapiTokenEncrypted && decryptSecret(integration.wapiTokenEncrypted) === webhookAuth.token);
     } catch (error) {
-      console.warn('[W-API webhook] Nao foi possivel validar o token da integracao:', { event, instanceId, empresaId, error });
+      console.warn('[WhatsApp webhook] Nao foi possivel validar o token da integracao:', { event, instanceId, empresaId, error });
     }
 
     if (!tokenMatches) {
-      console.warn('[W-API webhook] Ignorando atualizacao por token divergente:', { event, instanceId, empresaId });
+      console.warn('[WhatsApp webhook] Ignorando atualizacao por token divergente:', { event, instanceId, empresaId });
       adminRef = null;
       empresaId = '';
       integration = null;
@@ -423,10 +378,9 @@ async function processarEvento(url: URL, payload: any) {
   }
 
   await adminDb.collection('whatsapp_webhook_events').add({
-    provider: provedor,
+    provider: 'wuzapi',
     event,
-    hook,
-    instanceId,
+    instanceId: empresaId ? instanceId : '',
     empresaId,
     payload,
     createdAt: now,
@@ -437,12 +391,10 @@ async function processarEvento(url: URL, payload: any) {
   });
 
   let integrationUpdated = false;
-  const connected = lido ? lido.connected : isConnectedEvent(payload, event, hook);
-  const disconnected = lido ? lido.disconnected : isDisconnectedEvent(payload, event, hook);
-  const livePhone = disconnected ? '' : (lido ? lido.livePhone : getLiveConnectedPhone(payload));
-  const incoming = lido ? lido.incoming : extractIncomingMessage(payload, event, hook);
+  const { connected, disconnected, incoming } = lido;
+  const livePhone = disconnected ? '' : lido.livePhone;
 
-  console.log('[W-API webhook] processando:', { event, hook, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
+  console.log('[WhatsApp webhook] processando:', { event, instanceId, empresaId, connected, disconnected, livePhone: Boolean(livePhone) });
 
   if (adminRef && integration) {
     const patch: Record<string, unknown> = {};
@@ -451,16 +403,16 @@ async function processarEvento(url: URL, payload: any) {
       // So marca desconectado quem estava conectado, para nao reagir a eventos
       // transitorios repetidos.
       if (integration.connected) {
-        console.log('[W-API webhook] Marcando como desconectado:', { event, instanceId, empresaId });
+        console.log('[WhatsApp webhook] Marcando como desconectado:', { event, instanceId, empresaId });
         patch['whatsappIntegration.connected'] = false;
         patch['whatsappIntegration.status'] = 'disconnected';
       }
     } else if (connected || livePhone) {
-      // No servidor próprio o telefone de uma mensagem é o do CLIENTE: o da loja só vem no `livePhone` que o leitor separou.
-      const phone = livePhone || (lido ? '' : getConnectedPhone(payload)) || integration.numeroWhatsapp || '';
-      // `livePhone` chega junto de TODA mensagem, entao so gravamos quando algo
-      // realmente mudou — senao seria uma escrita no Firestore por mensagem
-      // recebida (milhares por dia).
+      // O telefone de uma mensagem é o do CLIENTE: o da loja só vem no
+      // `livePhone` que o leitor separou (no pareamento).
+      const phone = livePhone || integration.numeroWhatsapp || '';
+      // So grava quando algo realmente mudou — senao seria uma escrita no
+      // Firestore a cada reconexao do socket.
       if (!integration.connected || (phone && integration.numeroWhatsapp !== phone)) {
         patch['whatsappIntegration.connected'] = true;
         patch['whatsappIntegration.status'] = 'connected';
@@ -471,10 +423,10 @@ async function processarEvento(url: URL, payload: any) {
     }
 
     // Prova de vida do REGISTRO do webhook — coisa diferente da conexao do
-    // celular. Se o evento chegou ate aqui, os PUTs de webhook estao de pe na
-    // W-API. O poll de status usa este carimbo para decidir se precisa refazer o
-    // registro (ver /wapi/status). Gravado no maximo a cada WEBHOOK_HEARTBEAT_MS:
-    // sem a trava seria uma escrita no Firestore por mensagem recebida.
+    // celular. Se o evento chegou ate aqui, o webhook esta registrado no
+    // servidor. O poll de status e o vigia usam este carimbo para decidir se
+    // precisam refazer o registro. Gravado no maximo a cada
+    // WEBHOOK_HEARTBEAT_MS: sem a trava seria uma escrita por mensagem recebida.
     const ultimoCarimbo = Date.parse(integration.lastWebhookAt || '') || 0;
     if (Date.now() - ultimoCarimbo > WEBHOOK_HEARTBEAT_MS) {
       patch['whatsappIntegration.lastWebhookAt'] = now;
@@ -488,7 +440,7 @@ async function processarEvento(url: URL, payload: any) {
         await adminRef.update(patch);
         integrationUpdated = true;
       } catch (error) {
-        console.warn('[W-API webhook] Evento persistido, mas integracao nao foi atualizada:', {
+        console.warn('[WhatsApp webhook] Evento persistido, mas integracao nao foi atualizada:', {
           event,
           instanceId,
           empresaId,
@@ -496,17 +448,6 @@ async function processarEvento(url: URL, payload: any) {
         });
       }
     }
-  }
-
-  // A cada conexao, reforca o desligamento da "Leitura automatica" do W-API.
-  // Sem isso a instancia marca status/stories como lidos e a conta passa a
-  // "visualizar" o status de todos os contatos sozinha. O `wt` do webhook ja
-  // carrega o token da instancia, entao corrige lojas existentes no proximo
-  // reconnect sem acao manual. Best-effort: nao afeta o restante do webhook.
-  if (connected && instanceId && webhookAuth.token) {
-    setWapiAutoRead(instanceId, webhookAuth.token, false).catch((error) => {
-      console.warn('[W-API webhook] Falha ao desligar leitura automatica no connect:', { instanceId, empresaId, error });
-    });
   }
 
   // A outra ponta do reconhecimento: quem saiu do cardápio para o WhatsApp leva
@@ -524,15 +465,15 @@ async function processarEvento(url: URL, payload: any) {
         });
       }
     } catch (error) {
-      console.warn('[W-API webhook] Falha ao reconhecer visitante pelo codigo:', { empresaId, error });
+      console.warn('[WhatsApp webhook] Falha ao reconhecer visitante pelo codigo:', { empresaId, error });
     }
   }
 
   if (adminRef && empresaId) {
     try {
-      await registrarSaidaDaLoja(adminDb, empresaId, lido ? lido.saidaDaLoja : saidaDaLojaWapi(payload), now);
+      await registrarSaidaDaLoja(adminDb, empresaId, lido.saidaDaLoja, now);
     } catch (error) {
-      console.warn('[W-API webhook] Falha ao carimbar saida da loja:', { empresaId, error });
+      console.warn('[WhatsApp webhook] Falha ao carimbar saida da loja:', { empresaId, error });
     }
   }
 
@@ -548,9 +489,9 @@ async function processarEvento(url: URL, payload: any) {
         now,
       });
     } catch (error) {
-      console.warn('[W-API webhook] Falha ao enviar resposta automatica:', { event, empresaId, error });
+      console.warn('[WhatsApp webhook] Falha ao enviar resposta automatica:', { event, empresaId, error });
     }
   }
 
-  console.log('[W-API webhook] concluido:', { event, empresaId, integrationUpdated, autoReplySent });
+  console.log('[WhatsApp webhook] concluido:', { event, empresaId, integrationUpdated, autoReplySent });
 }

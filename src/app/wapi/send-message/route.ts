@@ -6,7 +6,7 @@ import {
   requireOperationalMessageAccess,
   withAuth,
 } from '@/app/wapi/_lib';
-import { sendWapiDocumentMessage, sendWapiImageMessage, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
+import { sendWuzDocument, sendWuzImage, sendWuzText } from '@/lib/wuzapi/wuzapi.service';
 import { saveWhatsAppMessageLog, saveWhatsAppMessageLogAdmin } from '@/lib/wapi/integration-store';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { normalizeWapiPhone } from '@/lib/wapi/operator-access';
@@ -105,24 +105,22 @@ export async function POST(request: Request) {
 
       try {
         if (body.documentUrl) {
-          result = await sendWapiDocumentMessage(integration.wapiInstanceId, token, {
+          result = await sendWuzDocument(integration.wapiInstanceId, token, {
             phone,
             document: String(body.documentUrl),
             extension: String(body.extension || 'pdf'),
             fileName: body.fileName ? String(body.fileName) : undefined,
             caption: body.caption ? String(body.caption) : undefined,
-            delayMessage: Number(body.delayMessage || 3),
           });
           messagePreview = body.caption || body.fileName || 'Documento enviado';
         } else if (body.imageUrl) {
           const caption = body.caption
             ? await marcarLinkDaLoja(empresaId, phone, String(body.caption))
             : undefined;
-          result = await sendWapiImageMessage(integration.wapiInstanceId, token, {
+          result = await sendWuzImage(integration.wapiInstanceId, token, {
             phone,
             image: String(body.imageUrl),
             caption,
-            delayMessage: Number(body.delayMessage || 3),
           });
           messagePreview = caption || 'Imagem enviada';
         } else {
@@ -131,12 +129,7 @@ export async function POST(request: Request) {
             if (claimRef) { try { await claimRef.delete(); } catch { /* ignore */ } }
             return ok({ error: 'Mensagem obrigatoria.' }, 400);
           }
-          result = await sendWapiTextMessage(integration.wapiInstanceId, token, {
-            phone,
-            message,
-            delayMessage: Number(body.delayMessage || 3),
-            messageId: body.messageId ? String(body.messageId) : undefined,
-          });
+          result = await sendWuzText(integration.wapiInstanceId, token, { phone, message });
           messagePreview = message;
         }
       } catch (sendError) {
@@ -164,7 +157,7 @@ export async function POST(request: Request) {
           await saveWhatsAppMessageLog(user.idToken, logData);
         }
       } catch (logError) {
-        console.warn('[W-API] Mensagem enviada, mas o log nao foi salvo:', logError);
+        console.warn('[WhatsApp] Mensagem enviada, mas o log nao foi salvo:', logError);
       }
 
       return ok({ sent: true, result });

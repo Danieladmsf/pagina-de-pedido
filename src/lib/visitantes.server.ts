@@ -17,7 +17,7 @@ import { normalizeCreditPhone } from '@/lib/customer-credit';
 export interface ReconhecimentoPorCodigo {
   storeId: string;
   codigo: string;
-  /** Vazio quando o contato está fora da agenda da loja (a W-API só entrega o @lid). */
+  /** Vazio quando o contato está fora da agenda da loja (o WhatsApp só entrega o @lid). */
   telefone: string;
   /** Nome que a pessoa usa no WhatsApp, quando o provedor manda. */
   nome: string;

@@ -107,11 +107,11 @@ export default function RegisterPage() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data?.error) {
-          throw new Error(data?.error || 'Nao foi possivel criar a instancia WhatsApp.');
+          throw new Error(data?.error || 'Não foi possível preparar o WhatsApp.');
         }
         whatsappCreated = Boolean(data?.integration);
       } catch (wapiError: any) {
-        console.warn('[W-API] Falha ao criar instancia inicial:', wapiError);
+        console.warn('[WhatsApp] Falha ao preparar a sessao da loja nova:', wapiError);
         whatsappWarning = wapiError?.message || 'Conecte o WhatsApp pelo painel depois.';
       }
 

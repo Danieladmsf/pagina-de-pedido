@@ -25,19 +25,13 @@ const EPOCA = Date.UTC(2020, 0, 1);
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 function chave(storeId: string): Buffer {
-  const segredo = [
-    process.env.WAPI_TOKEN_ENCRYPTION_KEY,
-    process.env.WAPI_API_KEY,
-    process.env.WAPI_INTEGRATOR_TOKEN,
-  ]
-    .map((s) => (s || '').trim())
-    .find(Boolean);
+  const segredo = (process.env.WAPI_TOKEN_ENCRYPTION_KEY || '').trim();
 
   if (!segredo) {
-    throw new Error('Configure WAPI_API_KEY ou WAPI_TOKEN_ENCRYPTION_KEY no servidor.');
+    throw new Error('Configure WAPI_TOKEN_ENCRYPTION_KEY no servidor.');
   }
   // Sal próprio: a mesma senha do servidor gera uma chave DIFERENTE da que
-  // guarda os tokens da W-API — uma marca de link nunca abre um token de envio.
+  // guarda a chave de cada loja — uma marca de link nunca abre uma chave de envio.
   //
   // A LOJA entra na chave: marca feita pela loja A simplesmente não abre na loja
   // B. Sem isso, alguém poderia pegar o link que recebeu de uma loja e usá-lo

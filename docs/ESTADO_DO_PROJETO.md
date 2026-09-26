@@ -11,7 +11,7 @@ As três frentes que abriram este documento (19–20/07):
 
 1. **Permissões do PDV** — PRONTO e NO AR. Nada a fazer.
 2. **Usuários / login de operador** — **PUBLICADO e validado em produção** em 20/07 (commit `4e51258` + regras). Sobraram duas pontas, nenhuma urgente: a **decisão de design da Retaguarda** (§2) e a **Etapa 2** do relatório de vendas por funcionário (§2).
-3. **WhatsApp** — desde **25/09/2026** Lima Limão e Gostinho de Céu estão no **servidor próprio** (WuzAPI no Google Cloud, R$ 0/mês), fora da W-API. A Z-API foi descartada; a W-API ainda está no código só como caminho de volta e vai ser removida. Manual: `docs/wapi/servidor-proprio-wuzapi.md`. Histórico de julho em §3.
+3. **WhatsApp** — desde **25/09/2026** o WhatsApp das lojas roda só no **servidor próprio** (WuzAPI no Google Cloud, R$ 0/mês). O código da W-API e da Z-API foi removido; loja nova ganha a sessão sozinha e só lê o QR. Manual: `docs/wapi/servidor-proprio-wuzapi.md`.
 
 Depois disso o trabalho foi para outro lado (21–25/07): **Encomendas** ganhou o fluxo de confeitaria completo (bolo por kg, doces por cento, catálogo editável, acompanhamento do cliente), entrou **venda por peso (kg)** no PDV, a **auditoria** de quem fez cada lançamento do caixa, **frete editável** no pedido, e a **consolidação da impressão de cupom** (§5).
 
@@ -82,40 +82,30 @@ O dono propôs: **Retaguarda = sistema completo (operar caixa/delivery/mesa SEM 
 
 ---
 
-## 3. WhatsApp — ✅ SERVIDOR PRÓPRIO NO AR (25/09/2026)
+## 3. WhatsApp — ✅ SERVIDOR PRÓPRIO, ÚNICO PROVEDOR (25/09/2026)
 
 Em 25/09/2026 a W-API derrubou as duas lojas às 10:25 e não gerava QR nem pelo
-próprio painel. No mesmo dia o sistema ganhou o **servidor próprio**
-(`WUZ-<LOJA>`, WuzAPI numa e2-micro gratuita do Google Cloud), escolhido pelo ID
-da instância da loja. A Z-API chegou a ser integrada e foi removida em seguida
-(R$ 99,99 por loja, mesma tecnologia). Lima e
-Gostinho foram migradas para o servidor próprio; a aba WhatsApp abre o QR
-sozinha e esconde ID, troca e remoção nessas lojas. Tudo sobre acesso, chaves,
-cópia e como migrar outra loja: `docs/wapi/servidor-proprio-wuzapi.md`.
+próprio painel. No mesmo dia o sistema ganhou o **servidor próprio** (WuzAPI
+numa e2-micro gratuita do Google Cloud), Lima Limão e Gostinho de Céu foram
+migradas, e o código da W-API saiu do sistema. A Z-API chegou a ser integrada e
+foi removida em seguida (R$ 99,99 por loja, mesma tecnologia).
 
-Commits: `7b13641` (Trocar ID e chave), `60c5950` (Z-API), `56411a1`
-(servidor próprio), `5e4ca84` (QR automático), `2a7aa74` (tela da loja no
-servidor próprio), `dbe798e` (nome do evento).
+Como fica: loja nova ganha a sessão dela no servidor sozinha (cadastro ou botão
+**Conectar WhatsApp**), e a dona só lê o QR Code. Não há ID nem chave para
+digitar, nem "Remover integração". Tudo sobre acesso, chaves, cópia e manutenção:
+`docs/wapi/servidor-proprio-wuzapi.md`.
 
-As assinaturas da W-API das duas lojas (R$ 19,90 cada) ficaram sem uso e podem
-ser canceladas no painel da W-API.
+Commits: `56411a1` (servidor próprio), `5e4ca84` (QR automático), `2a7aa74`
+(tela da loja no servidor próprio), `dbe798e` (nome do evento), `eb7c73b`
+(reação no story) e a remoção da W-API.
 
-### Histórico de julho (resolvido pela migração)
+As assinaturas da W-API foram canceladas pelo dono. Na Vercel, `WAPI_BASE_URL`
+e `WAPI_API_KEY` não são mais lidas por nenhum código e podem ser apagadas; as
+outras `WAPI_*` seguem em uso (tabela no manual).
 
-Detalhe completo na memória `wapi-instancia-token-troca.md`. Resumo:
-
-- **NÃO é o código.** As duas lojas ativas pararam em **17/07**; os deploys vieram depois (18–19/07).
-- **Lima Limão**: a instância própria venceu; foi apontada para a instância da Arte do Sabor, mas **o token não foi atualizado** (as duas lojas têm a mesma instância `LITE-JMDANG-I3824S` com tokens diferentes salvos — só um vale). Aparece "conectada" mas todo envio é recusado.
-- **Gostinho de Céu**: instância desconectada (`pending_qr`) — precisa reler o QR.
-
-### Ação do dono (pela tela WhatsApp da Retaguarda, sem código)
-- Gostinho: reler QR para reconectar.
-- Lima: reconectar (salva o token certo) OU dar uma instância própria a ela.
-
-### Decisão do dono
-Compartilhar a instância da Arte do Sabor com a Lima **não é limpo**: as mensagens da Lima sairão do número da Arte, e uma instância só tem um webhook. O ideal é instância própria para a Lima. **Decidir: compartilhar (corrigir token) ou instância própria.**
-
-> Eu me ofereci para copiar o token válido via acesso admin, mas avisei que não resolve o número de saída. Aguardando o dono.
+O histórico de julho (instância compartilhada entre Lima e Arte do Sabor, token
+trocado) ficou resolvido pela migração; detalhe na memória
+`wapi-instancia-token-troca.md`.
 
 ---
 
@@ -164,9 +154,9 @@ O QZ **ignora `@media print` e `@page`**: com `format:'html'` ele renderiza como
 ## 6. Como retomar (para a próxima sessão / próximo agente)
 
 1. Ler este arquivo + a memória do projeto (MEMORY.md).
-2. Confirmar com o dono as duas decisões abertas: (a) modelo da Retaguarda para usuários (§2); (b) WhatsApp compartilhar vs instância própria (§3).
+2. Confirmar com o dono a decisão aberta: modelo da Retaguarda para usuários (§2).
 3. Se liberado a publicar usuários: rodar o teste de regras (`node scripts/firestore-rules.test.mjs` via emulador — precisa do Java já instalado) → publicar rules → commit/push → criar operador teste.
-4. WhatsApp: orientar o dono a reconectar pela tela; só mexer via admin se ele pedir.
+4. WhatsApp: loja parada = conferir o servidor primeiro (manual em `docs/wapi/servidor-proprio-wuzapi.md`, seção Manutenção); a dona religa lendo o QR na aba WhatsApp.
 
 ### Comando do teste de regras (já funciona nesta máquina)
 ```

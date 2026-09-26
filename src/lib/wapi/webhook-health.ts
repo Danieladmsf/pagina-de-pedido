@@ -1,31 +1,30 @@
 /**
  * Saúde do RECEBIMENTO de mensagens — coisa diferente de "WhatsApp conectado".
  *
- * O celular pode estar conectado, a W-API pode estar aceitando envios, e mesmo
- * assim nenhuma mensagem de cliente chegar até o app: basta o registro do
- * webhook cair do lado da W-API. Foi o que aconteceu em 02/09/2026, quando as
- * duas instâncias ficaram mudas (4h32 e 3h32) enquanto a tela exibia
+ * O celular pode estar conectado, o envio pode estar funcionando, e mesmo assim
+ * nenhuma mensagem de cliente chegar até o app: basta o webhook parar de ser
+ * entregue. Foi o que aconteceu em 02/09/2026, ainda com a W-API, quando as
+ * duas lojas ficaram mudas (4h32 e 3h32) enquanto a tela exibia
  * "Conectado / Online" — o envio de uma notificação às 18:47 foi aceito
  * normalmente no meio do apagão, e o aviso de entrega dela nunca voltou.
  *
  * Este arquivo é a regra única de "está entrando mensagem?". Sem I/O de
  * propósito: quem age é o vigia (`webhook-watchdog.ts`), quem mostra é a tela.
  *
- * IMPORTANTE, para não esperar o impossível: a W-API não guarda mensagens
- * ("não armazenamos mensagens" na documentação) e a leitura de chats é negada
- * neste plano (403 em `/chats/fetch-chats`). Não existe reconciliação: o que
- * não for entregue no instante em que chega está perdido. Por isso o objetivo
- * aqui é ENCURTAR a janela e TIRAR DO ESCURO, nunca "não perder nada".
+ * IMPORTANTE, para não esperar o impossível: o servidor tenta entregar cada
+ * webhook algumas vezes e depois desiste, e o app não relê conversas. O que não
+ * chegar nesse intervalo está perdido. Por isso o objetivo aqui é ENCURTAR a
+ * janela e TIRAR DO ESCURO, nunca "não perder nada".
  */
 
 /**
  * Silêncio a partir do qual o registro do webhook é considerado suspeito e o
- * vigia refaz os 5 PUTs na W-API.
+ * vigia registra de novo o webhook da loja no servidor.
  *
  * O handler carimba `lastWebhookAt` no máximo a cada 5 min (senão seria uma
  * escrita por mensagem recebida), então o valor lido pode estar até 5 min
- * atrasado: 15 aqui significa "entre 10 e 15 min de silêncio real". Refazer o
- * registro custa 5 chamadas e não interrompe nada — errar para mais é barato,
+ * atrasado: 15 aqui significa "entre 10 e 15 min de silêncio real". Registrar
+ * de novo custa uma chamada e não interrompe nada — errar para mais é barato,
  * errar para menos custou 4h30 de loja muda.
  */
 export const SILENCIO_PARA_REREGISTRAR_MS = 15 * 60 * 1000;
@@ -54,9 +53,9 @@ export const SILENCIO_COM_LOJA_FECHADA_MS = 120 * 60 * 1000;
 export const SILENCIO_PARA_ALERTAR_MS = 30 * 60 * 1000;
 
 /**
- * Intervalo mínimo entre duas tentativas de re-registro da mesma instância.
- * Serve de backoff: com a loja muda, sem isto o vigia refaria os 5 PUTs a cada
- * execução, e uma W-API fora do ar viraria uma tempestade de chamadas.
+ * Intervalo mínimo entre duas tentativas de re-registro da mesma loja. Serve de
+ * backoff: com a loja muda, sem isto o vigia registraria de novo a cada
+ * execução, e um servidor fora do ar viraria uma tempestade de chamadas.
  */
 export const INTERVALO_ENTRE_TENTATIVAS_MS = 15 * 60 * 1000;
 
@@ -87,7 +86,7 @@ export interface SaudeDoWebhook {
   estado: EstadoDoRecebimento;
   /** Há quanto tempo nada chega (ms). 0 quando não se aplica. */
   silencioMs: number;
-  /** O vigia deve refazer o registro dos webhooks na W-API? */
+  /** O vigia deve registrar de novo o webhook no servidor? */
   precisaReRegistrar: boolean;
   /** A tela deve avisar quem está atendendo? */
   precisaAlertar: boolean;

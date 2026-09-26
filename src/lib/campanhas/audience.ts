@@ -1,7 +1,7 @@
 /**
  * Lógica de público-alvo, tokens de personalização e render de preview.
  * Funções puras (sem React, sem rede) — fáceis de testar e reaproveitar quando
- * ligarmos o disparo real pela w-api.
+ * o disparo sai pelo servidor de WhatsApp.
  */
 import type { AudienceId, AudiencePreset, CampaignDraft, CampaignRecipient, MessageToken } from './types';
 
@@ -102,7 +102,7 @@ export function hasValidWhatsapp(c: ClientLike): boolean {
 }
 
 /**
- * Telefone no formato que a w-api recebe (país + DDD + número, só dígitos) —
+ * Telefone no formato que o envio recebe (país + DDD + número, só dígitos) —
  * e, por tabela, a chave que identifica a PESSOA num disparo: é por ela que o
  * mesmo número cadastrado duas vezes vira um envio só.
  *

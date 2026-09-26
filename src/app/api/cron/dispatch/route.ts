@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getOptionalAdminDb } from '@/lib/firebase-admin';
 import { getReceiver, enqueueDispatch } from '@/lib/campanhas/qstash';
 import { requireIntegrationService } from '@/app/wapi/_lib';
-import { sendWapiImageMessage, sendWapiTextMessage } from '@/lib/wapi/wapi.service';
+import { sendWuzImage, sendWuzText } from '@/lib/wuzapi/wuzapi.service';
 import { renderMessage, randomDelayMs, normalizeCampaignPhone } from '@/lib/campanhas/audience';
 import type { ScheduledCampaign } from '@/lib/campanhas/types';
 
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
   const campaign = camp as ScheduledCampaign;
 
-  // 3) Instância w-api do tenant (via Admin, sem token de usuário).
+  // 3) Sessão de WhatsApp do tenant (via Admin, sem token de usuário).
   let integration: { wapiInstanceId: string }; let token: string;
   try {
     const resolved = await requireIntegrationService(campaign.ownerId);
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     await ref.update({
       status: 'error', lockedAt: null, currentId: null,
-      error: err?.message || 'Instancia w-api indisponivel.', updatedAt: new Date().toISOString(),
+      error: err?.message || 'WhatsApp da loja indisponivel.', updatedAt: new Date().toISOString(),
     });
     return NextResponse.json({ ok: true, error: 'integration' });
   }
@@ -96,11 +96,11 @@ export async function POST(request: Request) {
       try {
         if (!phone) throw new Error('Telefone invalido');
         if (campaign.imageUrl) {
-          await sendWapiImageMessage(integration.wapiInstanceId, token, {
-            phone, image: campaign.imageUrl, caption: rendered.trim() || undefined, delayMessage: 1,
+          await sendWuzImage(integration.wapiInstanceId, token, {
+            phone, image: campaign.imageUrl, caption: rendered.trim() || undefined,
           });
         } else {
-          await sendWapiTextMessage(integration.wapiInstanceId, token, { phone, message: rendered, delayMessage: 1 });
+          await sendWuzText(integration.wapiInstanceId, token, { phone, message: rendered });
         }
         sent++;
       } catch (sendErr: any) {

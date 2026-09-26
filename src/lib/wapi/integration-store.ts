@@ -5,12 +5,6 @@ import { SanitizedWhatsAppIntegration, WhatsAppIntegration, WapiConnectionStatus
 
 const ADMIN_COLLECTION = 'roles_admin';
 const INTEGRATION_FIELD = 'whatsappIntegration';
-const LEGACY_SHARED_INSTANCE_IDS = new Set([
-  ...(process.env.WAPI_BLOCKED_INSTANCE_IDS || '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean),
-]);
 
 export function assertEmpresaOwner(uid: string, empresaId?: string) {
   const targetEmpresaId = empresaId || uid;
@@ -26,10 +20,6 @@ export function encryptWapiToken(token: string) {
 
 export function decryptWapiToken(integration: WhatsAppIntegration) {
   return decryptSecret(integration.wapiTokenEncrypted);
-}
-
-export function isBlockedSharedWapiInstance(instanceId?: string) {
-  return Boolean(instanceId && LEGACY_SHARED_INSTANCE_IDS.has(instanceId));
 }
 
 export function sanitizeIntegration(integration: WhatsAppIntegration): SanitizedWhatsAppIntegration {
@@ -77,25 +67,6 @@ export async function getWhatsAppIntegrationAdmin(empresaId: string) {
   return (snap.data()?.[INTEGRATION_FIELD] || null) as WhatsAppIntegration | null;
 }
 
-/**
- * Outra loja ja usa esta instancia? Duas lojas na mesma instancia quebram o
- * webhook: a busca por `wapiInstanceId` resolve sempre para a mesma loja e a
- * outra nunca recebe nada, alem das duas ficarem disputando a URL do webhook
- * (e o `wt`) na W-API. Retorna o empresaId da outra loja, ou null.
- */
-export async function findStoreUsingWapiInstance(instanceId: string, exceptEmpresaId: string) {
-  const adminDb = getOptionalAdminDb();
-  if (!adminDb || !instanceId) return null;
-
-  const snap = await adminDb
-    .collection(ADMIN_COLLECTION)
-    .where(`${INTEGRATION_FIELD}.wapiInstanceId`, '==', instanceId)
-    .limit(5)
-    .get();
-
-  return snap.docs.find((doc) => doc.id !== exceptEmpresaId)?.id || null;
-}
-
 export async function saveWhatsAppIntegration(empresaId: string, data: WhatsAppIntegration, idToken: string) {
   await patchFirestoreDocumentFields(
     `${ADMIN_COLLECTION}/${empresaId}`,
@@ -135,7 +106,7 @@ export interface WhatsAppMessageLogData {
 function buildWhatsAppMessageLog(data: WhatsAppMessageLogData) {
   return Object.fromEntries(Object.entries({
     ...data,
-    provider: 'wapi',
+    provider: 'wuzapi',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }).filter(([, value]) => value !== undefined));
@@ -152,15 +123,6 @@ export async function saveWhatsAppMessageLogAdmin(data: WhatsAppMessageLogData) 
   return adminDb.collection('whatsapp_messages').add(buildWhatsAppMessageLog(data));
 }
 
-export async function deleteWhatsAppIntegration(empresaId: string, idToken: string) {
-  await patchFirestoreDocumentFields(
-    `${ADMIN_COLLECTION}/${empresaId}`,
-    { [INTEGRATION_FIELD]: null },
-    [INTEGRATION_FIELD],
-    idToken,
-  );
-}
-
-export function statusFromWapi(connected: boolean): WapiConnectionStatus {
+export function statusDaConexao(connected: boolean): WapiConnectionStatus {
   return connected ? 'connected' : 'pending_qr';
 }

@@ -53,7 +53,7 @@ export async function listarAgendamentosDoVigia(): Promise<AgendamentoDoVigia[]>
  * Deixa exatamente UM agendamento do vigia no ar.
  *
  * Recria em vez de acumular: chamar isto duas vezes não pode virar duas
- * varreduras simultâneas em cima da mesma W-API.
+ * varreduras simultâneas em cima do mesmo servidor.
  */
 export async function agendarVigia(origem: string): Promise<AgendamentoDoVigia> {
   const qstash = cliente();

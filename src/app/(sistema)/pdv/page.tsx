@@ -39,7 +39,7 @@ import { brl } from '@/lib/utils';
 import { getOrderCode } from '@/lib/order-code';
 
 // Fila global (por aba) que limita os envios de WhatsApp simultâneos, evitando
-// estourar o limite de taxa da w-api numa rajada de pedidos.
+// estourar o servidor de WhatsApp numa rajada de pedidos.
 const whatsappQueue = createConcurrencyQueue(3);
 
 function isPdvTabId(value: unknown): value is PdvTabId {
@@ -65,7 +65,7 @@ export default function PdvPage() {
   // A cada 30s, re-tenta o aviso de "pedido recebido" para pedidos recentes que
   // ainda não foram notificados (falha transitória, limite de taxa, ou pedido que
   // chegou enquanto este PC recarregava). A reserva atômica + a fila garantem que
-  // só sai 1 mensagem por pedido, sem estourar o limite da w-api. A janela de 30min
+  // só sai 1 mensagem por pedido, sem rajada no servidor de WhatsApp. A janela de 30min
   // evita re-tentar pedidos antigos para sempre.
   // Também dispara o lembrete do comprovante Pix ~1 min após o pedido (apenas
   // pagamento pix, e somente depois do aviso de "pedido recebido").

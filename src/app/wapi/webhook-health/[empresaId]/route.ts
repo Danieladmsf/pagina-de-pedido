@@ -6,20 +6,20 @@ import { getStoreOpenState } from '@/lib/whatsapp-messages';
 import { avaliarSaudeDoWebhook, descreverSilencio } from '@/lib/wapi/webhook-health';
 import { vigiarRecebimentoDaLoja } from '@/lib/wapi/webhook-watchdog';
 import { garantirAgendamentoDoVigia } from '@/lib/wapi/agendar-vigia';
-import { getWapiStatus, wapiAfirmaDesconectado } from '@/lib/wapi/wapi.service';
+import { getWuzStatus } from '@/lib/wuzapi/wuzapi.service';
 import type { WhatsAppIntegration } from '@/lib/wapi/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Pergunta à W-API se o aparelho saiu da conexão. Falha de rede ou resposta em
- * formato estranho contam como "não sei", e "não sei" mantém o que se sabia.
+ * Pergunta ao servidor se o celular saiu da conexão. Falha de rede conta como
+ * "não sei", e "não sei" mantém o que se sabia.
  */
-async function wapiAfirmaQueCaiu(integration: WhatsAppIntegration) {
+async function servidorAfirmaQueCaiu(integration: WhatsAppIntegration) {
   try {
-    const status = await getWapiStatus(integration.wapiInstanceId, decryptWapiToken(integration));
-    return wapiAfirmaDesconectado(status);
+    const status = await getWuzStatus(integration.wapiInstanceId, decryptWapiToken(integration));
+    return status.connected === false;
   } catch {
     return false;
   }
@@ -30,9 +30,9 @@ async function wapiAfirmaQueCaiu(integration: WhatsAppIntegration) {
  * WhatsApp vinculado que caiu da conexão (`desconectado`) — e, de quebra, o
  * segundo gatilho do vigia.
  *
- * Existe separada de `/wapi/status` porque aquela consulta a W-API a cada
- * chamada (caro demais para um heartbeat de poucos minutos). Esta só lê o
- * Firestore; a W-API só é acionada quando a instância está realmente muda.
+ * Existe separada de `/wapi/status` porque aquela consulta o servidor de
+ * WhatsApp a cada chamada (caro demais para um heartbeat de poucos minutos).
+ * Esta só lê o Firestore; o servidor só é consultado quando a loja está muda.
  *
  * Vale para operador também, de propósito: quem está atendendo é justamente
  * quem precisa saber que parou de entrar mensagem — e a maioria das lojas opera
@@ -63,11 +63,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       });
 
       // Antes de mandar a loja esperar, confere se o silêncio não é desconexão
-      // disfarçada: o aviso de desconexão da W-API chega uma vez só e pode se
-      // perder, e aí o banco segue dizendo "conectado". Os dois avisos pedem
-      // coisas opostas (esperar x ler o QR Code), então, na hora de avisar,
-      // pergunta. Só troca quando a W-API AFIRMA que caiu.
-      if (saude.estado === 'mudo' && saude.precisaAlertar && (await wapiAfirmaQueCaiu(integration))) {
+      // disfarçada: o aviso de desconexão pode se perder, e aí o banco segue
+      // dizendo "conectado". Os dois avisos pedem coisas opostas (esperar x ler
+      // o QR Code), então, na hora de avisar, pergunta. Só troca quando o
+      // servidor AFIRMA que caiu.
+      if (saude.estado === 'mudo' && saude.precisaAlertar && (await servidorAfirmaQueCaiu(integration))) {
         saude = { ...saude, estado: 'desconectado', precisaReRegistrar: false };
       }
 

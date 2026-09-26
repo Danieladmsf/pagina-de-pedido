@@ -1,7 +1,7 @@
 import { jsonError } from '@/lib/firebase-auth-rest';
 import { getWebhookUrl, ok, requireEmpresa, requireIntegration, withAuth } from '@/app/wapi/_lib';
-import { configureWapiWebhooks, getWapiConnectedPhone, getWapiStatus, hasExplicitWapiConnectionState, isWapiConnectedStatus } from '@/lib/wapi/wapi.service';
-import { patchWhatsAppIntegration, sanitizeIntegration, statusFromWapi } from '@/lib/wapi/integration-store';
+import { configurarWebhook, getWuzStatus } from '@/lib/wuzapi/wuzapi.service';
+import { patchWhatsAppIntegration, sanitizeIntegration, statusDaConexao } from '@/lib/wapi/integration-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,61 +23,45 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
       const webhookUrl = getWebhookUrl(request, empresaId, token, integration.webhookUrl);
       let webhookConfigured = false;
 
-      let rawStatus: any = null;
-      let connected = integration.connected;
-      let connectedPhone = integration.numeroWhatsapp || '';
-
+      let aoVivo: Awaited<ReturnType<typeof getWuzStatus>>;
       try {
-        rawStatus = await getWapiStatus(integration.wapiInstanceId, token);
-        const livePhone = getWapiConnectedPhone(rawStatus);
-
-        // Só rebaixa para "desconectado" quando a W-API AFIRMA isso. Se a
-        // resposta vier num formato que não reconhecemos, mantemos o que já
-        // sabíamos (os webhooks de mensagem provam a conexão o tempo todo) —
-        // antes, um formato inesperado zerava o estado a cada 15s e jogava a
-        // tela no laço de QR Code, que é o que derrubava o WhatsApp.
-        if (isWapiConnectedStatus(rawStatus) || livePhone) connected = true;
-        else if (hasExplicitWapiConnectionState(rawStatus)) connected = false;
-        else connected = integration.connected;
-
-        connectedPhone = livePhone || integration.numeroWhatsapp || '';
-      } catch (wapiError: any) {
-        // Se a W-API nao respondeu, mantemos o status salvo em vez de marcar como desconectado
-        console.warn('[W-API status] Falha ao consultar status ao vivo, mantendo estado salvo:', wapiError?.message);
+        aoVivo = await getWuzStatus(integration.wapiInstanceId, token);
+      } catch (statusError: any) {
+        // Servidor sem resposta não é loja desconectada: mantém o estado salvo.
+        console.warn('[WhatsApp status] Falha ao consultar o servidor, mantendo estado salvo:', statusError?.message);
         const updated = await patchWhatsAppIntegration(empresaId, {
-          lastError: `Falha ao consultar W-API: ${wapiError?.message || 'timeout'}`,
+          lastError: `Falha ao consultar o servidor de WhatsApp: ${statusError?.message || 'sem resposta'}`,
           lastStatusAt: new Date().toISOString(),
         }, user.idToken);
-        return ok({ integration: sanitizeIntegration(updated), raw: null, wapiError: wapiError?.message });
+        return ok({ integration: sanitizeIntegration(updated), raw: null, statusError: statusError?.message });
       }
 
-      // Reconfigurar os 5 webhooks a CADA consulta de status significava ~24
-      // chamadas por minuto na W-API para cada aba aberta, sem nenhum motivo: a
-      // URL so muda quando o dominio ou o token mudam. So refaz quando mudou —
-      // ou quando o registro parece ter caido (silencio abaixo).
+      // Só a sessão logada conta. O número NÃO prova conexão: o servidor guarda
+      // o do último pareamento e continua devolvendo depois do logout.
+      const connected = aoVivo.connected;
+      const connectedPhone = connected ? aoVivo.phone || integration.numeroWhatsapp || '' : '';
+
+      // Registrar o webhook a cada consulta seria uma chamada inútil a cada 15 s
+      // por aba aberta: a URL só muda quando o domínio ou a chave mudam. Refaz
+      // quando mudou ou quando o registro parece ter caído (silêncio abaixo).
       const agora = Date.now();
       const ultimoEvento = Date.parse(integration.lastWebhookAt || '') || 0;
 
-      // Loja CONECTADA que passou do limite sem receber um unico webhook: ou o
-      // registro caiu do lado da W-API, ou nunca chegou a existir. Refazer os 5
-      // PUTs e barato; ficar mudo sem ninguem perceber nao e. Desconectada nao
-      // conta — silencio ali e esperado, re-registrar seria ruido puro.
+      // Loja CONECTADA que passou do limite sem receber um único webhook: o
+      // registro caiu ou nunca chegou a existir. Registrar de novo é barato;
+      // ficar mudo sem ninguém perceber não é. Desconectada não conta: silêncio
+      // ali é esperado.
       const mudaDemais = connected && agora - ultimoEvento > WEBHOOK_SILENCE_MS;
       const precisaRegistrar = integration.webhookUrl !== webhookUrl || mudaDemais;
-
-      // Registro OK de verdade = os 5 endpoints aceitos. `configureWapiWebhooks`
-      // usa Promise.allSettled e nao lanca em falha parcial, entao sem esta
-      // distincao um 429 da W-API deixava o registro pela metade e ainda assim
-      // gravava a URL como boa — e a condicao acima nunca mais tentava de novo.
       let registroConfirmado = !precisaRegistrar;
 
       if (precisaRegistrar) {
         try {
-          const webhookResult = await configureWapiWebhooks(integration.wapiInstanceId, token, webhookUrl);
-          registroConfirmado = webhookResult.failed.length === 0;
-          webhookConfigured = !webhookResult.failed.some((item) => item.endpoint === 'update-webhook-received');
+          await configurarWebhook(token, webhookUrl);
+          registroConfirmado = true;
+          webhookConfigured = true;
         } catch (webhookError: any) {
-          console.warn('[W-API status] Falha ao reconfigurar webhooks:', webhookError?.message || webhookError);
+          console.warn('[WhatsApp status] Falha ao registrar o webhook:', webhookError?.message || webhookError);
         }
       } else {
         webhookConfigured = true;
@@ -85,20 +69,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ empr
 
       const updated = await patchWhatsAppIntegration(empresaId, {
         connected,
-        status: statusFromWapi(connected),
+        status: statusDaConexao(connected),
         numeroWhatsapp: connectedPhone,
-        // So grava a URL como registrada quando ela FOI registrada: em falha
-        // parcial o campo segue diferente e o proximo poll tenta de novo.
+        // Só grava a URL como registrada quando ela FOI registrada: em falha o
+        // campo segue diferente e o próximo poll tenta de novo.
         ...(registroConfirmado ? { webhookUrl } : {}),
-        // Carimbo novo depois de TENTAR re-registrar por silencio (deu certo ou
-        // nao): reinicia o relogio e serve de backoff — a retentativa volta em
-        // 30 min, em vez de a cada 15s enquanto o silencio durar.
+        // Carimbo novo depois de TENTAR registrar por silêncio (deu certo ou
+        // não): reinicia o relógio e serve de backoff — a retentativa volta em
+        // 30 min, em vez de a cada 15 s enquanto o silêncio durar.
         ...(mudaDemais ? { lastWebhookAt: new Date().toISOString() } : {}),
         lastError: '',
         lastStatusAt: new Date().toISOString(),
       }, user.idToken);
 
-      return ok({ integration: sanitizeIntegration(updated), raw: rawStatus, webhookConfigured });
+      return ok({ integration: sanitizeIntegration(updated), raw: aoVivo, webhookConfigured });
     } catch (error) {
       return jsonError(error);
     }
