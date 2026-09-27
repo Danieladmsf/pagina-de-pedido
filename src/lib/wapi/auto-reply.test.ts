@@ -76,10 +76,10 @@ describe('pedido de cardápio (mensagem com o código da visita)', () => {
     expect(fechada?.message.toLowerCase()).toMatch(/fechad|horário|volta/);
   });
 
-  it('aviso de fechado sem link: o que vai junto é a saudação da loja', () => {
-    // A Gostinho de Céu escreveu o aviso dela sem o {link}. O robô completava
-    // com uma linha de endereço própria; agora completa com a saudação que ela
-    // mesma escreveu — só texto que existe na tela de mensagens automáticas.
+  it('aviso de fechado sem link: sai só o aviso, sem a saudação de loja aberta', () => {
+    // A Gostinho de Céu escreveu o aviso dela sem o {link}. O robô colava a
+    // saudação embaixo, e a cliente lia "estamos fechados" e logo depois "seja
+    // bem-vindo, faça seu pedido" na mesma mensagem.
     const avisoSemLink = {
       ...lojaFechada,
       whatsappMessages: {
@@ -91,9 +91,7 @@ describe('pedido de cardápio (mensagem com o código da visita)', () => {
     const reply = responder({ storeProfile: avisoSemLink, incoming: pedido });
 
     expect(reply?.type).toBe('link_request_auto_reply');
-    expect(reply?.message).toContain('Estamos fechados agora.');
-    expect(reply?.message).toContain('Oi, aqui é a Gostinho de Céu!');
-    expect(reply?.message).toContain('gostinho-de-ceu');
+    expect(reply?.message).toBe('Estamos fechados agora.');
   });
 
   it('o link que sai já nasce marcado como origem whatsapp', () => {

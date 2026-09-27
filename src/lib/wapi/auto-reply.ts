@@ -183,16 +183,11 @@ export function buildAutoReply(params: {
   }
 
   if (pediuLink && (!lastLinkReplyAt || nowMs - lastLinkReplyAt > JANELA_DO_PEDIDO_DE_LINK_MS)) {
-    // Fechada, a pessoa recebe o aviso E o link: quem pede o cardápio às 23h
-    // quer olhar agora e pedir amanhã. Quando o aviso que a loja escreveu não
-    // traz o {link}, o que vai junto é a SAUDAÇÃO dela — que traz —, nunca uma
-    // linha de endereço inventada aqui no código.
-    const aviso = openState.isOpen ? '' : messages.storeClosed;
-    template = !aviso
-      ? messages.firstContact
-      : aviso.includes('{link}')
-        ? aviso
-        : `${aviso}\n\n${messages.firstContact}`;
+    // Fechada, sai só o aviso de fechado que a loja escreveu — com o link se
+    // ela pôs o {link} nele. Colar a saudação embaixo virava "estamos fechados"
+    // seguido de "seja bem-vindo, faça seu pedido" na mesma mensagem (27/09).
+    // Quem apertou o botão já está com o cardápio aberto; o link é bônus.
+    template = openState.isOpen ? messages.firstContact : messages.storeClosed;
     type = 'link_request_auto_reply';
   } else if (!openState.isOpen) {
     if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= JANELA_DA_LOJA_FECHADA_MS) {
