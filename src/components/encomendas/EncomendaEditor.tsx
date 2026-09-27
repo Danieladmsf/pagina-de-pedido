@@ -34,7 +34,7 @@ const TEXT_FIELDS: FieldDef[] = [
 // O bloco "Horário" (rodapé da landing) mora FORA de `content`, direto em
 // encomendas.* — que é de onde buildEncomendaConfig lê e o wizard reaproveita o
 // daysLabel. Os defaults saem do próprio config para não duplicar.
-type Schedule = { scheduleMode: 'text' | 'week'; daysLabel: string; hours: string; weekHours: DayHours[] };
+type Schedule = { scheduleMode: 'text' | 'week' | 'store'; daysLabel: string; hours: string; weekHours: DayHours[] };
 function readSchedule(storeProfile: any): Schedule {
   const c = buildEncomendaConfig(storeProfile);
   // No modo 'week' o daysLabel do config é derivado; aqui o input de texto livre
@@ -81,6 +81,9 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
 
   // Horário fixo da semana do perfil da loja, se já estiver preenchido lá.
   const storeWeek = useMemo(() => fromStoreWorkingHours(storeProfile?.workingHours), [storeProfile?.workingHours]);
+  // Seguindo a loja, os dias mostram o horário do Perfil e não se editam aqui.
+  const following = schedule.scheduleMode === 'store' && !!storeWeek;
+  const shownWeek = following && storeWeek ? storeWeek : schedule.weekHours;
 
   // Config "ao vivo": o que está sendo editado passa pelo MESMO buildEncomendaConfig
   // da página real, então a prévia deriva tudo (inclusive o daysLabel) igualzinho.
@@ -150,14 +153,31 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
               <p className="text-[11px] text-muted-foreground">Cada dia com seu horário, em vez de duas linhas de texto.</p>
             </div>
             <Switch
-              checked={schedule.scheduleMode === 'week'}
+              checked={schedule.scheduleMode !== 'text'}
               onCheckedChange={(on) => setSched('scheduleMode', on ? 'week' : 'text')}
             />
           </div>
 
-          {schedule.scheduleMode === 'week' ? (
+          {schedule.scheduleMode !== 'text' ? (
             <div className="space-y-2">
               {storeWeek && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border p-2.5">
+                  <div>
+                    <p className="text-xs font-semibold">Seguir o horário de funcionamento da loja</p>
+                    <p className="text-[11px] text-muted-foreground">Mudou o horário da loja no Perfil, muda aqui também.</p>
+                  </div>
+                  <Switch
+                    checked={following}
+                    // Ao desligar, a lista começa do horário da loja: o que o cliente
+                    // via continua igual até alguém mudar um dia.
+                    onCheckedChange={(on) => {
+                      setSchedule((prev) => (on ? { ...prev, scheduleMode: 'store' } : { ...prev, scheduleMode: 'week', weekHours: storeWeek }));
+                      setDirty(true);
+                    }}
+                  />
+                </div>
+              )}
+              {storeWeek && !following && (
                 <Button type="button" variant="outline" size="sm" className="w-full text-xs"
                   onClick={() => setSched('weekHours', storeWeek)}>
                   <CopyIcon className="mr-1.5 h-3.5 w-3.5" /> Copiar o horário da loja
@@ -165,18 +185,18 @@ export function EncomendaEditor({ db, user, storeProfile }: { db: any; user: any
               )}
               <div className="space-y-1">
                 {DAY_ORDER.map((d) => {
-                  const day = schedule.weekHours[d];
+                  const day = shownWeek[d];
                   return (
                     <div key={d} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${day.closed ? 'bg-muted/40' : 'bg-background'}`}>
                       <span className="w-8 shrink-0 text-xs font-semibold">{DAY_SHORT[d]}</span>
-                      <Switch checked={!day.closed} onCheckedChange={(on) => setDay(d, { closed: !on })} className="scale-75" />
+                      <Switch checked={!day.closed} disabled={following} onCheckedChange={(on) => setDay(d, { closed: !on })} className="scale-75" />
                       {day.closed ? (
                         <span className="flex-1 text-right text-[11px] text-muted-foreground">Fechado</span>
                       ) : (
                         <div className="flex flex-1 items-center justify-end gap-1">
-                          <Input type="time" value={day.open} onChange={(e) => setDay(d, { open: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
+                          <Input type="time" value={day.open} disabled={following} onChange={(e) => setDay(d, { open: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
                           <span className="text-xs text-muted-foreground">às</span>
-                          <Input type="time" value={day.close} onChange={(e) => setDay(d, { close: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
+                          <Input type="time" value={day.close} disabled={following} onChange={(e) => setDay(d, { close: e.target.value })} className="h-7 w-[5.5rem] px-1.5 text-[11px]" />
                         </div>
                       )}
                     </div>

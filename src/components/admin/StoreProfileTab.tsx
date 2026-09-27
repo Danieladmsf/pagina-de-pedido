@@ -17,6 +17,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { uploadImage } from '@/lib/upload';
 import { normalizeSearch } from '@/lib/utils';
+import { revalidateStorePages } from '@/lib/revalidate-store';
 import { resolvePrintMode, type PrintMode } from '@/lib/receipt-print';
 
 interface StoreProfileTabProps {
@@ -186,6 +187,9 @@ export function StoreProfileTab({ db, user, activeSection }: StoreProfileTabProp
         plannedClosures: plannedClosures.filter(c => c.date >= new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })),
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      // O horário e o nome aparecem nas páginas públicas (cardápio e encomendas),
+      // que ficam em cache: sem isso, a mudança demorava até 5 minutos para valer.
+      revalidateStorePages(user.uid);
 
       toast({ title: 'Configurações salvas com sucesso!' });
     } catch (err: any) {

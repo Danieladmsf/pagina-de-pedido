@@ -1,6 +1,8 @@
-// Horário da página de Encomendas. Duas formas de contar a mesma coisa:
-//   'text' → duas linhas livres (daysLabel + hours); é o formato antigo e o padrão;
-//   'week' → horário por dia da semana.
+// Horário da página de Encomendas. Três formas de contar a mesma coisa:
+//   'text'  → duas linhas livres (daysLabel + hours); é o formato antigo e o padrão;
+//   'week'  → horário por dia da semana, digitado na página de encomendas;
+//   'store' → horário por dia da semana LIDO do horário de funcionamento da loja
+//             (store_profiles.workingHours): mudou lá, muda aqui.
 // weekHours é indexado por dia do JS (0=Dom..6=Sáb), igual ao `weekDays` que já
 // existe na config. A ORDEM de exibição é Segunda→Domingo, e dias seguidos com o
 // mesmo horário são agrupados ("Ter a Sáb · 09h às 18h") pra o rodapé não virar
@@ -96,8 +98,10 @@ export function openDaysLabel(week: any, long = false): string {
 // que guarda o dia por NOME) para o formato indexado daqui.
 export function fromStoreWorkingHours(workingHours: any): DayHours[] | null {
   if (!Array.isArray(workingHours) || !workingHours.length) return null;
+  // Mesma comparação do getStoreOpenState: "Sábado", "sabado" e "SÁBADO" são o mesmo dia.
+  const clean = (d: unknown) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return DEFAULT_WEEK_HOURS.map((def, i) => {
-    const wh = workingHours.find((w: any) => w?.day === DAY_LONG[i]);
+    const wh = workingHours.find((w: any) => clean(w?.day) === clean(DAY_LONG[i]));
     if (!wh) return { ...def };
     return {
       closed: wh.isClosed === true,

@@ -29,7 +29,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
   ];
 
   // Rodapé no modo "por dia": só os dias abertos, já agrupados.
-  const weekRows = config.scheduleMode === 'week' ? formatWeekSchedule(config.weekHours) : [];
+  const weekRows = config.scheduleMode !== 'text' ? formatWeekSchedule(config.weekHours) : [];
 
   const Logo = () =>
     config.logoUrl ? (
@@ -197,7 +197,7 @@ export function Landing({ config, onStart }: { config: EncomendaConfig; onStart:
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-gold">Horário</p>
             <ul className="mt-3 space-y-1.5 text-sm text-foreground/80">
-              {config.scheduleMode === 'week' ? (
+              {config.scheduleMode !== 'text' ? (
                 weekRows.length ? weekRows.map((r) => (
                   <li key={r.days} className="flex items-baseline justify-between gap-4 max-w-[16rem]">
                     <span>{r.days}</span>

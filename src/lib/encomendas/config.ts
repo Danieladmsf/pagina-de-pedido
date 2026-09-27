@@ -4,7 +4,7 @@
 
 import { type EncomendaContent, mergeContent } from './content';
 import { type EncomendaCatalog, mergeCatalog } from './catalog';
-import { type DayHours, mergeWeekHours, openDaysLabel } from './schedule';
+import { type DayHours, fromStoreWorkingHours, mergeWeekHours, openDaysLabel } from './schedule';
 
 export interface EncomendaConfig {
   name: string;
@@ -16,12 +16,12 @@ export interface EncomendaConfig {
   pixKey: string;
   sinalPercent: number;    // entrada/sinal configurável pelo lojista
   minDays: number;         // antecedência mínima da encomenda
-  daysLabel: string;       // dias de funcionamento (texto exibido); derivado no modo 'week'
+  daysLabel: string;       // dias de funcionamento (texto exibido); derivado nos modos 'week' e 'store'
   weekDays: number[];      // dias que aceitam retirada/entrega (0=Dom..6=Sáb); [] = todos
   pickupOnly: boolean;     // true = só retirada (sem entrega); segue o PDF da loja
   hours: string;           // horário exibido no modo 'text'
-  scheduleMode: 'text' | 'week'; // como o rodapé mostra o horário — ver schedule.ts
-  weekHours: DayHours[];   // horário por dia da semana (0=Dom..6=Sáb), modo 'week'
+  scheduleMode: 'text' | 'week' | 'store'; // como o rodapé mostra o horário — ver schedule.ts
+  weekHours: DayHours[];   // horário por dia da semana (0=Dom..6=Sáb), modos 'week' e 'store'
   logoUrl: string;         // logo real da loja (general.logoUrl), se houver
   logoEmoji: string;       // fallback visual quando não há logo
   content: EncomendaContent; // textos + fotos editáveis da landing
@@ -51,10 +51,13 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
 
   const whatsapp = general.whatsapp || general.phone || '';
 
-  // No modo 'week' o rótulo dos dias é DERIVADO do horário por dia — assim o
-  // wizard ("Mín. X dias · Terça a Sábado") nunca discorda do rodapé.
-  const scheduleMode: 'text' | 'week' = enc.scheduleMode === 'week' ? 'week' : 'text';
-  const weekHours = mergeWeekHours(enc.weekHours);
+  // Nos modos por dia o rótulo dos dias é DERIVADO do horário por dia — assim o
+  // wizard ("Mín. X dias · Terça a Sábado") nunca discorda do rodapé. No 'store'
+  // o horário vem do funcionamento da loja; loja sem horário cadastrado cai na
+  // cópia salva aqui, para a página não ficar sem horário nenhum.
+  const scheduleMode: 'text' | 'week' | 'store' =
+    enc.scheduleMode === 'week' || enc.scheduleMode === 'store' ? enc.scheduleMode : 'text';
+  const weekHours = (scheduleMode === 'store' && fromStoreWorkingHours(profile?.workingHours)) || mergeWeekHours(enc.weekHours);
 
   return {
     name: general.name || 'Nossa Confeitaria',
@@ -67,7 +70,7 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     pixKey: enc.pixKey || profile?.creditPixKey || '',
     sinalPercent: typeof enc.sinalPercent === 'number' ? enc.sinalPercent : 30,
     minDays: typeof enc.minDays === 'number' ? enc.minDays : 3,
-    daysLabel: scheduleMode === 'week' ? openDaysLabel(weekHours, true) : (enc.daysLabel || 'Terça a Sábado'),
+    daysLabel: scheduleMode !== 'text' ? openDaysLabel(weekHours, true) : (enc.daysLabel || 'Terça a Sábado'),
     weekDays: Array.isArray(enc.weekDays) ? enc.weekDays.filter((d: any) => typeof d === 'number' && d >= 0 && d <= 6) : [],
     pickupOnly: enc.pickupOnly === true,
     hours: enc.hours || '09h às 18h',
