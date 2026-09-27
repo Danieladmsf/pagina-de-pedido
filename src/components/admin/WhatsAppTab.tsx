@@ -64,6 +64,7 @@ import {
   getWhatsAppMessages,
   renderWhatsAppTemplate,
   formatNextOpeningTime,
+  formatTodayClosingTime,
 } from '@/lib/whatsapp-messages';
 import type { WhatsAppMessageKey, WhatsAppMessageTemplates } from '@/lib/whatsapp-messages';
 
@@ -1138,6 +1139,7 @@ function MessageTemplatesSection({
     pagamento: 'Crédito',
     tempo_estimado: '\n⏳ Tempo estimado de entrega: 00:50',
     proxima_abertura: formatNextOpeningTime(workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
+    fechamento_hoje: formatTodayClosingTime(workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone) || '18:00',
     horarios: formatWorkingHours(workingHours),
     celular: '(14) 99766-4759',
     endereco: 'Comer no local: Antonio Pizzi, 21, João Berbel II',
@@ -1157,7 +1159,7 @@ function MessageTemplatesSection({
                 Mensagens automaticas
               </CardTitle>
               <p className="text-xs text-slate-500 mt-1">
-                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}, {'{celular}'}, {'{endereco}'}, {'{subtotal}'}, {'{taxa_entrega}'}, {'{chave_pix}'} (so na mensagem de Pix).
+                Variaveis disponiveis: {'{cliente}'}, {'{primeiro_nome}'}, {'{pedido}'}, {'{itens}'}, {'{total}'}, {'{pagamento}'}, {'{tempo_estimado}'}, {'{link}'}, {'{loja}'}, {'{horarios}'}, {'{fechamento_hoje}'} (hora que a loja fecha hoje, conforme o horário de funcionamento), {'{celular}'}, {'{endereco}'}, {'{subtotal}'}, {'{taxa_entrega}'}, {'{chave_pix}'} (so na mensagem de Pix).
               </p>
             </div>
             <div className="flex gap-2">

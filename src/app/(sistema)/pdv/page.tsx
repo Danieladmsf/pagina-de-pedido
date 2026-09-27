@@ -16,7 +16,7 @@ import { discardMesasDraft, MesasTab } from '@/components/admin/MesasTab';
 import { WelcomeWizard } from '@/components/admin/WelcomeWizard';
 import { EncomendasPedidosTab } from '@/components/admin/EncomendasPedidosTab';
 import { useCaixa } from '@/hooks/useCaixa';
-import { buildStoreLink, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
+import { buildStoreLink, formatTodayClosingTime, formatWorkingHours, getWhatsAppMessages, renderWhatsAppTemplate } from '@/lib/whatsapp-messages';
 import { reconcileOrderStock, releaseOrderStock, InsufficientStockError } from '@/lib/inventory';
 import { playLoudAudio } from '@/lib/order-sound';
 import { resolvePrintMode } from '@/lib/receipt-print';
@@ -859,6 +859,7 @@ export default function PdvPage() {
         loja: storeProfile?.general?.name || storeProfile?.storeName || 'Minha loja',
         link: buildStoreLink(storeProfile, ownerId, typeof window !== 'undefined' ? window.location.origin : undefined),
         horarios: formatWorkingHours(storeProfile?.workingHours),
+        fechamento_hoje: formatTodayClosingTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
         celular: phoneFormatted,
         endereco: addressLine,
         subtotal: subtotalStr,

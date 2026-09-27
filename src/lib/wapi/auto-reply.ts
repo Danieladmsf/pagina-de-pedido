@@ -25,6 +25,7 @@
 import {
   buildStoreLink,
   formatNextOpeningTime,
+  formatTodayClosingTime,
   formatWorkingHours,
   getStoreOpenState,
   getWhatsAppMessages,
@@ -165,6 +166,7 @@ export function buildAutoReply(params: {
       link: storeLink,
       horarios: formatWorkingHours(storeProfile?.workingHours),
       proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
+      fechamento_hoje: formatTodayClosingTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
       cliente: '',
       primeiro_nome: '',
       pedido: '',
@@ -212,6 +214,7 @@ export function buildAutoReply(params: {
     link: storeLink,
     horarios: formatWorkingHours(storeProfile?.workingHours),
     proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
+    fechamento_hoje: formatTodayClosingTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
     cliente: '',
     primeiro_nome: '',
     pedido: '',

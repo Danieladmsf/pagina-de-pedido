@@ -106,6 +106,45 @@ export function formatWorkingHours(workingHours?: WorkingHour[] | null) {
     .join('\n');
 }
 
+/**
+ * O horário em que a loja fecha HOJE, no formato "16:00", lido do cadastro de
+ * horários — é o `{fechamento_hoje}` das mensagens automáticas.
+ *
+ * Existe porque a dona escrevia a hora à mão ("retirada até as 18:00 de hoje")
+ * e no sábado, que fecha às 16:00, o cliente recebia a hora da semana. Dia
+ * fechado, fechamento programado ou dia sem cadastro devolvem vazio: não há
+ * hora de hoje para dizer.
+ */
+export function formatTodayClosingTime(
+  workingHours?: WorkingHour[] | null,
+  plannedClosures?: any[] | null,
+  timezoneStr?: string,
+  now = new Date()
+) {
+  if (!workingHours || workingHours.length === 0) return '';
+
+  let localNow: Date;
+  try {
+    const tz = timezoneStr && timezoneStr.trim() !== '' ? timezoneStr : 'America/Sao_Paulo';
+    localNow = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  } catch {
+    localNow = new Date(now);
+  }
+
+  const yyyy = localNow.getFullYear();
+  const mm = String(localNow.getMonth() + 1).padStart(2, '0');
+  const dd = String(localNow.getDate()).padStart(2, '0');
+  if (plannedClosures?.some((c: any) => c?.date === `${yyyy}-${mm}-${dd}`)) return '';
+
+  const cleanDaysOfWeek = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+  const cleanDay = (d: string) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const today = workingHours.find((wh) => cleanDay(wh.day) === cleanDaysOfWeek[localNow.getDay()]);
+  if (!today || today.isClosed || !today.close) return '';
+
+  const [closeHour, closeMin] = String(today.close).split(':').map(Number);
+  return `${String(closeHour || 0).padStart(2, '0')}:${String(closeMin || 0).padStart(2, '0')}`;
+}
+
 export function getStoreOpenState(storeProfile: any, now = new Date()) {
   if (!storeProfile) return { isOpen: true, reason: '' };
   if (storeProfile.isCaixaAberto === false) return { isOpen: false, reason: 'caixa_closed' };
