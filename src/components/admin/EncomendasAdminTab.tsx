@@ -12,6 +12,7 @@ import { CakeSlice, Copy, Check, Loader2, Link2, ExternalLink, Wand2 } from 'luc
 import { EncomendaEditor } from '@/components/encomendas/EncomendaEditor';
 import { EncomendaCatalogEditor } from '@/components/encomendas/EncomendaCatalogEditor';
 import { revalidateStorePages } from '@/lib/revalidate-store';
+import { buildEncomendaConfig } from '@/lib/encomendas/config';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // Aba lateral "Encomendas" = CONFIGURAÇÃO da página pública (a lista de pedidos
@@ -41,6 +42,12 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
     setShowInApp(e.showInApp === true);
     setPickupOnly(e.pickupOnly === true);
   }, [storeProfile]);
+
+  // Com o Horário da página separado por dia, os dias do pedido SÃO os dias
+  // abertos desse horário (buildEncomendaConfig deriva) — aqui só se mostra.
+  const scheduleConfig = useMemo(() => buildEncomendaConfig(storeProfile), [storeProfile]);
+  const daysFollowSchedule = scheduleConfig.scheduleMode !== 'text';
+  const shownWeekDays = daysFollowSchedule ? scheduleConfig.weekDays : weekDays;
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -140,18 +147,24 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
             <Label className="text-sm">Dias que aceitam retirada/entrega</Label>
             <div className="flex flex-wrap gap-1.5">
               {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => {
-                const on = weekDays.includes(i);
+                const on = shownWeekDays.includes(i);
                 return (
-                  <button key={d} type="button"
+                  <button key={d} type="button" disabled={daysFollowSchedule}
                     onClick={() => setWeekDays((prev) => on ? prev.filter((x) => x !== i) : [...prev, i].sort())}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-muted-foreground hover:border-primary/50'}`}>
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-default ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-muted-foreground hover:border-primary/50'}`}>
                     {d}
                   </button>
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground">A página bloqueia datas fora desses dias. Nenhum marcado = todos os dias.</p>
-            <p className="text-xs text-muted-foreground">O texto de horário que o cliente lê ("Terça a Sábado", "09h às 18h") fica logo abaixo, em <strong>Personalizar a página → Horário</strong>.</p>
+            {daysFollowSchedule ? (
+              <p className="text-xs text-muted-foreground">Seguem os dias abertos do horário em <strong>Personalizar a página → Horário</strong>. A página bloqueia datas nos dias fechados. Para mudar, mude o horário lá.</p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">A página bloqueia datas fora desses dias. Nenhum marcado = todos os dias.</p>
+                <p className="text-xs text-muted-foreground">O texto de horário que o cliente lê ("Terça a Sábado", "09h às 18h") fica logo abaixo, em <strong>Personalizar a página → Horário</strong>.</p>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end">

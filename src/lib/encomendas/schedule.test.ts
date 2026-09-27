@@ -40,3 +40,28 @@ describe('horário das encomendas seguindo o funcionamento da loja', () => {
     expect(w?.[6]).toEqual({ closed: false, open: '10:00', close: '16:00' });
   });
 });
+
+describe('dias em que a encomenda pode ser marcada', () => {
+  it('com horário por dia, são os dias abertos do horário da página de encomendas', () => {
+    // Encomenda com horário próprio: fecha quarta, mesmo com a loja abrindo.
+    const semQuarta = copiaAntiga.map((d, i) => (i === 3 ? { ...d, closed: true } : d));
+    const c = buildEncomendaConfig({ workingHours, encomendas: { scheduleMode: 'week', weekHours: semQuarta, weekDays: [2, 3, 4, 5, 6] } });
+    expect(c.weekDays).toEqual([2, 4, 5, 6]);
+  });
+
+  it("no modo 'store' são os dias em que a loja abre", () => {
+    const c = buildEncomendaConfig({ workingHours, encomendas: { scheduleMode: 'store', weekDays: [0, 1] } });
+    expect(c.weekDays).toEqual([2, 3, 4, 5, 6]);
+  });
+
+  it('com horário em texto livre, valem os dias marcados na configuração', () => {
+    const c = buildEncomendaConfig({ workingHours, encomendas: { scheduleMode: 'text', weekDays: [5, 6] } });
+    expect(c.weekDays).toEqual([5, 6]);
+  });
+
+  it('horário com todos os dias fechados não libera a semana inteira', () => {
+    const tudoFechado = copiaAntiga.map((d) => ({ ...d, closed: true }));
+    const c = buildEncomendaConfig({ encomendas: { scheduleMode: 'week', weekHours: tudoFechado, weekDays: [6] } });
+    expect(c.weekDays).toEqual([6]);
+  });
+});

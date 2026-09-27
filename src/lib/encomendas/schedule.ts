@@ -76,6 +76,13 @@ export function formatWeekSchedule(week: any): { days: string; hours: string }[]
   });
 }
 
+// Dias abertos (0=Dom..6=Sáb), no formato do `weekDays` da config: com o horário
+// por dia, a data do pedido só pode cair num dia em que a página diz que abre.
+export function openWeekDays(week: any): number[] {
+  const w = mergeWeekHours(week);
+  return [0, 1, 2, 3, 4, 5, 6].filter((d) => !w[d].closed);
+}
+
 // Rótulo curto só dos dias abertos ("Terça a Sábado"), para onde antes ia o
 // daysLabel de texto livre — inclusive o passo da data no wizard.
 export function openDaysLabel(week: any, long = false): string {
@@ -99,7 +106,7 @@ export function openDaysLabel(week: any, long = false): string {
 export function fromStoreWorkingHours(workingHours: any): DayHours[] | null {
   if (!Array.isArray(workingHours) || !workingHours.length) return null;
   // Mesma comparação do getStoreOpenState: "Sábado", "sabado" e "SÁBADO" são o mesmo dia.
-  const clean = (d: unknown) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const clean = (d: unknown) => String(d || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return DEFAULT_WEEK_HOURS.map((def, i) => {
     const wh = workingHours.find((w: any) => clean(w?.day) === clean(DAY_LONG[i]));
     if (!wh) return { ...def };
