@@ -54,11 +54,29 @@ describe('pedido de cardápio (mensagem com o código da visita)', () => {
     expect(comPedido?.message).toContain('gostinho-de-ceu');
   });
 
-  it('não responde duas vezes na mesma rajada', () => {
+  it('o mesmo pedido entregue de novo não ganha segunda resposta', () => {
+    // Era assim que saía o link e, no mesmo segundo, a saudação ou o aviso de
+    // fechado: a cópia do evento caía na regra normal.
     const repetido = responder({ incoming: pedido, contactData: { lastLinkReplyAt: AGORA - 30_000 } });
-    // Cai na regra normal: sem contato anterior, sai a saudação — mas NÃO um
-    // segundo "aqui está o cardápio" por causa do retry.
-    expect(repetido?.type).not.toBe('link_request_auto_reply');
+    expect(repetido).toBeNull();
+
+    const fechada = responder({ storeProfile: lojaFechada, incoming: pedido, contactData: { lastLinkReplyAt: AGORA - 30_000 } });
+    expect(fechada).toBeNull();
+  });
+
+  it('o "oi bom dia" logo depois do link não ganha a saudação nem o aviso', () => {
+    const aberta = responder({ contactData: { lastLinkReplyAt: AGORA - 10_000, lastInboundAt: AGORA - 10_000 } });
+    expect(aberta).toBeNull();
+
+    const fechada = responder({ storeProfile: lojaFechada, contactData: { lastLinkReplyAt: AGORA - 10_000 } });
+    expect(fechada).toBeNull();
+  });
+
+  it('no dia seguinte, a saudação volta a valer', () => {
+    const reply = responder({
+      contactData: { lastLinkReplyAt: AGORA - 20 * HORA, lastInboundAt: AGORA - 20 * HORA },
+    });
+    expect(reply?.type).toBe('first_contact_auto_reply');
   });
 
   it('volta a responder quando o pedido é de verdade, minutos depois', () => {
@@ -138,6 +156,22 @@ describe('as regras que já existiam continuam valendo', () => {
       contactData: { lastClosedReplyAt: AGORA - 3 * HORA },
     });
     expect(horasDepois?.type).toBe('store_closed_auto_reply');
+  });
+
+  it('o "amei" logo depois da reação no story não ganha o aviso de fechado', () => {
+    // 23/09 21:38: a cliente reagiu ao story e escreveu "amei" 3 segundos
+    // depois; recebeu a saudação e, em seguida, o horário inteiro.
+    const logoDepois = responder({
+      storeProfile: lojaFechada,
+      contactData: { lastStoryReactionReplyAt: AGORA - 3_000 },
+    });
+    expect(logoDepois).toBeNull();
+
+    const pergunta = responder({
+      storeProfile: lojaFechada,
+      contactData: { lastStoryReactionReplyAt: AGORA - HORA },
+    });
+    expect(pergunta?.type).toBe('store_closed_auto_reply');
   });
 });
 

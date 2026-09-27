@@ -21,6 +21,9 @@
  *    saudação com o link.
  * 6. Fora disso, cala: quem já está conversando com a loja não quer robô no
  *    meio da conversa.
+ *
+ * Os itens 4 e 5 também calam quando o link ou a saudação da reação acabou de
+ * sair: uma resposta automática por vez, nunca duas em sequência.
  */
 import {
   buildStoreLink,
@@ -182,7 +185,18 @@ export function buildAutoReply(params: {
     return { message: texto, type: 'story_reaction_auto_reply', imageUrl: imageUrl || undefined };
   }
 
-  if (pediuLink && (!lastLinkReplyAt || nowMs - lastLinkReplyAt > JANELA_DO_PEDIDO_DE_LINK_MS)) {
+  // Uma resposta automática por vez. O pedido de cardápio já leva a saudação
+  // (aberta) ou o aviso de fechado; a reação no story já levou a saudação. A
+  // mensagem que chega logo atrás — o mesmo evento entregue de novo, ou o "oi
+  // bom dia" que a pessoa manda 5 segundos depois — não ganha uma segunda
+  // mensagem do robô repetindo o que acabou de sair. Entre 14 e 26/09 foram 9
+  // conversas com duas respostas automáticas no mesmo minuto.
+  const lastStoryReplyAt = emMillis(params.contactData?.lastStoryReactionReplyAt);
+  const dentro = (quando: number, janela: number) => quando > 0 && nowMs - quando <= janela;
+
+  if (pediuLink && dentro(lastLinkReplyAt, JANELA_DO_PEDIDO_DE_LINK_MS)) return null;
+
+  if (pediuLink) {
     // Fechada, sai só o aviso de fechado que a loja escreveu — com o link se
     // ela pôs o {link} nele. Colar a saudação embaixo virava "estamos fechados"
     // seguido de "seja bem-vindo, faça seu pedido" na mesma mensagem (27/09).
@@ -190,15 +204,21 @@ export function buildAutoReply(params: {
     template = openState.isOpen ? messages.firstContact : messages.storeClosed;
     type = 'link_request_auto_reply';
   } else if (!openState.isOpen) {
-    if (lastClosedReplyAt && nowMs - lastClosedReplyAt <= JANELA_DA_LOJA_FECHADA_MS) {
+    if (
+      dentro(lastClosedReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
+      dentro(lastLinkReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
+      dentro(lastStoryReplyAt, JANELA_DO_PEDIDO_DE_LINK_MS)
+    ) {
       return null;
     }
 
     template = messages.storeClosed;
     type = 'store_closed_auto_reply';
   } else if (
-    !params.contactData?.firstContactSentAt ||
-    (lastInboundMs > 0 && nowMs - lastInboundMs > JANELA_DA_SAUDACAO_MS)
+    (!params.contactData?.firstContactSentAt ||
+      (lastInboundMs > 0 && nowMs - lastInboundMs > JANELA_DA_SAUDACAO_MS)) &&
+    !dentro(lastLinkReplyAt, JANELA_DA_SAUDACAO_MS) &&
+    !dentro(lastStoryReplyAt, JANELA_DA_SAUDACAO_MS)
   ) {
     template = messages.firstContact;
     type = 'first_contact_auto_reply';
