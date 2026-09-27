@@ -6,24 +6,22 @@
  * fala com CLIENTE de verdade — um erro aqui não aparece em tela nenhuma: ou a
  * loja manda mensagem repetida, ou deixa alguém falando sozinho.
  *
- * As decisões, na ordem em que são tomadas:
+ * O QUE sai tem uma regra só: loja aberta manda a saudação (firstContact),
+ * loja fechada manda o aviso de fechado (storeClosed). Vale para qualquer
+ * interação — mensagem, pedido de cardápio, reação no story. Os textos são os
+ * que a loja escreveu; nunca se misturam numa mesma resposta.
  *
- * 1. A LOJA falou com esta pessoa nas últimas 2 horas: cala. Atendimento humano
- *    em andamento não quer robô por cima — só o pedido explícito de cardápio
- *    (item 2) passa por essa porta.
- * 2. A pessoa PEDIU o cardápio (a mensagem traz o código da visita, gerado pelo
- *    botão do próprio cardápio). Responde sempre — só segura repetição em
- *    rajada. É pedido explícito: as janelas de silêncio abaixo não valem.
- * 3. Reação no story (o coraçãozinho): manda a saudação que a loja escreveu, no
- *    máximo uma por semana. Nunca o horário de funcionamento inteiro.
- * 4. Loja fechada: manda o aviso, no máximo um a cada 2 horas.
- * 5. Primeiro contato do número (ou depois de 12h de silêncio): manda a
- *    saudação com o link.
- * 6. Fora disso, cala: quem já está conversando com a loja não quer robô no
- *    meio da conversa.
+ * O resto só decide SE responde, para o robô não repetir nem atropelar:
  *
- * Os itens 4 e 5 também calam quando o link ou a saudação da reação acabou de
- * sair: uma resposta automática por vez, nunca duas em sequência.
+ * 1. A LOJA falou com esta pessoa nas últimas 2 horas: cala. Só o pedido
+ *    explícito de cardápio passa por essa porta.
+ * 2. Pedido de cardápio (mensagem com o código da visita, do botão do próprio
+ *    cardápio): responde sempre, só segura a repetição em 2 minutos.
+ * 3. Reação no story: no máximo uma resposta por semana.
+ * 4. Loja fechada: no máximo um aviso a cada 2 horas.
+ * 5. Loja aberta: saudação no primeiro contato ou depois de 12h de silêncio.
+ * 6. Uma resposta automática por vez: depois do link ou da resposta ao story,
+ *    a próxima mensagem da pessoa não ganha outra resposta em seguida.
  */
 import {
   buildStoreLink,
@@ -133,12 +131,19 @@ export function buildAutoReply(params: {
     storeProfile?.general?.bannerUrl ||
     '';
 
-  let template = '';
   let type = '';
   const nowMs = params.agora ?? Date.now();
   const lastClosedReplyAt = emMillis(params.contactData?.lastClosedReplyAt);
   const lastInboundMs = emMillis(params.contactData?.lastInboundAt);
   const lastLinkReplyAt = emMillis(params.contactData?.lastLinkReplyAt);
+  const lastStoryReplyAt = emMillis(params.contactData?.lastStoryReactionReplyAt);
+  const dentro = (quando: number, janela: number) => quando > 0 && nowMs - quando <= janela;
+
+  // O TEXTO só depende de a loja estar aberta ou fechada — seja mensagem,
+  // pedido de cardápio ou reação no story. Regra da dona (27/09/2026): "são só
+  // duas, aberta ou fechada". Antes a reação no story mandava "faça seu pedido"
+  // com a loja fechada, e o pedido de cardápio colava as duas mensagens.
+  const template = openState.isOpen ? messages.firstContact : messages.storeClosed;
 
   // Pedido explícito de cardápio: a mensagem veio do botão do cardápio e traz o
   // código da visita. Responde SEMPRE, fora da janela de 12h da saudação —
@@ -147,80 +152,42 @@ export function buildAutoReply(params: {
   const pediuLink = Boolean(extrairCodigoDaMensagem(params.incoming.text || ''));
 
   // A loja está atendendo esta pessoa agora: o robô não entra por cima. Vale
-  // para a saudação, para o aviso de fechado e para o agradecimento de story —
-  // só o pedido explícito de cardápio passa, porque aí a pessoa apertou um
-  // botão esperando o link de volta.
+  // para a saudação, para o aviso de fechado e para a reação no story — só o
+  // pedido explícito de cardápio passa, porque aí a pessoa apertou um botão
+  // esperando o link de volta.
   const lastOutboundMs = emMillis(params.contactData?.lastOutboundAt);
   const lojaFalouAgora = lastOutboundMs > 0 && nowMs - lastOutboundMs <= JANELA_DA_CONVERSA_HUMANA_MS;
   if (lojaFalouAgora && !pediuLink) return null;
 
-  // Reação no story não é pergunta: o que sai é a SAUDAÇÃO que a dona escreveu
-  // na tela de mensagens automáticas — a mesma de quem chega pela primeira vez,
-  // curta e com o link. Nunca o horário de funcionamento inteiro, e nunca um
-  // texto inventado aqui no código: o cliente tem que reconhecer a loja no que
-  // recebe. Fora da janela, o silêncio é a resposta certa, e ela não gasta o
-  // "primeiro contato" de quem ainda vai escrever de verdade.
+  // Daqui para baixo só se decide SE responde — nunca o quê. É uma resposta
+  // automática por vez: a mensagem que chega logo atrás (o mesmo evento
+  // entregue de novo, ou o "oi bom dia" 5 segundos depois do link) não ganha
+  // uma segunda mensagem repetindo a que acabou de sair. Entre 14 e 26/09
+  // foram 9 conversas com duas respostas automáticas no mesmo minuto.
+  const avisouFechadoAgora =
+    dentro(lastClosedReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
+    dentro(lastLinkReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
+    dentro(lastStoryReplyAt, JANELA_DA_LOJA_FECHADA_MS);
+  const saudouAgora =
+    dentro(lastLinkReplyAt, JANELA_DA_SAUDACAO_MS) || dentro(lastStoryReplyAt, JANELA_DA_SAUDACAO_MS);
+
   if (params.incoming.isStoryReaction) {
-    const ultimo = emMillis(params.contactData?.lastStoryReactionReplyAt);
-    if (ultimo && nowMs - ultimo <= JANELA_DA_REACAO_NO_STORY_MS) return null;
-
-    const texto = renderWhatsAppTemplate(messages.firstContact, {
-      loja: storeName,
-      link: storeLink,
-      horarios: formatWorkingHours(storeProfile?.workingHours),
-      proxima_abertura: formatNextOpeningTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
-      fechamento_hoje: formatTodayClosingTime(storeProfile?.workingHours, storeProfile?.plannedClosures, storeProfile?.general?.timezone),
-      cliente: '',
-      primeiro_nome: '',
-      pedido: '',
-      itens: '',
-      total: '',
-      pagamento: '',
-      tempo_estimado: '',
-    }).trim();
-    if (!texto) return null;
-    // Com a logo, como todas as outras. Este ramo saia daqui antes da linha que
-    // monta a imagem, entao o agradecimento chegava como texto pelado com o link
-    // cru — a unica resposta da loja com cara diferente das demais.
-    return { message: texto, type: 'story_reaction_auto_reply', imageUrl: imageUrl || undefined };
-  }
-
-  // Uma resposta automática por vez. O pedido de cardápio já leva a saudação
-  // (aberta) ou o aviso de fechado; a reação no story já levou a saudação. A
-  // mensagem que chega logo atrás — o mesmo evento entregue de novo, ou o "oi
-  // bom dia" que a pessoa manda 5 segundos depois — não ganha uma segunda
-  // mensagem do robô repetindo o que acabou de sair. Entre 14 e 26/09 foram 9
-  // conversas com duas respostas automáticas no mesmo minuto.
-  const lastStoryReplyAt = emMillis(params.contactData?.lastStoryReactionReplyAt);
-  const dentro = (quando: number, janela: number) => quando > 0 && nowMs - quando <= janela;
-
-  if (pediuLink && dentro(lastLinkReplyAt, JANELA_DO_PEDIDO_DE_LINK_MS)) return null;
-
-  if (pediuLink) {
-    // Fechada, sai só o aviso de fechado que a loja escreveu — com o link se
-    // ela pôs o {link} nele. Colar a saudação embaixo virava "estamos fechados"
-    // seguido de "seja bem-vindo, faça seu pedido" na mesma mensagem (27/09).
-    // Quem apertou o botão já está com o cardápio aberto; o link é bônus.
-    template = openState.isOpen ? messages.firstContact : messages.storeClosed;
+    // Quem reage quase todo dia não recebe resposta todo dia. E a reação não
+    // gasta o "primeiro contato" de quem ainda vai escrever de verdade.
+    if (dentro(lastStoryReplyAt, JANELA_DA_REACAO_NO_STORY_MS)) return null;
+    if (!openState.isOpen && avisouFechadoAgora) return null;
+    type = 'story_reaction_auto_reply';
+  } else if (pediuLink) {
+    if (dentro(lastLinkReplyAt, JANELA_DO_PEDIDO_DE_LINK_MS)) return null;
     type = 'link_request_auto_reply';
   } else if (!openState.isOpen) {
-    if (
-      dentro(lastClosedReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
-      dentro(lastLinkReplyAt, JANELA_DA_LOJA_FECHADA_MS) ||
-      dentro(lastStoryReplyAt, JANELA_DO_PEDIDO_DE_LINK_MS)
-    ) {
-      return null;
-    }
-
-    template = messages.storeClosed;
+    if (avisouFechadoAgora) return null;
     type = 'store_closed_auto_reply';
   } else if (
     (!params.contactData?.firstContactSentAt ||
       (lastInboundMs > 0 && nowMs - lastInboundMs > JANELA_DA_SAUDACAO_MS)) &&
-    !dentro(lastLinkReplyAt, JANELA_DA_SAUDACAO_MS) &&
-    !dentro(lastStoryReplyAt, JANELA_DA_SAUDACAO_MS)
+    !saudouAgora
   ) {
-    template = messages.firstContact;
     type = 'first_contact_auto_reply';
   }
 

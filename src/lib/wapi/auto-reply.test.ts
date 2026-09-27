@@ -160,7 +160,7 @@ describe('as regras que já existiam continuam valendo', () => {
 
   it('o "amei" logo depois da reação no story não ganha o aviso de fechado', () => {
     // 23/09 21:38: a cliente reagiu ao story e escreveu "amei" 3 segundos
-    // depois; recebeu a saudação e, em seguida, o horário inteiro.
+    // depois; recebeu duas respostas do robô em seguida.
     const logoDepois = responder({
       storeProfile: lojaFechada,
       contactData: { lastStoryReactionReplyAt: AGORA - 3_000 },
@@ -169,7 +169,7 @@ describe('as regras que já existiam continuam valendo', () => {
 
     const pergunta = responder({
       storeProfile: lojaFechada,
-      contactData: { lastStoryReactionReplyAt: AGORA - HORA },
+      contactData: { lastStoryReactionReplyAt: AGORA - 3 * HORA },
     });
     expect(pergunta?.type).toBe('store_closed_auto_reply');
   });
@@ -218,11 +218,25 @@ describe('a loja está atendendo: o robô não fala por cima', () => {
 describe('reação no story (o coraçãozinho)', () => {
   const reacao = { phone: '16993407645', text: '💚', isStoryReaction: true };
 
-  it('agradece curto, sem despejar o horário de funcionamento', () => {
-    const reply = responder({ incoming: reacao, storeProfile: lojaFechada });
-    expect(reply?.type).toBe('story_reaction_auto_reply');
-    expect(reply?.message).not.toContain('Nosso horário de atendimento');
-    expect(reply?.message).toContain('gostinho-de-ceu');
+  it('loja fechada: a reação ganha o aviso de fechado, nunca "faça seu pedido"', () => {
+    // Regra da dona (27/09): aberta manda a saudação, fechada manda o aviso —
+    // qualquer que seja a interação. Em 25/09 às 19:32, com a loja fechada, a
+    // reação ganhava "Faça seu pedido pelo nosso cardápio digital".
+    const fechada = responder({ incoming: reacao, storeProfile: lojaFechada });
+    expect(fechada?.type).toBe('story_reaction_auto_reply');
+    expect(fechada?.message).toBe(responder({ storeProfile: lojaFechada })?.message);
+
+    const aberta = responder({ incoming: reacao });
+    expect(aberta?.message).toBe(responder()?.message);
+  });
+
+  it('loja fechada: quem já recebeu o aviso há pouco não recebe de novo pela reação', () => {
+    const reply = responder({
+      incoming: reacao,
+      storeProfile: lojaFechada,
+      contactData: { lastClosedReplyAt: AGORA - 30 * 60 * 1000 },
+    });
+    expect(reply).toBeNull();
   });
 
   it('usa a saudação que a loja escreveu, não um texto do código', () => {
