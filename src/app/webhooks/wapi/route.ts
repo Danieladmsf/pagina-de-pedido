@@ -5,7 +5,7 @@ import { sendWuzImage, sendWuzText } from '@/lib/wuzapi/wuzapi.service';
 import { ehEventoWuzapi, lerEventoWuzapi, type IncomingMessage } from '@/lib/wuzapi/incoming';
 import { extrairCodigoDaMensagem } from '@/lib/contato-link';
 import { identificarVisitantePeloCodigo } from '@/lib/visitantes.server';
-import { buildAutoReply } from '@/lib/wapi/auto-reply';
+import { buildAutoReply, carimboDaMensagemRecebida } from '@/lib/wapi/auto-reply';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -221,7 +221,7 @@ async function maybeSendAutoReply(params: {
       address: alvo.address,
       ...(alvo.senderLid ? { senderLid: alvo.senderLid } : {}),
       ...(!hasPriorContact ? { firstInboundAt: params.now } : {}),
-      lastInboundAt: params.now,
+      ...carimboDaMensagemRecebida(alvo, params.now),
       updatedAt: params.now,
       ...(claimField ? { [claimField]: params.now } : {}),
     }, { merge: true });

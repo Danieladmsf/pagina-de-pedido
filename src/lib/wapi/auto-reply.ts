@@ -93,6 +93,22 @@ export function marcarParaContato(link: string, empresaId: string, telefone: str
 
 const emMillis = (valor?: string | number) => (valor ? new Date(valor).getTime() : 0);
 
+/**
+ * O que a mensagem recebida grava no contato, além do carimbo da resposta.
+ *
+ * A reação no story não conta como conversa. Em 03/10/2026 uma cliente da
+ * Gostinho mandou um coração no story (sem resposta: já tinha ganhado o
+ * agradecimento da semana) e, 27 segundos depois, comentou o mesmo story. O
+ * coração tinha virado `lastInboundAt` e o comentário caiu como "no meio da
+ * conversa": ficou sem a saudação, depois de dias sem falar com a loja.
+ */
+export function carimboDaMensagemRecebida(
+  incoming: { isStoryReaction?: boolean },
+  agora: string,
+): { lastInboundAt?: string } {
+  return incoming.isStoryReaction ? {} : { lastInboundAt: agora };
+}
+
 export function buildAutoReply(params: {
   storeProfile: any;
   empresaId: string;

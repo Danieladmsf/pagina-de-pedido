@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { JANELA_DA_SAUDACAO_MS, buildAutoReply } from './auto-reply';
+import { JANELA_DA_SAUDACAO_MS, buildAutoReply, carimboDaMensagemRecebida, type ContatoDoAutoReply } from './auto-reply';
 
 /**
  * O que estes testes protegem: mensagem que chega em cliente de verdade.
@@ -276,6 +276,33 @@ describe('reação no story (o coraçãozinho)', () => {
       contactData: { lastStoryReactionReplyAt: AGORA - 8 * 24 * HORA },
     });
     expect(semanaPassada?.type).toBe('story_reaction_auto_reply');
+  });
+
+  it('o coração sem resposta não cala o comentário que vem logo atrás', () => {
+    // 03/10/2026: a cliente reagiu ao story (já tinha o agradecimento da
+    // semana) e comentou 27 s depois. O coração contava como conversa recente
+    // e o comentário ficou sem a saudação, depois de dias sem falar com a loja.
+    const contato: ContatoDoAutoReply = {
+      firstContactSentAt: AGORA - 90 * 24 * HORA,
+      lastInboundAt: AGORA - 4 * 24 * HORA,
+      lastStoryReactionReplyAt: AGORA - 4 * 24 * HORA,
+    };
+
+    const coracao = responder({ incoming: reacao, contactData: contato, agora: AGORA - 27_000 });
+    expect(coracao).toBeNull();
+
+    const depoisDoCoracao = { ...contato, ...carimboDaMensagemRecebida(reacao, new Date(AGORA - 27_000).toISOString()) };
+    const comentario = responder({
+      incoming: { phone: reacao.phone, text: 'Meu Deus 😍' },
+      contactData: depoisDoCoracao,
+    });
+    expect(comentario?.type).toBe('first_contact_auto_reply');
+  });
+
+  it('mensagem de verdade continua contando como conversa', () => {
+    const agora = new Date(AGORA).toISOString();
+    expect(carimboDaMensagemRecebida({}, agora)).toEqual({ lastInboundAt: agora });
+    expect(carimboDaMensagemRecebida(reacao, agora)).toEqual({});
   });
 
   it('sai com a logo, igual às outras respostas da loja', () => {
