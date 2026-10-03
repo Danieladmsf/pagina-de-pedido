@@ -52,7 +52,7 @@ export const JANELA_DA_SAUDACAO_MS = 12 * 60 * 60 * 1000;
  */
 export const JANELA_DA_CONVERSA_HUMANA_MS = 2 * 60 * 60 * 1000;
 /**
- * Silêncio mínimo entre dois agradecimentos por reação no story.
+ * Silêncio mínimo entre duas respostas a reação no story.
  *
  * Quem acompanha a loja reage quase todo dia: uma cliente recebeu 16 respostas
  * automáticas em 6 semanas, 7 delas só por mandar um coração verde. Uma por
@@ -97,8 +97,8 @@ const emMillis = (valor?: string | number) => (valor ? new Date(valor).getTime()
  * O que a mensagem recebida grava no contato, além do carimbo da resposta.
  *
  * A reação no story não conta como conversa. Em 03/10/2026 uma cliente da
- * Gostinho mandou um coração no story (sem resposta: já tinha ganhado o
- * agradecimento da semana) e, 27 segundos depois, comentou o mesmo story. O
+ * Gostinho mandou um coração no story (sem resposta: já tinha recebido a
+ * resposta da semana) e, 27 segundos depois, comentou o mesmo story. O
  * coração tinha virado `lastInboundAt` e o comentário caiu como "no meio da
  * conversa": ficou sem a saudação, depois de dias sem falar com a loja.
  */

@@ -190,7 +190,7 @@ async function maybeSendAutoReply(params: {
     // contato" (que é a saudação) e ainda segura a rajada — reenvio do servidor
     // e dois toques seguidos no botão não viram duas respostas.
     link_request_auto_reply: 'lastLinkReplyAt',
-    // O agradecimento por reacao no story tem carimbo proprio pelo mesmo
+    // A resposta a reacao no story tem carimbo proprio pelo mesmo
     // motivo: nao gasta o "primeiro contato" de quem ainda vai escrever, e
     // segura a rajada de quem reage em varios stories seguidos.
     story_reaction_auto_reply: 'lastStoryReactionReplyAt',

@@ -279,7 +279,7 @@ describe('reação no story (o coraçãozinho)', () => {
   });
 
   it('o coração sem resposta não cala o comentário que vem logo atrás', () => {
-    // 03/10/2026: a cliente reagiu ao story (já tinha o agradecimento da
+    // 03/10/2026: a cliente reagiu ao story (já tinha a resposta da
     // semana) e comentou 27 s depois. O coração contava como conversa recente
     // e o comentário ficou sem a saudação, depois de dias sem falar com a loja.
     const contato: ContatoDoAutoReply = {
