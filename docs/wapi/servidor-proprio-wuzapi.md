@@ -127,3 +127,16 @@ Lima Limão e Gostinho de Céu foram migradas da W-API por script em 25/09/2026
   `GET /session/status` com a chave da loja (cabeçalho `token`). A tela da
   loja mostra o QR sozinha se a sessão tiver caído.
 - **Memória em repouso:** WuzAPI ~40 MB, Caddy ~17 MB.
+- **Log sem conversa (03/10/2026):** a WuzAPI não tem opção de nível de log e
+  grava tudo em `debug`, inclusive o texto das mensagens das lojas. O
+  `entrypoint` do `docker-compose.yml` passa a saída por um `grep` que descarta
+  as linhas `debug`; ficam `info`, `warn` e `error` (conexão, quedas, envios,
+  entrega do webhook, nome de quem mandou). O `exec` mantém a WuzAPI como
+  processo principal. Para investigar o conteúdo de uma mensagem, a fonte é a
+  coleção `whatsapp_auto_replies` (o que entrou e o que o robô respondeu).
+- **A máquina é dividida com outro projeto:** os containers `ameripan` e
+  `ameripan-adms` e as sessões `WUZ-AMERIPAN` e `ameripan-adm-...` são do
+  catálogo Ameripan, todos no número da Ameripan. Não atrapalham as lojas
+  (medido em 03/10/2026). As duas sessões da Ameripan estão no mesmo aparelho
+  dentro do servidor: quando uma conecta, a outra cai. Depois de reiniciar a
+  WuzAPI, conferir que a `WUZ-AMERIPAN` (a do webhook) ficou logada.
