@@ -276,16 +276,20 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
 
   // Verificar Conta da Casa quando o telefone muda
   useEffect(() => {
-    if (!db || !effectiveStoreOwnerId || customerPhone.length < 10) {
+    if (!db || !auth || !effectiveStoreOwnerId || customerPhone.length < 10) {
       setContaCasaEnabled(false);
       return;
     }
     const checkCredit = async () => {
       try {
+        // A consulta do Prazo exige sessão (o anônimo serve). Ela só nascia no
+        // envio do pedido ou quando o aparelho já tinha pedido antes: em celular
+        // novo, a consulta era negada e o Prazo sumia em silêncio, mesmo com a
+        // conta em dia (Gostinho, out/2026: Kenia e Camila montavam o carrinho
+        // no app e a loja acabava lançando a venda pelo PDV).
+        const sessionUser = user ?? await ensureAuthenticated(auth);
         // Pedidos a prazo em andamento também consomem o limite
-        const pendingAmount = user
-          ? await sumPendingCreditOrdersForCustomer(db, effectiveStoreOwnerId, user.uid)
-          : 0;
+        const pendingAmount = await sumPendingCreditOrdersForCustomer(db, effectiveStoreOwnerId, sessionUser.uid);
         const creditCheck = await validateCustomerCredit(db, effectiveStoreOwnerId, customerPhone, 0, { pendingAmount });
         setContaCasaEnabled(creditCheck.allowed);
       } catch (err) {
@@ -295,7 +299,7 @@ export function CartDrawer({ storeOwnerId, deliveryFee = 0, storeAddress, delive
     };
     const timer = setTimeout(checkCredit, 500);
     return () => clearTimeout(timer);
-  }, [customerPhone, db, effectiveStoreOwnerId, user]);
+  }, [customerPhone, db, auth, effectiveStoreOwnerId, user]);
 
   // Calcular taxa de entrega quando endereço é selecionado do autocomplete
   const calculateDeliveryFee = useCallback(async (customerAddress: string, neighborhoodHint?: string) => {
