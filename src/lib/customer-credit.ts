@@ -1,6 +1,6 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { emDinheiro, somaDinheiro } from '@/lib/dinheiro';
-import { unpaidSince } from '@/lib/prazo-statement';
+import { unpaidDebt, type UnpaidDebt } from '@/lib/prazo-statement';
 import { brl } from '@/lib/utils';
 
 export type CreditCustomer = {
@@ -171,9 +171,9 @@ export const matchUniqueActiveCustomerByPhone = (
 // Desde quando o cliente está devendo: a compra mais antiga que ainda não foi
 // paga, pela mesma quitação da tela do Prazo (`unpaidSince`), senão a trava e o
 // "Vence em" da tela discordam.
-async function getDebtSince(db: any, clienteId: string): Promise<Date | null> {
+async function getUnpaidDebt(db: any, clienteId: string): Promise<UnpaidDebt | null> {
   const snap = await getDocs(collection(db, 'clientes', clienteId, 'credit_transactions'));
-  return unpaidSince(snap.docs.map((transactionDoc: any) => ({
+  return unpaidDebt(snap.docs.map((transactionDoc: any) => ({
     ...transactionDoc.data(),
     id: transactionDoc.id,
   })));
@@ -193,6 +193,27 @@ export const dueDateFor = (debtSince: Date, payDay: number) => {
   const month = debtSince.getMonth();
   const dueMonth = debtSince.getDate() < payDayIn(month) ? month : month + 1;
   return new Date(year, dueMonth, payDayIn(dueMonth), 23, 59, 59, 999);
+};
+
+// Vencimento da dívida em aberto. É o `dueDateFor` da compra mais antiga não
+// paga, com uma exceção combinada com a dona da Gostinho: pagou a conta, o que
+// comprar depois é do mês seguinte. Se o cliente zerou a conta antes do dia de
+// pagamento e comprou depois, essa compra vence no dia de pagamento seguinte.
+// Gostinho, 15/10: Camila (dia 10) pagou tudo em 08/10 13:18, comprou R$ 17
+// às 13:23 e foi barrada como "vencida" a partir de 11/10. Vale também para
+// quem quitou com atraso a conta do mês anterior (Fernanda pagou em 09/10 o
+// que venceu em 10/09 e comprou na mesma hora).
+// O pagamento fecha a conta do próximo dia de pagamento CONTANDO o próprio dia
+// (pagar no dia 10 fecha a conta do dia 10), e a compra depois dele vence no
+// dia de pagamento seguinte. Nunca antecipa: compra que já venceria mais tarde
+// fica como está, e pagamento de um ciclo anterior não muda nada.
+export const debtDueDate = (debt: UnpaidDebt, payDay: number) => {
+  const due = dueDateFor(debt.since, payDay);
+  if (!debt.settledAt) return due;
+  const s = debt.settledAt;
+  const contaFechada = dueDateFor(new Date(s.getFullYear(), s.getMonth(), s.getDate() - 1, 12), payDay);
+  const depoisDaFechada = dueDateFor(contaFechada, payDay);
+  return depoisDaFechada > due ? depoisDaFechada : due;
 };
 
 const isPendingCreditOrder = (order: any, ownerId: string) =>
@@ -282,7 +303,7 @@ export async function findCreditCustomers(
 function validateCreditData(
   customer: CreditCustomer,
   amount: number,
-  options?: { pendingAmount?: number; debtSince?: Date | null }
+  options?: { pendingAmount?: number; debt?: UnpaidDebt | null }
 ): CreditValidationResult {
   const data = customer.data || {};
 
@@ -309,9 +330,9 @@ function validateCreditData(
     // Dívida vencida bloqueia em qualquer mês, até quitar. O vencimento é o
     // próximo "dia de pagamento" depois da compra mais antiga em aberto.
     // Sem extrato para datar a dívida, cai na regra antiga (dia do mês).
-    const debtSince = options?.debtSince;
-    const overdue = debtSince
-      ? new Date() > dueDateFor(debtSince, payDay)
+    const debt = options?.debt;
+    const overdue = debt
+      ? new Date() > debtDueDate(debt, payDay)
       : new Date().getDate() > payDay;
     if (overdue) {
       return {
@@ -380,12 +401,12 @@ export async function validateCustomerCredit(
   }
 
   // Data da dívida (via extrato) só é necessária quando há saldo e dia de pagamento
-  const debtSinceById = new Map<string, Date | null>();
+  const debtById = new Map<string, UnpaidDebt | null>();
   await Promise.all(enabledCustomers.map(async (customer) => {
     const data = customer.data || {};
     if ((Number(data.creditPayDay) || 0) > 0 && creditBalanceOf(data) > 0) {
       try {
-        debtSinceById.set(customer.id, await getDebtSince(db, customer.id));
+        debtById.set(customer.id, await getUnpaidDebt(db, customer.id));
       } catch {
         // Sem acesso ao extrato: validateCreditData cai na regra antiga
       }
@@ -394,7 +415,7 @@ export async function validateCustomerCredit(
 
   const validations = enabledCustomers.map((customer) => validateCreditData(customer, amount, {
     pendingAmount: options?.pendingAmount,
-    debtSince: debtSinceById.get(customer.id),
+    debt: debtById.get(customer.id),
   }));
   const blocking =
     validations.find((validation) => validation.reason === 'past_due') ||

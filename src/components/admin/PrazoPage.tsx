@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { brl, normalizeSearch } from '@/lib/utils';
 import {
-  dueDateFor,
+  debtDueDate,
   formatBrazilPhone,
   getPhoneVariants,
   creditPhonesAreEqual,
@@ -410,8 +410,8 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
   const divergencia = Math.abs(saldoCadastro - saldo) > 0.009;
 
   const vencimento = useMemo(() => {
-    if (!totals.debtSince || payDay <= 0) return null;
-    const due = dueDateFor(totals.debtSince, payDay);
+    if (!totals.debt || payDay <= 0) return null;
+    const due = debtDueDate(totals.debt, payDay);
     const vencida = new Date() > due;
     const dias = Math.round((due.getTime() - Date.now()) / 86400000);
     return {
@@ -421,7 +421,7 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
         ? `Vencida em ${due.toLocaleDateString('pt-BR')}`
         : `Vence em ${due.toLocaleDateString('pt-BR')}${dias >= 0 ? ` (${dias === 0 ? 'hoje' : `${dias} dia${dias > 1 ? 's' : ''}`})` : ''}`,
     };
-  }, [totals.debtSince, payDay]);
+  }, [totals.debt, payDay]);
 
   // Filtros da lista (a linha guarda o saldo do momento, então filtrar não
   // reescreve o histórico — some da tela, não da conta).

@@ -3,6 +3,7 @@ import {
   ambiguousCreditCustomerResult,
   creditOrderMatchesCustomer,
   creditPhonesAreEqual,
+  debtDueDate,
   dueDateFor,
   isValidCreditPhone,
   getPhoneVariants,
@@ -13,6 +14,7 @@ import {
   quickRegistrationCreditDefaults,
   validateCustomerCredit,
 } from './customer-credit';
+import { unpaidDebt, type CreditTransaction } from './prazo-statement';
 
 // Firestore em memória só para `validateCustomerCredit`: a busca do cadastro
 // pelo telefone e o extrato de cada cliente.
@@ -278,6 +280,103 @@ describe('vencimento do Prazo', () => {
     expect(dueDateFor(dia(2026, 11, 30), 31)).toEqual(fimDoDia(2026, 12, 31));
   });
 
+  describe('pagou a conta antes do vencimento, o que comprar depois é do mês seguinte', () => {
+    // Datas sem "Z": hora local, como o vencimento.
+    const lanc = (id: string, type: 'debit' | 'credit', amount: number, date: string) =>
+      ({ id, type, amount, date }) as CreditTransaction;
+    const vence = (extrato: CreditTransaction[], payDay: number) => {
+      const debt = unpaidDebt(extrato);
+      return debt ? debtDueDate(debt, payDay) : null;
+    };
+
+    it('Camila: quitou tudo em 08/10 (dia 10) e comprou 5 minutos depois → vence 10/11', () => {
+      // Gostinho, 15/10: a compra de R$ 17 vencia em 10/10 e a loja não vendia
+      // mais para ela desde 11/10, com a conta paga adiantada.
+      expect(vence([
+        lanc('set', 'debit', 58, '2026-09-23T12:49:00'),
+        lanc('out1', 'debit', 12, '2026-10-01T16:45:00'),
+        lanc('out3', 'debit', 12, '2026-10-03T15:06:00'),
+        lanc('pix1', 'credit', 50, '2026-10-08T13:18:19'),
+        lanc('pix2', 'credit', 32, '2026-10-08T13:18:41'),
+        lanc('nova', 'debit', 17, '2026-10-08T13:23:10'),
+      ], 10)).toEqual(fimDoDia(2026, 11, 10));
+    });
+
+    it('comprou antes de pagar na mesma visita: a compra ainda é da conta do dia 10', () => {
+      expect(vence([
+        lanc('out1', 'debit', 12, '2026-10-01T16:45:00'),
+        lanc('nova', 'debit', 17, '2026-10-08T13:10:00'),
+        lanc('pix', 'credit', 12, '2026-10-08T13:18:00'),
+      ], 10)).toEqual(fimDoDia(2026, 10, 10));
+    });
+
+    it('pagamento parcial não adianta a conta', () => {
+      expect(vence([
+        lanc('out1', 'debit', 30, '2026-10-01T16:45:00'),
+        lanc('pix', 'credit', 20, '2026-10-08T13:18:00'),
+        lanc('nova', 'debit', 17, '2026-10-08T13:23:00'),
+      ], 10)).toEqual(fimDoDia(2026, 10, 10));
+    });
+
+    it('Fernanda: quitou em 09/10 a conta vencida em 10/09 e comprou em seguida → vence 10/11', () => {
+      expect(vence([
+        lanc('ago1', 'debit', 55, '2026-08-15T12:17:19'),
+        lanc('ago2', 'debit', 45, '2026-08-27T14:34:14'),
+        lanc('pix', 'credit', 100, '2026-10-09T17:48:23'),
+        lanc('nova', 'debit', 38, '2026-10-09T17:48:46'),
+      ], 10)).toEqual(fimDoDia(2026, 11, 10));
+    });
+
+    it('pagou no próprio dia 10 e comprou: vence 10/11, não pula dois meses', () => {
+      expect(vence([
+        lanc('set', 'debit', 40, '2026-09-20T10:00:00'),
+        lanc('pix', 'credit', 40, '2026-10-10T10:00:00'),
+        lanc('nova', 'debit', 17, '2026-10-10T10:05:00'),
+      ], 10)).toEqual(fimDoDia(2026, 11, 10));
+    });
+
+    it('quitação de um ciclo anterior não muda o vencimento', () => {
+      // Pagou tudo em 05/09 (conta do dia 10/09); a compra de 05/10 é da conta
+      // de 10/10.
+      expect(vence([
+        lanc('ago', 'debit', 40, '2026-08-20T10:00:00'),
+        lanc('pix', 'credit', 40, '2026-09-05T10:00:00'),
+        lanc('nova', 'debit', 17, '2026-10-05T10:00:00'),
+      ], 10)).toEqual(fimDoDia(2026, 10, 10));
+    });
+
+    it('nunca antecipa: compra depois do dia de pagamento segue no mês seguinte', () => {
+      expect(vence([
+        lanc('set', 'debit', 40, '2026-09-20T10:00:00'),
+        lanc('pix', 'credit', 40, '2026-10-08T10:00:00'),
+        lanc('nova', 'debit', 17, '2026-10-20T10:00:00'),
+      ], 10)).toEqual(fimDoDia(2026, 11, 10));
+    });
+
+    it('primeira compra sem pagamento antes segue a regra normal', () => {
+      expect(vence([lanc('nova', 'debit', 17, '2026-09-29T10:00:00')], 30)).toEqual(fimDoDia(2026, 9, 30));
+    });
+
+    it('crédito deixado antes das compras não conta como conta adiantada', () => {
+      // Adiantou R$ 50, gastou R$ 30 e depois R$ 40 (sobrou R$ 20 devendo):
+      // não houve pagamento entre as compras.
+      expect(vence([
+        lanc('adiant', 'credit', 50, '2026-10-01T10:00:00'),
+        lanc('c1', 'debit', 30, '2026-10-02T10:00:00'),
+        lanc('c2', 'debit', 40, '2026-10-05T10:00:00'),
+      ], 10)).toEqual(fimDoDia(2026, 10, 10));
+    });
+
+    it('estorno do pagamento desfaz a quitação', () => {
+      expect(vence([
+        lanc('out1', 'debit', 12, '2026-10-01T16:45:00'),
+        lanc('pix', 'credit', 12, '2026-10-08T13:18:00'),
+        { ...lanc('estorno', 'debit', 12, '2026-10-08T13:20:00'), reversalOf: 'pix' },
+        lanc('nova', 'debit', 17, '2026-10-08T13:23:00'),
+      ], 10)).toEqual(fimDoDia(2026, 10, 10));
+    });
+  });
+
   describe('na trava da venda', () => {
     const OWNER = 'loja-1';
     const TELEFONE = '16999998877';
@@ -321,6 +420,20 @@ describe('vencimento do Prazo', () => {
       const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 56);
 
       expect(resultado).toMatchObject({ allowed: false, reason: 'past_due' });
+    });
+
+    it('Camila: pagou tudo antes do dia 10 e comprou depois, a loja vende em 14/10', async () => {
+      fake.clientes.set('c1', { ...fake.clientes.get('c1'), creditPayDay: 10, creditBalance: 17 });
+      fake.extratos.set('c1', [
+        { date: '2026-10-03T18:06:15.000Z', type: 'debit', amount: 82 },
+        { date: '2026-10-08T16:18:41.000Z', type: 'credit', amount: 82 },
+        { date: '2026-10-08T16:23:10.000Z', type: 'debit', amount: 17 },
+      ]);
+      vi.setSystemTime(new Date('2026-10-14T15:00:00.000Z'));
+
+      const resultado = await validateCustomerCredit({}, OWNER, TELEFONE, 20);
+
+      expect(resultado).toMatchObject({ allowed: true, balance: 17 });
     });
   });
 });

@@ -59,6 +59,8 @@ export type StatementTotals = {
   averageTicket: number;
   /** Data da compra mais antiga que ainda não foi paga (null se está quite). */
   debtSince: Date | null;
+  /** O mesmo `debtSince` com o que o vencimento precisa (`debtDueDate`). */
+  debt: UnpaidDebt | null;
   lastPurchaseAt: Date | null;
   lastPaymentAt: Date | null;
 };
@@ -171,6 +173,22 @@ export function buildStatement(transactions: CreditTransaction[], orders: any[] 
  * antigo.
  */
 export function unpaidSince(transactions: CreditTransaction[]): Date | null {
+  return unpaidDebt(transactions)?.since ?? null;
+}
+
+export type UnpaidDebt = {
+  /** Data da compra mais antiga que ainda não foi paga (ver `unpaidSince`). */
+  since: Date;
+  /**
+   * Quando essa compra foi feita depois de o cliente quitar a conta toda (um
+   * pagamento entre a compra anterior e ela, sem nada em aberto), a data desse
+   * pagamento. Se foi antes do vencimento da compra, ela fica para o mês
+   * seguinte (`debtDueDate` em customer-credit.ts). Senão, null.
+   */
+  settledAt: Date | null;
+};
+
+export function unpaidDebt(transactions: CreditTransaction[]): UnpaidDebt | null {
   const EPS = 0.009;
   const ascending = [...transactions].sort((a, b) => toTime(a.date) - toTime(b.date));
 
@@ -189,9 +207,12 @@ export function unpaidSince(transactions: CreditTransaction[]): Date | null {
   }
 
   /** Compras ainda em aberto, da mais antiga para a mais nova. */
-  const open: Array<{ tx: CreditTransaction; remaining: number }> = [];
+  const open: Array<{ tx: CreditTransaction; remaining: number; settledAt: Date | null }> = [];
   /** Pagamento adiantado ainda não consumido por nenhuma compra. */
   let creditPool = 0;
+  let houveCompra = false;
+  /** Último pagamento, se veio depois da última compra. */
+  let pagamentoDepoisDaUltimaCompra: CreditTransaction | null = null;
 
   for (const tx of ascending) {
     if (anulados.has(tx.id)) continue;
@@ -200,10 +221,20 @@ export function unpaidSince(transactions: CreditTransaction[]): Date | null {
     if (tx.type === 'debit') {
       const usaCredito = Math.min(creditPool, amount);
       creditPool -= usaCredito;
-      if (amount - usaCredito > EPS) open.push({ tx, remaining: amount - usaCredito });
+      if (amount - usaCredito > EPS) {
+        const quitacao = open.length === 0 && houveCompra ? pagamentoDepoisDaUltimaCompra : null;
+        open.push({
+          tx,
+          remaining: amount - usaCredito,
+          settledAt: quitacao && toTime(quitacao.date) > 0 ? new Date(quitacao.date) : null,
+        });
+      }
+      houveCompra = true;
+      pagamentoDepoisDaUltimaCompra = null;
       continue;
     }
 
+    pagamentoDepoisDaUltimaCompra = tx;
     let rest = amount;
     while (rest > EPS && open.length > 0) {
       const applied = Math.min(open[0].remaining, rest);
@@ -216,7 +247,7 @@ export function unpaidSince(transactions: CreditTransaction[]): Date | null {
 
   // Compra sem data válida não tem como datar a dívida; fica a próxima.
   const oldest = open.find(({ tx }) => toTime(tx.date) > 0);
-  return oldest ? new Date(oldest.tx.date) : null;
+  return oldest ? { since: new Date(oldest.tx.date), settledAt: oldest.settledAt } : null;
 }
 
 export function statementTotals(rows: StatementRow[]): StatementTotals {
@@ -241,6 +272,7 @@ export function statementTotals(rows: StatementRow[]): StatementTotals {
   });
 
   const balance = rows.length > 0 ? rows[rows.length - 1].balanceAfter : 0;
+  const debt = unpaidDebt(rows.map(({ tx }) => tx));
 
   return {
     balance,
@@ -249,7 +281,8 @@ export function statementTotals(rows: StatementRow[]): StatementTotals {
     purchaseCount,
     paymentCount,
     averageTicket: purchaseCount > 0 ? totalPurchases / purchaseCount : 0,
-    debtSince: unpaidSince(rows.map(({ tx }) => tx)),
+    debtSince: debt?.since ?? null,
+    debt,
     lastPurchaseAt: lastPurchaseAt ? new Date(lastPurchaseAt) : null,
     lastPaymentAt: lastPaymentAt ? new Date(lastPaymentAt) : null,
   };
