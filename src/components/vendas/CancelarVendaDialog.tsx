@@ -85,12 +85,18 @@ const CSS = `
   --stamp:#c4122f; --stamp-dark:#a10e26; --amber:#9a5a00;
   --mono:ui-monospace,"Cascadia Mono","Cascadia Code",Consolas,"Liberation Mono","Courier New",monospace;
   position:fixed;z-index:61;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:min(25.5rem,calc(100vw - 2rem));max-height:92vh;overflow-y:auto;
+  width:min(43rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);overflow-y:auto;
+  scrollbar-width:none;-ms-overflow-style:none;
   background:var(--counter);color:var(--ink);border-radius:1.25rem;padding:1.1rem;
   box-shadow:0 30px 70px -20px rgba(10,12,16,.55),0 0 0 1px rgba(255,255,255,.5) inset;
-  display:flex;flex-direction:column;gap:1rem;animation:cvd-rise .22s cubic-bezier(.2,.8,.3,1)
+  animation:cvd-rise .22s cubic-bezier(.2,.8,.3,1)
 }
+.cvd-panel::-webkit-scrollbar{display:none}
 .cvd-panel:focus{outline:none}
+/* Horizontal: o cupom à esquerda, o que acontece + senha + botões à direita. */
+.cvd-grid{display:grid;grid-template-columns:minmax(0,17rem) minmax(0,1fr);gap:1.25rem;align-items:start}
+.cvd-side{display:flex;flex-direction:column;gap:.8rem;min-width:0;padding-top:.3rem}
+@media (max-width:640px){.cvd-grid{grid-template-columns:minmax(0,1fr);gap:1rem}}
 .cvd-close{position:absolute;top:.7rem;right:.7rem;z-index:2;display:grid;place-items:center;width:2rem;height:2rem;border-radius:999px;color:var(--muted);background:transparent;border:0;cursor:pointer}
 .cvd-close:hover{background:rgba(29,33,39,.07);color:var(--ink)}
 .cvd-close:focus-visible,.cvd-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
@@ -102,42 +108,42 @@ const CSS = `
   -webkit-mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/calc(2*var(--z)) 100%;
   mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/calc(2*var(--z)) 100%
 }
-.cvd-slip-head{display:flex;justify-content:space-between;gap:.75rem;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-right:2rem}
-.cvd-client{margin:.7rem 0 0;font-family:inherit;font-size:1.05rem;font-weight:700;line-height:1.25;color:var(--ink);overflow-wrap:anywhere;padding-right:5.5rem}
-.cvd-line{display:flex;justify-content:space-between;gap:.75rem;font-size:.8rem;color:var(--muted);margin-top:.3rem}
+.cvd-slip-head{display:flex;justify-content:space-between;gap:.75rem;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.cvd-client{margin:.7rem 0 0;font-family:inherit;font-size:.95rem;font-weight:700;line-height:1.25;color:var(--ink);overflow-wrap:anywhere;padding-right:5.5rem}
+.cvd-line{display:flex;justify-content:space-between;gap:.75rem;font-size:.74rem;color:var(--muted);margin-top:.3rem}
 .cvd-line b{font-weight:600;color:var(--ink)}
 .cvd-cut{border:0;border-top:1px dashed var(--rule);margin:.8rem 0 .65rem}
 .cvd-total{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem}
 .cvd-total span{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-.cvd-total strong{font-size:1.85rem;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.cvd-total strong{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
 
-.cvd-stamp{
+.cvd-stamp{font-size:.78rem;
   position:absolute;right:.9rem;top:2.35rem;transform:rotate(-9deg);
-  font-family:var(--mono);font-weight:800;font-size:.86rem;letter-spacing:.16em;text-transform:uppercase;
+  font-family:var(--mono);font-weight:800;letter-spacing:.16em;text-transform:uppercase;
   color:var(--stamp);border:3px double var(--stamp);border-radius:.4rem;padding:.28rem .5rem .22rem;
   opacity:.9;mix-blend-mode:multiply;pointer-events:none;
   animation:cvd-stamp .42s cubic-bezier(.2,.9,.25,1.25) .12s both
 }
 
-.cvd-effects{display:grid;gap:.45rem;margin:0;padding:0 .2rem;list-style:none}
-.cvd-effects-title{margin:0 .2rem -.3rem;font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.cvd-effects li{display:grid;grid-template-columns:5.2rem minmax(0,1fr);gap:.6rem;align-items:baseline;font-size:.88rem;line-height:1.4}
-.cvd-effects li > span:first-child{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.cvd-effects{display:grid;gap:.4rem;margin:0;padding:0;list-style:none}
+.cvd-effects-title{margin:0 2.2rem -.25rem 0;font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.cvd-effects li{display:grid;grid-template-columns:4.9rem minmax(0,1fr);gap:.6rem;align-items:baseline;font-size:.82rem;line-height:1.38}
+.cvd-effects li > span:first-child{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .cvd-effects li.cvd-warn > span:last-child{color:var(--amber);font-weight:600}
 
-.cvd-pin{display:grid;justify-items:center;gap:.55rem;padding-top:.15rem}
-.cvd-pin label{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.cvd-pin{display:grid;justify-items:start;gap:.45rem}
+.cvd-pin label{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .cvd-cells{position:relative;display:flex;gap:.5rem}
-.cvd-cell{width:2.75rem;height:3.1rem;border-radius:.7rem;background:var(--paper);border:1.5px solid var(--rule);display:grid;place-items:center;transition:border-color .12s,box-shadow .12s}
+.cvd-cell{width:2.45rem;height:2.75rem;border-radius:.7rem;background:var(--paper);border:1.5px solid var(--rule);display:grid;place-items:center;transition:border-color .12s,box-shadow .12s}
 .cvd-cell i{width:.62rem;height:.62rem;border-radius:999px;background:var(--ink)}
 .cvd-cells:focus-within .cvd-cell.cvd-next{border-color:var(--ink);box-shadow:0 0 0 3px rgba(29,33,39,.12)}
 .cvd-cells.cvd-err .cvd-cell{border-color:var(--stamp)}
 .cvd-cells.cvd-err{animation:cvd-shake .32s ease-in-out}
 .cvd-pin-input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;color:transparent;caret-color:transparent;background:transparent;border:0;cursor:text}
-.cvd-msg{margin:0;font-size:.82rem;color:var(--stamp-dark);text-align:center}
+.cvd-msg{margin:0;font-size:.78rem;color:var(--stamp-dark)}
 
 .cvd-actions{display:grid;grid-template-columns:1fr 1.45fr;gap:.6rem;margin-top:.1rem}
-.cvd-btn{height:2.9rem;border-radius:.8rem;font-size:.93rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;transition:background-color .12s,opacity .12s}
+.cvd-btn{height:2.6rem;border-radius:.75rem;font-size:.86rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;transition:background-color .12s,opacity .12s}
 .cvd-btn-back{background:transparent;color:var(--ink);border:1.5px solid var(--rule)}
 .cvd-btn-back:hover{background:rgba(29,33,39,.05)}
 .cvd-btn-go{background:var(--stamp);color:#fff;border:0}
@@ -151,7 +157,7 @@ const CSS = `
 @keyframes cvd-stamp{from{opacity:0;transform:rotate(-16deg) scale(1.7)}to{opacity:.9;transform:rotate(-9deg) scale(1)}}
 @keyframes cvd-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @media (prefers-reduced-motion:reduce){.cvd-overlay,.cvd-panel,.cvd-stamp,.cvd-cells.cvd-err{animation:none}}
-@media (max-width:380px){.cvd-effects li{grid-template-columns:4.4rem minmax(0,1fr)}.cvd-cell{width:2.4rem}}
+@media (max-width:380px){.cvd-effects li{grid-template-columns:4.4rem minmax(0,1fr)}.cvd-cell{width:2.2rem}}
 `;
 
 /** Conteúdo da janela (separado do Dialog para poder ser montado em teste). */
@@ -163,7 +169,7 @@ export function CancelarVendaCorpo(p: CancelarVendaCorpoProps & { pinRef?: React
   const casas = Math.min(MAX_DIGITOS, Math.max(CASAS_MINIMAS, p.senha.length));
 
   return (
-    <>
+    <div className="cvd-grid">
       <div className="cvd-slip-wrap">
         <div className="cvd-slip">
           <div className="cvd-slip-head">
@@ -197,6 +203,7 @@ export function CancelarVendaCorpo(p: CancelarVendaCorpoProps & { pinRef?: React
         </div>
       </div>
 
+      <div className="cvd-side">
       <p className="cvd-effects-title">Ao cancelar</p>
       <ul className="cvd-effects">
         {p.saiDoCaixa && <li><span>Caixa</span><span>Sai do fechamento de hoje</span></li>}
@@ -256,7 +263,8 @@ export function CancelarVendaCorpo(p: CancelarVendaCorpoProps & { pinRef?: React
           {p.executando ? 'Cancelando' : 'Cancelar venda'}
         </button>
       </div>
-    </>
+      </div>
+    </div>
   );
 }
 
