@@ -26,8 +26,11 @@
  * vendido e entrava no dia seguinte: em 16/10/2026 a Gostinho via R$ 625,00 no
  * Dashboard de um dia de R$ 375,00, e R$ 114,00 num dia de R$ 364,00 — cinco
  * deliveries de 15/10 (R$ 250,00) lançados às 11:11 de 16/10. Já tinha
- * acontecido em 03/09 e em 01/10. Ver `momentoDaVenda`. O caixa continua sendo
- * a gaveta (a sessão); quem diz em que DIA a venda conta é o pedido.
+ * acontecido em 03/09 e em 01/10. O dia vai GRAVADO no lançamento
+ * (`vendidoEm`, desde 16/10/2026, e os antigos foram corrigidos no banco) e é
+ * lido por `momentoDaVenda`. O caixa continua sendo a gaveta (a sessão); quem
+ * diz em que DIA a venda conta é o pedido. Sem aviso na tela: o registro já
+ * nasce certo.
  *
  * Funções puras, sem Firestore e sem React.
  */
@@ -45,6 +48,8 @@ export type LancamentoDeCaixa = {
   data?: unknown;
   orderId?: string;
   encomendaId?: string;
+  /** Quando o pedido foi feito, gravado junto da venda (useCaixa). */
+  vendidoEm?: unknown;
   canceled?: boolean;
 };
 
@@ -81,12 +86,6 @@ export type ResumoDeVendas = {
   totalRecebido: number;
   porOrigem: { pedido: number; encomenda: number; avulsa: number };
   entradas: EntradaDeFaturamento[];
-  /**
-   * Vendas lançadas no caixa DENTRO do período que contam em outro dia, porque
-   * o pedido é de outro dia. É o que explica, na tela, por que o caixa daquele
-   * horário tem mais dinheiro que o faturamento. Só com janela e pedidos.
-   */
-  lancadasNoPeriodoDeOutroDia: { valor: number; quantidade: number; dias: string[] };
 };
 
 const CANCELADO = new Set(['canceled', 'cancelada', 'cancelled', 'cancelado']);
@@ -177,9 +176,10 @@ function momentoDoPedido(pedido: PedidoDoFaturamento | null | undefined): number
 const FOLGA_DO_RELOGIO_MS = 10 * 60 * 1000;
 
 /**
- * Em que momento a venda conta: o do PEDIDO, quando o lançamento aponta para
- * um (pelo `orderId`, ou pelo "#" do título antigo com a regra conservadora de
- * sempre). Encomenda, acerto de Prazo e venda avulsa ficam no momento do
+ * Em que momento a venda conta: o do PEDIDO. Primeiro o `vendidoEm` gravado
+ * no próprio lançamento; sem ele (lançamento que escapou da correção do banco),
+ * o pedido apontado pelo `orderId`, ou pelo "#" do título antigo com a regra
+ * conservadora de sempre. Encomenda, acerto de Prazo e venda avulsa ficam no momento do
  * lançamento: o sinal e a entrega da encomenda são dias diferentes de
  * propósito, e o acerto é dinheiro que entrou naquele dia.
  *
@@ -192,6 +192,11 @@ export function momentoDaVenda(
 ): number | null {
   const lancadoEm = valueToMillis(lancamento?.data);
   if (origemDoLancamento(lancamento) !== 'pedido') return lancadoEm;
+  const gravado = valueToMillis(lancamento.vendidoEm);
+  if (gravado != null && (lancadoEm == null || gravado <= lancadoEm + FOLGA_DO_RELOGIO_MS)) return gravado;
+  // Comanda de mesa sem o dia gravado fica no fechamento: a abertura do pedido
+  // não diz quando se consumiu (mesa esquecida aberta é reaproveitada).
+  if (/^\s*mesa\b/i.test(lancamento.titulo || '')) return lancadoEm;
 
   const porId = pedidos instanceof Map ? pedidos : null;
   const lista = pedidos instanceof Map ? null : Array.isArray(pedidos) ? pedidos : [];
@@ -218,7 +223,6 @@ export function resumoDeVendasDoCaixa(
   const porOrigem = { pedido: 0, encomenda: 0, avulsa: 0 };
   let totalVendas = 0;
   let fiadoRecebido = 0;
-  const deOutroDia = { valor: 0, quantidade: 0, dias: new Set<string>() };
   // Map uma vez só: o Dashboard passa a coleção inteira de pedidos da loja.
   const pedidos = Array.isArray(opcoes.pedidos)
     ? new Map(opcoes.pedidos.filter((p) => p?.id).map((p) => [p.id as string, p]))
@@ -227,16 +231,9 @@ export function resumoDeVendasDoCaixa(
   for (const lancamento of Array.isArray(lancamentos) ? lancamentos : []) {
     if (!ehEntradaDeVenda(lancamento)) continue;
     const lancadoEm = valueToMillis(lancamento.data);
-    const quando = pedidos ? momentoDaVenda(lancamento, pedidos) : lancadoEm;
-    if (!dentroDaJanela(quando, janela.de, janela.ate)) {
-      if (dentroDaJanela(lancadoEm, janela.de, janela.ate) && (janela.de || janela.ate)) {
-        deOutroDia.valor = somaDinheiro(deOutroDia.valor, lancamento.valor);
-        deOutroDia.quantidade += 1;
-        const dia = chaveDoDia(quando);
-        if (dia) deOutroDia.dias.add(dia);
-      }
-      continue;
-    }
+    // O `vendidoEm` gravado vale mesmo sem a lista de pedidos.
+    const quando = momentoDaVenda(lancamento, pedidos);
+    if (!dentroDaJanela(quando, janela.de, janela.ate)) continue;
 
     const valor = emDinheiro(lancamento.valor);
     const origem = origemDoLancamento(lancamento);
@@ -264,11 +261,6 @@ export function resumoDeVendasDoCaixa(
     totalRecebido: somaDinheiro(totalVendas, fiadoRecebido),
     porOrigem,
     entradas,
-    lancadasNoPeriodoDeOutroDia: {
-      valor: deOutroDia.valor,
-      quantidade: deOutroDia.quantidade,
-      dias: [...deOutroDia.dias].sort(),
-    },
   };
 }
 
@@ -348,33 +340,6 @@ export function diasComCaixa(
     }
   }
   return dias;
-}
-
-/**
- * Vendas desta sessão de caixa que contam em OUTRO dia que não o da abertura:
- * delivery de ontem fechado num caixa aberto hoje, ou venda de hoje cedo num
- * caixa que ficou aberto desde ontem. A gaveta tem esse dinheiro, mas o
- * Dashboard põe a venda no dia do pedido — a tela do Caixa avisa para os dois
- * números não parecerem erro.
- */
-export function vendasDeOutroDiaNoCaixa(
-  lancamentos: LancamentoDeCaixa[] | null | undefined,
-  pedidos: PedidoDoFaturamento[] | null | undefined,
-  aberturaDoCaixa: unknown,
-): { valor: number; quantidade: number; dias: string[] } {
-  const diaDoCaixa = chaveDoDia(valueToMillis(aberturaDoCaixa));
-  const resultado = { valor: 0, quantidade: 0, dias: new Set<string>() };
-  if (!diaDoCaixa) return { valor: 0, quantidade: 0, dias: [] };
-  const porId = new Map((Array.isArray(pedidos) ? pedidos : []).filter((p) => p?.id).map((p) => [p.id as string, p]));
-  for (const lancamento of Array.isArray(lancamentos) ? lancamentos : []) {
-    if (!ehEntradaDeVenda(lancamento) || ehFiadoRecebido(lancamento)) continue;
-    const dia = chaveDoDia(momentoDaVenda(lancamento, porId));
-    if (!dia || dia === diaDoCaixa) continue;
-    resultado.valor = somaDinheiro(resultado.valor, lancamento.valor);
-    resultado.quantidade += 1;
-    resultado.dias.add(dia);
-  }
-  return { valor: resultado.valor, quantidade: resultado.quantidade, dias: [...resultado.dias].sort() };
 }
 
 export type FaturamentoDoPeriodo = ResumoDeVendas & {

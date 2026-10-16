@@ -1000,6 +1000,11 @@ export function MesasTab({ orders = [], categories = [], items = [], db, user, r
         creditDescription: `Mesa ${selectedTable}`,
         orderId: activeOrderId,
         channel: 'mesa',
+        // Comanda conta no dia em que FECHA, não no que abriu: mesa esquecida
+        // aberta é reaproveitada dias depois (Claitinho: aberta 09/08 22h23,
+        // self service fechado 12/08 14h07). Gravar agora impede a leitura de
+        // cair na data de abertura do pedido.
+        pedidoFeitoEm: new Date(),
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 

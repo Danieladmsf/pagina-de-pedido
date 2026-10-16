@@ -91,6 +91,11 @@ export type LancamentoInput = {
    *  — por isso o id vai gravado, e não deduzido do texto. */
   orderId?: string;
   encomendaId?: string;
+  /** Venda de pedido: QUANDO o pedido foi feito. É o dia em que a venda conta
+   *  no Dashboard e nos Relatórios — delivery de ontem finalizado hoje cedo
+   *  continua sendo venda de ontem. `data` segue sendo a hora em que o dinheiro
+   *  entrou na gaveta. Ver lib/faturamento `momentoDaVenda`. */
+  vendidoEm?: Date;
 };
 
 export type RegistrarLancamentoOptions = {
@@ -127,6 +132,8 @@ export interface LancamentoCaixa {
   orderId?: string;
   /** Venda de encomenda: mora em `encomendas`, não em `orders`. */
   encomendaId?: string;
+  /** Venda de pedido: quando o pedido foi feito (o dia em que a venda conta). */
+  vendidoEm?: any;
   /** Repasse gravado pelo fechamento (motoboy/freelancer/taxa de garçom). Fica
    *  fora de `totalSangriaDinheiro` porque quem já o desconta da gaveta é o
    *  valor esperado do fechamento. Ausente nos lançamentos anteriores a
@@ -506,7 +513,7 @@ export function useCaixa(options?: UseCaixaOptions) {
   }, [db, enabled, isRealUser, ownerId, actorId, actorName, user, caixaAberto, lancamentos]);
 
   const registrarLancamento = useCallback<RegistrarLancamento>(async (
-    { tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId, orderId, encomendaId },
+    { tipo, titulo, valor, formaPagamento, destinatarioId, destinatarioTipo, clienteId, creditTxId, orderId, encomendaId, vendidoEm },
     options,
   ) => {
     if (!enabled || !db || !isRealUser || !ownerId || !caixaAberto?.id) {
@@ -532,6 +539,7 @@ export function useCaixa(options?: UseCaixaOptions) {
       ...(creditTxId && { creditTxId }),
       ...(orderId && { orderId }),
       ...(encomendaId && { encomendaId }),
+      ...(orderId && vendidoEm instanceof Date && !Number.isNaN(vendidoEm.getTime()) && { vendidoEm }),
     };
     const stableRef = options?.transactionId
       ? doc(db, 'cash_transactions', options.transactionId)

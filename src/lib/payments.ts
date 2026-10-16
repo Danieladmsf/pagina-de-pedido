@@ -1,5 +1,6 @@
 import { collection, doc, increment, writeBatch } from 'firebase/firestore';
 import { findCreditCustomers, isValidCreditPhone, validateCustomerCredit, sumPendingCreditOrdersForOwner } from '@/lib/customer-credit';
+import { valueToMillis } from '@/lib/order-linking';
 
 // Centraliza o pós-fechamento financeiro que era copiado em NovoPedidoTab,
 // MesasTab e DeliveryTab. São duas etapas porque cada canal grava/atualiza o
@@ -123,6 +124,10 @@ export async function registrarPagamentoSplits(
     encomendaId?: string;
     /** 'balcao' | 'mesa' | 'delivery' | 'encomenda' — de onde veio a venda. */
     channel?: string;
+    /** Quando o pedido foi feito (Timestamp, Date ou texto). Vai gravado no
+     *  lançamento como `vendidoEm`: é o dia em que a venda conta, mesmo que o
+     *  pedido de ontem seja finalizado hoje de manhã. */
+    pedidoFeitoEm?: unknown;
     onContaCasaSemCliente?: () => void;
   }
 ): Promise<void> {
@@ -137,6 +142,7 @@ export async function registrarPagamentoSplits(
     orderId,
     encomendaId,
     channel,
+    pedidoFeitoEm,
     onContaCasaSemCliente,
   } = params;
 
@@ -147,6 +153,9 @@ export async function registrarPagamentoSplits(
     ...(orderId ? { orderId } : {}),
     ...(encomendaId ? { encomendaId } : {}),
   };
+  // Só no caixa: o extrato do Prazo já tem a própria data.
+  const feitoEm = valueToMillis(pedidoFeitoEm);
+  const quandoVendeu = orderId && feitoEm != null ? { vendidoEm: new Date(feitoEm) } : {};
 
   for (const split of splits) {
     if (split.methodId === 'conta_casa') {
@@ -179,6 +188,7 @@ export async function registrarPagamentoSplits(
           formaPagamento: 'conta_casa',
           clienteId: contaCasaCustomerId,
           ...vinculo,
+          ...quandoVendeu,
         });
       }
     } else if (caixaAberto && registrarLancamento) {
@@ -188,6 +198,7 @@ export async function registrarPagamentoSplits(
         valor: split.amount,
         formaPagamento: split.methodId,
         ...vinculo,
+        ...quandoVendeu,
       });
     }
   }

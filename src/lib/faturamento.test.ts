@@ -419,10 +419,25 @@ describe('venda de pedido conta no dia do pedido', () => {
     expect(deHoje.fiadoRecebido).toBe(114);
   });
 
-  it('diz quanto foi lançado hoje mas conta em outro dia', () => {
-    const deHoje = faturamentoDoPeriodo({ lancamentos, pedidos, ...hoje });
-    expect(deHoje.lancadasNoPeriodoDeOutroDia).toEqual({ valor: 162, quantidade: 2, dias: ['2026-10-15'] });
-    expect(faturamentoDoPeriodo({ lancamentos, pedidos, ...ontem }).lancadasNoPeriodoDeOutroDia.valor).toBe(0);
+  it('o dia gravado no lançamento (vendidoEm) manda, mesmo sem a lista de pedidos', () => {
+    // É como o registro nasce desde 16/10/2026 e como os antigos foram corrigidos.
+    const gravados = [
+      venda({ orderId: 'aline', valor: 83, formaPagamento: 'pix', data: dia('2026-10-16T11:11:49-03:00'), vendidoEm: dia('2026-10-15T17:51:05-03:00') }),
+      venda({ orderId: 'balcao', valor: 8, formaPagamento: 'debito', data: dia('2026-10-16T12:45:26-03:00'), vendidoEm: dia('2026-10-16T12:45:23-03:00') }),
+    ];
+    expect(faturamentoDoPeriodo({ lancamentos: gravados, pedidos: [], ...ontem }).totalVendas).toBe(83);
+    expect(faturamentoDoPeriodo({ lancamentos: gravados, pedidos: [], ...hoje }).totalVendas).toBe(8);
+    expect(resumoDeVendasDoCaixa(gravados, ontem).totalVendas).toBe(83);
+  });
+
+  it('vendidoEm com relógio muito adiantado fica no dia do lançamento', () => {
+    const ls = [venda({ orderId: 'x', valor: 10, data: dia('2026-10-16T10:00:00-03:00'), vendidoEm: dia('2026-10-17T10:00:00-03:00') })];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos: [], ...hoje }).totalVendas).toBe(10);
+  });
+
+  it('encomenda ignora vendidoEm e fica no dia do lançamento', () => {
+    const ls = [venda({ encomendaId: 'e1', titulo: 'Encomenda E1 - Entrega', valor: 100, data: dia('2026-10-16T10:00:00-03:00'), vendidoEm: dia('2026-10-15T10:00:00-03:00') })];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos: [], ...hoje }).totalVendas).toBe(100);
   });
 
   it('o gráfico e a lista de vendas usam o mesmo momento', () => {
@@ -464,5 +479,22 @@ describe('venda de pedido conta no dia do pedido', () => {
     const ls = [venda({ orderId: 'aline', valor: 83, formaPagamento: 'pix', data: dia('2026-10-16T11:11:49-03:00') })];
     expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos, ...ontem })).toMatchObject({ totalVendas: 83, foraDoCaixa: 0 });
     expect(vendasDoPeriodo({ lancamentos: ls, pedidos, ...ontem }).map((v) => v.valor)).toEqual([83]);
+  });
+});
+
+describe('comanda de mesa conta no dia em que fecha', () => {
+  // Claitinho: comanda aberta em 09/08 às 22:23 e fechada em 12/08 às 14:07
+  // com self service — a mesa esquecida aberta foi reaproveitada no almoço.
+  const doze = { de: dia('2026-08-12T00:00:00-03:00'), ate: dia('2026-08-13T00:00:00-03:00') };
+  const pedidos = [{ id: 'mesa4', status: 'delivered', totalAmount: 30.45, createdAt: dia('2026-08-09T22:23:27-03:00') }];
+
+  it('sem o dia gravado, não volta para a abertura da comanda', () => {
+    const ls = [venda({ orderId: 'mesa4', titulo: 'Mesa 4 - Finalizada', valor: 30.45, data: dia('2026-08-12T14:07:40-03:00') })];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos, ...doze }).totalVendas).toBe(30.45);
+  });
+
+  it('com o dia gravado no fechamento, fica no fechamento', () => {
+    const ls = [venda({ orderId: 'mesa4', titulo: 'Mesa 4 - Finalizada', valor: 30.45, data: dia('2026-08-12T14:07:40-03:00'), vendidoEm: dia('2026-08-12T14:07:39-03:00') })];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos, ...doze }).totalVendas).toBe(30.45);
   });
 });

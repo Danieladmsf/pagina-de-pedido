@@ -610,6 +610,8 @@ export function NovoPedidoTab({ categories, items, db, user, registrarLancamento
         creditDescription: `PDV #${shortId}`,
         orderId: newOrderRef.id,
         channel: 'balcao',
+        // Venda de balcão nasce agora: o createdAt do pedido ainda é o marcador do servidor.
+        pedidoFeitoEm: new Date(),
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 

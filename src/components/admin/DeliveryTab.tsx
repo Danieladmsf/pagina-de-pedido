@@ -508,6 +508,8 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         creditDescription: `Delivery #${shortId}`,
         orderId: paymentModalOrder.id,
         channel: 'delivery',
+        // Pedido de ontem finalizado hoje cedo continua sendo venda de ontem.
+        pedidoFeitoEm: paymentModalOrder.orderDateTime || paymentModalOrder.createdAt,
         onContaCasaSemCliente: () => toast({ variant: 'destructive', title: 'Aviso', description: 'Conta da Casa: cliente não encontrado para lançar dívida.' }),
       });
 

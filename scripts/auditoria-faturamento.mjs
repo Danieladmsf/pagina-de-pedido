@@ -64,7 +64,7 @@ const O = porLoja(ordersSnap);
 const E = porLoja(encomendasSnap);
 const C = porLoja(cashSnap);
 
-const geral = { lojas: 0, encomendas: 0, semLancar: 0, duplicados: 0, encomendaAberta: 0, outroDia: 0 };
+const geral = { lojas: 0, encomendas: 0, semLancar: 0, duplicados: 0, encomendaAberta: 0, outroDia: 0, semDia: 0 };
 const soma = (lista, campo = 'valor') => lista.reduce((s, x) => s + (Number(x[campo]) || 0), 0);
 
 for (const perfil of perfis) {
@@ -161,14 +161,27 @@ for (const perfil of perfis) {
     geral.duplicados += total;
   }
 
-  // 5. Venda lançada em dia diferente do pedido. Não é erro de dinheiro: desde
-  // 16/10/2026 o Dashboard conta a venda no dia do PEDIDO (lib/faturamento,
-  // `momentoDaVenda`). Aparece aqui porque é a primeira coisa a olhar quando a
-  // dona diz que "o dia não bate" — o caixa da sessão tem esse dinheiro.
+  // 6. Venda de pedido sem o dia gravado. Desde 16/10/2026 todo lançamento com
+  // `orderId` nasce com `vendidoEm` (useCaixa/payments) e os antigos foram
+  // corrigidos no banco. Qualquer número aqui é um caminho de gravação novo que
+  // esqueceu o campo — é ele que põe a venda no dia certo do relatório.
+  const semDia = semFiado.filter((l) => l.orderId && !l.vendidoEm);
+  if (semDia.length) {
+    console.log(`\n  [6] VENDA SEM O DIA GRAVADO (vendidoEm): ${semDia.length} — ${brl(soma(semDia))}`);
+    for (const l of semDia.slice(-5)) console.log(`      ${dia(emData(l.data))} | ${brl(l.valor)} | ${l.titulo} | id=${l.id}`);
+    geral.semDia += semDia.length;
+  }
+
+  // 5. Venda lançada em dia diferente do pedido. Não é erro de dinheiro: o
+  // lançamento grava `vendidoEm` e o relatório conta no dia do PEDIDO
+  // (lib/faturamento, `momentoDaVenda`). Aparece aqui porque é a primeira coisa
+  // a olhar quando a dona diz que "o dia não bate" — o caixa da sessão tem esse
+  // dinheiro.
   const porId = new Map(pedidos.map((p) => [p.id, p]));
   const diaDe = (d) => (d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : null);
   const deOutroDia = semFiado
-    .filter((l) => l.orderId && porId.has(l.orderId))
+    // Comanda de mesa conta no fechamento (pode ficar aberta e ser reaproveitada).
+    .filter((l) => l.orderId && porId.has(l.orderId) && !/^\s*mesa\b/i.test(l.titulo || ''))
     .map((l) => ({ l, pedido: emData(porId.get(l.orderId).orderDateTime) || emData(porId.get(l.orderId).createdAt) }))
     .filter(({ l, pedido }) => pedido && diaDe(pedido) !== diaDe(emData(l.data)));
   if (deOutroDia.length) {
@@ -209,5 +222,6 @@ console.log(`  Pedidos que não passaram no caixa      : ${brl(geral.semLancar)}
 console.log(`  Lançamentos duplicados                 : ${brl(geral.duplicados)}`);
 console.log(`  Encomenda em aberto (falta receber)    : ${brl(geral.encomendaAberta)}`);
 console.log(`  Lançado em dia diferente do pedido     : ${brl(geral.outroDia)}  (não é erro: conta no dia do pedido)`);
+console.log(`  Venda de pedido sem o dia gravado      : ${geral.semDia}  (tem de ser 0)`);
 console.log(`\nNenhuma escrita foi feita no Firestore.`);
 process.exit(0);

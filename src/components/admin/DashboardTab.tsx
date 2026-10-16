@@ -347,10 +347,6 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
       avgTicket,
       fiadoRecebido: faturamento.fiadoRecebido,
       deEncomendas: faturamento.porOrigem.encomenda,
-      // Pedido de outro dia fechado neste período: o dinheiro entrou no caixa
-      // agora, mas a venda conta no dia do pedido (lib/faturamento). Dito na
-      // tela para a soma do caixa e a do Dashboard não parecerem erro.
-      deOutroDia: faturamento.lancadasNoPeriodoDeOutroDia,
       chartData,
       statusCount,
       typeData,
@@ -472,17 +468,6 @@ export function DashboardTab({ db, user, orders, items, categories, storeProfile
           />
         </div>
 
-        {stats.deOutroDia.valor > 0 && (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
-            <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
-              {brl(stats.deOutroDia.valor)} {stats.deOutroDia.quantidade === 1 ? 'foi lançado' : 'foram lançados'} no
-              caixa neste período, mas {stats.deOutroDia.quantidade === 1 ? 'é de um pedido' : 'são de pedidos'} de{' '}
-              {stats.deOutroDia.dias.map((d) => d.split('-').reverse().slice(0, 2).join('/')).join(', ')} e{' '}
-              {stats.deOutroDia.quantidade === 1 ? 'conta' : 'contam'} no dia do pedido.
-            </span>
-          </p>
-        )}
 
         {/* Gráfico do período + Status */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
