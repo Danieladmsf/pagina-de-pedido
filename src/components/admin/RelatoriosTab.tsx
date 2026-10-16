@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import {
   ResponsiveContainer,
@@ -40,7 +40,9 @@ import { baixarCsv } from '@/lib/csv';
 import { emKg, emPorcento } from '@/lib/relatorios/formato';
 import {
   PRESETS_DO_RELATORIO,
+  janelaDeComparacao,
   janelaDoRelatorio,
+  variacaoEntre,
   type PeriodoDoRelatorio,
   type PresetDoRelatorio,
 } from '@/lib/relatorios/periodo';
@@ -95,7 +97,15 @@ function hojeNoInput() {
 const dataCurta = (d: Date | null) => (d ? d.toLocaleDateString('pt-BR') : null);
 
 export function RelatoriosTab({ db, ownerId, orders, items, categories, storeProfile }: RelatoriosTabProps) {
-  const [periodo, setPeriodo] = useState<PeriodoDoRelatorio>({ preset: 'mes_atual' });
+  // Abre no dia de hoje: é a primeira pergunta de quem entra no relatório.
+  const [periodo, setPeriodo] = useState<PeriodoDoRelatorio>({ preset: 'hoje' });
+  // O relógio anda: "hoje até as 16:20" compara com a semana passada até a
+  // MESMA hora. Sem isto a tela aberta às 10h seguiria comparando até as 10h.
+  const [agora, setAgora] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [ordem, setOrdem] = useState<OrdemDoRanking>('quantidade');
   const [busca, setBusca] = useState('');
   const [janelaBalancete, setJanelaBalancete] = useState('6');
@@ -151,27 +161,72 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
     return [...doCardapio, ...vendasDeEncomenda];
   }, [orders, vendasDeEncomenda, temEncomendas, filtroOrigem]);
 
-  const janela = useMemo(() => janelaDoRelatorio(periodo), [periodo]);
+  // O relógio só entra na janela de quem está correndo (hoje, 7 dias, mês
+  // atual...): o resto não muda de minuto em minuto e não precisa recalcular.
+  const chaveDoRelogio = `${agora.getFullYear()}-${agora.getMonth()}-${agora.getDate()}-${agora.getHours()}-${agora.getMinutes()}`;
+  const janela = useMemo(() => janelaDoRelatorio(periodo, agora), [periodo, chaveDoRelogio]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comparacao = useMemo(() => janelaDeComparacao(periodo, agora), [periodo, chaveDoRelogio]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const resumo = useMemo(() => {
-    const doPeriodo = vendasDoPeriodo({
+  /** As vendas de uma janela, com o filtro de origem — a mesma régua para os dois lados. */
+  const vendasDaJanela = (de: Date | null, ate: Date | null) =>
+    vendasDoPeriodo({
       lancamentos: lancamentosRaw || [],
       pedidos: Array.isArray(orders) ? orders : [],
       encomendas: encomendasRaw || [],
-      de: janela.inicio,
-      ate: janela.fim,
+      de,
+      ate,
     }).filter((venda) => {
       if (filtroOrigem === 'encomendas') return venda.origem === 'encomenda';
       if (filtroOrigem === 'cardapio') return venda.origem !== 'encomenda';
       return true;
     });
-    const faturamento = emDinheiro(doPeriodo.reduce((soma, venda) => soma + venda.valor, 0));
+
+  const resumir = (lista: { valor: number }[]) => {
+    const faturamento = emDinheiro(lista.reduce((soma, venda) => soma + venda.valor, 0));
     return {
       faturamento,
-      vendas: doPeriodo.length,
-      ticketMedio: doPeriodo.length ? emDinheiro(faturamento / doPeriodo.length) : 0,
+      vendas: lista.length,
+      ticketMedio: lista.length ? emDinheiro(faturamento / lista.length) : 0,
     };
-  }, [lancamentosRaw, orders, encomendasRaw, janela, filtroOrigem]);
+  };
+
+  const vendasDoRecorte = useMemo(
+    () => vendasDaJanela(janela.inicio, janela.fim),
+    [lancamentosRaw, orders, encomendasRaw, janela, filtroOrigem], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const vendasDaComparacao = useMemo(
+    () => (comparacao ? vendasDaJanela(comparacao.inicio, comparacao.fim) : []),
+    [lancamentosRaw, orders, encomendasRaw, comparacao, filtroOrigem], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const resumo = useMemo(() => resumir(vendasDoRecorte), [vendasDoRecorte]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resumoAnterior = useMemo(
+    () => (comparacao ? resumir(vendasDaComparacao) : null),
+    [comparacao, vendasDaComparacao], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /** "↑ 12% vs. R$ 380,00" em cada número; com o que se compara vai numa linha só, acima. */
+  const contra = (atual: number, campo: 'faturamento' | 'vendas' | 'ticketMedio', formatar: (n: number) => string) =>
+    comparacao && resumoAnterior
+      ? { variacao: variacaoEntre(atual, resumoAnterior[campo]), texto: formatar(resumoAnterior[campo]) }
+      : undefined;
+
+  // Hora a hora, quando o recorte é um dia só (hoje, ontem, ou um dia escolhido).
+  const umDiaSo = !!janela.inicio && !!janela.fim && janela.fim.getTime() - janela.inicio.getTime() <= 25 * 60 * 60 * 1000;
+  const horaAHora = useMemo(() => {
+    if (!umDiaSo) return null;
+    const horas = Array.from({ length: 24 }, (_, h) => ({ hora: `${String(h).padStart(2, '0')}h`, atual: 0, anterior: 0 }));
+    for (const v of vendasDoRecorte) if (v.quando != null) horas[new Date(v.quando).getHours()].atual += v.valor;
+    for (const v of vendasDaComparacao) if (v.quando != null) horas[new Date(v.quando).getHours()].anterior += v.valor;
+    // Só o horário em que a loja vendeu (num dos dois dias): 24 colunas com a
+    // madrugada vazia espremiam as barras do horário que importa.
+    const usadas = horas.map((h, i) => (h.atual > 0 || h.anterior > 0 ? i : -1)).filter((i) => i >= 0);
+    if (!usadas.length) return [];
+    return horas.slice(Math.min(...usadas), Math.max(...usadas) + 1);
+  }, [umDiaSo, vendasDoRecorte, vendasDaComparacao]);
+  const melhorHora = useMemo(
+    () => (horaAHora && horaAHora.length ? horaAHora.reduce((a, b) => (b.atual > a.atual ? b : a)) : null),
+    [horaAHora],
+  );
 
   const ranking = useMemo(
     () => rankingDeProdutos(vendas, { janela, catalogo: items, categorias: categories }),
@@ -301,16 +356,41 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
         </Card>
 
         {/* KPIs do período escolhido */}
+        {comparacao && (
+          <p className="-mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Scale className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span>
+              {/* O rótulo já diz até quando ("até as 16:20", "até o dia 16"):
+                  período que ainda está correndo compara até o mesmo ponto. */}
+              Comparando com <strong className="font-semibold text-slate-700">{comparacao.rotulo}</strong>.
+            </span>
+          </p>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Kpi label="Faturamento" value={brl(resumo.faturamento)} sub={janela.descricao} Icon={Wallet} cor="emerald" />
+          <Kpi
+            label="Faturamento"
+            value={brl(resumo.faturamento)}
+            sub={janela.descricao}
+            Icon={Wallet}
+            cor="emerald"
+            comparacao={contra(resumo.faturamento, 'faturamento', brl)}
+          />
           <Kpi
             label="Vendas"
             value={String(resumo.vendas)}
             sub={resumo.vendas === 1 ? 'venda no período' : 'vendas no período'}
             Icon={ShoppingBag}
             cor="violet"
+            comparacao={contra(resumo.vendas, 'vendas', (n) => `${n} venda${n === 1 ? '' : 's'}`)}
           />
-          <Kpi label="Ticket médio" value={brl(resumo.ticketMedio)} sub="por venda" Icon={BarChart3} cor="blue" />
+          <Kpi
+            label="Ticket médio"
+            value={brl(resumo.ticketMedio)}
+            sub="por venda"
+            Icon={BarChart3}
+            cor="blue"
+            comparacao={contra(resumo.ticketMedio, 'ticketMedio', brl)}
+          />
           <Kpi
             label="Produtos diferentes"
             value={String(ranking.produtosDiferentes)}
@@ -319,6 +399,71 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
             cor="amber"
           />
         </div>
+
+        {/* Hora a hora — só quando o recorte é um dia */}
+        {horaAHora && (
+          <Card className="border shadow-sm rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-emerald-600" />
+                Hora a hora
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao}
+                {comparacao ? ` ao lado de ${comparacao.rotulo}` : ''}
+                {melhorHora && melhorHora.atual > 0 ? ` · horário que mais vendeu: ${melhorHora.hora} (${brl(melhorHora.atual)})` : ''}
+              </p>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {!horaAHora.length ? (
+                <p className="text-sm text-muted-foreground italic text-center py-10">
+                  Nenhuma venda {janela.rotulo === 'Hoje' ? 'hoje ainda' : 'neste dia'}.
+                </p>
+              ) : (
+                <>
+                  <div className="h-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={horaAHora} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                        <XAxis dataKey="hora" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                        <YAxis
+                          stroke="#64748b"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => `R$${v >= 1000 ? `${Math.round(v / 100) / 10}k` : Math.round(v)}`}
+                        />
+                        <Tooltip
+                          cursor={{ fill: '#f1f5f9' }}
+                          contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                          labelStyle={{ fontWeight: 700, color: '#0f172a' }}
+                          formatter={(valor: any, nome: any) => [
+                            brl(valor),
+                            nome === 'atual' ? (janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao) : comparacao?.rotulo || 'Anterior',
+                          ]}
+                        />
+                        {comparacao && <Bar dataKey="anterior" fill="#cbd5e1" radius={[6, 6, 0, 0]} />}
+                        <Bar dataKey="atual" fill="#059669" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {comparacao && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />
+                        {janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-sm bg-slate-300" />
+                        {comparacao.rotulo}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Balancete mensal */}
         <Card className="border shadow-sm rounded-2xl">
@@ -754,12 +899,15 @@ function Kpi({
   sub,
   Icon,
   cor,
+  comparacao,
 }: {
   label: string;
   value: string;
   sub: string;
   Icon: any;
   cor: 'emerald' | 'blue' | 'violet' | 'amber';
+  /** Contra o período equivalente (lib/relatorios/periodo `janelaDeComparacao`). */
+  comparacao?: { variacao: number | null; texto: string };
 }) {
   const palette = {
     emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-100' },
@@ -776,6 +924,12 @@ function Kpi({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
             <p className="text-2xl font-black text-slate-800 mt-1 truncate">{value}</p>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">{sub}</p>
+            {comparacao && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground min-w-0">
+                <Variacao valor={comparacao.variacao} />
+                <span className="truncate">vs. {comparacao.texto}</span>
+              </p>
+            )}
           </div>
           <div className={`shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ring-4 ${palette.bg} ${palette.ring}`}>
             <Icon className={`h-5 w-5 ${palette.text}`} />
