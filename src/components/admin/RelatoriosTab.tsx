@@ -55,7 +55,8 @@ import {
 } from '@/lib/relatorios/ranking';
 import { balanceteMensal } from '@/lib/relatorios/balancete';
 import { encomendasComoVendas } from '@/lib/relatorios/encomendas';
-import { vendasDoPeriodo } from '@/lib/faturamento';
+import { faturamentoDoPeriodo, porFormaDePagamento, vendasDoPeriodo } from '@/lib/faturamento';
+import { escalaDoPeriodo, serieDoPeriodo, vendasPorCanal, vendasUmaAUma } from '@/lib/relatorios/visao';
 import { csvDoBalancete, csvDoRanking, nomeDoArquivo } from '@/lib/relatorios/export';
 
 interface RelatoriosTabProps {
@@ -65,6 +66,8 @@ interface RelatoriosTabProps {
   items: any[];
   categories: any[];
   storeProfile: any;
+  /** Período com que a aba abre (padrão: hoje). */
+  periodoInicial?: PeriodoDoRelatorio;
 }
 
 /** De onde vem a venda que entra na conta. */
@@ -75,13 +78,6 @@ const ORIGENS = [
 ] as const;
 
 type FiltroOrigem = (typeof ORIGENS)[number]['id'];
-
-const JANELAS_DO_BALANCETE: { id: string; label: string; meses: number | null }[] = [
-  { id: '3', label: '3 meses', meses: 3 },
-  { id: '6', label: '6 meses', meses: 6 },
-  { id: '12', label: '12 meses', meses: 12 },
-  { id: 'tudo', label: 'Tudo', meses: null },
-];
 
 const ORDENS: { id: OrdemDoRanking; label: string }[] = [
   { id: 'quantidade', label: 'Mais vendidos' },
@@ -96,9 +92,9 @@ function hojeNoInput() {
 
 const dataCurta = (d: Date | null) => (d ? d.toLocaleDateString('pt-BR') : null);
 
-export function RelatoriosTab({ db, ownerId, orders, items, categories, storeProfile }: RelatoriosTabProps) {
+export function RelatoriosTab({ db, ownerId, orders, items, categories, storeProfile, periodoInicial }: RelatoriosTabProps) {
   // Abre no dia de hoje: é a primeira pergunta de quem entra no relatório.
-  const [periodo, setPeriodo] = useState<PeriodoDoRelatorio>({ preset: 'hoje' });
+  const [periodo, setPeriodo] = useState<PeriodoDoRelatorio>(periodoInicial || { preset: 'hoje' });
   // O relógio anda: "hoje até as 16:20" compara com a semana passada até a
   // MESMA hora. Sem isto a tela aberta às 10h seguiria comparando até as 10h.
   const [agora, setAgora] = useState(() => new Date());
@@ -108,7 +104,6 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
   }, []);
   const [ordem, setOrdem] = useState<OrdemDoRanking>('quantidade');
   const [busca, setBusca] = useState('');
-  const [janelaBalancete, setJanelaBalancete] = useState('6');
   const [mostrarSemVenda, setMostrarSemVenda] = useState(false);
   const [filtroOrigem, setFiltroOrigem] = useState<FiltroOrigem>('tudo');
   const [produtoAberto, setProdutoAberto] = useState<LinhaDeProduto | null>(null);
@@ -205,28 +200,49 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
   );
 
   /** "↑ 12% vs. R$ 380,00" em cada número; com o que se compara vai numa linha só, acima. */
+  // Período anterior sem venda nenhuma (loja que começou depois) não é base:
+  // "vs. R$ 0,00" não diz nada. Some dos cartões e a linha de cima explica.
+  const temBase = !!resumoAnterior && resumoAnterior.vendas > 0;
   const contra = (atual: number, campo: 'faturamento' | 'vendas' | 'ticketMedio', formatar: (n: number) => string) =>
-    comparacao && resumoAnterior
+    comparacao && resumoAnterior && temBase
       ? { variacao: variacaoEntre(atual, resumoAnterior[campo]), texto: formatar(resumoAnterior[campo]) }
       : undefined;
 
-  // Hora a hora, quando o recorte é um dia só (hoje, ontem, ou um dia escolhido).
-  const umDiaSo = !!janela.inicio && !!janela.fim && janela.fim.getTime() - janela.inicio.getTime() <= 25 * 60 * 60 * 1000;
-  const horaAHora = useMemo(() => {
-    if (!umDiaSo) return null;
-    const horas = Array.from({ length: 24 }, (_, h) => ({ hora: `${String(h).padStart(2, '0')}h`, atual: 0, anterior: 0 }));
-    for (const v of vendasDoRecorte) if (v.quando != null) horas[new Date(v.quando).getHours()].atual += v.valor;
-    for (const v of vendasDaComparacao) if (v.quando != null) horas[new Date(v.quando).getHours()].anterior += v.valor;
-    // Só o horário em que a loja vendeu (num dos dois dias): 24 colunas com a
-    // madrugada vazia espremiam as barras do horário que importa.
-    const usadas = horas.map((h, i) => (h.atual > 0 || h.anterior > 0 ? i : -1)).filter((i) => i >= 0);
-    if (!usadas.length) return [];
-    return horas.slice(Math.min(...usadas), Math.max(...usadas) + 1);
-  }, [umDiaSo, vendasDoRecorte, vendasDaComparacao]);
-  const melhorHora = useMemo(
-    () => (horaAHora && horaAHora.length ? horaAHora.reduce((a, b) => (b.atual > a.atual ? b : a)) : null),
-    [horaAHora],
+  // A tela se organiza pelo tamanho do período: um dia olha hora a hora, até
+  // dois meses dia a dia, mais que isso mês a mês (lib/relatorios/visao). Antes
+  // "Hoje" mostrava balancete de seis meses e a lista do que não vendeu no mês.
+  const escala = escalaDoPeriodo(janela, agora);
+  const ehHoje = periodo.preset === 'hoje';
+  const nomeDoRecorte = ehHoje ? 'hoje' : periodo.preset === 'ontem' ? 'ontem' : janela.descricao;
+
+  const serie = useMemo(
+    () =>
+      escala === 'mes'
+        ? null
+        : serieDoPeriodo({ escala, janela, comparacao, vendas: vendasDoRecorte, anteriores: vendasDaComparacao, agora }),
+    [escala, janela, comparacao, vendasDoRecorte, vendasDaComparacao], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const melhorPonto = useMemo(
+    () => (serie && serie.length ? serie.reduce((a, b) => (b.atual > a.atual ? b : a)) : null),
+    [serie],
+  );
+
+  // Como pagaram: pelos lançamentos do caixa (a venda dividida conta em cada
+  // forma), com o mesmo dia da venda e o mesmo filtro de origem.
+  const formas = useMemo(() => {
+    const { entradas } = faturamentoDoPeriodo({
+      lancamentos: lancamentosRaw || [],
+      pedidos: Array.isArray(orders) ? orders : [],
+      de: janela.inicio,
+      ate: janela.fim,
+    });
+    const doFiltro = entradas.filter((e) =>
+      filtroOrigem === 'encomendas' ? e.origem === 'encomenda' : filtroOrigem === 'cardapio' ? e.origem !== 'encomenda' : true,
+    );
+    return porFormaDePagamento(doFiltro);
+  }, [lancamentosRaw, orders, janela, filtroOrigem]);
+  const canais = useMemo(() => vendasPorCanal(vendasDoRecorte), [vendasDoRecorte]);
+  const vendasDoDia = useMemo(() => (escala === 'hora' ? vendasUmaAUma(vendasDoRecorte) : null), [escala, vendasDoRecorte]);
 
   const ranking = useMemo(
     () => rankingDeProdutos(vendas, { janela, catalogo: items, categorias: categories }),
@@ -244,8 +260,22 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
     [ranking.linhas],
   );
 
-  const mesesPedidos = JANELAS_DO_BALANCETE.find((j) => j.id === janelaBalancete)?.meses ?? 6;
-  const balancete = useMemo(() => balanceteMensal(vendas, { meses: mesesPedidos }), [vendas, mesesPedidos]);
+  // Mês a mês só em período longo, com os meses DO período e o dinheiro do
+  // caixa — a mesma conta dos cartões de cima. Antes ele tinha seletor próprio
+  // e somava o valor dos pedidos, outra fonte.
+  const balancete = useMemo(() => {
+    if (escala !== 'mes') return null;
+    const meses =
+      periodo.preset === '3m' ? 3
+      : periodo.preset === '6m' ? 6
+      : periodo.preset === '12m' ? 12
+      : periodo.preset === 'tudo' || !janela.inicio ? null
+      : (agora.getFullYear() - janela.inicio.getFullYear()) * 12 + agora.getMonth() - janela.inicio.getMonth() + 1;
+    const doCaixa = vendasDoRecorte
+      .filter((v) => v.quando != null)
+      .map((v) => ({ id: v.vinculo || undefined, totalAmount: v.valor, orderDateTime: new Date(v.quando!).toISOString(), status: 'delivered' }));
+    return balanceteMensal(doCaixa, { meses, agora });
+  }, [escala, periodo.preset, janela, vendasDoRecorte]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const baixarRanking = () => {
     baixarCsv(
@@ -255,6 +285,7 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
   };
 
   const baixarBalancete = () => {
+    if (!balancete) return;
     baixarCsv(
       csvDoBalancete(balancete, { loja: nomeDaLoja, periodo: `${balancete.meses.length} meses` }),
       nomeDoArquivo('balancete-mensal', nomeDaLoja),
@@ -362,7 +393,9 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
             <span>
               {/* O rótulo já diz até quando ("até as 16:20", "até o dia 16"):
                   período que ainda está correndo compara até o mesmo ponto. */}
-              Comparando com <strong className="font-semibold text-slate-700">{comparacao.rotulo}</strong>.
+              {temBase ? 'Comparando com ' : 'Não há vendas em '}
+              <strong className="font-semibold text-slate-700">{comparacao.rotulo}</strong>
+              {temBase ? '.' : ' para comparar.'}
             </span>
           </p>
         )}
@@ -391,41 +424,62 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
             cor="blue"
             comparacao={contra(resumo.ticketMedio, 'ticketMedio', brl)}
           />
-          <Kpi
-            label="Produtos diferentes"
-            value={String(ranking.produtosDiferentes)}
-            sub={`${ranking.semVenda.length} sem nenhuma venda`}
-            Icon={Trophy}
-            cor="amber"
-          />
+          {escala === 'hora' ? (
+            // Num dia, "X produtos sem nenhuma venda" é número de mês inteiro.
+            <Kpi
+              label="Itens vendidos"
+              value={String(ranking.totalQuantidade)}
+              sub={`${ranking.produtosDiferentes} produto${ranking.produtosDiferentes === 1 ? '' : 's'} diferente${ranking.produtosDiferentes === 1 ? '' : 's'}`}
+              Icon={Trophy}
+              cor="amber"
+            />
+          ) : (
+            <Kpi
+              label="Produtos diferentes"
+              value={String(ranking.produtosDiferentes)}
+              sub={`${ranking.semVenda.length} sem nenhuma venda`}
+              Icon={Trophy}
+              cor="amber"
+            />
+          )}
         </div>
 
-        {/* Hora a hora — só quando o recorte é um dia */}
-        {horaAHora && (
+        {/* Evolução — a escala segue o período: hora, dia ou mês */}
+        {serie && (
           <Card className="border shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-emerald-600" />
-                Hora a hora
+                {escala === 'hora' ? 'Hora a hora' : 'Dia a dia'}
               </CardTitle>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao}
-                {comparacao ? ` ao lado de ${comparacao.rotulo}` : ''}
-                {melhorHora && melhorHora.atual > 0 ? ` · horário que mais vendeu: ${melhorHora.hora} (${brl(melhorHora.atual)})` : ''}
+                {escala === 'hora' ? 'Quanto entrou em cada hora' : 'Quanto entrou em cada dia'}
+                {comparacao ? `, ao lado de ${comparacao.rotulo}` : ''}
+                {melhorPonto && melhorPonto.atual > 0
+                  ? ` · ${escala === 'hora' ? 'horário' : 'dia'} que mais vendeu: ${escala === 'hora' ? melhorPonto.rotulo : melhorPonto.rotuloLongo} (${brl(melhorPonto.atual)})`
+                  : ''}
               </p>
             </CardHeader>
             <CardContent className="pt-2">
-              {!horaAHora.length ? (
+              {!serie.length || serie.every((p) => p.atual === 0 && p.anterior === 0) ? (
                 <p className="text-sm text-muted-foreground italic text-center py-10">
-                  Nenhuma venda {janela.rotulo === 'Hoje' ? 'hoje ainda' : 'neste dia'}.
+                  {ehHoje ? 'Nenhuma venda hoje ainda.' : `Nenhuma venda em ${nomeDoRecorte}.`}
                 </p>
               ) : (
                 <>
-                  <div className="h-[220px]">
+                  <div className="h-[240px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={horaAHora} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+                      <BarChart data={serie} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                        <XAxis dataKey="hora" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                        <XAxis
+                          dataKey="rotulo"
+                          stroke="#64748b"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          interval="preserveStartEnd"
+                          minTickGap={8}
+                        />
                         <YAxis
                           stroke="#64748b"
                           fontSize={11}
@@ -437,9 +491,12 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
                           cursor={{ fill: '#f1f5f9' }}
                           contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
                           labelStyle={{ fontWeight: 700, color: '#0f172a' }}
-                          formatter={(valor: any, nome: any) => [
-                            brl(valor),
-                            nome === 'atual' ? (janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao) : comparacao?.rotulo || 'Anterior',
+                          labelFormatter={(_r: any, carga: any) => carga?.[0]?.payload?.rotuloLongo || ''}
+                          formatter={(valor: any, nome: any, item: any) => [
+                            nome === 'atual'
+                              ? `${brl(valor)} · ${item?.payload?.vendas ?? 0} venda${item?.payload?.vendas === 1 ? '' : 's'}`
+                              : brl(valor),
+                            nome === 'atual' ? 'Agora' : comparacao?.rotulo || 'Anterior',
                           ]}
                         />
                         {comparacao && <Bar dataKey="anterior" fill="#cbd5e1" radius={[6, 6, 0, 0]} />}
@@ -451,7 +508,7 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />
-                        {janela.rotulo === 'Hoje' ? 'Hoje' : janela.descricao}
+                        {ehHoje ? 'Hoje' : janela.rotulo}
                       </span>
                       <span className="flex items-center gap-1.5">
                         <span className="h-2.5 w-2.5 rounded-sm bg-slate-300" />
@@ -465,31 +522,16 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
           </Card>
         )}
 
-        {/* Balancete mensal */}
-        <Card className="border shadow-sm rounded-2xl">
-          <CardHeader className="pb-2 flex flex-row items-start justify-between gap-3 flex-wrap">
-            <div>
-              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-emerald-600" />
-                Balancete mensal
-              </CardTitle>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Quanto entrou em cada mês. Independente do período escolhido acima.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {JANELAS_DO_BALANCETE.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  onClick={() => setJanelaBalancete(j.id)}
-                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
-                    janelaBalancete === j.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {j.label}
-                </button>
-              ))}
+        {balancete && (
+          <Card className="border shadow-sm rounded-2xl">
+            <CardHeader className="pb-2 flex flex-row items-start justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-emerald-600" />
+                  Mês a mês
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Quanto entrou em cada mês do período.</p>
+              </div>
               <button
                 type="button"
                 onClick={baixarBalancete}
@@ -499,116 +541,195 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
                 <Download className="h-3.5 w-3.5" />
                 Planilha
               </button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-2">
-            {!balancete.meses.length ? (
-              <p className="text-sm text-muted-foreground italic text-center py-10">
-                Nenhuma venda registrada ainda.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-                <div className="lg:col-span-3">
-                  <div className="h-[280px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={balancete.meses} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                        <XAxis dataKey="rotulo" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-                        <YAxis
-                          stroke="#64748b"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(v) => `R$${v >= 1000 ? `${Math.round(v / 100) / 10}k` : Math.round(v)}`}
-                        />
-                        <Tooltip
-                          cursor={{ fill: '#f1f5f9' }}
-                          contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
-                          labelStyle={{ fontWeight: 700, color: '#0f172a' }}
-                          formatter={(valor: any, _nome: any, item: any) => [
-                            `${brl(valor)} · ${item?.payload?.vendas ?? 0} venda${item?.payload?.vendas === 1 ? '' : 's'}`,
-                            'Faturamento',
-                          ]}
-                          labelFormatter={(_rotulo: any, carga: any) => {
-                            const mes = carga?.[0]?.payload;
-                            if (!mes) return '';
-                            return mes.emAndamento ? `${mes.rotuloLongo} (em andamento)` : mes.rotuloLongo;
-                          }}
-                        />
-                        <Bar dataKey="faturamento" radius={[8, 8, 0, 0]}>
-                          {/* O melhor mês em destaque: é a pergunta que ela faz
-                              olhando o gráfico. O mês corrente sai desbotado e
-                              contornado, para a barra baixa não ser lida como
-                              queda quando o mês só está pela metade. */}
-                          {balancete.meses.map((mes) => (
-                            <Cell
-                              key={mes.chave}
-                              fill={mes.emAndamento ? '#d1fae5' : mes.chave === balancete.melhor?.chave ? '#059669' : '#a7f3d0'}
-                              stroke={mes.emAndamento ? '#10b981' : undefined}
-                              strokeDasharray={mes.emAndamento ? '4 3' : undefined}
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-xs text-muted-foreground">
-                    <span>
-                      Total: <strong className="text-slate-800">{brl(balancete.total)}</strong>
-                    </span>
-                    <span>
-                      Média por mês: <strong className="text-slate-800">{brl(balancete.mediaMensal)}</strong>
-                    </span>
-                    {balancete.melhor && (
+            </CardHeader>
+            <CardContent className="pt-2">
+              {!balancete.meses.length ? (
+                <p className="text-sm text-muted-foreground italic text-center py-10">Nenhuma venda no período.</p>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+                  <div className="lg:col-span-3">
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={balancete.meses} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis dataKey="rotulo" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis
+                            stroke="#64748b"
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(v) => `R$${v >= 1000 ? `${Math.round(v / 100) / 10}k` : Math.round(v)}`}
+                          />
+                          <Tooltip
+                            cursor={{ fill: '#f1f5f9' }}
+                            contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                            labelStyle={{ fontWeight: 700, color: '#0f172a' }}
+                            formatter={(valor: any, _nome: any, item: any) => [
+                              `${brl(valor)} · ${item?.payload?.vendas ?? 0} venda${item?.payload?.vendas === 1 ? '' : 's'}`,
+                              'Faturamento',
+                            ]}
+                            labelFormatter={(_rotulo: any, carga: any) => {
+                              const mes = carga?.[0]?.payload;
+                              if (!mes) return '';
+                              return mes.emAndamento ? `${mes.rotuloLongo} (em andamento)` : mes.rotuloLongo;
+                            }}
+                          />
+                          <Bar dataKey="faturamento" radius={[8, 8, 0, 0]}>
+                            {/* O melhor mês em destaque; o mês corrente desbotado e
+                                contornado, para a barra baixa não ser lida como
+                                queda quando o mês só está pela metade. */}
+                            {balancete.meses.map((mes) => (
+                              <Cell
+                                key={mes.chave}
+                                fill={mes.emAndamento ? '#d1fae5' : mes.chave === balancete.melhor?.chave ? '#059669' : '#a7f3d0'}
+                                stroke={mes.emAndamento ? '#10b981' : undefined}
+                                strokeDasharray={mes.emAndamento ? '4 3' : undefined}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-xs text-muted-foreground">
                       <span>
-                        Melhor mês:{' '}
-                        <strong className="text-emerald-700">
-                          {balancete.melhor.rotuloLongo} ({brl(balancete.melhor.faturamento)})
-                        </strong>
+                        Total: <strong className="text-slate-800">{brl(balancete.total)}</strong>
                       </span>
-                    )}
+                      <span>
+                        Média por mês: <strong className="text-slate-800">{brl(balancete.mediaMensal)}</strong>
+                      </span>
+                      {balancete.melhor && (
+                        <span>
+                          Melhor mês:{' '}
+                          <strong className="text-emerald-700">
+                            {balancete.melhor.rotuloLongo} ({brl(balancete.melhor.faturamento)})
+                          </strong>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="lg:col-span-2 min-w-0">
-                  <div className="max-h-[300px] overflow-y-auto custom-scrollbar rounded-xl border">
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        <tr>
-                          <th className="text-left font-semibold px-3 py-2">Mês</th>
-                          <th className="text-right font-semibold px-3 py-2">Faturamento</th>
-                          <th className="text-right font-semibold px-3 py-2">Vendas</th>
-                          <th className="text-right font-semibold px-3 py-2 whitespace-nowrap">vs. anterior</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {[...balancete.meses].reverse().map((mes) => (
-                          <tr key={mes.chave} className="hover:bg-slate-50">
-                            <td className="px-3 py-2 font-semibold text-slate-700 capitalize whitespace-nowrap">
-                              {mes.rotulo}
-                              {mes.emAndamento && (
-                                <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded normal-case">
-                                  em andamento
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-slate-800 whitespace-nowrap">
-                              {brl(mes.faturamento)}
-                            </td>
-                            <td className="px-3 py-2 text-right text-muted-foreground">{mes.vendas}</td>
-                            <td className="px-3 py-2 text-right whitespace-nowrap">
-                              <Variacao valor={mes.variacao} parcial={mes.emAndamento} />
-                            </td>
+                  <div className="lg:col-span-2 min-w-0">
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar rounded-xl border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="text-left font-semibold px-3 py-2">Mês</th>
+                            <th className="text-right font-semibold px-3 py-2">Faturamento</th>
+                            <th className="text-right font-semibold px-3 py-2">Vendas</th>
+                            <th className="text-right font-semibold px-3 py-2 whitespace-nowrap">vs. anterior</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y">
+                          {[...balancete.meses].reverse().map((mes) => (
+                            <tr key={mes.chave} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-semibold text-slate-700 capitalize whitespace-nowrap">
+                                {mes.rotulo}
+                                {mes.emAndamento && (
+                                  <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded normal-case">
+                                    em andamento
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-slate-800 whitespace-nowrap">
+                                {brl(mes.faturamento)}
+                              </td>
+                              <td className="px-3 py-2 text-right text-muted-foreground">{mes.vendas}</td>
+                              <td className="px-3 py-2 text-right whitespace-nowrap">
+                                <Variacao valor={mes.variacao} parcial={mes.emAndamento} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Como pagaram e por onde a venda entrou */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Fatias
+            titulo="Como pagaram"
+            Icon={Wallet}
+            vazio={`Nenhum pagamento em ${nomeDoRecorte}.`}
+            linhas={formas.map((f) => ({ chave: f.forma, rotulo: f.forma, valor: f.total, vendas: f.vendas }))}
+            unidade="lançamento"
+          />
+          <Fatias
+            titulo="Por onde vendeu"
+            Icon={ShoppingBag}
+            vazio={`Nenhuma venda em ${nomeDoRecorte}.`}
+            linhas={canais.map((c) => ({ chave: c.canal, rotulo: c.rotulo, valor: c.valor, vendas: c.vendas }))}
+            unidade="venda"
+          />
+        </div>
+
+        {/* As vendas do dia, uma a uma */}
+        {vendasDoDia && (
+          <Card className="border shadow-sm rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <ShoppingBag className="h-4 w-4 text-violet-600" />
+                {ehHoje ? 'Vendas de hoje' : `Vendas de ${nomeDoRecorte}`}
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {vendasDoDia.length} venda{vendasDoDia.length === 1 ? '' : 's'}, da mais recente para a mais antiga.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {!vendasDoDia.length ? (
+                <p className="text-sm text-muted-foreground italic text-center py-8">
+                  {ehHoje ? 'Nenhuma venda hoje ainda.' : `Nenhuma venda em ${nomeDoRecorte}.`}
+                </p>
+              ) : (
+                <div className="max-h-[420px] overflow-y-auto custom-scrollbar rounded-xl border">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-muted-foreground z-10">
+                      <tr>
+                        <th className="text-left font-semibold px-3 py-2 w-16">Hora</th>
+                        <th className="text-left font-semibold px-3 py-2">Cliente</th>
+                        <th className="text-left font-semibold px-3 py-2 hidden md:table-cell">Canal</th>
+                        <th className="text-left font-semibold px-3 py-2 hidden sm:table-cell">Pagamento</th>
+                        <th className="text-right font-semibold px-3 py-2 hidden lg:table-cell">Itens</th>
+                        <th className="text-right font-semibold px-3 py-2">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {vendasDoDia.map((v) => (
+                        <tr key={v.chave} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-semibold text-slate-600 tabular-nums">{v.hora}</td>
+                          <td className="px-3 py-2 min-w-0">
+                            <div className="font-semibold text-slate-800 truncate">{v.cliente}</div>
+                            <div className="text-[11px] text-muted-foreground md:hidden">
+                              {v.canal} · {v.formas}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground hidden md:table-cell whitespace-nowrap">{v.canal}</td>
+                          <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{v.formas}</td>
+                          <td className="px-3 py-2 text-right text-muted-foreground hidden lg:table-cell">{v.itens || '—'}</td>
+                          <td className="px-3 py-2 text-right font-bold text-slate-800 whitespace-nowrap">{brl(v.valor)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 bg-slate-50 border-t-2">
+                      <tr className="text-sm">
+                        <td className="px-3 py-2" />
+                        <td className="px-3 py-2 font-black text-slate-800">Total</td>
+                        <td className="hidden md:table-cell" />
+                        <td className="hidden sm:table-cell" />
+                        <td className="hidden lg:table-cell" />
+                        <td className="px-3 py-2 text-right font-black text-slate-800">{brl(resumo.faturamento)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Ranking completo */}
         <Card className="border shadow-sm rounded-2xl">
@@ -616,7 +737,7 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
             <div>
               <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <Trophy className="h-4 w-4 text-amber-500" />
-                O que você vendeu — lista completa
+                {escala === 'hora' ? `O que saiu ${ehHoje ? 'hoje' : `em ${nomeDoRecorte}`}` : 'O que você vendeu — lista completa'}
               </CardTitle>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {ranking.produtosDiferentes} produto{ranking.produtosDiferentes === 1 ? '' : 's'} diferente
@@ -792,7 +913,8 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
           </CardContent>
         </Card>
 
-        {/* O que ficou parado */}
+        {/* O que ficou parado — pergunta de semana/mês, não de um dia */}
+        {escala !== 'hora' && (
         <Card className="border shadow-sm rounded-2xl">
           <button
             type="button"
@@ -855,6 +977,7 @@ export function RelatoriosTab({ db, ownerId, orders, items, categories, storePro
             </CardContent>
           )}
         </Card>
+        )}
       </div>
 
       <CurvaDoProduto
@@ -890,6 +1013,59 @@ function Variacao({ valor, parcial = false }: { valor: number | null; parcial?: 
       {emPorcento(Math.abs(valor))}
       {parcial && <span className="font-medium">parcial</span>}
     </span>
+  );
+}
+
+/** Barras horizontais com valor, quantidade e fatia — formas de pagamento e canais. */
+function Fatias({
+  titulo,
+  Icon,
+  linhas,
+  vazio,
+  unidade,
+}: {
+  titulo: string;
+  Icon: any;
+  linhas: { chave: string; rotulo: string; valor: number; vendas: number }[];
+  vazio: string;
+  unidade: string;
+}) {
+  const total = linhas.reduce((s, l) => s + l.valor, 0);
+  const maior = Math.max(0.0001, ...linhas.map((l) => l.valor));
+  return (
+    <Card className="border shadow-sm rounded-2xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+          <Icon className="h-4 w-4 text-emerald-600" />
+          {titulo}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-1">
+        {!linhas.length ? (
+          <p className="text-sm text-muted-foreground italic text-center py-6">{vazio}</p>
+        ) : (
+          <ul className="space-y-2.5">
+            {linhas.map((l) => (
+              <li key={l.chave}>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-semibold text-slate-700 truncate">{l.rotulo}</span>
+                  <span className="shrink-0 whitespace-nowrap">
+                    <strong className="text-slate-800">{brl(l.valor)}</strong>
+                    <span className="ml-2 text-[11px] text-muted-foreground">
+                      {l.vendas} {unidade}
+                      {l.vendas === 1 ? '' : 's'} · {emPorcento(total > 0 ? l.valor / total : 0)}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${Math.max(3, (l.valor / maior) * 100)}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
