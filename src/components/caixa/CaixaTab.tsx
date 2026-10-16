@@ -22,7 +22,7 @@ import {
 } from '@/lib/caixa/freelancers';
 import { totalEmDinheiro } from '@/lib/caixa/repasses';
 import { agruparLancamentosCaixa, type LinhaCaixa } from '@/lib/caixa-lancamentos';
-import { resumoDeVendasDoCaixa, type ResumoDeVendas } from '@/lib/faturamento';
+import { resumoDeVendasDoCaixa, vendasDeOutroDiaNoCaixa, type ResumoDeVendas } from '@/lib/faturamento';
 import { printAberturaCaixa, printFechamentoCaixa, printOperacaoCaixa } from '@/lib/caixa-receipt';
 import { printOrderReceipt } from '@/lib/order-receipt-html';
 import { AcertoPrazoDetalhe } from '@/components/caixa/AcertoPrazoDetalhe';
@@ -320,6 +320,14 @@ export function CaixaTab({
   const orderSources = useMemo(
     () => [...orderPool, ...encomendasComoPedidos],
     [orderPool, encomendasComoPedidos],
+  );
+
+  // Venda que conta em outro dia (pedido de ontem fechado neste caixa, ou venda
+  // de hoje num caixa aberto desde ontem): o Dashboard a põe no dia do pedido,
+  // então o card avisa para o total do caixa e o do dia não parecerem erro.
+  const vendasDeOutroDia = useMemo(
+    () => vendasDeOutroDiaNoCaixa(lancamentos, orderPool, caixaAtual?.dataAbertura),
+    [lancamentos, orderPool, caixaAtual?.dataAbertura],
   );
 
   // Novos lançamentos casam por id exato. O prefixo fica apenas para o legado
@@ -1227,7 +1235,7 @@ export function CaixaTab({
           </div>
 
           {/* ─── Total de vendas da sessão ─── */}
-          <TotalDeVendasCard resumo={resumoDeVendas} />
+          <TotalDeVendasCard resumo={resumoDeVendas} deOutroDia={vendasDeOutroDia} />
 
           {/* ─── Cards Totalizadores (9 Cards) ─── */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3 shrink-0">
@@ -2728,7 +2736,13 @@ function SummaryCard({ label, value, color, border }: { label: string; value: nu
  * vendido — pedido, encomenda e venda avulsa — com o detalhe por origem embaixo,
  * porque "R$ 441" sem dizer que R$ 260 vieram de encomenda não explica o dia.
  */
-function TotalDeVendasCard({ resumo }: { resumo: ResumoDeVendas }) {
+function TotalDeVendasCard({
+  resumo,
+  deOutroDia,
+}: {
+  resumo: ResumoDeVendas;
+  deOutroDia?: { valor: number; quantidade: number; dias: string[] };
+}) {
   const partes = [
     { label: 'balcão e delivery', valor: resumo.porOrigem.pedido + resumo.porOrigem.avulsa },
     { label: 'encomendas', valor: resumo.porOrigem.encomenda },
@@ -2745,6 +2759,13 @@ function TotalDeVendasCard({ resumo }: { resumo: ResumoDeVendas }) {
         {partes.length > 1 && (
           <span className="block text-[11px] font-medium opacity-90">
             {partes.map((p) => `${brl(p.valor)} em ${p.label}`).join(' · ')}
+          </span>
+        )}
+        {deOutroDia && deOutroDia.valor > 0 && (
+          <span className="mt-1 block text-[11px] font-semibold text-amber-100">
+            📅 Inclui {brl(deOutroDia.valor)} de {deOutroDia.quantidade === 1 ? 'venda' : 'vendas'} de{' '}
+            {deOutroDia.dias.map((d) => d.split('-').reverse().slice(0, 2).join('/')).join(', ')}, que no Dashboard{' '}
+            {deOutroDia.quantidade === 1 ? 'conta' : 'contam'} no dia do pedido.
           </span>
         )}
       </div>

@@ -64,7 +64,7 @@ const O = porLoja(ordersSnap);
 const E = porLoja(encomendasSnap);
 const C = porLoja(cashSnap);
 
-const geral = { lojas: 0, encomendas: 0, semLancar: 0, duplicados: 0, encomendaAberta: 0 };
+const geral = { lojas: 0, encomendas: 0, semLancar: 0, duplicados: 0, encomendaAberta: 0, outroDia: 0 };
 const soma = (lista, campo = 'valor') => lista.reduce((s, x) => s + (Number(x[campo]) || 0), 0);
 
 for (const perfil of perfis) {
@@ -120,11 +120,25 @@ for (const perfil of perfis) {
     geral.semLancar += total;
   }
 
-  // 3. Duplo clique: mesmo vínculo, mesma forma, mesmo valor, segundos depois.
+  // 3. Duplo clique: mesmo vínculo, mesma forma, mesmo valor, segundos depois —
+  // e o caixa recebeu MAIS do que o documento vale. Sem a segunda condição,
+  // sinal e entrega iguais da encomenda (R$ 85 + R$ 85 de R$ 170) e conta de
+  // mesa dividida com duas pessoas no Pix (R$ 23 + R$ 23) pareciam duplicados.
+  const valorDoDocumento = new Map([
+    ...pedidos.map((p) => [`o:${p.id}`, Number(p.totalAmount) || 0]),
+    ...encomendas.map((e) => [`e:${e.id}`, Number(e.total ?? e.totalAmount) || 0]),
+  ]);
+  const recebidoPorDocumento = new Map();
+  for (const l of C.get(ownerId) || []) {
+    if (!ehVenda(l)) continue;
+    const chave = l.orderId ? `o:${l.orderId}` : l.encomendaId ? `e:${l.encomendaId}` : null;
+    if (chave) recebidoPorDocumento.set(chave, (recebidoPorDocumento.get(chave) || 0) + (Number(l.valor) || 0));
+  }
   const grupos = new Map();
   for (const l of vendas) {
     const chave = l.orderId ? `o:${l.orderId}` : l.encomendaId ? `e:${l.encomendaId}` : null;
     if (!chave) continue;
+    if (!valorDoDocumento.has(chave) || recebidoPorDocumento.get(chave) <= valorDoDocumento.get(chave) + 0.009) continue;
     const k = `${chave}|${String(l.formaPagamento || '').toLowerCase()}|${Number(l.valor) || 0}`;
     if (!grupos.has(k)) grupos.set(k, []);
     grupos.get(k).push(l);
@@ -145,6 +159,24 @@ for (const perfil of perfis) {
       console.log(`      ${dia(emData(d.lanc.data))} ${emData(d.lanc.data).toLocaleTimeString('pt-BR')} (+${d.intervalo}s) | ${brl(d.lanc.valor)} | ${d.lanc.titulo} | id=${d.lanc.id}`);
     }
     geral.duplicados += total;
+  }
+
+  // 5. Venda lançada em dia diferente do pedido. Não é erro de dinheiro: desde
+  // 16/10/2026 o Dashboard conta a venda no dia do PEDIDO (lib/faturamento,
+  // `momentoDaVenda`). Aparece aqui porque é a primeira coisa a olhar quando a
+  // dona diz que "o dia não bate" — o caixa da sessão tem esse dinheiro.
+  const porId = new Map(pedidos.map((p) => [p.id, p]));
+  const diaDe = (d) => (d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : null);
+  const deOutroDia = semFiado
+    .filter((l) => l.orderId && porId.has(l.orderId))
+    .map((l) => ({ l, pedido: emData(porId.get(l.orderId).orderDateTime) || emData(porId.get(l.orderId).createdAt) }))
+    .filter(({ l, pedido }) => pedido && diaDe(pedido) !== diaDe(emData(l.data)));
+  if (deOutroDia.length) {
+    console.log(`\n  [5] VENDA LANÇADA EM OUTRO DIA (conta no dia do pedido): ${deOutroDia.length} — ${brl(soma(deOutroDia.map((x) => x.l)))}`);
+    for (const { l, pedido } of deOutroDia.slice(-8)) {
+      console.log(`      pedido ${pedido.toLocaleString('pt-BR')} → lançado ${emData(l.data).toLocaleString('pt-BR')} | ${brl(l.valor).padStart(11)} | ${l.titulo}`);
+    }
+    geral.outroDia += soma(deOutroDia.map((x) => x.l));
   }
 
   // 4. Encomenda com dinheiro em aberto (ou recebido a mais).
@@ -176,5 +208,6 @@ console.log(`  Encomendas que só o caixa vê           : ${brl(geral.encomendas
 console.log(`  Pedidos que não passaram no caixa      : ${brl(geral.semLancar)}`);
 console.log(`  Lançamentos duplicados                 : ${brl(geral.duplicados)}`);
 console.log(`  Encomenda em aberto (falta receber)    : ${brl(geral.encomendaAberta)}`);
+console.log(`  Lançado em dia diferente do pedido     : ${brl(geral.outroDia)}  (não é erro: conta no dia do pedido)`);
 console.log(`\nNenhuma escrita foi feita no Firestore.`);
 process.exit(0);

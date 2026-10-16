@@ -22,10 +22,10 @@ interface FechamentoModalProps {
   warnings?: React.ReactNode;
   /**
    * Quando o pedido foi feito. Serve para avisar, ANTES de confirmar, que a
-   * conta é de outro dia — o faturamento é datado pelo lançamento no caixa, e
-   * fechar hoje um pedido de ontem faz a venda aparecer no dia de hoje. Foi o
-   * que assustou a dona da Gostinho em 03/09/2026: R$ 31 no Dashboard de um dia
-   * em que ela ainda não tinha vendido nada. Opcional: sem a data, nada muda.
+   * conta é de outro dia: o dinheiro entra no caixa que estiver aberto, e a
+   * venda conta no dia do pedido (lib/faturamento, desde 16/10/2026 — antes ela
+   * ia para o dia do lançamento e assustou a dona da Gostinho em 03/09 e em
+   * 16/10). Opcional: sem a data, nada muda.
    */
   pedidoCriadoEm?: any;
   /** Fuso da loja, quando conhecido (padrão: America/Sao_Paulo). */

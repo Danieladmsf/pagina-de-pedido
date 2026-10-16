@@ -388,3 +388,81 @@ describe('porFormaDePagamento', () => {
     expect(porFormaDePagamento(entradas)).toEqual([{ forma: 'Prazo', total: 50, vendas: 2 }]);
   });
 });
+
+/**
+ * Gostinho, 16/10/2026: cinco deliveries de 15/10 (R$ 250,00) foram finalizados
+ * às 11:11 de 16/10, antes de fechar o caixa da véspera. Datado pelo
+ * lançamento, o Dashboard mostrava R$ 114,00 em 15/10 (vendeu R$ 364,00) e
+ * R$ 625,00 em 16/10 (vendeu R$ 375,00).
+ */
+describe('venda de pedido conta no dia do pedido', () => {
+  const ontem = { de: dia('2026-10-15T00:00:00-03:00'), ate: dia('2026-10-16T00:00:00-03:00') };
+  const hoje = { de: dia('2026-10-16T00:00:00-03:00'), ate: dia('2026-10-17T00:00:00-03:00') };
+  const pedidos = [
+    { id: 'aline', status: 'delivered', totalAmount: 83, createdAt: dia('2026-10-15T17:51:05-03:00') },
+    { id: 'eliane', status: 'delivered', totalAmount: 79, createdAt: dia('2026-10-15T15:18:51-03:00') },
+    { id: 'balcao', status: 'delivered', totalAmount: 8, createdAt: dia('2026-10-16T12:45:23-03:00') },
+  ];
+  const lancamentos = [
+    venda({ id: 'l1', orderId: 'aline', valor: 83, formaPagamento: 'pix', titulo: 'Delivery #R2X4Y - Aline', data: dia('2026-10-16T11:11:49-03:00') }),
+    venda({ id: 'l2', orderId: 'eliane', valor: 79, formaPagamento: 'pix', titulo: 'Delivery #BCV0H - Eliane', data: dia('2026-10-16T11:12:18-03:00') }),
+    venda({ id: 'l3', orderId: 'balcao', valor: 8, formaPagamento: 'debito', data: dia('2026-10-16T12:45:26-03:00') }),
+    // Encomenda e acerto de Prazo seguem no dia em que o dinheiro entrou.
+    venda({ id: 'l4', encomendaId: 'enc1', valor: 100, titulo: 'Encomenda ENC1 - Sinal', data: dia('2026-10-16T14:00:00-03:00') }),
+    venda({ id: 'l5', valor: 114, titulo: 'Acerto de Prazo - Debora', formaPagamento: 'pix', data: dia('2026-10-16T16:03:48-03:00') }),
+  ];
+
+  it('o delivery de ontem fechado hoje de manhã volta para ontem', () => {
+    expect(faturamentoDoPeriodo({ lancamentos, pedidos, ...ontem }).totalVendas).toBe(162);
+    const deHoje = faturamentoDoPeriodo({ lancamentos, pedidos, ...hoje });
+    expect(deHoje.totalVendas).toBe(108); // balcão 8 + encomenda 100
+    expect(deHoje.fiadoRecebido).toBe(114);
+  });
+
+  it('diz quanto foi lançado hoje mas conta em outro dia', () => {
+    const deHoje = faturamentoDoPeriodo({ lancamentos, pedidos, ...hoje });
+    expect(deHoje.lancadasNoPeriodoDeOutroDia).toEqual({ valor: 162, quantidade: 2, dias: ['2026-10-15'] });
+    expect(faturamentoDoPeriodo({ lancamentos, pedidos, ...ontem }).lancadasNoPeriodoDeOutroDia.valor).toBe(0);
+  });
+
+  it('o gráfico e a lista de vendas usam o mesmo momento', () => {
+    const vendasDeOntem = vendasDoPeriodo({ lancamentos, pedidos, ...ontem });
+    expect(vendasDeOntem.map((v) => v.documento?.id)).toEqual(['eliane', 'aline']);
+    expect(new Date(vendasDeOntem[1].quando!).toISOString()).toBe(dia('2026-10-15T17:51:05-03:00').toISOString());
+    expect(vendasDoPeriodo({ lancamentos, pedidos, ...hoje }).map((v) => v.valor)).toEqual([8, 100]);
+  });
+
+  it('o Caixa (sem pedidos e sem janela) continua somando a sessão inteira', () => {
+    expect(resumoDeVendasDoCaixa(lancamentos).totalVendas).toBe(270);
+  });
+
+  it('pedido sem data ou com relógio muito adiantado fica no dia do lançamento', () => {
+    const estranhos = [
+      { id: 'semdata', status: 'delivered', totalAmount: 10 },
+      { id: 'futuro', status: 'delivered', totalAmount: 20, createdAt: dia('2026-10-17T09:00:00-03:00') },
+    ];
+    const ls = [
+      venda({ orderId: 'semdata', valor: 10, data: dia('2026-10-16T10:00:00-03:00') }),
+      venda({ orderId: 'futuro', valor: 20, data: dia('2026-10-16T10:00:00-03:00') }),
+    ];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos: estranhos, ...hoje }).totalVendas).toBe(30);
+  });
+
+  it('venda dividida em duas formas fica inteira no dia do pedido', () => {
+    const ls = [
+      venda({ orderId: 'aline', valor: 50, formaPagamento: 'pix', data: dia('2026-10-16T11:11:49-03:00') }),
+      venda({ orderId: 'aline', valor: 33, formaPagamento: 'conta_casa', data: dia('2026-10-16T11:11:50-03:00') }),
+    ];
+    const deOntem = faturamentoDoPeriodo({ lancamentos: ls, pedidos, ...ontem });
+    expect(deOntem.totalVendas).toBe(83);
+    expect(deOntem.quantidade).toBe(1);
+  });
+
+  it('dia cujas vendas foram todas lançadas no dia seguinte ainda é dia com caixa', () => {
+    // Em 15/10 só a Aline foi lançada (em 16/10). O pedido da Eliane, sem
+    // lançamento, não pode entrar por fora como se a loja não usasse caixa.
+    const ls = [venda({ orderId: 'aline', valor: 83, formaPagamento: 'pix', data: dia('2026-10-16T11:11:49-03:00') })];
+    expect(faturamentoDoPeriodo({ lancamentos: ls, pedidos, ...ontem })).toMatchObject({ totalVendas: 83, foraDoCaixa: 0 });
+    expect(vendasDoPeriodo({ lancamentos: ls, pedidos, ...ontem }).map((v) => v.valor)).toEqual([83]);
+  });
+});

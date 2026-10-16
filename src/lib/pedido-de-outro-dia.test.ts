@@ -19,7 +19,7 @@ describe('avisoDePedidoDeOutroDia', () => {
     expect(aviso!.quando).toBe('ontem');
     expect(aviso!.diasAtras).toBe(1);
     expect(aviso!.texto).toContain('de ontem');
-    expect(aviso!.texto).toContain('faturamento de hoje');
+    expect(aviso!.texto).toContain('conta no faturamento de ontem, o dia do pedido');
   });
 
   it('nao avisa nada no caso normal (pedido fechado no mesmo dia)', () => {

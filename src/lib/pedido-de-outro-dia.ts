@@ -2,21 +2,18 @@
  * "Este pedido não é de hoje" — o aviso que faltava na hora de fechar a conta.
  *
  * Por que existe: em 03/09/2026 a dona da Gostinho abriu o caixa e viu uma
- * venda de R$ 31 que não tinha feito. Estava tudo certo — era um delivery de
- * ONTEM, que ficou pendente e foi finalizado às 10:53, 19 segundos antes de ela
- * fechar o caixa do dia anterior. Como o faturamento é datado pelo LANÇAMENTO
- * no caixa (ver `lib/faturamento`), e não pela data do pedido, a venda de ontem
- * entrou no dia de hoje.
+ * venda de R$ 31 que não tinha feito. Era um delivery de ONTEM, que ficou
+ * pendente e foi finalizado às 10:53, 19 segundos antes de ela fechar o caixa
+ * do dia anterior. Medido em 45 dias: 4 de 331 vendas foram lançadas em dia
+ * diferente do pedido — todas delivery da tarde finalizado na manhã seguinte,
+ * entre 09h35 e 11h32, na hora de arrumar o caixa.
  *
- * Nada disso é erro: o dinheiro (ou a dívida) nasce quando a conta é fechada.
- * O que faltava era o sistema dizer isso ANTES de confirmar, em vez de deixar a
- * surpresa para o dia seguinte. Medido em 45 dias: 4 de 331 vendas foram
- * lançadas em dia diferente do pedido — todas delivery da tarde finalizado na
- * manhã seguinte, entre 09h35 e 11h32, na hora de arrumar o caixa.
- *
- * Consequência conhecida e esperada (não é o que este aviso corrige): o
- * fechamento daquele caixa e o Dashboard daquele dia divergem pelo valor. No
- * caso real: caixa da sessão 51 = R$ 619,50, Dashboard de 02/09 = R$ 588,50.
+ * Até 16/10/2026 o faturamento era datado pelo LANÇAMENTO, e este aviso só
+ * dizia que a venda iria para o dia de hoje. Voltou a acontecer (5 deliveries
+ * de 15/10, R$ 250,00, no Dashboard de 16/10) e a regra mudou na raiz: a venda
+ * de um pedido conta no DIA DO PEDIDO (`momentoDaVenda` em lib/faturamento).
+ * O aviso continua porque o dinheiro entra no caixa que estiver aberto — que
+ * pode ser o de hoje — e é bom a pessoa saber antes de confirmar.
  */
 
 /** O dia (AAAA-MM-DD) que aquele instante tinha no fuso da loja. */
@@ -97,6 +94,6 @@ export function avisoDePedidoDeOutroDia(
   return {
     quando,
     diasAtras,
-    texto: `Este pedido é de ${quando}. A venda vai entrar no caixa e no faturamento de hoje.`,
+    texto: `Este pedido é de ${quando}. O dinheiro entra no caixa aberto, mas a venda conta no faturamento de ${quando}, o dia do pedido.`,
   };
 }
