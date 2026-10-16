@@ -32,9 +32,8 @@ import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { getOrderCode, getOrderCodePrefix } from '@/lib/order-code';
-import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
 import { buscarLancamentosDoPedido, cancelarVendaCompleta, textoDoPrazoNoCancelamento } from '@/lib/vendas/cancelar-venda';
+import { CancelarVendaDialog } from '@/components/vendas/CancelarVendaDialog';
 import { conferirSenhaDeCancelamento } from '@/lib/vendas/senha-cancelamento-client';
 import { usePrevisaoVenda } from '@/hooks/usePrevisaoVenda';
 import { useSenhaDeCancelamento } from '@/hooks/useSenhaDeCancelamento';
@@ -182,7 +181,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
   // Cancelar pedido = cancelar a venda POR COMPLETO (lib/vendas/cancelar-venda.ts,
   // o mesmo caminho do X do Caixa): lançamento do caixa, dívida do Prazo e pedido.
   const [cancelModalOrder, setCancelModalOrder] = useState<any | null>(null);
-  const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelSenha, setCancelSenha] = useState('');
   const [cancelSenhaErro, setCancelSenhaErro] = useState('');
   const [isCanceling, setIsCanceling] = useState(false);
@@ -197,7 +195,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
   const fecharModalCancelar = () => {
     setCancelModalOrder(null);
-    setCancelMotivo('');
     setCancelSenha('');
     setCancelSenhaErro('');
   };
@@ -213,7 +210,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
       showPermissionRevokedToast();
       return;
     }
-    setCancelMotivo('');
     setCancelSenha('');
     setCancelSenhaErro('');
     setCancelModalOrder(order);
@@ -255,7 +251,6 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
         pedido: order,
         lancamentos,
         atualizarPedido: updateOrderStatus,
-        motivo: cancelMotivo,
       });
       toast(resultado.toast);
       if (resultado.nadaFeito) return;
@@ -930,66 +925,30 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
 
       {/* Modal Vincular Entregador */}
       {/* ─── Modal: Cancelar venda (desfaz caixa, Prazo e pedido) ─── */}
-      <Dialog open={!!cancelModalOrder} onOpenChange={(open) => { if (!open && !isCanceling) fecharModalCancelar(); }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="text-rose-600">Cancelar venda</DialogTitle>
-            <DialogDescription>
-              {cancelModalOrder?.status === 'delivered'
-                ? <>O pedido <strong>#{getOrderCodePrefix(cancelModalOrder)}</strong> já foi entregue. Ao cancelar, a venda <strong>deixa de somar</strong> no caixa, o estoque é devolvido e o cliente é avisado no WhatsApp.</>
-                : <>O pedido <strong>#{cancelModalOrder ? getOrderCodePrefix(cancelModalOrder) : ''}</strong> será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>}
-            </DialogDescription>
-          </DialogHeader>
-          {cancelModalOrder && (
-            <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-              <p className="font-semibold text-slate-700">{cancelModalOrder.customerName || `Pedido #${getOrderCodePrefix(cancelModalOrder)}`}</p>
-              <p className="text-muted-foreground">
-                {brl(cancelModalOrder.totalAmount || 0)}
-                {` · ${(cancelModalOrder.paymentMethod === 'conta_casa' ? 'Prazo' : cancelModalOrder.paymentMethod || 'Pagamento não definido').toUpperCase()}`}
-              </p>
-              {previsaoCancelamento.plano && (() => {
-                const frase = textoDoPrazoNoCancelamento(previsaoCancelamento.plano, cancelModalOrder.customerName || '');
-                return frase ? <p className="mt-2 border-t pt-2 text-slate-700">{frase}</p> : null;
-              })()}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label>Motivo (opcional)</Label>
-            <Input
-              value={cancelMotivo}
-              onChange={(e) => setCancelMotivo(e.target.value)}
-              placeholder="Ex.: cliente desistiu, pedido em duplicidade..."
-            />
-          </div>
-          {senhaDaLoja.falhou && (
-            <p className="text-sm text-rose-600">Não consegui conferir a senha da loja. Feche e tente de novo.</p>
-          )}
-          {senhaDaLoja.configurada && (
-            <div className="space-y-2">
-              <Label>Senha de cancelamento</Label>
-              <Input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                value={cancelSenha}
-                onChange={(e) => { setCancelSenha(e.target.value.replace(/\D/g, '')); setCancelSenhaErro(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && cancelSenha && !isCanceling) void confirmarCancelamento(); }}
-              />
-              {cancelSenhaErro && <p className="text-sm text-rose-600">{cancelSenhaErro}</p>}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={fecharModalCancelar} disabled={isCanceling}>Voltar</Button>
-            <Button
-              className="bg-rose-600 hover:bg-rose-700"
-              onClick={confirmarCancelamento}
-              disabled={isCanceling || senhaDaLoja.configurada === null || (senhaDaLoja.configurada === true && !cancelSenha)}
-            >
-              {isCanceling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancelar Venda'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CancelarVendaDialog
+        open={!!cancelModalOrder}
+        onOpenChange={(open) => { if (!open && !isCanceling) fecharModalCancelar(); }}
+        subtitulo={cancelModalOrder
+          ? `Pedido #${getOrderCodePrefix(cancelModalOrder)}${cancelModalOrder.status === 'delivered' ? ' · entregue' : ''}`
+          : ''}
+        cliente={cancelModalOrder?.customerName || (cancelModalOrder ? `Pedido #${getOrderCodePrefix(cancelModalOrder)}` : '')}
+        valor={cancelModalOrder?.totalAmount || 0}
+        formaPagamento={cancelModalOrder?.paymentMethod || 'Pagamento não definido'}
+        saiDoCaixa={(previsaoCancelamento.plano?.ativos.length ?? 0) > 0}
+        devolveEstoque
+        avisaCliente
+        fraseDoPrazo={previsaoCancelamento.plano && cancelModalOrder
+          ? textoDoPrazoNoCancelamento(previsaoCancelamento.plano, cancelModalOrder.customerName || '')
+          : null}
+        senhaConfigurada={senhaDaLoja.configurada}
+        senhaFalhou={senhaDaLoja.falhou}
+        senha={cancelSenha}
+        onSenha={(v) => { setCancelSenha(v); setCancelSenhaErro(''); }}
+        senhaErro={cancelSenhaErro}
+        executando={isCanceling}
+        onConfirmar={() => { void confirmarCancelamento(); }}
+        onVoltar={fecharModalCancelar}
+      />
 
       <Dialog open={!!showMotoboyModal} onOpenChange={(open) => !open && setShowMotoboyModal(null)}>
         <DialogContent>

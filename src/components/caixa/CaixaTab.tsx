@@ -38,6 +38,7 @@ import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { useFirestore, useUser } from '@/firebase';
 import { cancelarVendaCompleta, reativarVendaCompleta, textoDoPrazoNoCancelamento } from '@/lib/vendas/cancelar-venda';
+import { CancelarVendaDialog } from '@/components/vendas/CancelarVendaDialog';
 import { conferirSenhaDeCancelamento } from '@/lib/vendas/senha-cancelamento-client';
 import { usePrevisaoVenda } from '@/hooks/usePrevisaoVenda';
 import { useSenhaDeCancelamento } from '@/hooks/useSenhaDeCancelamento';
@@ -189,7 +190,6 @@ export function CaixaTab({
 
   // Cancelamento de venda: alvo do modal de confirmação + motivo opcional.
   const [cancelVendaTarget, setCancelVendaTarget] = useState<LinhaCaixa | null>(null);
-  const [cancelVendaMotivo, setCancelVendaMotivo] = useState('');
   const [isCancelingVenda, setIsCancelingVenda] = useState(false);
   const isCaixaHistoricoSelecionado = !!caixaSelecionadoId
     && caixasOrdenados.some(caixa => caixa.id === caixaSelecionadoId && caixa.status === 'fechado');
@@ -403,7 +403,6 @@ export function CaixaTab({
       showPermissionRevokedToast();
       return;
     }
-    setCancelVendaMotivo('');
     setCancelVendaSenha('');
     setCancelVendaSenhaErro('');
     setCancelVendaTarget(linha);
@@ -518,7 +517,6 @@ export function CaixaTab({
   });
   const fecharModalCancelarVenda = () => {
     setCancelVendaTarget(null);
-    setCancelVendaMotivo('');
     setCancelVendaSenha('');
     setCancelVendaSenhaErro('');
   };
@@ -553,7 +551,6 @@ export function CaixaTab({
         pedido: vendaOrder && isPedidoOperacional(vendaOrder) ? vendaOrder : null,
         lancamentos: cancelVendaTarget.partes,
         atualizarPedido: updateOrderStatus,
-        motivo: cancelVendaMotivo,
       });
       toast(resultado.toast);
       if (resultado.nadaFeito) return;
@@ -1535,102 +1532,43 @@ export function CaixaTab({
       )}
 
       {/* ─── Modal: Confirmar Cancelamento de Venda ─── */}
-      <Dialog open={!!cancelVendaTarget} onOpenChange={(open) => { if (!open) fecharModalCancelarVenda(); }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="text-rose-600">Cancelar venda</DialogTitle>
-            <DialogDescription>
-              {(() => {
-                const linkedOrder = cancelVendaTarget ? getVendaOrder(cancelVendaTarget.principal) : null;
-                if (linkedOrder?.origem === 'encomenda') {
-                  return (
-                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. {descricaoOrigemNaoCancelavel(linkedOrder)}</>
-                  );
-                }
-                if (linkedOrder && linkedOrder.status !== 'canceled') {
-                  return (
-                    <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> no caixa. O pedido <strong>#{linkedOrderCode(linkedOrder)}</strong> também será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>
-                  );
-                }
-                return (
-                  <>A venda fica na lista marcada como cancelada e <strong>deixa de somar</strong> nos totalizadores e no fechamento. Nenhum pedido vinculado foi encontrado (venda manual ou de mesa) — só o lançamento é cancelado.</>
-                );
-              })()}
-            </DialogDescription>
-          </DialogHeader>
-          {cancelVendaTarget && (
-            <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
-              <p className="font-semibold text-slate-700">{cancelVendaTarget.principal.titulo}</p>
-              <p className="text-muted-foreground">
-                {brl(Math.abs(cancelVendaTarget.valor || 0))}
-                {cancelVendaTarget.partes.length === 1 && ` · ${(cancelVendaTarget.principal.formaPagamento === 'conta_casa' ? 'Prazo' : cancelVendaTarget.principal.formaPagamento || '').toUpperCase()}`}
-              </p>
-              {/* Venda dividida: mostra o que será cancelado junto, para o
-                  operador não achar que só uma das formas está saindo. */}
-              {cancelVendaTarget.partes.length > 1 && (
-                <div className="mt-2 border-t pt-2">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    Cancela as {cancelVendaTarget.partes.length} formas de pagamento:
-                  </p>
-                  <ul className="mt-1 space-y-0.5">
-                    {cancelVendaTarget.partes.map((p) => (
-                      <li key={p.id} className="flex justify-between text-slate-600">
-                        <span className="uppercase text-xs font-semibold">{p.formaPagamento === 'conta_casa' ? 'Prazo' : p.formaPagamento}</span>
-                        <span className="tabular-nums">{brl(Math.abs(p.valor || 0))}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {/* Prazo: diz o que acontece com a dívida (ou que já foi estornada). */}
-              {previsaoCancelamento.plano && (() => {
-                const frase = textoDoPrazoNoCancelamento(
-                  previsaoCancelamento.plano,
-                  pedidoDoCancelamento?.customerName || '',
-                );
-                return frase ? <p className="mt-2 border-t pt-2 text-slate-700">{frase}</p> : null;
-              })()}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label>Motivo (opcional)</Label>
-            <Input
-              value={cancelVendaMotivo}
-              onChange={(e) => setCancelVendaMotivo(e.target.value)}
-              placeholder="Ex.: lançado em duplicidade, valor errado..."
-            />
-          </div>
-          {senhaDaLoja.falhou && (
-            <p className="text-sm text-rose-600">Não consegui conferir a senha da loja. Feche e tente de novo.</p>
-          )}
-          {senhaDaLoja.configurada && (
-            <div className="space-y-2">
-              <Label>Senha de cancelamento</Label>
-              <Input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                value={cancelVendaSenha}
-                onChange={(e) => { setCancelVendaSenha(e.target.value.replace(/\D/g, '')); setCancelVendaSenhaErro(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && cancelVendaSenha && !isCancelingVenda) void confirmarCancelamentoVenda(); }}
-              />
-              {cancelVendaSenhaErro && <p className="text-sm text-rose-600">{cancelVendaSenhaErro}</p>}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={fecharModalCancelarVenda} disabled={isCancelingVenda}>
-              Voltar
-            </Button>
-            <Button
-              className="bg-rose-600 hover:bg-rose-700"
-              onClick={confirmarCancelamentoVenda}
-              disabled={isCancelingVenda || senhaDaLoja.configurada === null || (senhaDaLoja.configurada === true && !cancelVendaSenha)}
-            >
-              {isCancelingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancelar Venda'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {(() => {
+        const alvo = cancelVendaTarget;
+        const linkedOrder = pedidoDoCancelamento;
+        const ehEncomenda = linkedOrder?.origem === 'encomenda';
+        const pedidoCancelavel = !!linkedOrder && !ehEncomenda && linkedOrder.status !== 'canceled';
+        const frasePrazo = previsaoCancelamento.plano
+          ? textoDoPrazoNoCancelamento(previsaoCancelamento.plano, linkedOrder?.customerName || '')
+          : null;
+        return (
+          <CancelarVendaDialog
+            open={!!alvo}
+            onOpenChange={(open) => { if (!open) fecharModalCancelarVenda(); }}
+            subtitulo={linkedOrder
+              ? `Pedido #${linkedOrderCode(linkedOrder)}${linkedOrder.status === 'delivered' ? ' · entregue' : ''}`
+              : 'Venda do caixa, sem pedido vinculado'}
+            cliente={alvo?.principal.titulo || ''}
+            valor={Math.abs(alvo?.valor || 0)}
+            formaPagamento={alvo?.principal.formaPagamento}
+            partes={alvo?.partes.map((p) => ({ id: p.id, forma: p.formaPagamento || '', valor: Math.abs(p.valor || 0) }))}
+            saiDoCaixa
+            devolveEstoque={pedidoCancelavel}
+            avisaCliente={pedidoCancelavel}
+            nota={ehEncomenda
+              ? descricaoOrigemNaoCancelavel(linkedOrder)
+              : !linkedOrder ? 'Nenhum pedido vinculado (venda manual ou de mesa): só o lançamento é cancelado.' : undefined}
+            fraseDoPrazo={frasePrazo}
+            senhaConfigurada={senhaDaLoja.configurada}
+            senhaFalhou={senhaDaLoja.falhou}
+            senha={cancelVendaSenha}
+            onSenha={(v) => { setCancelVendaSenha(v); setCancelVendaSenhaErro(''); }}
+            senhaErro={cancelVendaSenhaErro}
+            executando={isCancelingVenda}
+            onConfirmar={() => { void confirmarCancelamentoVenda(); }}
+            onVoltar={fecharModalCancelarVenda}
+          />
+        );
+      })()}
 
       {/* ─── Modal Genérico ─── */}
       <Dialog open={modalOpen !== null} onOpenChange={(open) => { if (!open) { setModalOpen(null); resetForm(); } }}>
