@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { RegistrarLancamento } from '@/hooks/useCaixa';
+import type { LancamentoCaixa, RegistrarLancamento } from '@/hooks/useCaixa';
 import { collection, onSnapshot, doc, query, updateDoc, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,12 +32,20 @@ import { FechamentoModal } from './fechamento/FechamentoModal';
 import { can, type PdvPermissions } from '@/lib/pdv-permissions';
 import { usePdvAccess } from '@/contexts/PdvAccessContext';
 import { getOrderCode, getOrderCodePrefix } from '@/lib/order-code';
+import { Label } from '@/components/ui/label';
+import { Loader2 } from 'lucide-react';
+import { buscarLancamentosDoPedido, cancelarVendaCompleta, textoDoPrazoNoCancelamento } from '@/lib/vendas/cancelar-venda';
+import { conferirSenhaDeCancelamento } from '@/lib/vendas/senha-cancelamento-client';
+import { usePrevisaoVenda } from '@/hooks/usePrevisaoVenda';
+import { useSenhaDeCancelamento } from '@/hooks/useSenhaDeCancelamento';
 
 interface DeliveryTabProps {
   orders: any[];
   updateOrderStatus: (orderId: string, statusOrUpdates: string | any) => Promise<boolean | void> | boolean | void;
   registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
+  /** Id do caixa aberto agora: o cancelamento só mexe em venda deste caixa. */
+  caixaAbertoId?: string | null;
   isCaixaHistorico?: boolean;
   onOpenCaixa?: () => void;
   storeProfile?: any;
@@ -50,8 +58,8 @@ interface DeliveryTabProps {
   permissions: PdvPermissions;
 }
 
-export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [], permissions }: DeliveryTabProps) {
-  const { ownerId, role } = usePdvAccess();
+export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, caixaAberto, caixaAbertoId = null, isCaixaHistorico = false, onOpenCaixa, storeProfile, db, user, items = [], categories = [], addons = [], addonCategories = [], permissions }: DeliveryTabProps) {
+  const { ownerId, role, actorId, actorName } = usePdvAccess();
   const FORMAS_PAGAMENTO = resolveFormasPagamento(storeProfile);
   // A aba Delivery acompanha pedidos que precisam de acompanhamento/fulfillment:
   // - qualquer pedido de entrega (delivery), de qualquer origem;
@@ -171,12 +179,92 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     if (resolvePrintMode(storeProfile) === 'manual') triggerPrint(order);
   };
 
+  // Cancelar pedido = cancelar a venda POR COMPLETO (lib/vendas/cancelar-venda.ts,
+  // o mesmo caminho do X do Caixa): lançamento do caixa, dívida do Prazo e pedido.
+  const [cancelModalOrder, setCancelModalOrder] = useState<any | null>(null);
+  const [cancelMotivo, setCancelMotivo] = useState('');
+  const [cancelSenha, setCancelSenha] = useState('');
+  const [cancelSenhaErro, setCancelSenhaErro] = useState('');
+  const [isCanceling, setIsCanceling] = useState(false);
+  const senhaDaLoja = useSenhaDeCancelamento(!!cancelModalOrder, user);
+  const previsaoCancelamento = usePrevisaoVenda({
+    ativo: !!cancelModalOrder,
+    db,
+    ownerId,
+    orderId: cancelModalOrder?.id ?? null,
+    pedido: cancelModalOrder,
+  });
+
+  const fecharModalCancelar = () => {
+    setCancelModalOrder(null);
+    setCancelMotivo('');
+    setCancelSenha('');
+    setCancelSenhaErro('');
+  };
+
   const handleCancelOrder = (order: any) => {
     if (!can(permissions, 'actions.delivery.cancelarPedido')) {
       showPermissionRevokedToast();
       return;
     }
-    updateOrderStatus(order.id, 'canceled');
+    // Pedido já entregue tem dinheiro no caixa: desfazer exige também a
+    // permissão de cancelar venda.
+    if (order.status === 'delivered' && !can(permissions, 'actions.caixa.cancelarVenda')) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setCancelMotivo('');
+    setCancelSenha('');
+    setCancelSenhaErro('');
+    setCancelModalOrder(order);
+  };
+
+  const confirmarCancelamento = async () => {
+    const order = cancelModalOrder;
+    if (!order || !db || !user || !ownerId) return;
+    if (!can(permissions, 'actions.delivery.cancelarPedido')
+      || (order.status === 'delivered' && !can(permissions, 'actions.caixa.cancelarVenda'))) {
+      showPermissionRevokedToast();
+      return;
+    }
+    setIsCanceling(true);
+    try {
+      if (senhaDaLoja.configurada) {
+        const conferencia = await conferirSenhaDeCancelamento(user, cancelSenha);
+        if (!conferencia.ok) {
+          setCancelSenhaErro(conferencia.mensagem || 'Senha incorreta');
+          return;
+        }
+      }
+      // Pedido que ainda não foi pago não tem lançamento no caixa: se a leitura
+      // do caixa for negada ao operador, o cancelamento segue sem ela. Pedido
+      // entregue/pago precisa da leitura (senão não dá para saber o que desfazer).
+      let lancamentos: LancamentoCaixa[];
+      try {
+        lancamentos = await buscarLancamentosDoPedido(db, ownerId, order.id);
+      } catch (err) {
+        if (order.status === 'delivered' || order.paymentRegistered) throw err;
+        lancamentos = [];
+      }
+      const resultado = await cancelarVendaCompleta({
+        db,
+        ownerId,
+        caixaAbertoId,
+        ator: { id: actorId, nome: actorName },
+        orderId: order.id,
+        pedido: order,
+        lancamentos,
+        atualizarPedido: updateOrderStatus,
+        motivo: cancelMotivo,
+      });
+      toast(resultado.toast);
+      if (resultado.nadaFeito) return;
+      fecharModalCancelar();
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao cancelar venda', description: err?.message || 'Falha na comunicação.' });
+    } finally {
+      setIsCanceling(false);
+    }
   };
 
 
@@ -719,7 +807,7 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
               {can(permissions, 'actions.delivery.cancelarPedido') && (
                 <button
                   onClick={() => handleCancelOrder(selectedOrder)}
-                  disabled={isReadOnlyHistorico || selectedOrder.status === 'delivered' || selectedOrder.status === 'canceled'}
+                  disabled={isReadOnlyHistorico || selectedOrder.status === 'canceled'}
                   className={`flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors ${selectedOrder.status === 'canceled' ? 'bg-red-500 text-white' : 'bg-white border border-red-200 text-red-500 hover:bg-red-50'} disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
                   ✕
@@ -841,6 +929,68 @@ export function DeliveryTab({ orders, updateOrderStatus, registrarLancamento, ca
     />
 
       {/* Modal Vincular Entregador */}
+      {/* ─── Modal: Cancelar venda (desfaz caixa, Prazo e pedido) ─── */}
+      <Dialog open={!!cancelModalOrder} onOpenChange={(open) => { if (!open && !isCanceling) fecharModalCancelar(); }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-rose-600">Cancelar venda</DialogTitle>
+            <DialogDescription>
+              {cancelModalOrder?.status === 'delivered'
+                ? <>O pedido <strong>#{getOrderCodePrefix(cancelModalOrder)}</strong> já foi entregue. Ao cancelar, a venda <strong>deixa de somar</strong> no caixa, o estoque é devolvido e o cliente é avisado no WhatsApp.</>
+                : <>O pedido <strong>#{cancelModalOrder ? getOrderCodePrefix(cancelModalOrder) : ''}</strong> será cancelado: o estoque é devolvido e o cliente é avisado no WhatsApp.</>}
+            </DialogDescription>
+          </DialogHeader>
+          {cancelModalOrder && (
+            <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm">
+              <p className="font-semibold text-slate-700">{cancelModalOrder.customerName || `Pedido #${getOrderCodePrefix(cancelModalOrder)}`}</p>
+              <p className="text-muted-foreground">
+                {brl(cancelModalOrder.totalAmount || 0)}
+                {` · ${(cancelModalOrder.paymentMethod === 'conta_casa' ? 'Prazo' : cancelModalOrder.paymentMethod || 'Pagamento não definido').toUpperCase()}`}
+              </p>
+              {previsaoCancelamento.plano && (() => {
+                const frase = textoDoPrazoNoCancelamento(previsaoCancelamento.plano, cancelModalOrder.customerName || '');
+                return frase ? <p className="mt-2 border-t pt-2 text-slate-700">{frase}</p> : null;
+              })()}
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Motivo (opcional)</Label>
+            <Input
+              value={cancelMotivo}
+              onChange={(e) => setCancelMotivo(e.target.value)}
+              placeholder="Ex.: cliente desistiu, pedido em duplicidade..."
+            />
+          </div>
+          {senhaDaLoja.falhou && (
+            <p className="text-sm text-rose-600">Não consegui conferir a senha da loja. Feche e tente de novo.</p>
+          )}
+          {senhaDaLoja.configurada && (
+            <div className="space-y-2">
+              <Label>Senha de cancelamento</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                value={cancelSenha}
+                onChange={(e) => { setCancelSenha(e.target.value.replace(/\D/g, '')); setCancelSenhaErro(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && cancelSenha && !isCanceling) void confirmarCancelamento(); }}
+              />
+              {cancelSenhaErro && <p className="text-sm text-rose-600">{cancelSenhaErro}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={fecharModalCancelar} disabled={isCanceling}>Voltar</Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              onClick={confirmarCancelamento}
+              disabled={isCanceling || senhaDaLoja.configurada === null || (senhaDaLoja.configurada === true && !cancelSenha)}
+            >
+              {isCanceling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancelar Venda'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!showMotoboyModal} onOpenChange={(open) => !open && setShowMotoboyModal(null)}>
         <DialogContent>
           <DialogHeader>

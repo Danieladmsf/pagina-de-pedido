@@ -1197,6 +1197,7 @@ export default function PdvPage() {
               updateOrderStatus={updateOrderStatus} 
               registrarLancamento={registrarLancamento}
               caixaAberto={!!caixaAberto}
+              caixaAbertoId={caixaAberto?.id ?? null}
               isCaixaHistorico={!!caixaSelecionadoId}
               onOpenCaixa={handleOpenCaixa}
               storeProfile={storeProfile}

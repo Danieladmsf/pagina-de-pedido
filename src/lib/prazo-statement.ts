@@ -37,6 +37,9 @@ export type CreditTransaction = {
   paymentMethod?: string;
   /** Estorno: id do lançamento que este desfaz (o estorno da tela do Prazo). */
   reversalOf?: string;
+  /** Quem gerou o lançamento quando não foi a tela do Prazo: 'cancelamento_venda'
+   *  é o estorno (ou o estorno do estorno) do cancelar/reativar venda. */
+  origem?: string;
 };
 
 export type StatementRow = {
@@ -188,12 +191,26 @@ export type UnpaidDebt = {
   settledAt: Date | null;
 };
 
-export function unpaidDebt(transactions: CreditTransaction[]): UnpaidDebt | null {
+/**
+ * Quais lançamentos se anulam por estorno. Um estorno só vale contra o alvo
+ * que ele aponta (`reversalOf`), com tipo oposto e o mesmo valor; a leitura vai
+ * do mais novo para o mais antigo, então estorno do estorno faz o original
+ * voltar a valer.
+ *
+ * `anulados` tem os dois lados de cada par; `anuladoPor` diz, para cada alvo, o
+ * id do estorno que o anula (é o que o cancelamento de venda precisa para
+ * desfazer o estorno ao reativar).
+ */
+export function anulacoesDoExtrato(transactions: CreditTransaction[]): {
+  anulados: Set<string>;
+  anuladoPor: Map<string, string>;
+} {
   const EPS = 0.009;
   const ascending = [...transactions].sort((a, b) => toTime(a.date) - toTime(b.date));
 
   const byId = new Map(ascending.map((tx) => [tx.id, tx]));
   const anulados = new Set<string>();
+  const anuladoPor = new Map<string, string>();
   for (const tx of [...ascending].reverse()) {
     if (!tx.reversalOf || anulados.has(tx.id)) continue;
     const alvo = byId.get(tx.reversalOf);
@@ -203,8 +220,17 @@ export function unpaidDebt(transactions: CreditTransaction[]): UnpaidDebt | null
     ) {
       anulados.add(alvo.id);
       anulados.add(tx.id);
+      anuladoPor.set(alvo.id, tx.id);
     }
   }
+  return { anulados, anuladoPor };
+}
+
+export function unpaidDebt(transactions: CreditTransaction[]): UnpaidDebt | null {
+  const EPS = 0.009;
+  const ascending = [...transactions].sort((a, b) => toTime(a.date) - toTime(b.date));
+
+  const { anulados } = anulacoesDoExtrato(transactions);
 
   /** Compras ainda em aberto, da mais antiga para a mais nova. */
   const open: Array<{ tx: CreditTransaction; remaining: number; settledAt: Date | null }> = [];

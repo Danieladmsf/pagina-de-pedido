@@ -5,6 +5,7 @@ import type { User } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { AdminSecret } from '@/lib/admin-password';
 import { AdminPasswordSection } from '@/components/admin/AdminPasswordSection';
+import { SenhaCancelamentoSection } from '@/components/admin/SenhaCancelamentoSection';
 import {
   CircleAlert,
   Copy,
@@ -769,6 +770,8 @@ export function UsuariosTab({ user, db, adminSecret, isAdminSecretLoading }: Usu
             : 'Você pode liberar para a equipe apenas o que o seu próprio acesso já tem. Desativar alguém bloqueia o acesso na hora, sem apagar o histórico.'}
         </AlertDescription>
       </Alert>
+
+      {ehDono && <SenhaCancelamentoSection user={user} />}
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2">

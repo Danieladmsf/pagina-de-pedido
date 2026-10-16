@@ -549,8 +549,10 @@ export function PrazoPage({ db, user, cliente, onBack, onEditCliente, registrarL
 
   /**
    * Estorno de um lançamento: entra um contra-lançamento com a mesma data de
-   * hoje em vez de apagar a linha original. Venda cancelada no caixa NÃO volta
-   * sozinha aqui, e apagar o histórico esconderia o motivo da conta ter mudado.
+   * hoje em vez de apagar a linha original (apagar o histórico esconderia o
+   * motivo da conta ter mudado). Venda cancelada no Caixa ou no Delivery já
+   * estorna a compra sozinha (lib/vendas/cancelar-venda.ts, com o mesmo formato
+   * de estorno); este botão é para o que não vem de um cancelamento.
    */
   const handleEstornar = async (row: StatementRow) => {
     const { tx } = row;

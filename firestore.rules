@@ -723,6 +723,13 @@ service cloud.firestore {
       allow create, delete: if isAdmin() && request.auth.uid == profileId;
     }
 
+    // Segredos da loja (hash da senha de cancelamento de venda). Nenhum
+    // cliente lê nem grava: só o Admin SDK, pela rota /api/cancel-pin. Não pode
+    // morar em store_profiles, que é leitura pública.
+    match /store_secrets/{id} {
+      allow read, write: if false;
+    }
+
     // Reserva do link curto da loja (/{codigo}). A coleção não tem regra
     // nenhuma até aqui, então toda gravação era negada em silêncio — o
     // AppearanceTab engolia o erro num console.warn e a coleção ficou vazia.
