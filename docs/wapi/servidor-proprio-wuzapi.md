@@ -4,20 +4,28 @@ No ar desde 25/09/2026 e único provedor do sistema: o código da W-API e da
 Z-API foi removido no mesmo dia. Motivo da troca: naquele dia a W-API derrubou
 as duas lojas às 10:25 e não conseguia gerar QR nem pelo próprio painel ("Erro
 ao conectar cliente"), enquanto a Z-API gerava na hora; a Z-API custa R$ 99,99
-por loja. O servidor próprio roda na máquina gratuita do Google Cloud e atende
-várias lojas.
+por loja. O servidor próprio roda numa máquina gratuita e atende várias lojas.
+
+**Mudança de máquina (17/10/2026, decisão do dono):** o servidor saiu do Google
+Cloud (`whatsapp-lojas`, 35.237.85.231, agora parada e travada: não religar, duas
+WuzAPI com as mesmas sessões derrubam as lojas) para a Oracle Cloud. Motivo: VM
+grátis mais forte (2 OCPU/12 GB contra 1 GB), em São Paulo, e ~US$ 4/mês a menos.
+O `app_config/wuzapi.baseUrl` no Firestore foi trocado para
+`https://137-131-244-212.sslip.io` (a produção relê em até 5 min). As chaves e as
+sessões foram copiadas: nenhuma loja precisou ler QR; a troca levou ~1 min de
+WhatsApp fora.
 
 ## Onde está
 
 | Item | Valor |
 |---|---|
-| Nuvem | Google Cloud, projeto `studio-2243391254-75492` (o mesmo do Firebase) |
-| Máquina | `whatsapp-lojas`, e2-micro (plano gratuito), zona `us-east1-b`, Ubuntu 24.04, disco pd-standard 30 GB, 2 GB de swap |
-| IP | 35.237.85.231 |
-| Endereço | `https://35-237-85-231.sslip.io` (Caddy com certificado Let's Encrypt; o sslip.io resolve o IP escrito no nome) |
-| Firewall | regra `whatsapp-lojas-web` (80 e 443) + SSH padrão |
+| Nuvem | Oracle Cloud, conta (tenancy) `food360comercial`, região São Paulo |
+| Máquina | `ameripan-a1`, VM.Standard.A1.Flex (Always Free), 2 OCPU ARM (aarch64), 12 GB, Ubuntu 24.04 |
+| IP | 137.131.244.212 (efêmero da Oracle: sobrevive a desligar/religar; só se perde se a VM for terminada) |
+| Endereço | `https://137-131-244-212.sslip.io` (Caddy com certificado Let's Encrypt; o sslip.io resolve o IP escrito no nome) |
+| Firewall | grupo de segurança de rede `whatsapp-https` (80 e 443; VCN `rede-food360`) na placa de rede da VM + regras do iptables (`/etc/iptables/rules.v4`) + SSH |
 | Motor | WuzAPI (`asternic/wuzapi`), Go sobre whatsmeow, sem navegador |
-| Custo | R$ 0 (uma e2-micro por conta de cobrança; tráfego pequeno) |
+| Custo | R$ 0 (Always Free da Oracle: A1 até 2 OCPU/12 GB pela doc, e esta VM usa isso; a conta é Pay As You Go, o que passar é cobrado) |
 
 No celular da loja o aparelho aparece como **"Polaris PDV"** em Aparelhos
 conectados.
@@ -25,7 +33,7 @@ conectados.
 ## Acesso
 
 ```bash
-ssh -i ~/.ssh/cardapio_whatsapp whatsapp@35.237.85.231
+ssh -i ~/.ssh/cardapio_whatsapp whatsapp@137.131.244.212
 cd /opt/wuzapi
 sudo docker compose ps
 sudo docker compose logs --tail=50 wuzapi
@@ -122,7 +130,7 @@ Lima Limão e Gostinho de Céu foram migradas da W-API por script em 25/09/2026
 - **Cópia:** `/etc/cron.d/wuzapi-backup` roda `/opt/wuzapi/backup.sh` às 04:30
   UTC e guarda 7 dias em `backups/` (`data/` + `.env`). É no mesmo disco:
   protege de banco corrompido, não de perder a máquina. Próximo passo: agenda
-  de snapshot do disco no Google Cloud.
+  de backup do volume de boot na Oracle Cloud.
 - **Loja parou de receber:** conferir `docker compose ps` e os logs; depois
   `GET /session/status` com a chave da loja (cabeçalho `token`). A tela da
   loja mostra o QR sozinha se a sessão tiver caído.

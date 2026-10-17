@@ -15,7 +15,7 @@ Antes de alterar um contrato de vínculo, rode `npm run audit:integridade` e os 
 
 ## WhatsApp das lojas
 
-- O WhatsApp das lojas roda no **servidor próprio**: WuzAPI na máquina `whatsapp-lojas` do Google Cloud (`https://35-237-85-231.sslip.io`). É o único provedor desde 25/09/2026. Manual completo: `docs/wapi/servidor-proprio-wuzapi.md`.
+- O WhatsApp das lojas roda no **servidor próprio**: WuzAPI na VM `ameripan-a1` da Oracle Cloud, São Paulo (`https://137-131-244-212.sslip.io`). É o único provedor desde 25/09/2026. Manual completo: `docs/wapi/servidor-proprio-wuzapi.md`.
 - **Não integre, reative nem tente "consertar" W-API ou Z-API.** As duas foram removidas do código em 25/09/2026; o que sobrou delas é só documento histórico em `docs/wapi/historico-w-api/`.
 - O cliente do servidor está em `src/lib/wuzapi/` (`wuzapi.service.ts` fala com o servidor, `incoming.ts` lê o webhook). A sessão de cada loja é criada pelo sistema (`/wapi/create-instance`, ID `WUZ-<empresaId>`): a dona só lê o QR Code, não há ID nem chave para digitar.
 - Nomes com "wapi" (pasta `src/lib/wapi`, rotas `/wapi/*` e `/webhooks/wapi`, campos `wapiInstanceId` e `wapiTokenEncrypted`, variáveis `WAPI_*`) são nomes históricos: hoje atendem o servidor próprio. Não renomeie sem migrar junto o webhook registrado no servidor e os campos gravados no Firestore.
