@@ -142,9 +142,8 @@ Lima Limão e Gostinho de Céu foram migradas da W-API por script em 25/09/2026
   entrega do webhook, nome de quem mandou). O `exec` mantém a WuzAPI como
   processo principal. Para investigar o conteúdo de uma mensagem, a fonte é a
   coleção `whatsapp_auto_replies` (o que entrou e o que o robô respondeu).
-- **A máquina é dividida com outro projeto:** os containers `ameripan` e
-  `ameripan-adms` e as sessões `WUZ-AMERIPAN` e `ameripan-adm-...` são do
-  catálogo Ameripan, todos no número da Ameripan. Não atrapalham as lojas
-  (medido em 03/10/2026). As duas sessões da Ameripan estão no mesmo aparelho
-  dentro do servidor: quando uma conecta, a outra cai. Depois de reiniciar a
-  WuzAPI, conferir que a `WUZ-AMERIPAN` (a do webhook) ficou logada.
+- **A máquina é dividida com outro projeto:** o container `ameripan-adms` e as
+  sessões `ameripan-adm-...` são dos ADMs do catálogo Ameripan (o robô
+  `ameripan` e a sessão `WUZ-AMERIPAN` saíram em 17/10/2026). Não atrapalham as
+  lojas (medido em 03/10/2026). Sessões de ADMs que usam o mesmo celular
+  disputam o mesmo aparelho no servidor: quando uma conecta, a outra cai.
