@@ -7,13 +7,15 @@ ao conectar cliente"), enquanto a Z-API gerava na hora; a Z-API custa R$ 99,99
 por loja. O servidor próprio roda numa máquina gratuita e atende várias lojas.
 
 **Mudança de máquina (17/10/2026, decisão do dono):** o servidor saiu do Google
-Cloud (`whatsapp-lojas`, 35.237.85.231, agora parada e travada: não religar, duas
-WuzAPI com as mesmas sessões derrubam as lojas) para a Oracle Cloud. Motivo: VM
-grátis mais forte (2 OCPU/12 GB contra 1 GB), em São Paulo, e ~US$ 4/mês a menos.
+Cloud (`whatsapp-lojas`, 35.237.85.231) para a Oracle Cloud. Motivo: VM grátis
+mais forte (2 OCPU/12 GB contra 1 GB), em São Paulo, e ~US$ 4/mês a menos.
 O `app_config/wuzapi.baseUrl` no Firestore foi trocado para
 `https://137-131-244-212.sslip.io` (a produção relê em até 5 min). As chaves e as
 sessões foram copiadas: nenhuma loja precisou ler QR; a troca levou ~1 min de
-WhatsApp fora.
+WhatsApp fora. A VM do Google foi apagada no mesmo dia, com o disco, e a regra de
+firewall `whatsapp-lojas-web` saiu em 18/10. Numa próxima troca de máquina, pare a
+WuzAPI antiga antes de ligar a nova: duas WuzAPI com as mesmas sessões derrubam as
+lojas.
 
 ## Onde está
 
