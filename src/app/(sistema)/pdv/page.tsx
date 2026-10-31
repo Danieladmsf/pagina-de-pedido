@@ -1268,7 +1268,7 @@ export default function PdvPage() {
 
         {visibleActiveTab === 'encomendas_pedidos' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile}
+            <EncomendasPedidosTab db={db} user={user} storeProfile={storeProfile} menuItems={items}
               registrarLancamento={registrarLancamento} caixaAberto={!!caixaAberto} permissions={permissions} />
           </div>
         )}

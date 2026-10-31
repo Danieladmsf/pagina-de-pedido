@@ -12,6 +12,7 @@ import { printEncomendaReceipt } from '@/lib/encomendas/receipt';
 import { saldoAReceber, valorRecebido } from '@/lib/encomendas/pagamento';
 import { idDoLancamentoDeEncomenda } from '@/lib/encomendas/lancamento-id';
 import { buildEncomendaConfig } from '@/lib/encomendas/config';
+import { type LinkedProduct, applyProductLinks } from '@/lib/encomendas/catalog';
 import { EncomendaBalcaoPage, type EncomendaBalcaoResult } from '@/components/admin/EncomendaBalcaoPage';
 import { FechamentoModal } from '@/components/admin/fechamento/FechamentoModal';
 import { useFechamento } from '@/components/admin/fechamento/useFechamento';
@@ -43,8 +44,9 @@ function waLink(phoneDigits: string) {
   const d = (phoneDigits || '').replace(/\D/g, '');
   return `https://wa.me/${d.startsWith('55') ? d : `55${d}`}`;
 }
-export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamento, caixaAberto = false, permissions }: {
+export function EncomendasPedidosTab({ db, user, storeProfile, menuItems, registrarLancamento, caixaAberto = false, permissions }: {
   db: any; user: any; storeProfile: any;
+  menuItems?: LinkedProduct[] | null;
   registrarLancamento?: RegistrarLancamento;
   caixaAberto?: boolean;
   permissions: PdvPermissions;
@@ -76,7 +78,12 @@ export function EncomendasPedidosTab({ db, user, storeProfile, registrarLancamen
   const [entregando, setEntregando] = useState<(Encomenda & { id: string }) | null>(null);
   const [finalizandoEntrega, setFinalizandoEntrega] = useState(false);
 
-  const config = useMemo(() => buildEncomendaConfig(storeProfile), [storeProfile]);
+  // Mesma ponte da página pública: item vinculado a um produto do cardápio sai com
+  // o nome e o preço atuais, para o balcão cobrar igual ao link de encomendas.
+  const config = useMemo(() => {
+    const base = buildEncomendaConfig(storeProfile);
+    return { ...base, catalog: applyProductLinks(base.catalog, menuItems || []) };
+  }, [storeProfile, menuItems]);
   // Prazo fica de fora da criação (lá é dinheiro entrando na hora); na entrega
   // ele vale, e o fechamento centralizado já sabe lançar a dívida.
   const formasBalcao = useMemo(
