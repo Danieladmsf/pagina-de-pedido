@@ -9,15 +9,18 @@ import { Switch } from '@/components/ui/switch';
 import { CalendarDays, Clock, Copy as CopyIcon, Plus, Trash2 } from 'lucide-react';
 import { type DayHours, DAY_ORDER, DAY_SHORT, fromStoreWorkingHours } from '@/lib/encomendas/schedule';
 import type { RascunhoEncomendas } from '@/lib/encomendas/rascunho';
+import type { EncomendaConfig } from '@/lib/encomendas/config';
+import { EncomendaDiasFechados } from '@/components/encomendas/EncomendaDiasFechados';
 
 type Modo = 'week' | 'store' | 'text';
 
 // Aba Agenda: como a dona conta os dias/horários e o prazo do pedido. Controlada:
 // o estado mora no rascunho da EncomendasAdminTab.
-export function EncomendaAgendaPanel({ r, onChange, storeProfile }: {
+export function EncomendaAgendaPanel({ r, onChange, storeProfile, liveConfig }: {
   r: RascunhoEncomendas;
   onChange: (patch: Partial<RascunhoEncomendas>) => void;
   storeProfile: any;
+  liveConfig: EncomendaConfig;
 }) {
   // Horário fixo da semana do perfil da loja, se já estiver preenchido lá.
   const storeWeek = useMemo(() => fromStoreWorkingHours(storeProfile?.workingHours), [storeProfile?.workingHours]);
@@ -47,7 +50,8 @@ export function EncomendaAgendaPanel({ r, onChange, storeProfile }: {
   const setTimes = (next: string[]) => onChange({ catalog: { ...r.catalog, deliveryTimes: next } });
 
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-2">
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      <div className="space-y-5">
       <Card className="border shadow-sm rounded-2xl">
         <CardContent className="space-y-3 p-4">
           <div>
@@ -167,6 +171,12 @@ export function EncomendaAgendaPanel({ r, onChange, storeProfile }: {
           </div>
         </CardContent>
       </Card>
+      </div>
+
+      {/* Em tela estreita o calendário vem primeiro: é o que a dona mais usa. */}
+      <div className="order-first lg:order-none">
+        <EncomendaDiasFechados r={r} onChange={onChange} liveConfig={liveConfig} />
+      </div>
     </div>
   );
 }

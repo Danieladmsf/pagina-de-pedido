@@ -246,6 +246,7 @@ export function EncomendaBalcaoPage({ db, user, ownerId, config, caixaAberto, fo
   const avisoData = (() => {
     if (!data) return '';
     if (data < hojeIso()) return 'Data no passado.';
+    if ((config.blockedDates || []).includes(data)) return 'Esse dia está fechado para encomendas na página. Só confirme se der conta.';
     const minimo = new Date();
     minimo.setDate(minimo.getDate() + (config.minDays || 0));
     const minimoIso = `${minimo.getFullYear()}-${String(minimo.getMonth() + 1).padStart(2, '0')}-${String(minimo.getDate()).padStart(2, '0')}`;

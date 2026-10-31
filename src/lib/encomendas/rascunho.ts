@@ -9,7 +9,7 @@
 import { buildEncomendaConfig } from './config';
 import { type EncomendaContent, mergeContent } from './content';
 import { type EncomendaCatalog, type LinkedProduct, applyProductLinks, mergeCatalog } from './catalog';
-import { type DayHours, mergeWeekHours } from './schedule';
+import { type DayHours, localIsoPlusDays, mergeBlockedDates, mergeWeekHours } from './schedule';
 
 export interface RascunhoEncomendas {
   enabled: boolean;
@@ -19,6 +19,7 @@ export interface RascunhoEncomendas {
   pixKey: string;
   minDays: number;
   weekDays: number[];
+  blockedDates: string[];
   scheduleMode: 'text' | 'week' | 'store';
   daysLabel: string;
   hours: string;
@@ -46,6 +47,7 @@ export function rascunhoDoPerfil(storeProfile: any): RascunhoEncomendas {
     pixKey: e.pixKey || storeProfile?.creditPixKey || '',
     minDays: typeof e.minDays === 'number' ? e.minDays : 3,
     weekDays: Array.isArray(e.weekDays) ? e.weekDays : [],
+    blockedDates: mergeBlockedDates(e.blockedDates),
     scheduleMode: c.scheduleMode,
     daysLabel: typeof raw === 'string' && raw ? raw : (c.scheduleMode === 'text' ? c.daysLabel : 'Terça a Sábado'),
     hours: c.hours,
@@ -88,12 +90,12 @@ function catalogoLimpo(cat: EncomendaCatalog, menuProducts: LinkedProduct[]): En
 }
 
 const CAMPOS: (keyof RascunhoEncomendas)[] = [
-  'enabled', 'showInApp', 'pickupOnly', 'sinalPercent', 'pixKey', 'minDays', 'weekDays',
+  'enabled', 'showInApp', 'pickupOnly', 'sinalPercent', 'pixKey', 'minDays', 'weekDays', 'blockedDates',
   'scheduleMode', 'daysLabel', 'hours', 'weekHours', 'content', 'catalog',
 ];
 
 // Devolve SÓ o que mudou em relação ao salvo, já normalizado para gravar.
-export function montarGravacao(atual: RascunhoEncomendas, salvo: RascunhoEncomendas, menuProducts: LinkedProduct[] = []): Gravacao {
+export function montarGravacao(atual: RascunhoEncomendas, salvo: RascunhoEncomendas, menuProducts: LinkedProduct[] = [], hoje: string = localIsoPlusDays(0)): Gravacao {
   const out: Record<string, unknown> = {};
   for (const k of CAMPOS) {
     if (igual(atual[k], salvo[k])) continue;
@@ -113,6 +115,12 @@ export function montarGravacao(atual: RascunhoEncomendas, salvo: RascunhoEncomen
         if (!igual(v, salvo.catalog)) out[k] = v;
         break;
       }
+      case 'blockedDates': {
+        // Data que já passou não serve mais para nada: sai ao gravar.
+        const v = mergeBlockedDates(atual.blockedDates).filter((d) => d >= hoje);
+        if (!igual(v, salvo.blockedDates)) out[k] = v;
+        break;
+      }
       case 'weekHours':
       case 'weekDays':
       case 'content':
@@ -127,8 +135,11 @@ export function montarGravacao(atual: RascunhoEncomendas, salvo: RascunhoEncomen
 
 // O rascunho depois de gravar: o que o Firestore vai devolver (catálogo passa pelo
 // mergeCatalog), para `igual` dar verdadeiro e a barra de salvar sumir.
-export function aposGravar(atual: RascunhoEncomendas, gravacao: Gravacao): RascunhoEncomendas {
+// `salvo` (opcional) cobre o caso de a mudança ser só de datas passadas: nada é
+// gravado e o rascunho volta a ser o salvo.
+export function aposGravar(atual: RascunhoEncomendas, gravacao: Gravacao, salvo?: RascunhoEncomendas): RascunhoEncomendas {
   const prox: RascunhoEncomendas = { ...atual, ...gravacao } as RascunhoEncomendas;
+  if (!gravacao.blockedDates && salvo) prox.blockedDates = salvo.blockedDates;
   prox.sinalPercent = Math.min(100, Math.max(0, Number(prox.sinalPercent) || 0));
   prox.minDays = Math.max(0, Math.floor(Number(prox.minDays) || 0));
   if (gravacao.catalog) prox.catalog = mergeCatalog(gravacao.catalog);
@@ -141,7 +152,7 @@ export function abasComMudanca(atual: RascunhoEncomendas, salvo: RascunhoEncomen
   const diff = (...ks: (keyof RascunhoEncomendas)[]) => ks.some((k) => !igual(atual[k], salvo[k]));
   const semHorarios = (c: EncomendaCatalog) => ({ ...c, deliveryTimes: undefined });
   return {
-    agenda: diff('scheduleMode', 'daysLabel', 'hours', 'weekHours', 'minDays', 'weekDays')
+    agenda: diff('scheduleMode', 'daysLabel', 'hours', 'weekHours', 'minDays', 'weekDays', 'blockedDates')
       || !igual(atual.catalog.deliveryTimes, salvo.catalog.deliveryTimes),
     produtos: !igual(semHorarios(atual.catalog), semHorarios(salvo.catalog)),
     pagamento: diff('sinalPercent', 'pixKey', 'pickupOnly'),

@@ -138,6 +138,37 @@ describe('horário seguindo a loja', () => {
   });
 });
 
+describe('datas fechadas', () => {
+  const hoje = '2026-11-02';
+  const base = { ...perfil, encomendas: { ...perfil.encomendas, blockedDates: ['2026-10-20', '2026-12-24'] } };
+  const s = rascunhoDoPerfil(base);
+  it('mudança só na data grava só blockedDates, e tira a data passada', () => {
+    const g = montarGravacao({ ...s, blockedDates: [...s.blockedDates, '2026-12-25'] }, s, [], hoje);
+    expect(g).toEqual({ blockedDates: ['2026-12-24', '2026-12-25'] });
+    expect(abasComMudanca({ ...s, blockedDates: ['2026-12-24'] }, s).agenda).toBe(true);
+  });
+  it('sem mudança nas datas, não regrava (nem limpa as passadas)', () => {
+    expect(montarGravacao({ ...s, minDays: 9 }, s, [], hoje)).toEqual({ minDays: 9 });
+  });
+  it('ciclo salvar → reler fica limpo', () => {
+    const atual = { ...s, blockedDates: [...s.blockedDates, '2026-12-25'] };
+    const g = montarGravacao(atual, s, [], hoje);
+    const depois = aposGravar(atual, g, s);
+    const salvo2 = rascunhoDoPerfil(reler(base, g));
+    expect(igual(depois, salvo2)).toBe(true);
+    expect(Object.values(abasComMudanca(depois, salvo2)).some(Boolean)).toBe(false);
+  });
+  it('diferença só em data passada não grava e não deixa sujo', () => {
+    const atual = { ...s, blockedDates: ['2026-12-24'] }; // tirou a de 20/10, que já passou
+    const g = montarGravacao(atual, s, [], hoje);
+    expect(g).toEqual({ blockedDates: ['2026-12-24'] }); // o salvo ainda tem a passada: limpar é gravar
+    const igualAoSalvoFuturo = rascunhoDoPerfil({ ...perfil, encomendas: { ...perfil.encomendas, blockedDates: ['2026-12-24'] } });
+    const atual2 = { ...igualAoSalvoFuturo, blockedDates: ['2026-10-01', '2026-12-24'] };
+    expect(montarGravacao(atual2, igualAoSalvoFuturo, [], hoje)).toEqual({});
+    expect(igual(aposGravar(atual2, {}, igualAoSalvoFuturo), igualAoSalvoFuturo)).toBe(true);
+  });
+});
+
 describe('abasComMudanca', () => {
   const s = rascunhoDoPerfil(perfil);
   it('separa as abas pelos campos certos', () => {

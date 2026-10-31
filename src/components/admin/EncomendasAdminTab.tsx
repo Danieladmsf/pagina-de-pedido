@@ -102,7 +102,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
         revalidateStorePages(user.uid);
       }
       // Se a dona mexeu em algo durante o envio, a edição nova fica (e continua suja).
-      setRascunho((cur) => (igual(cur, enviado) ? aposGravar(enviado, gravacao) : cur));
+      setRascunho((cur) => (igual(cur, enviado) ? aposGravar(enviado, gravacao, salvo) : cur));
       toast({ title: 'Encomendas atualizadas', description: 'As mudanças já valem no link público.' });
     } catch (err) {
       console.error('[encomendas-admin] erro ao salvar:', err);
@@ -167,7 +167,7 @@ export function EncomendasAdminTab({ db, user, storeProfile }: { db: any; user: 
         </Card>
 
         <TabsContent value="agenda" className="mt-4">
-          <EncomendaAgendaPanel r={rascunho} onChange={mudar} storeProfile={storeProfile} />
+          <EncomendaAgendaPanel r={rascunho} onChange={mudar} storeProfile={storeProfile} liveConfig={liveConfig} />
         </TabsContent>
         {/* forceMount: mantém o produto aberto e as linhas expandidas ao trocar de aba */}
         <TabsContent value="produtos" forceMount className="mt-4 data-[state=inactive]:hidden">

@@ -4,7 +4,7 @@
 
 import { type EncomendaContent, mergeContent } from './content';
 import { type EncomendaCatalog, mergeCatalog } from './catalog';
-import { type DayHours, fromStoreWorkingHours, mergeWeekHours, openDaysLabel, openWeekDays } from './schedule';
+import { type DayHours, fromStoreWorkingHours, mergeBlockedDates, mergeWeekHours, openDaysLabel, openWeekDays } from './schedule';
 
 export interface EncomendaConfig {
   name: string;
@@ -18,6 +18,7 @@ export interface EncomendaConfig {
   minDays: number;         // antecedência mínima da encomenda
   daysLabel: string;       // dias de funcionamento (texto exibido); derivado nos modos 'week' e 'store'
   weekDays: number[];      // dias que aceitam retirada/entrega (0=Dom..6=Sáb); [] = todos. Nos modos por dia, são os dias abertos do horário
+  blockedDates: string[];  // datas fechadas (AAAA-MM-DD) em que a página recusa pedidos; [] = nenhuma
   pickupOnly: boolean;     // true = só retirada (sem entrega); segue o PDF da loja
   hours: string;           // horário exibido no modo 'text'
   scheduleMode: 'text' | 'week' | 'store'; // como o rodapé mostra o horário — ver schedule.ts
@@ -74,6 +75,7 @@ export function buildEncomendaConfig(profile: any): EncomendaConfig {
     weekDays: scheduleMode !== 'text' && openWeekDays(weekHours).length > 0
       ? openWeekDays(weekHours)
       : Array.isArray(enc.weekDays) ? enc.weekDays.filter((d: any) => typeof d === 'number' && d >= 0 && d <= 6) : [],
+    blockedDates: mergeBlockedDates(enc.blockedDates),
     pickupOnly: enc.pickupOnly === true,
     hours: enc.hours || '09h às 18h',
     scheduleMode,

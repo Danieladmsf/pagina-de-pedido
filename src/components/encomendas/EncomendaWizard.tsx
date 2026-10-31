@@ -22,6 +22,7 @@ import {
   precoDoAdicional,
   type SelecaoEncomenda,
 } from '@/lib/encomendas/pricing';
+import { listaCurtaDeDatas, localIsoPlusDays, weekdayOfIso } from '@/lib/encomendas/schedule';
 import { isValidCreditPhone, maskCreditPhoneInput, normalizeCreditPhone } from '@/lib/customer-credit';
 import { syncCustomerFromOrder } from '@/lib/customers/customer-sync';
 import {
@@ -42,19 +43,6 @@ function formatDateBR(iso: string) {
 }
 
 const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-// Data local em ISO (yyyy-mm-dd) somando `days` dias — sem toISOString(),
-// que converte para UTC e vira o dia errado à noite no fuso BR.
-function localIsoPlusDays(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function weekdayOfIso(iso: string): number {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1).getDay();
-}
 
 // ID curto (mesmo alfabeto/entropia dos pedidos do cardápio — ver CartDrawer).
 function genEncomendaId() {
@@ -202,10 +190,14 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
   // Validação da data de retirada/entrega: antecedência mínima (config.minDays)
   // e dias da semana atendidos (config.weekDays; vazio = todos os dias).
   const minDateIso = localIsoPlusDays(config.minDays || 0);
+  const datasFechadasAdiante = config.blockedDates.filter((d) => d >= minDateIso);
   const dateError = (() => {
     if (!delDate) return '';
     if (delDate < minDateIso) {
       return `Precisamos de pelo menos ${config.minDays} ${config.minDays === 1 ? 'dia' : 'dias'} de antecedência — escolha a partir de ${formatDateBR(minDateIso)}.`;
+    }
+    if (config.blockedDates.includes(delDate)) {
+      return `Não recebemos encomendas para ${formatDateBR(delDate)}. Escolha outra data.`;
     }
     if (config.weekDays.length > 0 && !config.weekDays.includes(weekdayOfIso(delDate))) {
       return `Não atendemos encomendas nesse dia. Dias disponíveis: ${config.weekDays.map((d) => WEEKDAY_LABELS[d]).join(', ')}.`;
@@ -796,6 +788,9 @@ export function EncomendaWizard({ config, storeId, onHome }: { config: Encomenda
                   {dateError
                     ? <p className="mt-1 text-xs font-semibold text-destructive">{dateError}</p>
                     : <p className="mt-1 text-xs text-muted-foreground">Mín. {config.minDays} dias · {config.daysLabel}</p>}
+                  {!dateError && datasFechadasAdiante.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">Sem encomendas em {listaCurtaDeDatas(datasFechadasAdiante)}.</p>
+                  )}
                 </Field>
                 <Field label={<span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" /> Horário</span>} required>
                   <select value={delTime} onChange={(e) => setDelTime(e.target.value)}
