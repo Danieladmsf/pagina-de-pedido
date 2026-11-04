@@ -69,6 +69,12 @@
         { "order": "DESCENDING", "queryScope": "COLLECTION" },
         { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" }
       ]
+    },
+    {
+      "//": "Conteúdo bruto dos eventos do WhatsApp sem índice (04/11/2026). O índice automático de cada subcampo era mais de 80% dos 8,8 GiB do banco, e nenhuma consulta olha dentro do payload. Para achar algo nele, leia e filtre no código.",
+      "collectionGroup": "whatsapp_webhook_events",
+      "fieldPath": "payload",
+      "indexes": []
     }
   ]
 }

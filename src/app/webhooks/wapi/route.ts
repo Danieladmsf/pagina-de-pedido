@@ -382,11 +382,13 @@ async function processarEvento(url: URL, payload: any) {
     event,
     instanceId: empresaId ? instanceId : '',
     empresaId,
+    // Sem indice (firestore.indexes.json): o indice automatico de cada subcampo
+    // era mais de 80% do espaco do banco. Nenhuma consulta filtra por ele; para
+    // achar algo aqui, leia e filtre no codigo.
     payload,
     createdAt: now,
-    // Basta ligar a politica de TTL neste campo (console do Firestore) para a
-    // colecao parar de crescer sozinha: sao alguns milhares de documentos por
-    // dia, com o payload inteiro de cada mensagem.
+    // TTL ligado neste campo (firestore.indexes.json): a colecao guarda so os
+    // ultimos 30 dias, uns 8 mil eventos por dia com o payload inteiro.
     expireAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
 
