@@ -257,12 +257,27 @@ async function paraDataUrl(valor: string, tipoPadrao: string, aceitos?: RegExp) 
   return `data:${aceitos ? tipo : tipoPadrao};base64,${buffer.toString('base64')}`;
 }
 
+/**
+ * `textoSeAImagemFalhar`: se a foto não baixa, vai só a legenda. É para a
+ * resposta automática, que não pode ficar muda por causa da logo: em 04/11/2026
+ * o Storage do Firebase respondeu 402 (conta do Google inadimplente) e toda
+ * saudação da Lima morreu no download da imagem. Campanha e envio manual não
+ * passam a opção e continuam falhando sem a foto, como antes.
+ */
 export async function sendWuzImage(
   instanceId: string,
   token: string,
   input: { phone: string; image: string; caption?: string },
+  opcoes: { textoSeAImagemFalhar?: boolean } = {},
 ): Promise<ResultadoDeEnvio> {
-  const imagem = await paraDataUrl(input.image, 'image/jpeg', /^image\/(png|jpe?g)$/);
+  let imagem: string | null;
+  try {
+    imagem = await paraDataUrl(input.image, 'image/jpeg', /^image\/(png|jpe?g)$/);
+  } catch (error) {
+    if (!opcoes.textoSeAImagemFalhar || !input.caption) throw error;
+    console.warn('[WuzAPI] Imagem indisponivel; enviando so o texto:', String((error as any)?.message || error));
+    return sendWuzText(instanceId, token, { phone: input.phone, message: input.caption });
+  }
   if (!imagem) {
     // Logo em WEBP/SVG não passa na WuzAPI: a mensagem vale mais que a imagem.
     console.warn('[WuzAPI] Imagem em formato nao aceito (so PNG/JPEG); enviando so o texto.');

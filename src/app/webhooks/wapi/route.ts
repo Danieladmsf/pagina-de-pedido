@@ -242,7 +242,7 @@ async function maybeSendAutoReply(params: {
             phone: alvo.address,
             image: reply.imageUrl,
             caption: reply.message,
-          })
+          }, { textoSeAImagemFalhar: true })
         : sendWuzText(integration.wapiInstanceId, token, {
             phone: alvo.address,
             message: reply.message,

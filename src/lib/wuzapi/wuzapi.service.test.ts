@@ -10,11 +10,13 @@ const servidor = vi.hoisted(() => ({
   criados: [] as Array<Record<string, unknown>>,
   status: {} as Record<string, unknown>,
   cabecalhos: [] as Array<Record<string, string>>,
+  foto: { status: 200, tipo: 'image/jpeg' },
+  enviados: [] as Array<{ caminho: string; corpo: Record<string, unknown> }>,
 }));
 
 vi.mock('@/lib/firebase-admin', () => ({ getOptionalAdminDb: () => null }));
 
-import { criarSessaoDaLoja, getWuzStatus } from './wuzapi.service';
+import { criarSessaoDaLoja, getWuzStatus, sendWuzImage } from './wuzapi.service';
 
 function resposta(corpo: unknown, status = 200) {
   return new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } });
@@ -27,11 +29,25 @@ beforeEach(() => {
   ];
   servidor.criados = [];
   servidor.cabecalhos = [];
+  servidor.foto = { status: 200, tipo: 'image/jpeg' };
+  servidor.enviados = [];
   process.env.WUZAPI_URL = 'https://servidor.teste';
   process.env.WUZAPI_ADMIN_TOKEN = 'chave-de-admin';
 
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+    // A foto mora fora do servidor de WhatsApp (Storage do Firebase).
+    if (url.startsWith('https://fotos.teste/')) {
+      const ok = servidor.foto.status === 200;
+      return new Response(ok ? 'bytes-da-foto' : '{"error":{"code":402}}', {
+        status: servidor.foto.status,
+        headers: { 'Content-Type': ok ? servidor.foto.tipo : 'application/json' },
+      });
+    }
     const caminho = new URL(url).pathname;
+    if (caminho === '/chat/send/text' || caminho === '/chat/send/image') {
+      servidor.enviados.push({ caminho, corpo: JSON.parse(String(init.body)) });
+      return resposta({ code: 200, data: { Id: caminho === '/chat/send/text' ? 'msg-texto' : 'msg-imagem' }, success: true });
+    }
     servidor.cabecalhos.push({ ...(init.headers as Record<string, string>) });
     if (caminho === '/admin/users' && (init.method || 'GET') === 'GET') {
       return resposta({ code: 200, data: servidor.usuarios, success: true });
@@ -104,5 +120,40 @@ describe('getWuzStatus', () => {
     // O servidor guarda o `jid` do último pareamento e não apaga no logout.
     servidor.status = { connected: false, loggedIn: false, jid: '5516993638485@s.whatsapp.net' };
     expect(await getWuzStatus('WUZ-GOSTINHO', 'chave-gostinho')).toMatchObject({ connected: false });
+  });
+});
+
+describe('sendWuzImage', () => {
+  const envio = { phone: '5516999990000', image: 'https://fotos.teste/logo.jpg', caption: 'Olá! Veja nosso cardápio.' };
+
+  it('foto no ar: vai a imagem com a legenda', async () => {
+    const r = await sendWuzImage('WUZ-GOSTINHO', 'chave-gostinho', envio, { textoSeAImagemFalhar: true });
+
+    expect(r.messageId).toBe('msg-imagem');
+    expect(servidor.enviados).toEqual([
+      expect.objectContaining({ caminho: '/chat/send/image', corpo: expect.objectContaining({ Caption: envio.caption }) }),
+    ]);
+  });
+
+  it('resposta automática com a foto fora do ar (402 de 04/11/2026): vai só o texto', async () => {
+    servidor.foto.status = 402;
+    const r = await sendWuzImage('WUZ-GOSTINHO', 'chave-gostinho', envio, { textoSeAImagemFalhar: true });
+
+    expect(r.messageId).toBe('msg-texto');
+    expect(servidor.enviados).toEqual([{ caminho: '/chat/send/text', corpo: { Phone: envio.phone, Body: envio.caption } }]);
+  });
+
+  it('campanha e envio manual (sem a opção): foto fora do ar continua sendo erro', async () => {
+    servidor.foto.status = 402;
+    await expect(sendWuzImage('WUZ-GOSTINHO', 'chave-gostinho', envio)).rejects.toThrow(/baixar o arquivo/);
+    expect(servidor.enviados).toHaveLength(0);
+  });
+
+  it('sem legenda não há texto para mandar: o erro sobe', async () => {
+    servidor.foto.status = 402;
+    await expect(
+      sendWuzImage('WUZ-GOSTINHO', 'chave-gostinho', { ...envio, caption: '' }, { textoSeAImagemFalhar: true }),
+    ).rejects.toThrow(/baixar o arquivo/);
+    expect(servidor.enviados).toHaveLength(0);
   });
 });
